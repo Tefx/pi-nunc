@@ -11,7 +11,5 @@ project: pi-nunc
 strategy_ref: docs/DESIGN.md
 phases:
 - id: nunc-v1
-  name: Nunc 首版：滚动续做与实测证据
+  name: Nunc 完整项目
   status: pending
-  context: 交付顺序由消费关系决定：确定性候选合同供维护策略与 Pi 接入使用；策略及任务场景供接入实现和续做观察使用；可加载扩展与 tracked 观察入口供独立运行验证使用。各结果可独立修正，保留未受影响的证明。源码、必要测试、用户文档与其生产者一起交付。最终观察是当前模型与临时
-    session 的独立效果边界；不构造覆盖相同判断的额外 Gate。
