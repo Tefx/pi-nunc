@@ -8,4 +8,104 @@
 # =============================================================
 version: 1
 project: pi-nunc
-context: Implementation plan for pi-nunc.
+strategy_ref: docs/DESIGN.md
+context: 依据 README.md 与 docs/DESIGN.md 交付 Nunc 首版：Pi 在同一 persistent session 内以重叠原文
+  K 与有界增量记忆 M 支持续做、滚动和恢复。当前仓库只有文档，没有源代码、锁文件或测试入口。本次仅创建实施计划，不启动产品实施、安装到日常 Pi、发布或付费模型实验。规划核对
+  Pi 0.85.0 公开文档、类型和本机实现，以其作为首个验证基线，不声明最低兼容版本。一个普通 TypeScript/Node 扩展所有者可交付完整本地结果与证明，因此设置一个实施步骤；源码、配置、测试、文档和验证驱动同属该步骤，不设重复
+  Gate 或前置比较实验。
+project_guidance: 产品范围与持久化交付边界以 README.md 和 docs/DESIGN.md 为准；示例字段、比例、算法和模块划分可等价调整，不能因纳入计划变成额外产品要求。先贯通一次真实滚动，再在同一候选补齐容量、取消与会话生命周期。只用公开
+  Pi API，不修改 core，不增加独立调度器、跨 session 记忆/检索/数据库、普通轮次记忆工具或权重框架。决定请求、缩减和验收的可执行逻辑进入本仓库并测试，不由任务临时脚本承载。无凭据本地集成证明机制，真实模型观察证明实际续做及
+  usage，两者不可互代。真实模型观察属于当前步骤完成程序，使用隔离合成任务，仅执行已批准目标、账户和费用范围；缺少授权时先完成本地工作并保留未观察条件。
+phases:
+- id: nunc-v1
+  name: Nunc 首版：有界滚动、增量记忆与 Pi 会话续做
+  status: pending
+  steps:
+  - id: nunc-v1.extension
+    name: 交付可加载、可恢复并经运行验证的 Nunc 扩展
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths:\n    - package.json\n    - package-lock.json\n    - tsconfig.json\n\
+      \    - .node-version\n    - .npmrc\n    - .gitignore\n    - src/**\n    - test/**\n\
+      \    - examples/**\n    - docs/**\n    - README.md\n  blocked_paths:\n    -\
+      \ plan.yaml\n    - .git/**\n    - .env\n    - .env.local\n\nDeliver — 一个可加载的\
+      \ TypeScript Pi 扩展包，以及锁定依赖、机制测试、真实 Pi 宿主集成测试、合成续做观察入口和使用文档。普通请求为 F | render(M)\
+      \ | R，滚动后为 F | render(M_next) | K | 新消息。以下工作由同一所有者在一个候选中交付；内部模块与实施顺序由所有者决定。\n\
+      \n1. 包与宿主入口：交付 Pi package manifest、必要 runtime/peer 依赖、开发依赖锁和类型检查。复用 session_before_compact，覆盖\
+      \ threshold、显式 compact 与 overflow，只产生一套自定义维护结果。H 使用有效 Pi 配置，读取当前模型容量并联动检查 reserve\
+      \ 与宿主初始 keepRecentTokens；说明 preparation 不进入 hook、nothing-to-compact 与无可退出前段的情况。扩展不新增独立调度器，不从每次\
+      \ context 回调调用手动 abort 路径，不承诺自动改写宿主 reserve。普通轮次不调用维护模型、不要求记忆工具或使用计数。\n\n2.\
+      \ 活动窗口与完整来源：从宿主活动路径及当前有效消息投影得到 M/B/K，包含已入上下文但尚未进入下一次主请求的新消息和工具结果。B 是连续可退出前段，K\
+      \ 是显著重叠的合法原文后缀；保持正文、顺序、角色、工具名称/参数/调用结果关联及成功/错误状态。覆盖 split turn、并行工具关联、bash/custom/branch-summary\
+      \ 和宿主可见多模态消息，长期任务不能无限阻止滚动。普通请求保留全部活动工具正文直到 B 退出，extraction 从同一完整来源构造；不把全部 branchEntries\
+      \ 历史当作 R，不回读退役 JSONL、附件或外部产物。连续滚动及恢复只提供最新 M，旧 compaction 结构记录不能作为 K 带回旧记忆。\n\
+      \n3. 增量 slots：稳定 ID，未修改且未退役的正文与相对位置直接复用，新条目追加；支持新增、删除、局部纠正、替换及合并。模型判断内容与保留选择，代码校验结构、重复/未知/遗漏引用并执行完整条目预算；允许空\
+      \ M 和无新增。候选未超预算不额外淘汰，超预算时选择能完整放入的条目，计入 ID 与包装，不能截正文。明确错误的旧项不因替代项放不下而复活，保留优先级不重排普通请求。可采用\
+      \ add/remove/priority 示例或等价协议，不将示例字段冻结为产品架构。\n\n4. 容量与请求构造：分别核算完整主请求和完整 extraction，包含\
+      \ F、M/B/K、控制/协议开销、实际输出预留、thinking、provider 独立输入输出限制、多模态与估计/新增内容余量；cached tokens\
+      \ 占容量，未知 usage 不当零，已包含的 F/M 不重复计数。校验 A 为正、记忆比例在 [0,1)、近期比例在 (0,1)、可选绝对上限为正。合法边界取整后的\
+      \ L 低于实际触发线并有增长空间；降低 H 同步重算 M/K，避免立即再次维护。模型切换重新核算两类请求；不可分大消息、大窗口切小窗口时完整来源无法容纳，须明确取消，不能只缩最终\
+      \ M。\n\n5. 当前模型维护与有界恢复：冻结 session、leaf/path、模型、M/B/K 和策略，正常一轮当前主模型请求，无独立 extractor\
+      \ 或业务工具执行循环。首版优先短维护提示加完整显式 transcript 这一条路径，不要求前缀缓存复用、第二种承载形态或全 provider 改写框架。完整来源保留条件、否定、纠正与证据性质；支持的多模态使用原生块，不支持时明确限制，不用占位文本虚构事实。仅完整请求实际无法容纳时，auto\
+      \ 可以用一种带省略标记的工具正文 head/tail 缩减；full 禁止正文截断。缩减不改普通请求或实际 K，保留最新用户要求、纠正及工具关联，不暗截用户指令、存量\
+      \ M 或调用参数，说明省略范围与不可见证据。支持的处理后仍超容量则取消；正常运转应容纳完整 extraction，不做每轮默认有损处理或分块多阶段提取。\n\
+      \n6. 单一 snapshot 与 session 生命周期：完整响应终态、结构、引用、容量、边界和过期检查均通过才返回同一候选生成的 summary/details.nunc/firstKeptEntryId。即使\
+      \ JSON 可解析，length/error/aborted/pending 等非完整终态仍不提交。结构错误至多一次带校验反馈的修复，使用冻结来源和策略并重新核算输入容量。异常、取消、修复失败、session/path/model\
+      \ 改变显式返回 cancel:true 并说明原因；交付前不改已保存 M/边界，不因抛异常或空返回落入默认摘要。Pi 独占 append/rebuild\
+      \ 及其失败处理，Nunc 不另建数据库、双写、hash/CAS 或提交重放/宿主回滚协议。same-session resume/reload 恢复选中路径最新\
+      \ snapshot，外部或旧式 summary 可接入为一个文本 slot；new 从空记忆开始，tree/fork/clone 遵循宿主选中路径，不自动导入其他\
+      \ session。首版支持 persistent session；多个扩展同时返回自定义 compaction 不在支持配置内。\n\n7. 策略、配置与使用文档：内置通用策略，回答只剩\
+      \ F/K/正常工作工具时继续 session 还缺什么；区分用户要求、工具观察与助手推断，利用 K 后续证据修正 B/旧 M，短暂换题不取消未完目标。同主题出现不等于条件完整保留；持续有效的精确条件不靠提及频率续期，已完成过程可退出，被排除路线不反复尝试，已知可靠产物通常只留必要位置与用途。配置可选策略文件、记忆比例/绝对上限、近期原文比例和\
+      \ full/auto；明确位置、优先级、相对路径基准，策略变更在下次维护生效，同次修复保持一致。说明安装/加载、Pi 阈值调参、compact、恢复、失败/取消、禁用后宿主行为、多模态和容量限制、成本观察。默认数值可调；不加强制分类、pin、衰减、权重\
+      \ DSL、任务路由、自动跨 session 记忆或检索，不承诺任意历史细节、跨滚动 cache 不变或普遍胜过调参后的普通 compaction。\n\
+      \nBoundary — general 负责一个 TypeScript/Node 扩展的可逆仓库事务，源码、测试、配置和必要文档具有同一所有者与验收消费者，无需另一\
+      \ substantial domain 的核心实现。测试使用项目专属隔离 session/合成目录，不修改日常 Pi 配置、真实 session、宿主安装或其他项目，不发布、不\
+      \ push。真实模型调用仅使用执行时已批准的目标、账户及费用范围；认证走宿主能力，不把凭据及其位置写进 Plan、提示、驱动配置或证据。候选可整体 revert，测试状态可丢弃；宿主持久化交付边界遵循设计。\n\
+      \nAdmit — 阅读 refs 全文，以锁定 Pi 版本的公开 API 和运行证据校准接口。规划见证的 Pi 0.85.0 使用 CompactionResult.firstKeptEntryId；AgentSession.compact\
+      \ 在空返回时生成默认摘要，cancel 时终止；serializeConversation 固定截断工具正文到 2000 字符，不能直接用于完整来源。随包\
+      \ session-format 文档提及 retainedTail，但本机公开类型与执行实现仍使用边界 ID，应以实际锁版本验证并记录支持范围。本地可控\
+      \ provider 测试证明结构、容量和宿主生命周期，真实模型观察证明续做与实际 usage；不混淆两类证据。\n\nRecovery — 本地检查或观察失败留在本步骤修复，不按缺陷、命令或重试拆节点。交付前失败保持已保存状态，交付后宿主错误按观察报告，不自行重放。公开\
+      \ API 若不能满足产品行为，保留候选与最小复现，报告具体缺口，不私自 patch 宿主或缩小合同。真实模型授权/能力不足时先完成本地工作，保留尚未观察的完成条件，不将本步骤标为完成。"
+    verification: "toolchain:\n  node: '26.7.0'\n  wrapper: mise exec node@26.7.0\
+      \ --\n  dependencies: package-lock.json\n  pi_validation_baseline: '@earendil-works/pi-coding-agent@0.85.0'\n\
+      \  typescript: '5.9.3'\n  notes: 'Node 是已见证开发验证基线，不声明最低支持版本；npm 使用该 Node 工具链提供的版本并在证据记录。Pi\
+      \ 和编译器进入开发依赖锁，扩展按 Pi package 规则使用宿主 peer dependencies，不靠全局模块解析。'\nenvironment:\n\
+      \  PI_OFFLINE: '1'\n  PI_SKIP_VERSION_CHECK: '1'\n  PI_TELEMETRY: '0'\n  NODE_OPTIONS:\
+      \ ''\nchecks:\n  - id: locked-install\n    argv: [mise, exec, node@26.7.0, --,\
+      \ npm, ci, --include=dev, --ignore-scripts, --no-audit, --no-fund]\n    expected_exit_code:\
+      \ 0\n  - id: typecheck\n    argv: [mise, exec, node@26.7.0, --, node, ./node_modules/typescript/bin/tsc,\
+      \ --noEmit, --project, tsconfig.json]\n    expected_exit_code: 0\n  - id: behavior-and-pi-integration\n\
+      \    argv: [mise, exec, node@26.7.0, --, node, --test, --test-reporter=tap,\
+      \ 'test/**/*.test.ts']\n    expected_exit_code: 0\n\n入口现状：当前没有 package/lock/test，以上是本步骤的交付检查合同，尚未执行或通过。规划核对了\
+      \ node/npm/mise CLI 帮助及 Pi SDK 公开接口与示例，不能声称已见证本项目测试。干净 checkout 按锁文件包含 dev 依赖安装，不依赖缓存、ambient\
+      \ virtualenv 或全局 TypeScript/Pi。第三项须实际发现并执行全部本地测试；空选择、跳过必验行为或仅输出 PASS 都不通过。若实际接口要求改最终\
+      \ argv，由 Planner 在原步骤修正检查合同，不新增 setup/retry 节点。\n\n本地行为测试调用交付实现，至少覆盖：\n- 配置合法区间与无效配置；空\
+      \ M、无新增、增删替换合并、重复/未知/遗漏引用；不变正文与相对位置、包装预算、完整条目跳过、明确删除项不复活。\n- 普通请求完整工具正文，包含大于\
+      \ 2000 字符且中部含有效证据的结果；维护来源含最新已入上下文结果、错误状态、custom 消息和 K，不能仅拼 preparation.messagesToSummarize。\n\
+      - 合法 B/K、长单轮、并行工具关联、无可退出前段；两类容量中的 F/output/thinking/多模态/缓存/未知 usage；L 增长空间、调低\
+      \ H、大转小模型和不可分大消息。\n- auto 仅实际超容量时缩减并说明范围；full 不截正文；实际 K 不变；支持的多模态块保留，不支持时明确取消/限制，不虚构事实。\n\
+      - malformed/length/error/aborted/pending 响应；一次修复成功/失败及修复容量不足；取消、session/path/model\
+      \ 改变与策略冻结；断言实际候选是否交付和保存状态，不能只检查提示文本。\n\nPi 集成加载真实扩展并运行锁定版本的 AgentSession、SessionManager\
+      \ 与扩展 runner。模型服务边界可用可控本地 provider 注入响应/故障/usage/取消，但不得替换被验证的 compaction、append\
+      \ 或 rebuild。至少执行两次连续滚动并继续下一轮，通过实际请求投影与测试 JSONL 核对最新 M、K 原文/顺序、工具关联、完整日志保存及旧\
+      \ summary 不复活。执行关闭/打开 same-session、reload、new、tree、fork、clone 和旧 summary 接入；session\
+      \ 替换使用真实 runtime 机制，不能只调用扩展回调。驱动真实自动 threshold、overflow 和显式 compact，确认正常一轮维护、失败不落默认摘要、不重复提交，并覆盖\
+      \ preparation 未进入 hook 的配置情况。\n\n完成程序中的真实模型观察：交付受版本控制的 test/live/continuation.ts（不使用\
+      \ .test.ts 后缀，避免默认测试收费），通过锁定 Pi SDK 加载同一扩展，用宿主当前选定模型和认证。执行前须满足模型目标、账户与费用授权，不能把本次规划当付费授权；命令为\
+      \ [mise, exec, node@26.7.0, --, node, test/live/continuation.ts]，不把固定 provider\
+      \ 升为产品要求。合成持续工作场景覆盖 B 判断被 K 纠正、精确条件跨多次滚动、换题回到未完成目标、已完成过程退出且不重复已排除尝试，以及巨型工具结果、暂停恢复和小窗口容量限制。通过实际产物、工具行动及独立于维护提示的任务断言判断结果，不给模型验收答案，不用记忆复述或\
+      \ prompt 词语命中冒充行为。记录整个任务的结果、约束违例、重复失败尝试、用户重述次数，以及含维护/修复的 token、cache read/write、费用与延迟；未报告的指标标不可用，真实\
+      \ cache 为零也照实记录，不设缓存命中率或胜过普通 compaction 的门槛。观察供当前步骤完成使用，无独立后续证据消费者，不新增验收节点。未获授权、未运行或结果不满足时明确保留证据缺口。"
+    evidence_template: '交付：文件与加载入口；实际 Pi/Node/npm 版本。
+
+      检查：每项完整命令、退出码、实际测试数和结果。
+
+      宿主：连续滚动、请求投影、持久化/恢复和失败不降级的证据位置。
+
+      真实模型：已有目标/费用授权范围（无凭据信息）、任务结果、usage/cache/费用/延迟；未观测项。
+
+      恢复：候选与隔离测试状态、API 差异和支持限制；全部完成条件是否满足。'
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    agent: general
