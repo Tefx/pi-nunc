@@ -9,7 +9,245 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
+context: "本阶段交付 README 与 DESIGN 全部必要要求定义的完整 Nunc 项目。技术 ID nunc-v1 只用于保留现存 phase，不限制交付版本或范围。最终整合结果由\
+  \ nunc.acceptance 作项目完成判断；增量接通、组件完成和观察报告均不能单独代替该判断。\n\n结果边界：可消费的维护策略和续做场景 → 无持久化副作用的完整滚动维护引擎\
+  \ → persistent Pi session 接入 → 有独立宿主/模型效果授权的运行证据 → 完整项目验收。策略由引擎消费，引擎的完整候选由 Pi adapter\
+  \ 消费；运行证据由终端验收独立消费。每个实现结果包含自身必要测试和文档，不把文件拆分、失败次数或普通测试单列为交付。\n\n以 DESIGN 各节具体必要约束为准，§8.2\
+  \ 是索引。请求形态、增量字段、预算算法、参数起点、模块路径与容量缩减方法允许等价选择；不要求所有备选路径，不要求 benchmark 胜出。仅支持 Pi 的单一持续\
+  \ persistent session、当前活动路径和同 session 恢复；不扩展到 Codex、自动跨 session、记忆库、主动历史/外部检索、文档写入服务、多\
+  \ provider 缓存框架、后台调度或发布。\n\n规划时仓库只有文档和 Plan，没有产品代码、锁文件或原生产品检查入口。各步骤标为待交付的 runner/argv\
+  \ 是生产者交付合同，尚未存在或执行。只读核对了本机 Pi 0.85.0 的公开 docs/types 与 compaction、session-manager\
+  \ 实现；这不证明运行兼容。当前安装代码通过 firstKeptEntryId 重建，文档中 retainedTail 描述与本机实现不一致，接入须以选定宿主实际公开类型、代码及运行证据为准，不据说明虚构支持。现有默认\
+  \ serializeConversation 会缩减工具正文，不能直接把默认示例当作 Nunc 完整 extraction 来源。\n\n本轮仅授权规划、必要只读核对和本地\
+  \ Git 保存。全部步骤保持未执行；Plan 的 pending/依赖就绪不构成实施或调用许可。产品实现与本地测试执行须先得到执行授权；软件/依赖安装下载更新仍须另行获准。日常\
+  \ Pi、session、模型配置、全局 registry 和其他全局状态禁止修改。既有未跟踪 dashboard 不作输入、不修改、不提交。真实宿主/模型观察另需明确隔离测试宿主及状态目录、模型/provider、调用范围、费用或用量上限与清理/恢复授权；未获准保留必需证据和最终验收待完成，继续不依赖这些效果的已授权工作。不得发布或\
+  \ push。\n\n验证环境选择现有 Node.js 26.7.0、npm 11.19.0、Pi 0.85.0 作为初始检查目标，不把它们声明成未经验证的最低兼容版本。生产者交付跟踪的运行时/依赖声明和\
+  \ lock；检查不得依赖全局包隐式解析、缓存、用户 PATH 或自动 toolchain 下载。若所选公开接口无法满足必要行为，报告具体 seam 和可行范围，不私改\
+  \ Pi core 或缩小必要交付。\n\n待交付检查环境的解析合同（准备/安装命令现在不执行；须先获得对应安装权限）：\n```yaml\ncheck_environment:\n\
+  \  node_version: 26.7.0\n  npm_version: 11.19.0\n  development_dependencies:\n \
+  \   pi: 0.85.0\n    typescript: 5.9.3\n  dependency_manifest: package.json\n  dependency_lock:\
+  \ package-lock.json\n  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, /opt/homebrew/bin/node,\
+  \ /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js, ci, --include=dev, --no-audit,\
+  \ --no-fund]\n```\n锁文件与实际依赖由 nunc.engine 在获准实施/安装后交付，不捏造当前 lock 或安装结果。上述 ci 仅在获准\
+  \ worktree 使用匹配 npm，按 lock 安装全部开发依赖；不是检查 runner 的自动前置动作。runner 直接使用其绝对 Node 运行器与工作树内锁定工具，错误版本、缺依赖或缺入口须明确失败。需要新版本/下载且授权不包含该效果时停在准备边界，不能自动换工具链。"
+project_guidance: 执行前先确认用户已授权该类工作；本次规划不授权执行。保持 README/DESIGN 的完整项目范围与可选设计空间。使用记录的
+  exact owner。所有实现只在获准的本仓库隔离 worktree 内进行，必要 source/tests/docs 属于同一事务；scope.allowed_paths
+  是预期审查面，不是 isolated worktree 的写沙箱。保护 Plan、dashboard、日常配置、秘密和全局状态。只读证据 owner 不修代码、不写仓库报告。先做已授权的离线检查，再申请仍缺的具体运行目标/额度授权；不可把该证据永久降为可选。失败诊断、普通修复、runner
+  和环境纠正留在当前可写生产者内；只读终端验收发现已完成生产者缺陷时，保持历史不可变，由 Planner 统一接入一个兼容修复结果并让同一验收依赖它，之后 Delta
+  复核，保留仍有效的无关证据。
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
   status: pending
+  gate: nunc.acceptance 对本阶段全部结果完成 FULL 或适用的同一 gate Delta 验收：最终整合完整离线回归有效、必要真实 Pi/获准模型证据齐备、每项必要要求满足且无阻断缺陷。
+  context: 覆盖 README 与 DESIGN 全部必要交付；最终由 nunc.acceptance 接受整合后的完整项目。所有步骤尚未获准执行。
+  steps:
+  - id: nunc.policy
+    name: 通用增量维护策略与可观察续做场景
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"policies/**\", \"tests/scenarios/**\", \"docs/POLICY.md\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
+      .pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver:\
+      \ 交付可由维护引擎加载的内置通用策略资产、可选用户策略的内容合同，以及由真实宿主 runner 消费的续做场景输入和独立结果判据。消费接口区分冻结的策略正文、M/B/K\
+      \ 来源角色及由引擎提供的机器响应 schema；策略无需预定不可替换的 JSON 字段。该结果可独立纠正保留偏好与场景内容，无需改变 Pi 持久化边界。工作限于本项目记忆/提示与评估内容，不创建\
+      \ extractor agent、persona、skill、registry 或外部评估服务。\n\n策略完整表达 DESIGN §2–§3、§7：以\
+      \ F/K 和正常工具仍不足以继续当前目标、未完成工作及持续约束的信息为 M；允许空记忆和不新增；已知可靠产物只保留必要位置/用途，不为确认产物额外取数。K\
+      \ 可确认、纠正或取代 B/M；区分用户指令、工具观察、助手推断以及计划/尝试/已验证结果。条件、否定、状态和必要关联必须一起理解，同主题出现不能替代精确条件；工具失败或话题切换不取消用户目标。完整存在于\
+      \ K 的信息可暂不复制，必要重复允许。持续有效条目不靠复述续期，未修改正文复用，允许局部替换合并及退役，不例行重写全部 M。模型决定可执行变更及容量竞争的保留选择，不引入统一分类、依赖图、使用计数、衰减、永久\
+      \ pin 或权重 DSL。\n\n场景覆盖 §8.4 的必要续做能力：B 判断经 K 后续证据改变；精确条件跨多次滚动仍约束行动；话题切换后恢复未完成工作；完成过程退出但不重复排除路线；巨型工具证据、暂停恢复及大窗口切小窗口。可合并或采用等价场景，不固定场景数。用实际任务产物/行动结果、约束违例、重复失败尝试、用户重述及全任务费用/延迟观察效果；将判据留给\
+      \ runner/观察者，不把预期答案给被测模型，不以记忆文本观感或标准答案复述代替工作效果。比较实验为可选改进，不成为实现前置证明。\n\nBoundary:\
+      \ 写入限于本项目策略与场景内容及必要说明，属可 Git 回退的仓库事务；不得实施宿主代码或真实模型实验。产品执行授权前不开始本步骤。没有新增外部或全局效果。\n\
+      \nAdmit: README、DESIGN 是当前输入。策略资产供 nunc.engine 使用，场景供 nunc.pi 的跟踪 runner 和 nunc.runtime\
+      \ 使用。交付时说明场景观测如何区分符合/违反要求，以及哪些内容只能在获准真实运行中判断。允许引擎选择等价承载协议，保持来源、保留和容量语义。\n\n\
+      Recovery: 同一 owner 修正策略或场景内容的完整兼容问题。缺真实调用授权不阻止内容产物交付，但不得声称策略效果已验证；需要改变业务含义时报告具体矛盾。"
+    verification: 内容交付检查：逐项阅读策略和场景，确认请求来源/输出职责可被引擎消费，场景具有能被真实行动或产物推翻的判据且未向模型泄露答案。当前没有能证明模型策略行为的原生自动检查；不增加
+      token/标题/自报 PASS 断言。机器结构校验和实际加载由 nunc.engine/nunc.pi 随消费者实现；真正策略与续做效果留给 nunc.runtime，并由
+      nunc.acceptance 逐要求判断。完成此内容生产者只证明资产和场景已交付，不能声明模型效果或项目完成。
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    agent: llm-agent-expert
+  - id: nunc.engine
+    name: 完整来源到有界候选的滚动维护引擎
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/engine/**\", \"tests/engine/**\", \"scripts/check.mjs\"\
+      , \"package.json\", \"package-lock.json\", \"tsconfig.json\", \".node-version\"\
+      , \"docs/ENGINE.md\", \"docs/DEVELOPMENT.md\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\"\
+      , \".env.*\", \"**/auth.json\"]\n\nDeliver: 交付一个可直接由 Pi adapter 调用并独立验证的维护事务：冻结的有效\
+      \ F/M/活动 R、主模型、预算、策略与取消信号进入，返回完整合法的候选 M_next、原文保留边界及观察信息，或明确失败；不写 session、不运行业务工具、不读取外部来源或退役历史。这个消费者边界把模型维护与宿主\
+      \ append/rebuild 分开，允许分别修复，保持 DESIGN §3、§6 的单次交付责任。\n\n滚动与记忆：将活动 R 分成连续退出的 B\
+      \ 和原文后缀 K，按消息可见性与 tool-call/result 关联选合法边界，尽量保留近期连续单元；长期任务不能无限阻止批量滚动。K 内容/顺序不经模型改写。实现模型提出增量变更与保留选择、代码校验引用和响应结构、生成\
+      \ ID、整条预算选择。存量相对顺序和未修改正文保留，新条目追加；纠正/替换/合并可行，错误旧条目不会因替代条目超预算复活。预算不足只跳过完整条目，不截断正文、不要求重写整份\
+      \ M；协议漏项不能静默当成退役。选择一种满足这些行为的具体协议并文档化。\n\n容量：按 §4 的完整请求口径计算实际触发线、F、M 上限、K 目标和\
+      \ L，ID/包装计入；区分主请求与完整 extraction 的输入、输出协议、输出预留、thinking、多模态/provider 限制和估计/新增余量。cached\
+      \ tokens 占容量，未知 usage 不按零计，已有 F/M 前缀不重复计数，最大输出能力不直接当本次预留。验证 A>0、memory fraction\
+      \ [0,1)、q (0,1)、可选绝对上限>0；最终合法边界取整后 L 低于生效触发线并有增长空间。配置或模型容量变更重新核算两类请求和 M/K；调低\
+      \ H 同步调整；单个不可分消息、维护来源无法容纳和不支持的输入有明确容量限制结果。\n\n模型请求：消费内置/用户策略快照，正常路径使用冻结的当前主模型，一轮普通维护请求，完整\
+      \ M/B/K 来源包含最新待发消息、工具正文、参数、关联、状态及必要自定义消息。选择一种适合目标 Pi/API 的完整请求形态即可，保留前缀仅在实际相容时使用；不复制\
+      \ transport 或另建全 provider 层，不承诺缓存命中。不得沿用宿主默认 serializer 的有损工具截断。仅当实际完整请求无法容纳时采用一种配置控制的有界缩减方法，标明具体省略，保留最新用户要求/纠正及工具关联，不暗截用户指令、存量\
+      \ M、调用参数，不改最终返回 Pi 的 K；full 模式禁止工具正文截断。仍无法容纳则明确失败。正常 H 配置须能容纳完整 extraction，不能靠每轮有损缩减维持运转。原生多模态块按选定\
+      \ API 保留，无法支持时报告，文字占位符不代表视觉/音频事实；无需顺序分块或多阶段提取。\n\n响应生命周期：只接受完整终态；可解析但 length/truncated/pending/error/aborted\
+      \ 的响应不能形成可提交候选。取消传播到模型请求；非法引用、重复/漏项、预算失败均明确失败。可以不启用结构修复；若启用，使用有界次数、校验反馈和相同冻结来源/模型/策略，每次重新检查容量，耗尽后失败。返回后由\
+      \ adapter 再检查宿主 session/path/model 是否仍匹配，本引擎不提交也不重放。\n\n同时交付本项目跟踪的 ESM/TypeScript\
+      \ 依赖与 lock 状态、运行时声明、离线检查入口和真实行为测试。检查环境初始选定 Node 26.7.0、npm 11.19.0、开发用 Pi 0.85.0\
+      \ 与 TypeScript 5.9.3；公开 extension 使用宿主 peer packages，不隐式导入全局安装。runner 从跟踪依赖解析工具、检验运行时版本，执行本地类型/编译机械合同及全部\
+      \ engine 行为测试；非空选择、失败非零退出。安装和测试现在均未获准，所列入口为待交付合同。\n\nBoundary: 本仓库可回退事务，仅引擎、相应构建/测试与说明；支持性配置留在本步骤。不得改宿主安装、日常\
+      \ Pi 配置、全局状态或进行真实/付费模型调用。未来获准离线测试使用受控模型响应，明确它不证明真实模型效果；依赖安装下载需单独授权，不能为绿色检查自动执行。\n\
+      \nAdmit: 消费 nunc.policy 的语义资产；给 nunc.pi 一份明确的输入/候选/失败接口和 budget/omission 信息。类型、边界及受控模型调用测试证明机械正确性，真实主模型效果由\
+      \ nunc.runtime 补齐。选择的请求协议和容量方法写入引擎文档，不把 DESIGN 示例固定成不可替换架构。\n\nRecovery: 在当前\
+      \ owner 内完成相关源/测试/文档及环境诊断修复；失败或取消前没有 saved state 副作用。不能证明完整来源或必要容量时停止候选交付并报告具体限制，不绕开检查或扩大\
+      \ provider 支持。"
+    verification: "以下均为本步骤待交付入口；目前不存在、未执行。执行时从获准干净 worktree 和跟踪 lock 状态重现；无自动安装、更新或网络调用。\n\
+      ```yaml\nchecks:\n  - id: engine-regression\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/check.mjs, engine]\n    exit_code: 0\n    covers: [类型和导出合同, 合法B/K及工具关联,\
+      \ 完整来源, 增量增删替换合并, 引用合法性, 整条预算与稳定顺序, 主请求和extraction容量, 配置和模型变化, 省略规则与full模式,\
+      \ 非完整终态, 取消与可选有界修复]\n```\nrunner 应加载真实策略资产和实际引擎接口；受控响应可以隔离模型，但不替换被断言的引擎逻辑。测试必须实际区分丢工具正文、孤立结果、错误复活、缓存忽略、负预算、无增长空间和失败后候选误交付等回归。未执行或必要选择为空不能完成本步骤。策略语义观察和\
+      \ Pi persistence 不在此组件 PASS 的证明范围。"
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    depends_on:
+    - nunc.policy
+    agent: node-typescript-engineer
+  - id: nunc.pi
+    name: Pi 持久会话接入与完整项目检查入口
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"package.json\"\
+      , \"package-lock.json\", \"tsconfig.json\", \".node-version\", \"README.md\"\
+      , \"docs/**\", \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\nDeliver: 将维护引擎接入选定真实 Pi 的公开 extension loader 和 persistent session 生命周期，交付可在本地加载的完整\
+      \ Nunc 扩展、配置/使用/故障说明，以及覆盖全部项目要求的跟踪离线 regression 和获准真实观察 runner。用户正常请求自动得到全部\
+      \ M 与完整活动 R，不需调用记忆工具、不做普通轮次维护；正常轮次 M 和既有原文稳定。来源以宿主有效主模型消息投影为界，包含未送入下一请求的新用户消息/工具结果及必要自定义消息；不得补取\
+      \ Pi 已截断正文、日志附件、文件或已退役历史。\n\n宿主生命周期：复用 session_before_compact，自动 threshold、显式\
+      \ /compact、overflow 都走同一维护语义；只返回一套合法 summary/details/firstKeptEntryId 候选，Pi\
+      \ 跳过默认生成后独占 append/rebuild。H 使用实际 Pi reserve 配置，检查 reserve 与 keepRecentTokens\
+      \ 的组合能进入 hook、形成退出前段并留下增长空间；关闭自动维护后显式触发仍可用。不加独立调度器、不从 context 每次调用先 abort 的\
+      \ ctx.compact，不承诺自动改 reserve；若需配置读取/引导选公开接口且不写日常设置。模型/配置变化重算主请求与 extraction，政策文件变更下次维护生效，同次维护/修复冻结同一版本。\n\
+      \n交付前完整校验与取消、模型/path/session 变化检测；提取、校验、修复失败或取消明确返回 cancel:true 并说明原因，不能空返回、抛错后落入默认摘要或提交过期候选。交付前不改已保存的\
+      \ slots 和原文边界。summary 与持久 snapshot 来自同一候选，使用一份 CompactionEntry 的扩展 details 或目标\
+      \ API 的等价单快照承载；Pi 负责交付后的 append/rebuild 及错误处理。Nunc 不自建数据库、双写账本、hash/CAS、额外事务回滚或自行重放提交；认证沿用宿主。\n\
+      \n恢复：从当前选中路径最新 Nunc snapshot 恢复 M/K；同 session resume 不重新向模型展开完整旧史。Pi JSONL 全历史保持；/new\
+      \ 为空；tree、fork、clone 遵循宿主选定活动路径，不自动导入其他 session。旧式或外部 summary 可作为文本 slot 接入后正常维护。连续滚动重建只包含最新\
+      \ M，firstKeptEntryId 必须为上下文可见合法边界，不能将旧 compaction 作为 K 回灌。本机 0.85.0 的 buildContextEntries\
+      \ 会收集 kept 范围内的 entry，须用实际运行验证这个 seam，不能只相信文档。明确仅 persistent session、同时多个自定义\
+      \ compaction 扩展不受支持；不声称未测宿主或其他 provider 已兼容。\n\n配置/使用：内置策略缺省可用，可选用户策略文件路径基准明确（可选配置文件目录或等价清晰规则）；memory\
+      \ fraction/可选 maxTokens、keepRecentFraction 及完整优先/禁止工具正文缩减模式实际可配置并校验。策略不能取消来源、容量或\
+      \ session 边界；无任务路由、计数、衰减 DSL 或跨 session 开关。说明加载/卸载、本地配置选择、正常/显式触发、恢复、容量与不支持输入诊断，不改变\
+      \ README/DESIGN 接受的产品范围。\n\n证明生产者：扩展先用真实所选 Pi loader、公共会话/runtime API 和实际 JSONL\
+      \ append/rebuild seam 的隔离 fixture 跑离线行为测试；受控 provider 仅隔离模型服务，不能 mock 掉被证明的\
+      \ loader/hook/persistence seam。完整 offline inventory 包括 engine、config/policy\
+      \ 加载、普通消息投影、自动/manual/overflow、失败/取消/过期候选、连续滚动、resume/new/tree/fork/clone、旧\
+      \ summary 和支持配置边界；正常、边界、失败、恢复和跨组件用例均纳入全量入口，不只跑 happy path。宿主写入/重建错误的观察须符合 Pi\
+      \ 交付后责任，不能把宿主行为重标为 Nunc 自有回滚。\n\n跟踪 live runner 消费策略步骤的无答案泄漏场景，使用实际 extension\
+      \ loader 与 session/runtime，而非直接调用内部 handler。其启动输入从 stdin 接受明确授权的目标/配置/调用及费用或用量上限和隔离状态位置；输入不全、额度不成立、daily/global\
+      \ 目标或无法确认执行边界时，在调用前拒绝。实现仅为验收操作的范围控制与可复现入口，不创造产品权重/调度功能。支持先无调用 preflight，再同一次绑定下的真实观察，停止/取消、使用量限制、证据输出和资源清理；记录实际容量、usage/cache\
+      \ usage、全任务成本和延迟，不可用字段明确 unknown。核对正常配置下完整 extraction 以及真实维护后继续工作的结果。决定 target/payload/清理或验收结论的可执行逻辑必须跟踪测试，不能靠临时脚本实现。\n\
+      \nBoundary: 属本仓库可 Git 回退的完整接入事务，包含必要源/runner/测试/用户文档。所有执行等后续授权；获准离线测试仅操作新建隔离\
+      \ fixture，绝不动日常 Pi、session、模型、registry/全局配置。真实模型费用、隔离宿主 persistent state 和模型切换实验留给\
+      \ nunc.runtime 的独立效果授权；本步骤完成不代表这些运行证据已有。不得发布、安装全局扩展或 push。\n\nAdmit: 消费 nunc.engine\
+      \ 完整候选接口和 nunc.policy 场景。选择并记录宿主版本及必要公开 docs/types/source 事实；交付所有下游只读观察/验收需要的检查与\
+      \ runner。离线跨组件测试通过后可完成仓库生产者，但真实模型证据及最终项目判断仍由后续两步承担。\n\nRecovery: owner 在相同仓库/fixture\
+      \ 权限内修复全部相关问题并重跑受影响检查。已发生的 fixture 操作先核对保存状态再清理，不自行 replay snapshot；未获准外部调用保持未调用。必要公开接口不满足时保留候选/证据，说明具体阻碍，不私改宿主或缩成首版。"
+    verification: "待交付的原生入口：\n```yaml\nchecks:\n  - id: final-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [所有跟踪类型和构建检查, engine全部行为, 配置和策略实际加载, 真实Pi loader与hook, 主模型消息投影,\
+      \ threshold/manual/overflow, 失败取消与过期候选, JSONL单快照append/rebuild, 连续滚动和继续执行, resume/new/tree/fork/clone,\
+      \ 旧summary与支持边界, live-runner的调用前授权范围检查和停止清理]\n  - id: live-preflight-contract\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs, --preflight]\n\
+      \    exit_code: 0\n```\npreflight 合同测试使用跟踪的虚构离线授权/目标输入，只检查运行器解析、隔离、额度及待执行操作，不构成任何真实调用授权；缺有效输入的实际\
+      \ CLI 必须在效果前拒绝。全部测试使用跟踪锁定依赖，版本/运行时不符或空测试选择非零退出。该版本必须在整合完成后取得全量 all 的完整结果；原生\
+      \ inventory 后续扩展也纳入 all。组件结果只说明对应范围，不能替代最终整合回归。以实际断言、退出码及观察为证据，不以日志中的 PASS、prompt\
+      \ token 或模型复述为证据。"
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    depends_on:
+    - nunc.engine
+    agent: node-typescript-engineer
+  - id: nunc.runtime
+    name: 隔离真实 Pi 与获准主模型的运行证据
+    status: pending
+    description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
+      , \"README.md\", \"docs/**\", \"package.json\", \"package-lock.json\", \".node-version\"\
+      , \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\nDeliver: 提供最终整合候选上、由真实 Pi 生命周期和获准当前主模型产生的运行观察，供 nunc.acceptance 独立消费；这一步交付证据与必要要求的\
+      \ PROVEN/DISPROVEN/UNPROVEN 分类，不作项目完成决定。将隔离 persistent session 写入、宿主运行和有费用/用量边界的模型调用与仓库实施事务分开。\n\
+      \nBoundary: 源、配置、Plan 和仓库证据文件保持只读。在获准的隔离宿主/测试状态内通过跟踪 runner 进行临时启动、session 创建/滚动/继续/暂停恢复、显式路径切换和模型容量切换观察；严格沿用授权的\
+      \ target、model/provider、调用范围和成本/用量上限。当前这些效果全部未授权，不得开始实验。取得明确授权并通过无调用 preflight\
+      \ 后才执行；日常 Pi、既有 session、默认模型设置、registry/全局状态仍禁止改变。凭据只由宿主运行时既有安全交接，不进入 Plan、提示、报告或临时文字；新凭据/账户须授权。不安装软件或依赖、不发布或\
+      \ push。\n\nAdmit: 绑定已整合的不可变 Git candidate、选定 Pi/Node 版本、跟踪 lock、有效 H/reserve/keepRecent、M/K、输出/thinking/策略、所选请求形态与容量缩减配置、授权模型/provider\
+      \ 和隔离状态。先消费该最终候选的完整离线 regression 结果；若没有匹配证据，在已有执行授权内补全离线 inventory，缺必需检查时先报告生产者缺口，不能写临时替代逻辑或花费模型额度探路。模型调用权限缺失时保留待完成，不删除此义务。\n\
+      \n观察真实宿主 extension loader、自动触发配置与完整消息投影、manual/overflow 相同维护语义、单快照提交/上下文重建、多次滚动后的最新\
+      \ M 与原文 K、带 K 继续工作及同 session 恢复。对失败/取消/非法或非完整响应/过期候选、旧 summary、new/tree/fork/clone\
+      \ 和容量/配置边界，复用最终候选真实宿主+受控 provider 的匹配 seam 证据，必要处补充实际观察，不把受控 provider 结果称为真实模型效果。\n\
+      \n使用获准的当前主模型跑 §8.4 必要能力的实际续做场景或等价组合。观察后续任务产物与行动是否遵守跨滚动精确约束、是否采纳 K 的纠正、恢复未完成工作、避免已排除的重复尝试；覆盖巨型工具输入、暂停恢复和大窗口到小窗口所需容量行为。若模型切换涉及第二个目标，授权必须覆盖它；未获准的必需观察仍\
+      \ UNPROVEN。无需任意历史问答完整性或与原生 compaction 比较胜出。\n\n每份观察说明覆盖要求、实际请求/容量与源省略、usage/cache\
+      \ usage、任务总费用/延迟、终态和限制。unknown 数据明确标记，不按零或缓存收益处理。场景判据仅给观察者，禁止对模型提供预期答案；输出漂亮的\
+      \ M 或复述约束不代替实际续做表现。不支持媒体/配置要观察明确限制，不能用文字占位伪造媒体理解。\n\nRecovery: 调用前拒绝不消耗授权；任何可能已开始的调用/状态操作先核对账面\
+      \ usage、会话保存状态与 runner 进程，再判断可继续的未执行观察。到达额度、取消、失败或状态不明即停止进一步效果，保留必要脱敏证据，按授权范围清理隔离资源，不重放提交。若授权或方法仍不足，明确每个缺口和关闭条件；不修仓库、不完成\
+      \ Plan、不追加试验目标。"
+    verification: "这些入口由 nunc.pi 交付，规划时不存在且没有运行结果。执行使用绑定授权输入经 stdin 交给跟踪 runner，不把秘密或凭据位置放入\
+      \ argv/报告。\n```yaml\nchecks:\n  - id: selected-host-preflight\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/verify-live.mjs, --preflight]\n    exit_code: 0\n  - id: authorized-live-continuation\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    exit_code:\
+      \ 0\n```\nPI_OFFLINE 抑制宿主启动/目录刷新/自动更新，不作为模型请求权限；真实调用必须由 stdin 中明确授权的模型/provider\
+      \ 和预算约束。成功启动/退出不足以证明续做，须有真实 seam 的状态读回、实际任务结果和逐要求证据。至少正常真实维护与继续工作须由获准模型完成；mock、源码或静态\
+      \ JSON 解析不能替代。生成供消费者的观察报告；只读 owner 不向仓库写入报告。未获准、未执行、DISPROVEN 或 UNPROVEN 的必要观察不允许以整步正向完成规避；对应项目验收继续待完成。与最终候选及未变输入匹配的底层观察可复用，不重复花费以刷新报告。"
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    depends_on:
+    - nunc.pi
+    agent: integration-verifier
+  - id: nunc.acceptance
+    name: 最终整合 Nunc 完整项目验收
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\", \"README.md\"\
+      , \"docs/**\", \"package.json\", \"package-lock.json\", \".node-version\", \"\
+      tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\",\
+      \ \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\nDeliver: 对 nunc-v1（Nunc 完整项目）全部交付结果作唯一终端项目完成判断：包括 nunc.policy 的维护策略/场景、nunc.engine\
+      \ 的滚动维护事务、nunc.pi 的完整宿主接入及检查生产者、nunc.runtime 的真实宿主和获准模型观察。当前只有此一个项目 phase；本\
+      \ gate 同时承担该阶段及完整项目的同一接受决定，不另叠加 release/阶段 gate。接受仅表明完整项目质量满足 README/DESIGN，不授权发布、部署、日常配置改变或新增调用。\n\
+      \nAdmit: 由 Orchestrator 绑定最终已整合且不可变的 Git candidate、完整当前原生离线 inventory 结果、实际被测\
+      \ Pi/Node/依赖/配置/策略/model/provider、运行授权及全部有效观察。必须对 DESIGN 各节所有必要要求逐项关联实现和证据，给出满足、未满足或证据缺失判断；§8.2\
+      \ 的索引不能替代具体约束。实现选择/协议/数值/请求形态/容量缩减方法只验所选合法路径，明确未选可选项的依据，不把它们变成缺项或减少必要范围。上述来源相同且仍适用的底层观察可复用，不能用互不相关组件\
+      \ PASS 或过时候选报告拼出项目完成。\n\n完整判断涵盖：单 session 来源/普通请求自动全 M 与完整 R、无额外记忆工具和取数；合法 B/K、工具关联、K\
+      \ 原文与顺序、增量变更/纠正/退役及整条预算；主请求和 extraction 的完整实际口径、cached/unknown、余量、增长空间、配置及模型切换、实际容量处理/省略/不支持输入；自动/manual/overflow、正常单请求、响应终态、取消/可选修复失败/模型-path-session\
+      \ 变化、明确 cancel 且不落默认生成、交付前 saved state 与交付后 Pi 责任；单 snapshot 持久化/重建、连续滚动仅最新\
+      \ M、resume/new/tree/fork/clone、旧 summary 兼容与 persistent/扩展组合范围；内置/用户策略及配置路径和冻结生效语义；最终整合全量\
+      \ regression、真实 Pi 运行、获准模型的实际续做效果、usage/cache/cost/latency 的观察与 unknown/限制处理。\n\
+      \n在最终整合候选上完成全部适用项目原生离线回归，含跨组件、正常、边界、失败、取消、恢复和兼容路径。已经存在且绑定同一候选及未变证据输入的全量结果可直接消费；否则需在获准范围补跑完整\
+      \ inventory。底层 runtime 观察按证据影响复用，真实调用权限不足不能由源码阅读、mock 或静态协议检查取代。若必要检查未交付，交由可写生产者修复；Gate\
+      \ 不生成 runner、测试或仓库证据文件。\n\nBoundary: 只读接受责任，消费绑定的隔离 runtime 证据；不修改 source/config/docs/Plan/运行状态，不执行付费/真实模型调用，不作安装/发布/cleanup。无\
+      \ Git 回退效果。排除 DESIGN 的明确非目标、未选可选路径、benchmark 胜出和未经接受的新需求；完整项目范围不能按技术 ID 收缩。\n\
+      \nRecovery: 必须分类全部必要要求后返回一个兼容问题批次。阻断缺陷、必要检查失败或必要行为/证据 UNPROVEN 都阻止 PASS，观察报告结束或生产者全\
+      \ done 不构成完成。只读 gate 暴露已完成 producer 的可达缺陷时保留本 gate 和历史，由 Orchestrator/Planner\
+      \ 路由可写修复；修复整合后对受影响要求、直接依赖、未解决问题和触及的不变量运行同一 gate 的 Delta，保留未受影响有效证据。不新增 retry\
+      \ gate、门槛或重复昂贵实验。"
+    verification: "```yaml\nchecks:\n  - id: integrated-project-offline-regression\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n```\n此原生入口由 nunc.engine 建立、nunc.pi 扩展成项目全部适用 offline inventory，规划时尚不存在。Gate\
+      \ 消费最终整合版本全量结果或在获准 immutable checkout 中运行；不能仅重复少量组件命令或以空选择成功代替全量。消费 nunc.runtime\
+      \ 的真实宿主及获准模型观察，不从 Gate 重复有状态操作。FULL 验收覆盖全部必要要求；每项均有匹配正向证据且无阻断缺陷才可 PASS/声明项目完成。失败、缺授权、缺观察或未满足行为使验收保持未完成，并列出确切关闭条件。报告中的项目完成判断由\
+      \ Orchestrator 依当前协议消费，Gate 不改生命周期。"
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    depends_on:
+    - nunc.runtime
+    agent: gate-reviewer
