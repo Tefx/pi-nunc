@@ -41,7 +41,7 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 **Keep tool evidence.** Ordinary requests retain active tool-result bodies. Maintenance starts from the same complete source, with explicit input reduction only when capacity requires it. Cache reuse depends on the actual request prefix and provider behavior.
 
-**Commit once.** Pi saves one validated memory snapshot and retained boundary, then rebuilds the context. Failure preserves the previous state.
+**Submit one snapshot.** Nunc validates a complete memory snapshot and retained boundary before handing them to Pi. Failure or cancellation before handoff leaves the saved state unchanged. Once handed over, persistence, context rebuilding and their error handling belong to Pi.
 
 ## Documentation
 
