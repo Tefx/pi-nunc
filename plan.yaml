@@ -25,11 +25,12 @@ context: "本阶段交付 README 与 DESIGN 全部必要要求定义的完整 Nu
   \ lock；检查不得依赖全局包隐式解析、缓存、用户 PATH 或自动 toolchain 下载。若所选公开接口无法满足必要行为，报告具体 seam 和可行范围，不私改\
   \ Pi core 或缩小必要交付。\n\n待交付检查环境的解析合同（准备/安装命令现在不执行；须先获得对应安装权限）：\n```yaml\ncheck_environment:\n\
   \  node_version: 26.7.0\n  npm_version: 11.19.0\n  development_dependencies:\n \
-  \   pi: 0.85.0\n    typescript: 5.9.3\n  dependency_manifest: package.json\n  dependency_lock:\
-  \ package-lock.json\n  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, /opt/homebrew/bin/node,\
-  \ /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js, ci, --include=dev, --no-audit,\
-  \ --no-fund]\n```\n锁文件与实际依赖由 nunc.engine 在获准实施/安装后交付，不捏造当前 lock 或安装结果。上述 ci 仅在获准\
-  \ worktree 使用匹配 npm，按 lock 安装全部开发依赖；不是检查 runner 的自动前置动作。runner 直接使用其绝对 Node 运行器与工作树内锁定工具，错误版本、缺依赖或缺入口须明确失败。需要新版本/下载且授权不包含该效果时停在准备边界，不能自动换工具链。"
+  \   \"@earendil-works/pi-coding-agent\": 0.85.0\n    typescript: 5.9.3\n  dependency_manifest:\
+  \ package.json\n  dependency_lock: package-lock.json\n  dependency_setup_argv: [/usr/bin/env,\
+  \ -u, NODE_OPTIONS, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+  \ ci, --include=dev, --no-audit, --no-fund]\n```\n锁文件与实际依赖由 nunc.engine 在获准实施/安装后交付，不捏造当前\
+  \ lock 或安装结果。上述 ci 仅在获准 worktree 使用匹配 npm，按 lock 安装全部开发依赖；不是检查 runner 的自动前置动作。runner\
+  \ 直接使用其绝对 Node 运行器与工作树内锁定工具，错误版本、缺依赖或缺入口须明确失败。需要新版本/下载且授权不包含该效果时停在准备边界，不能自动换工具链。"
 project_guidance: 执行前先确认用户已授权该类工作；本次规划不授权执行。保持 README/DESIGN 的完整项目范围与可选设计空间。使用记录的
   exact owner。所有实现只在获准的本仓库隔离 worktree 内进行，必要 source/tests/docs 属于同一事务；scope.allowed_paths
   是预期审查面，不是 isolated worktree 的写沙箱。保护 Plan、dashboard、日常配置、秘密和全局状态。只读证据 owner 不修代码、不写仓库报告。先做已授权的离线检查，再申请仍缺的具体运行目标/额度授权；不可把该证据永久降为可选。失败诊断、普通修复、runner
