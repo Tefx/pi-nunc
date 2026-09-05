@@ -39,13 +39,13 @@ project_guidance: 执行前先确认用户已授权该类工作；本次规划�
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
-  status: pending
+  status: in_progress
   gate: nunc.acceptance 对本阶段全部结果完成 FULL 或适用的同一 gate Delta 验收：最终整合完整离线回归有效、必要真实 Pi/获准模型证据齐备、每项必要要求满足且无阻断缺陷。
   context: 覆盖 README 与 DESIGN 全部必要交付；最终由 nunc.acceptance 接受整合后的完整项目。所有步骤尚未获准执行。
   steps:
   - id: nunc.policy
     name: 通用增量维护策略与可观察续做场景
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/**\", \"tests/scenarios/**\", \"docs/POLICY.md\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
@@ -69,6 +69,8 @@ phases:
     - README.md
     - docs/DESIGN.md
     agent: llm-agent-expert
+    claimed_by: llm-agent-expert
+    claimed_at: '2026-09-05T20:57:22.162724Z'
   - id: nunc.engine
     name: 完整来源到有界候选的滚动维护引擎
     status: pending
