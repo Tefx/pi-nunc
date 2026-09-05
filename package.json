@@ -1,0 +1,26 @@
+{
+  "name": "pi-nunc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "26.7.0", "npm": "11.19.0" },
+  "packageManager": "npm@11.19.0",
+  "exports": {
+    "./engine": { "types": "./dist/src/engine/index.d.ts", "import": "./dist/src/engine/index.js" }
+  },
+  "scripts": {
+    "check:engine": "node scripts/check.mjs engine",
+    "build": "node node_modules/typescript/bin/tsc --project tsconfig.json"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "0.85.0",
+    "@earendil-works/pi-coding-agent": "0.85.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.85.0",
+    "@earendil-works/pi-coding-agent": "0.85.0",
+    "@earendil-works/pi-server": "0.85.0",
+    "@types/node": "26.4.1",
+    "typescript": "5.9.3"
+  }
+}
