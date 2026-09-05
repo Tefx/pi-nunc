@@ -91,7 +91,7 @@ phases:
       execution, protected daily/global state and bounded live target remain.'
   - id: nunc.engine
     name: 完整来源到有界候选的滚动维护引擎
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"tests/engine/**\", \"scripts/check.mjs\"\
       , \"package.json\", \"package-lock.json\", \"tsconfig.json\", \".node-version\"\
@@ -134,6 +134,8 @@ phases:
     depends_on:
     - nunc.policy
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-05T21:05:03.995949Z'
   - id: nunc.pi
     name: Pi 持久会话接入与完整项目检查入口
     status: pending
