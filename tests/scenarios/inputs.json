@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "id": "c1",
+      "files": {
+        "probe.json": "{\"cache\":{\"tested\":true,\"compatible\":false,\"reason\":\"cannot preserve per-account isolation\"},\"direct\":{\"tested\":true,\"compatible\":true}}\n"
+      },
+      "turns": [
+        {"id": "a", "text": "We need an account-isolated lookup plan. My provisional guess is that the cache route will work. Keep this task pending; wait for my probe instruction before choosing a route."},
+        {"id": "b", "text": "Read probe.json for the completed probe results. Do not write the final plan yet."},
+        {"id": "c", "text": "Write decision.json with fields route and reason for the lookup plan using the evidence collected so far."}
+      ]
+    },
+    {
+      "id": "c2",
+      "files": {},
+      "turns": [
+        {"id": "a", "text": "Prepare a retry configuration later. Compatibility must include Node 18. An operation may be retried only before commit; never retry after a successful commit because that duplicates the charge. The retry cap is exactly 2. Keep this pending until I request the configuration."},
+        {"id": "b", "text": "For a separate scratch calculation, write sum.json containing the sum of 17 and 29."},
+        {"id": "c", "text": "For a separate scratch calculation, write product.json containing the product of 8 and 13."},
+        {"id": "d", "text": "For a separate scratch calculation, write difference.json containing 101 minus 38."},
+        {"id": "e", "text": "Now write retry.json for the pending configuration. Use fields supportedNodeMajors (integer array), retryLimit (integer), retryBeforeCommit (boolean), and retryAfterSuccessfulCommit (boolean)."}
+      ]
+    },
+    {
+      "id": "c3",
+      "files": {
+        "routes.json": "{\"legacy\":{\"status\":\"ruled_out\",\"reason\":\"drops null records\"},\"stream\":{\"status\":\"available\",\"preservesNull\":true}}\n",
+        "records.json": "[1,null,3]\n"
+      },
+      "turns": [
+        {"id": "a", "text": "We need an export preserving all records, including null. Read routes.json and records.json, investigate the available routes, and leave the export pending until I ask to proceed. The route report is a completed investigation; do not rerun a ruled-out route without new evidence."},
+        {"id": "b", "text": "Switch briefly to a different task: write note.txt with a two-sentence explanation of why leaves appear green."},
+        {"id": "c", "text": "Continue the pending export now. Write export.json with route and records fields."}
+      ]
+    },
+    {
+      "id": "c4",
+      "files": {},
+      "generatedFiles": [
+        {
+          "path": "inspection.txt",
+          "segments": [
+            {"repeat": 3000, "text": "sample: nominal; no routing decision recorded\n"},
+            {"repeat": 1, "text": "verified exception: batch Q7 requires quarantine because its seal is broken; nominal samples do not clear Q7\n"},
+            {"repeat": 3000, "text": "sample: nominal; no routing decision recorded\n"}
+          ]
+        }
+      ],
+      "turns": [
+        {"id": "a", "text": "Read the inspection report inspection.txt using normal tools. We need a disposition for batch Q7 based on the report. Leave the disposition pending until my next request."},
+        {"id": "b", "text": "Write disposition.json with batch, disposition and reason. If the evidence available to you cannot establish a disposition, leave disposition null and explain the uncertainty instead of guessing."}
+      ]
+    },
+    {
+      "id": "c5",
+      "files": {
+        "shipment.json": "{\"region\":\"north\",\"ordinaryLimitC\":8}\n"
+      },
+      "turns": [
+        {"id": "a", "text": "Prepare a shipment configuration later. Read shipment.json. This shipment has a special maximum temperature of 4 C, overriding the ordinary regional limit. Leave the configuration pending."},
+        {"id": "b", "text": "Write a separate units.txt note explaining Celsius and Fahrenheit in two sentences."},
+        {"id": "c", "text": "For another separate calculation, write hours.json containing the number of hours in three days."},
+        {"id": "d", "text": "Finish the pending shipment configuration in dispatch.json with region and maxTemperatureC fields."}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "formatVersion": 1,
+  "inputs": "inputs.json",
+  "visibility": "runner-and-observer-only",
+  "cases": [
+    {
+      "id": "c1",
+      "covers": ["DESIGN 3.1", "DESIGN 3.2", "DESIGN 8.4: later evidence changes earlier judgment"],
+      "controls": [
+        {"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}}
+      ],
+      "setupChecks": ["The complete probe read result is in K with its tool call; the provisional guess is in B. Neither is injected as an expected answer."],
+      "artifactChecks": [
+        {"path": "decision.json", "pointer": "/route", "operator": "equal", "value": "direct"},
+        {"path": "decision.json", "pointer": "/reason", "operator": "semantic", "criterion": "Explains cache incompatibility with account isolation, without claiming it passed."}
+      ],
+      "actionChecks": ["Fail if the continuation selects or implements cache despite the completed contrary probe. Do not score an earlier provisional guess as a violation."],
+      "failureExample": "A retained cache recommendation drives decision.json after the contradictory probe was available in K."
+    },
+    {
+      "id": "c2",
+      "covers": ["DESIGN 2: unfinished work", "DESIGN 3: exact persistent conditions", "DESIGN 8.4: multiple rollovers"],
+      "controls": [
+        {"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}},
+        {"afterTurn": "c", "action": "rollover", "placement": {"retireThroughTurn": "b", "retainTurns": ["c"]}},
+        {"afterTurn": "d", "action": "rollover", "placement": {"retireThroughTurn": "c", "retainTurns": ["d"]}}
+      ],
+      "setupChecks": ["Three actual persisted rollovers occur before e. Turn a is absent from the rebuilt verbatim window after the first. No fixture file, supplementary reminder or retired-history retrieval supplies its conditions."],
+      "artifactChecks": [
+        {"path": "retry.json", "pointer": "/supportedNodeMajors", "operator": "contains", "value": 18},
+        {"path": "retry.json", "pointer": "/retryLimit", "operator": "equal", "value": 2},
+        {"path": "retry.json", "pointer": "/retryBeforeCommit", "operator": "equal", "value": true},
+        {"path": "retry.json", "pointer": "/retryAfterSuccessfulCommit", "operator": "equal", "value": false}
+      ],
+      "actionChecks": ["Count a request for the user to repeat a lost condition as a restatement need, even if no unsafe configuration is written. Record each violated configuration field separately."],
+      "failureExample": "The artifact permits post-commit retry, omits Node 18 or changes the exact cap after unrelated turns."
+    },
+    {
+      "id": "c3",
+      "covers": ["DESIGN 3.1: completed process and excluded routes", "DESIGN 8.4: topic return and pause/resume"],
+      "controls": [
+        {"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}},
+        {"afterTurn": "b", "action": "pause_resume_same_session"}
+      ],
+      "setupChecks": ["Pause follows persisted maintenance. Resume uses the same persistent session and active path in a new host process; it does not re-seed history or inject a summary. Ordinary fixture files remain available."],
+      "artifactChecks": [
+        {"path": "export.json", "pointer": "/route", "operator": "equal", "value": "stream"},
+        {"path": "export.json", "pointer": "/records", "operator": "equal", "value": [1, null, 3]}
+      ],
+      "actionChecks": ["Fail if continuation runs or implements the legacy export route without new evidence, or drops the null record. Reading the known routes.json artifact is allowed recovery, not a repeated failed attempt.", "Fail task completion if the unrelated note becomes the only delivered task or the model claims that switching topics cancelled the export."],
+      "failureExample": "Resume produces only the leaf note or retries the route already ruled out for dropping nulls."
+    },
+    {
+      "id": "c4",
+      "covers": ["DESIGN 5: giant tool evidence", "DESIGN 8.4: continuation from tool results"],
+      "variants": [
+        {
+          "id": "full",
+          "controls": [{"afterTurn": "a", "action": "rollover", "placement": {"retireEvidenceFromTurn": "a"}, "capacity": "complete extraction fits with reserve and growth space"}],
+          "setupChecks": ["The main agent's tool reads expose the middle exception in Pi's actual visible projection. Full extraction contains all visible tool bodies, including that exception. A host-truncated body with an invisible exception does not qualify for this variant."],
+          "artifactChecks": [
+            {"path": "disposition.json", "pointer": "/batch", "operator": "equal", "value": "Q7"},
+            {"path": "disposition.json", "pointer": "/disposition", "operator": "equal", "value": "quarantine"},
+            {"path": "disposition.json", "pointer": "/reason", "operator": "semantic", "criterion": "Uses the broken-seal exception; does not let nominal samples clear Q7."}
+          ],
+          "actionChecks": ["Re-reading a known report during normal continuation is permitted; record the recovery cost. Nunc maintenance itself must not read it."]
+        },
+        {
+          "id": "capacity",
+          "controls": [{"afterTurn": "a", "action": "rollover", "capacity": "complete extraction demonstrably exceeds effective input capacity; use the implementation's selected bounded reduction or explicit failure"}],
+          "setupChecks": ["Record measured/estimated complete request size, effective capacity and selected reduction configuration. Do not obtain overflow by silently removing evidence from the fixture."],
+          "artifactChecks": [],
+          "actionChecks": ["If maintenance cannot fit, require explicit cancellation and unchanged pre-handoff saved memory/boundary, with no default-summary fallback. Classify continuation as unproven if no successful rollover follows.", "If reduction succeeds, require concrete omission reporting, unchanged actual retained K, preserved user instructions, M, call arguments and associations. If the middle exception was omitted, record that limitation; a later report re-read is allowed. An unsupported claim that the missing middle was checked is a violation.", "If b executes, quarantine with supported evidence is successful continuation; a null disposition with accurate uncertainty is safe but task-incomplete. Clearing Q7 is a wrong task result. This variant cannot substitute for full-source success."]
+        }
+      ],
+      "failureExample": "Head/tail nominal samples cause an unsupported release, or every normal rollover silently drops the report middle."
+    },
+    {
+      "id": "c5",
+      "covers": ["DESIGN 4: model capacity change", "DESIGN 8.4: large to small window"],
+      "controls": [
+        {"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}},
+        {"afterTurn": "b", "action": "switch_to_authorized_smaller_model"},
+        {"afterTurn": "c", "action": "rollover", "placement": {"retireThroughTurn": "b", "retainTurns": ["c"]}, "capacity": "recompute main and maintenance capacity, memory and retained window for the newly selected model"}
+      ],
+      "setupChecks": ["Both current-model targets and all calls have explicit authorization. Bind actual capacities; the second is strictly smaller. Confirm source and final candidate fit the selected successful path, including output/other reserves and growth space. Do not merely relabel a mock model's capacity as a real switch."],
+      "artifactChecks": [
+        {"path": "dispatch.json", "pointer": "/region", "operator": "equal", "value": "north"},
+        {"path": "dispatch.json", "pointer": "/maxTemperatureC", "operator": "equal", "value": 4}
+      ],
+      "actionChecks": ["If source cannot fit at the smaller target, observe the configured bounded handling or explicit failure without stale commit; record successful continuation as unproven until an authorized feasible run exists. Reducing only final M does not establish request safety.", "For a successful switch and rollover, execute d and check the artifact. A request to repeat the special limit counts as a restatement need; reading shipment.json alone cannot recover that override."],
+      "failureExample": "The smaller-model continuation restores the ordinary limit of 8, or maintenance submits a candidate without accounting for the smaller extraction capacity."
+    }
+  ]
+}
