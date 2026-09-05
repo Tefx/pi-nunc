@@ -45,7 +45,7 @@ phases:
   steps:
   - id: nunc.policy
     name: 通用增量维护策略与可观察续做场景
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/**\", \"tests/scenarios/**\", \"docs/POLICY.md\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
@@ -71,6 +71,24 @@ phases:
     agent: llm-agent-expert
     claimed_by: llm-agent-expert
     claimed_at: '2026-09-05T20:57:22.162724Z'
+    done_at: '2026-09-05T21:04:56.070354+00:00'
+    evidence: 'Artifact: integrated commit fb2e7e0 via fast-forward from isolated
+      impl/nunc-policy (base post-claim 741bc9a), exact owner llm-agent-expert. policies/default.md;
+      docs/POLICY.md; tests/scenarios/{inputs,observer}.json. Parent read all four
+      delivered files against README, DESIGN §§2–3,7,8.4 and full step contract. Five
+      cases plus giant-input variant cover K correction, exact conditions over three
+      rollovers, topic return/excluded route, process restart, giant evidence, smaller
+      real model. Observer criteria kept separate and actual artifact/action checks
+      falsifiable; source placements explicitly prerequisite, not fake successes.
+      Frozen policy/source-role/engine schema responsibilities distinct. Child JSON
+      parse passed (syntax only), diff check passed; parent post-rebase diff --check
+      passed. Integration HEAD was unchanged at claimed base, no product rebase changes,
+      worktree clean; Plan claim and claims store owner verified before merge. No
+      model behavior, consumer loading, host compatibility or final acceptance claimed;
+      engine/pi/runtime retain those obligations. No helpers or real calls. User now
+      explicitly authorizes plan execution and all preauthorization; planning-era
+      implementation/install/test pending-authorization notes no longer block authorized
+      execution, protected daily/global state and bounded live target remain.'
   - id: nunc.engine
     name: 完整来源到有界候选的滚动维护引擎
     status: pending
