@@ -2,7 +2,7 @@
 
 **A bounded, rolling present for Pi.**
 
-Nunc is a design-stage Pi extension for continuing work within a finite context. It combines an overlapping window of recent verbatim history with bounded working-memory slots for the current session.
+Nunc is a Pi extension project for continuing work within a finite context. It combines an overlapping window of recent verbatim history with bounded working-memory slots for the current session.
 
 ```text
 Before rollover: host instructions/tools | memory M      | retiring B | retained K
@@ -15,7 +15,7 @@ Memory maintenance asks: **If only the retained history K and normal working too
 
 **DESIGN_ONLY — RECOMMENDED_DESIGN** · Updated 2026-09-05.
 
-The current design makes explicit choices based on the intended workflow and mechanism reasoning. Nunc has no implementation or task benchmark yet.
+The current design makes explicit choices based on the intended workflow and mechanism reasoning. Nunc has no implementation or task benchmark yet. `DESIGN_ONLY` records that current state; the delivery target is the complete project defined in the design.
 
 ## Scope
 
@@ -43,8 +43,16 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 **Submit one snapshot.** Nunc validates a complete memory snapshot and retained boundary before handing them to Pi. Failure or cancellation before handoff leaves the saved state unchanged. Once handed over, persistence, context rebuilding and their error handling belong to Pi.
 
+## Delivery and acceptance
+
+Implementation may proceed incrementally. Final acceptance applies to the integrated project and every necessary requirement in the design: rolling and memory behavior, capacity handling, failure and cancellation, Pi persistence, same-session recovery and compatibility. A working happy path or earlier component checks alone do not establish completion.
+
+Acceptance requires a complete regression of the final integrated version, observed behavior in the selected real Pi host, authorized real-model evidence for rollover and continued work, and a per-requirement delivery judgment. Missing required behavior or evidence keeps acceptance incomplete. Real calls require authorization for the target and usage budget before execution.
+
+Comparisons may guide design improvements; benchmark superiority is not a delivery requirement. The existing session and platform scope remains unchanged.
+
 ## Documentation
 
-- [Complete design: motivation, rolling behavior, memory policy, budgets and Pi integration](docs/DESIGN.md)
+- [Complete design and final acceptance requirements](docs/DESIGN.md)
 
-Configuration names, protocol examples, numeric starting points and module layout remain implementation choices.
+Configuration names, protocol examples, numeric starting points and module layout remain implementation choices. Equivalent implementations may satisfy the same behavior and boundaries; optional alternatives need not all be implemented.
