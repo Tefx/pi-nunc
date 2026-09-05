@@ -91,7 +91,7 @@ phases:
       execution, protected daily/global state and bounded live target remain.'
   - id: nunc.engine
     name: 完整来源到有界候选的滚动维护引擎
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"tests/engine/**\", \"scripts/check.mjs\"\
       , \"package.json\", \"package-lock.json\", \"tsconfig.json\", \".node-version\"\
@@ -136,6 +136,28 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-05T21:05:03.995949Z'
+    done_at: '2026-09-05T21:35:19.296631+00:00'
+    evidence: 'Artifact: 2432839dbb89c47cecbef9c17123442b4f38f296 integrated fast-forward
+      from isolated impl/nunc-engine; exact claimed owner node-typescript-engineer.
+      Public maintain/piComplete/loadPolicy and accounting/types exported via pi-nunc/engine;
+      complete source/window/incremental transaction, strict terminal/ref validation,
+      whole slots, conservative accounting, bounded marked tool-body recovery, frozen/cancel
+      behavior; docs ENGINE/DEVELOPMENT and tracked runtime/dependencies/lock/check
+      runner. Supporting .gitignore cache/scratch excludes justified by local installation.
+      Verification from child execution bound to identical candidate: npm ci --include=dev
+      --no-audit --no-fund with task-local cache and ignore_scripts=true ->0 (270
+      packages); env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      /opt/homebrew/bin/node scripts/check.mjs engine ->0, clean-generated-dist build
+      and 69 behavior tests passed. Real public ModelRegistry/ModelRuntime used with
+      controlled model service. Node26.7.0 npm11.19.0 Pi/pi-ai0.85.0 TS5.9.3, local
+      pi-server0.85.0 needed for public package missing dependency. Parent reviewed
+      exported consumer contract and check runner/manifest, verified exact claim store/unchanged
+      integration base and clean worktree, rebase main no changes, diff --check ->0;
+      reused unchanged candidate checks without redundant rerun. Limits: conservative
+      estimator/media bound required, no repair, Codex output handling explicit; loader/persistence/real
+      model and project acceptance NOT proven, retained downstream. No helper. All
+      implementation/setup/offline permissions follow latest explicit all-preauthorization;
+      protected state remains untouched.'
   - id: nunc.pi
     name: Pi 持久会话接入与完整项目检查入口
     status: pending
