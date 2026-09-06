@@ -22,7 +22,8 @@ context: "交付 README、DESIGN 及其 ENGINE/DEVELOPMENT 接口说明定义的
   \ 之后。\n\n仅独立 persistent-session Pi 扩展；不引入 SDK host、替代启动器、CustomEntry 自有 M/K 投影/恢复、raw/effective\
   \ 双历史 mapper、Pi core/private patch、其他项目依赖或配置变更。无自动跨 session、主动检索、记忆库、文档写入服务、额外维护调度器或多\
   \ provider 缓存框架。共存限制按通用受支持配置表达，不识别或控制特定其他扩展。DESIGN 的协议示例、参数起点、预算选择算法和可选容量缩减路径保留等价实现空间，无须实现全部备选或证明\
-  \ benchmark 胜出。\n\n用户已明确“全部预授权，不用停下来询问”，覆盖本项目完整交付内的实施、同目标准备/依赖安装和测试；不重复索取同一目标/效果类许可。本轮只修订文档/Plan，不启动产品实施或真实调用。历史完成描述中的规划期未授权措辞不再是活动执行限制。执行仍须具体绑定隔离目标、model/provider、配置、调用范围、usage/cost/time\
+  \ benchmark 胜出。\n\n用户已明确“全部预授权，不用停下来询问”，覆盖本项目完整交付内的实施、同目标准备/依赖安装和测试；不重复索取同一目标/效果类许可。2026-09-06\
+  \ 的文档/Plan 修订未执行产品实施或模型调用。历史完成描述中的规划期未授权措辞不再是活动执行限制。执行仍须具体绑定隔离目标、model/provider、配置、调用范围、usage/cost/time\
   \ 界限及清理方式；预授权不替代这些字段。缺绑定先由执行 owner 在现有授权内完成准备，仅遇到新的目标/凭据/费用授权、未定义产品含义、明确禁止或无法安全确定已发生效果等实际边界才请求人工决定。保护日常\
   \ Pi/既有 session、默认模型、其他项目、全局 registry/配置、秘密及未跟踪 dashboard；不得发布、全局安装扩展或 push。\n\n\
   当前主线已有引擎、策略、lock 和 engine 检查入口；接入候选及其完整 all/运行 runner 尚未整合接受。stock Pi 0.85.1 的受控\
@@ -32,15 +33,16 @@ context: "交付 README、DESIGN 及其 ENGINE/DEVELOPMENT 接口说明定义的
   \ 与现有跟踪工具保持如下可复现合同，不声明未经验证的最低版本：\n```yaml\ncheck_environment:\n  node_version: 26.7.0\n\
   \  npm_version: 11.19.0\n  stock_pi_version: 0.85.1\n  development_dependencies:\n\
   \    \"@earendil-works/pi-coding-agent\": 0.85.1\n    \"@earendil-works/pi-ai\"\
-  : 0.85.1\n    \"@earendil-works/pi-server\": 0.85.1\n    \"@types/node\": 26.4.1\n\
-  \    typescript: 5.9.3\n  dependency_manifest: package.json\n  dependency_lock:\
-  \ package-lock.json\n  runtime_declaration: .node-version\n  dependency_setup_argv:\
-  \ [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
-  \ npm_config_update_notifier=false, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
-  \ ci, --include=dev, --no-audit, --no-fund]\n```\n依赖准备在获准 checkout 内独立进行，runner\
-  \ 不隐式安装/下载/更新。宿主及本地工具按跟踪 lock 解析，不从全局 Pi 安装隐式导入。错误版本、缺依赖/入口、空检查选择明确失败。最终原生 all 必须覆盖整合后的完整离线\
-  \ inventory；必要 TUI 与真实模型观察另按实际证据边界消费。"
-project_guidance: 用户对本项目完整交付的实施/同目标 setup/安装/测试已有全部预授权，不重复询问；本轮执行范围仅文档/Plan 修订。后续按记录
+  : 0.85.1\n    \"@types/node\": 26.4.1\n    typescript: 5.9.3\n  dependency_manifest:\
+  \ package.json\n  dependency_lock: package-lock.json\n  runtime_declaration: .node-version\n\
+  \  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache,\
+  \ npm_config_ignore_scripts=true, npm_config_update_notifier=false, /opt/homebrew/bin/node,\
+  \ /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js, ci, --include=dev, --no-audit,\
+  \ --no-fund]\n```\n直接 pi-server 依赖是 0.85.0 的历史 SDK 发布绕行，不是 0.85.1 的强制 Nunc 前置。nunc.pi\
+  \ 应在新目标的公开 import 与锁定构建检查证明无需该依赖后移除过时前置；任何确有必要的附加依赖由 owner 按实际消费者选择、锁定并验证，不因旧 workaround\
+  \ 自动保留。\n依赖准备在获准 checkout 内独立进行，runner 不隐式安装/下载/更新。宿主及本地工具按跟踪 lock 解析，不从全局 Pi 安装隐式导入。错误版本、缺依赖/入口、空检查选择明确失败。最终原生\
+  \ all 必须覆盖整合后的完整离线 inventory；必要 TUI 与真实模型观察另按实际证据边界消费。"
+project_guidance: 用户对本项目完整交付的实施/同目标 setup/安装/测试已有全部预授权，不重复询问。2026-09-06 的文档/Plan 修订未执行产品实施或模型调用。后续按记录
   exact owner 和既有依赖继续；产品接续以整合后的修订 README/DESIGN/ENGINE/DEVELOPMENT 为准。保持已交付 R_t 与未来
   D 分离、Pi 原生单快照/恢复和独立队列安全容量准入，禁止 SDK host、替代启动器、私有 patch、CustomEntry 自有历史或其他项目配置依赖。src/tests/docs/runner
   与必要环境修复留在 nunc.pi；scope.allowed_paths 是预期审查面，不是隔离 worktree 写沙箱。保护 Plan、.pi、dashboard、秘密、日常/全局状态，不发布/push。运行前在已有授权内绑定隔离
@@ -53,8 +55,8 @@ phases:
   status: in_progress
   gate: nunc.acceptance 对 nunc-v1 全部结果作唯一 FULL 或适用的同一 gate Delta 接受决定：最终整合候选完整离线 inventory
     有效，队列安全容量准入+原生维护的实际 stock TUI、合法重复 K 重叠和必要真实模型续做证据齐备，所有必要要求满足且无阻断缺陷；不包含发布或 push。
-  context: 覆盖修订 README/DESIGN 的全部必要交付，ENGINE/DEVELOPMENT 承载接口与检查合同。策略和引擎已完成；接入、独立运行证据及唯一最终验收依次继续。完整交付已有全部预授权，运行时具体隔离目标和额度仍须在效果前绑定；本轮仅文档与
-    Plan 修订，不执行产品或模型调用。
+  context: 覆盖修订 README/DESIGN 的全部必要交付，ENGINE/DEVELOPMENT 承载接口与检查合同。策略和引擎已完成；接入、独立运行证据及唯一最终验收依次继续。完整交付已有全部预授权，运行时具体隔离目标和额度仍须在效果前绑定。2026-09-06
+    的文档/Plan 修订未执行产品实施或模型调用。
   steps:
   - id: nunc.policy
     name: 通用增量维护策略与可观察续做场景
@@ -223,20 +225,21 @@ phases:
       \ guard、公开接口与 runner；已有 0.85.0 engine 证据保留历史范围，对依赖和证据输入变化做实际回归，不能 relabel 旧\
       \ PASS。必要公共 docs/types/实现事实由 owner 在所选版本核对，不依赖全局安装或未验证兼容承诺。\n\nBoundary: 本项目隔离\
       \ worktree 内的可 Git 回退事务。完整实施、同目标准备/安装和离线测试已有预授权；只操作新建受控 fixture，不动日常 session、默认模型/全局配置、其他项目或秘密。本步骤不执行真实模型费用观察，独立运行证据留在\
-      \ nunc.runtime 的已授权效果边界；不发布、不全局安装、不 push。本轮 Plan 修订本身不启动实施。\n\nAdmit: 消费已完成\
-      \ engine 候选接口和 policy/场景，以及已整合修订文档。仓库生产者完成须有真实 stock seam 的完整离线回归与适用 TUI 行为证据，并交付下游所有必要检查；独立真实模型观察和项目接受仍待后续。受控服务不证明模型维护质量；普通失败诊断/修复/runner\
-      \ 和环境纠正留给此 owner，不创建调查/retry/gate 节点。\n\nRecovery: 相同权限内修复兼容问题并复验受影响检查。可能已开始的\
-      \ fixture 操作先核对状态再清理，不自行 replay snapshot。必要公开接口无法满足时保留候选并报告具体未满足行为及已尝试的有效接法，不擅自改宿主/产品范围或恢复旧\
+      \ nunc.runtime 的已授权效果边界；不发布、不全局安装、不 push。2026-09-06 的文档/Plan 修订未执行产品实施或模型调用。\n\
+      \nAdmit: 消费已完成 engine 候选接口和 policy/场景，以及已整合修订文档。仓库生产者完成须有真实 stock seam 的完整离线回归与适用\
+      \ TUI 行为证据，并交付下游所有必要检查；独立真实模型观察和项目接受仍待后续。受控服务不证明模型维护质量；普通失败诊断/修复/runner 和环境纠正留给此\
+      \ owner，不创建调查/retry/gate 节点。\n\nRecovery: 相同权限内修复兼容问题并复验受影响检查。可能已开始的 fixture\
+      \ 操作先核对状态再清理，不自行 replay snapshot。必要公开接口无法满足时保留候选并报告具体未满足行为及已尝试的有效接法，不擅自改宿主/产品范围或恢复旧\
       \ SDK-host 结论；只有实际新 authority 边界才请求人工决定。"
-    verification: "原生 scripts/check.mjs engine 已存在；nunc.pi 扩展 all 和跟踪观察 runner，以下是修订后的生产者交付合同，不表示本轮已运行：\n\
-      ```yaml\nchecks:\n  - id: final-offline-inventory\n    argv: [/usr/bin/env,\
-      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
-      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers: [全部类型构建及engine回归, 策略配置加载和冻结,\
-      \ 已交付完整R_t与未来D分离, 真实stock-loader-hook-Provider委托, 实际输入输出thinking默认值媒体预算, 正向主请求与维护分类,\
-      \ 本地容量拒绝及有界原生续跑, stock-TUI-steering-follow-up-扩展消息队列与编辑器, 用户取消优先及无重复输入, native-threshold-manual-overflow,\
-      \ 连续合法跨checkpoint重叠且仅最新M, 单CompactionEntry及交付前失败和宿主append-rebuild责任, resume-new-tree-fork-clone,\
-      \ provider-model-config-reload组合和不支持诊断, runner范围检查-preflight-停止-额度-清理]\n```\n\
-      all 应包含跟踪 preflight CLI 合同测试：供给有效虚构离线 stdin 时成功且不创建目标/解析凭据/调用模型；空 stdin、无效目标/额度/版本或过期绑定在效果前非零退出。删除无\
+    verification: "原生 scripts/check.mjs engine 已存在；nunc.pi 扩展 all 和跟踪观察 runner，以下是修订后的生产者交付合同；这些检查未在\
+      \ 2026-09-06 的文档/Plan 修订中执行：\n```yaml\nchecks:\n  - id: final-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [全部类型构建及engine回归, 策略配置加载和冻结, 已交付完整R_t与未来D分离, 真实stock-loader-hook-Provider委托,\
+      \ 实际输入输出thinking默认值媒体预算, 正向主请求与维护分类, 本地容量拒绝及有界原生续跑, stock-TUI-steering-follow-up-扩展消息队列与编辑器,\
+      \ 用户取消优先及无重复输入, native-threshold-manual-overflow, 连续合法跨checkpoint重叠且仅最新M, 单CompactionEntry及交付前失败和宿主append-rebuild责任,\
+      \ resume-new-tree-fork-clone, provider-model-config-reload组合和不支持诊断, runner范围检查-preflight-停止-额度-清理]\n\
+      ```\nall 应包含跟踪 preflight CLI 合同测试：供给有效虚构离线 stdin 时成功且不创建目标/解析凭据/调用模型；空 stdin、无效目标/额度/版本或过期绑定在效果前非零退出。删除无\
       \ stdin 却期待 preflight 成功的隐含调用；真实执行的输入在 nunc.runtime 中绑定。所有测试从干净 checkout 与 Plan\
       \ 声明的锁定环境重现，不隐式下载或解析全局包，空 inventory/缺必需子集/错误运行时非零。实际 TUI 观察不可由 RPC 替代；跟踪 PTY/交互驱动须启动真正\
       \ stock TUI，不以模拟队列对象作为证明。完整 inventory 在最终整合候选上有效，新增跟踪回归也归入 all。只断言行为和机械合同；prompt/doc\
@@ -291,19 +294,20 @@ phases:
       \ 进程；额度到达、用户取消、失败或状态不明即停止后续效果，按已绑定边界清理并保留脱敏证据，不重放提交。缺新目标/凭据/费用权限或无法安全确定已发生效果时报告最小人工决定；技术缺陷报告给当前可写\
       \ producer，不修仓库、不改生命周期、不追加目标。"
     verification: "由 nunc.pi 交付并测试的原生 runner 负责 stock CLI/RPC 与实际 TUI 观察选择；下列 argv\
-      \ 沿用已见候选入口，产品组合和 stdin 观察合同仍须完成后才能执行。本轮未进行这些调用。\n```yaml\nchecks:\n  - id: selected-host-preflight\n\
+      \ 沿用已见候选入口，产品组合和 stdin 观察合同仍须完成后才能执行。2026-09-06 的文档/Plan 修订未执行这些宿主或模型调用。\n```yaml\n\
+      checks:\n  - id: selected-host-preflight\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/verify-live.mjs, --preflight]\n    stdin:\n      format: json\n  \
+      \    source: dispatch_bound_nonsecret_run_input\n      required: [version, authorization,\
+      \ target, models, limits, scenarios]\n    exit_code: 0\n  - id: authorized-host-and-live-continuation\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
-      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs, --preflight]\n\
-      \    stdin:\n      format: json\n      source: dispatch_bound_nonsecret_run_input\n\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    stdin:\n\
+      \      format: json\n      source: same_selection_with_valid_preflight_binding\n\
       \      required: [version, authorization, target, models, limits, scenarios]\n\
-      \    exit_code: 0\n  - id: authorized-host-and-live-continuation\n    argv:\
-      \ [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
-      \ /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    stdin:\n      format:\
-      \ json\n      source: same_selection_with_valid_preflight_binding\n      required:\
-      \ [version, authorization, target, models, limits, scenarios]\n    observation_modalities:\
-      \ [stock_tui, stock_rpc, real_model_continuation]\n    exit_code: 0\n```\n具体配置和观察选择由跟踪\
-      \ runner schema 承载；执行输入引用既有预授权并绑定实际值，不能用虚构 offline 输入调用真实服务。若现有 runner 只能 SDK\
-      \ 驱动或 RPC，nunc.pi 必须补齐 stock TUI 入口，不能由只读 verifier 编写替代。PI_OFFLINE 抑制启动/目录刷新/自动更新，不禁止或授权模型调用；授权与额度由绑定控制。成功启动或退出不足以证明续做，须有真实\
+      \    observation_modalities: [stock_tui, stock_rpc, real_model_continuation]\n\
+      \    exit_code: 0\n```\n具体配置和观察选择由跟踪 runner schema 承载；执行输入引用既有预授权并绑定实际值，不能用虚构\
+      \ offline 输入调用真实服务。若现有 runner 只能 SDK 驱动或 RPC，nunc.pi 必须补齐 stock TUI 入口，不能由只读\
+      \ verifier 编写替代。PI_OFFLINE 抑制启动/目录刷新/自动更新，不禁止或授权模型调用；授权与额度由绑定控制。成功启动或退出不足以证明续做，须有真实\
       \ seam 的状态读回、TUI 队列/编辑器观察和实际任务结果。对绑定同一候选且证据输入未变的底层观察可直接复用；固定 M、受控响应、源码或 JSON\
       \ 解析不能替代正常真实模型维护/续做。必要观察未执行、DISPROVEN 或 UNPROVEN 时不得正向完成本步规避要求，最终接受仍待完成；说明精确关闭条件。"
     refs:
