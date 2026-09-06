@@ -356,7 +356,7 @@ phases:
       reviewer: integration-verifier
   - id: nunc.runtime
     name: 补齐并复用原生宿主与真实模型观察
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"README.md\", \"docs/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
@@ -455,6 +455,8 @@ phases:
     depends_on:
     - nunc.defensive-controls
     agent: integration-verifier
+    claimed_by: integration-verifier
+    claimed_at: '2026-09-06T20:07:57.349036Z'
   - id: nunc.acceptance
     name: 最终整合 Nunc 完整项目验收
     status: pending
