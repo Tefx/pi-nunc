@@ -12,6 +12,8 @@ export interface HostOptions {
   deadline: number; signal: AbortSignal; sessionFile?: string;
   /** Test-only native models.json overlay; it replaces the service endpoint, never the host or Provider. */
   controlledModels?: unknown;
+  /** Test-only child replacement. Production always uses the locked stock Pi CLI. */
+  testCommand?: { command: string; args: string[] };
   onMaintenance?: (event: unknown) => void;
   onContext?: (model: Model<Api>, context: Context, kind: string) => void;
   onAction?: (event: unknown) => void;
@@ -52,8 +54,11 @@ export class NativeHost {
   private serial = 0;
   private killTimer: NodeJS.Timeout | undefined;
   private watch: NodeJS.Timeout | undefined;
+  private failure: { code: string; message: string } | undefined;
   readonly commands: Array<{ type: string; message?: string }> = [];
   private readonly abort = () => { this.child?.kill("SIGTERM"); this.killTimer ??= setTimeout(() => this.child?.kill("SIGKILL"), 1000); };
+  private fail(code: string, message: string): void { this.failure ??= { code, message }; this.abort(); }
+  private hostError(code = "HOST_EXIT", message = "Native host exited"): RunnerError { return new RunnerError(this.failure?.code ?? code, this.failure?.message ?? message); }
   constructor(readonly options: HostOptions) {}
   private saved(): SessionManager | undefined { return this.sessionFile && existsSync(this.sessionFile) ? SessionManager.open(this.sessionFile) : undefined; }
   get messages() { return this.saved()?.buildSessionContext().messages ?? []; }
@@ -74,19 +79,19 @@ export class NativeHost {
     if (o.controlledModels) await writeFile(join(host, "models.json"), JSON.stringify(o.controlledModels), { mode: 0o600 });
     const events = join(o.caseRoot, `events-${process.pid}-${Date.now()}.jsonl`);
     await writeFile(events, "", { mode: 0o600, flag: "wx" });
-    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd }), { mode: 0o600 });
+    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey: `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}` }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
     const packageDir = join(o.repository, "node_modules/@earendil-works/pi-coding-agent");
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
     const cli = join(packageDir, manifest.bin.pi);
-    const args = [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", "-e", join(o.repository, "dist/src/live/observer.js"), "-e", join(o.repository, "dist/src/index.js"), "--nunc-config", config, "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
-    this.child = spawn(process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
+    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", "-e", join(o.repository, "dist/src/live/observer.js"), "-e", join(o.repository, "dist/src/index.js"), "--nunc-config", config, "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
+    this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
     this.child.stdin.on("error", () => this.abort());
     this.child.stdout.on("data", (buffer: Buffer) => {
       this.bytes += buffer.length;
-      if (this.bytes > 32_000_000) { this.abort(); return; }
+      if (this.bytes > 32_000_000) { this.fail("OUTPUT", "Native host output exceeded the bound"); return; }
       this.output += buffer.toString(); let end: number;
       while ((end = this.output.indexOf("\n")) >= 0) {
         const line = this.output.slice(0, end); this.output = this.output.slice(end + 1);
@@ -94,23 +99,29 @@ export class NativeHost {
           const e: unknown = JSON.parse(line); if (!object(e)) continue;
           if (e.type === "response" && typeof e.id === "string") {
             const pending = this.pending.get(e.id); this.pending.delete(e.id);
-            if (e.success === false) pending?.reject(new RunnerError("RPC", `Native command ${String(e.command)} failed`)); else pending?.resolve(e.data);
+            if (e.success === false) pending?.reject(new RunnerError("RPC", "Native RPC command failed")); else pending?.resolve(e.data);
           } else this.events.push(e);
           this.changed.emit("event");
-        } catch { this.abort(); }
+        } catch { this.fail("HOST_RPC", "Native host RPC output was not valid JSON"); }
       }
     });
     // Never retain auth/provider error bodies. The bounded provider reports codes/usage separately.
-    this.child.stderr.on("data", (buffer: Buffer) => { this.bytes += buffer.length; if (this.bytes > 32_000_000) this.abort(); });
+    this.child.stderr.on("data", (buffer: Buffer) => { this.bytes += buffer.length; if (this.bytes > 32_000_000) this.fail("OUTPUT", "Native host output exceeded the bound"); });
     this.closed = new Promise<void>(resolve => {
       const end = () => {
-        this.exited = true; for (const p of this.pending.values()) p.reject(new RunnerError("HOST_EXIT", "Native host exited"));
+        this.exited = true; for (const p of this.pending.values()) p.reject(this.hostError());
         this.pending.clear(); this.changed.emit("event"); resolve();
       };
       this.child.once("error", end); this.child.once("close", end);
     });
     o.signal.addEventListener("abort", this.abort, { once: true }); if (o.signal.aborted) this.abort();
-    this.watch = setInterval(() => { try { this.drain(); this.changed.emit("event"); } catch { this.abort(); } }, 25);
+    this.watch = setInterval(() => {
+      try { this.drain(); this.changed.emit("event"); }
+      catch (error) {
+        if (error instanceof RunnerError) this.fail(error.code, error.message);
+        else this.fail("OBSERVER", "Observer evidence drain failed");
+      }
+    }, 25);
     await this.refresh(); return this;
   }
   private eventsFile = "";
@@ -135,7 +146,7 @@ export class NativeHost {
     }
   }
   async command(type: string, values: Record<string, unknown> = {}): Promise<unknown> {
-    this.options.signal.throwIfAborted(); requireValue(!this.exited, "HOST_EXIT", "Native host unavailable");
+    this.options.signal.throwIfAborted(); requireValue(!this.exited, this.failure?.code ?? "HOST_EXIT", this.failure?.message ?? "Native host unavailable");
     if (["prompt", "steer", "compact", "clear_queue", "abort"].includes(type)) this.commands.push({ type, ...(typeof values.message === "string" ? { message: values.message } : {}) });
     const id = String(++this.serial);
     const result = new Promise<unknown>((resolve, reject) => this.pending.set(id, { resolve, reject }));
@@ -155,7 +166,7 @@ export class NativeHost {
     await this.command("prompt", { message });
     await new Promise<void>((resolve, reject) => {
       const check = () => {
-        if (this.exited) { this.changed.off("event", check); reject(new RunnerError("HOST_EXIT", "Native host stopped during prompt")); }
+        if (this.exited) { this.changed.off("event", check); reject(this.hostError("HOST_EXIT", "Native host stopped during prompt")); }
         else if (this.events.slice(start).some(e => e.type === "agent_settled")) { this.changed.off("event", check); resolve(); }
       };
       this.changed.on("event", check); check();

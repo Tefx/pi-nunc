@@ -23,6 +23,8 @@ test("scenario-local tool paths reject traversal, protected names and external s
   const cwd = join(input.target.stateRoot, "task"); await mkdir(cwd); await writeFile(join(cwd, "valid.txt"), "ok");
   try {
     assert.equal(await toolPath(cwd, "valid.txt"), join(cwd, "valid.txt")); assert.equal(await toolPath(cwd, "new/file.txt"), join(cwd, "new/file.txt"));
+    assert.equal(await toolPath(cwd, ".", "read"), cwd);
+    await assert.rejects(toolPath(cwd, ".", "write")); await assert.rejects(toolPath(cwd, ".", "edit"));
     for (const path of ["../calls.jsonl", "/etc/passwd", ".pi/settings.json", "auth.json", ".env"]) await assert.rejects(toolPath(cwd, path));
     await symlink(input.target.stateRoot, join(cwd, "outside")); await assert.rejects(toolPath(cwd, "outside/calls.jsonl"), /outside/);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }

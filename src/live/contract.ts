@@ -86,7 +86,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
     requireValue(text(model.provider) && text(model.id) && positive(model.contextWindow) && positive(model.maxTokens) && text(model.baseUrl), "MODEL", "Authorize provider/id with native capacity and endpoint");
     const key = `${model.provider}/${model.id}`; requireValue(!modelKeys.has(key), "MODEL", "Duplicate model"); modelKeys.add(key);
   }
-  requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0 && value.scenarios.length <= 6, "SCENARIO", "Nonempty scenario selection required");
+  requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0, "SCENARIO", "Nonempty scenario selection required");
   const ids = new Set<string>();
   for (const selection of value.scenarios) {
     keys(selection, ["id", "variant", "config"], "scenario");

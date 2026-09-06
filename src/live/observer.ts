@@ -2,8 +2,16 @@ import { appendFileSync, readFileSync } from "node:fs";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { boundedProvider, BudgetLedger } from "./budget.js";
-import { requireValue, type RunInput } from "./contract.js";
+import { RunnerError, requireValue, type RunInput } from "./contract.js";
 import { toolPath } from "./tool-path.js";
+
+function toolBlockReason(error: unknown, aborted: boolean): string {
+  if (aborted || (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) return "Tool action after deadline";
+  if (error instanceof RunnerError && error.code === "TOOL_KIND") return "Tool kind is outside authorization";
+  if (error instanceof RunnerError && error.code === "WRITE_SIZE") return "Artifact write exceeds bound";
+  if (error instanceof RunnerError && error.code === "TOOL_PATH") return "Tool path is outside scenario task files";
+  return "Tool action outside task scope or after deadline";
+}
 
 /** Explicit verification extension; loaded by the stock CLI, never a host factory. */
 export default function observer(pi: ExtensionAPI): void {
@@ -11,10 +19,10 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string };
   const signal = AbortSignal.timeout(Math.max(1, binding.deadline - Date.now()));
   const log = (type: string, data: unknown) => appendFileSync(binding.events, JSON.stringify({ type, data }) + "\n", { mode: 0o600 });
-  const ledger = new BudgetLedger(binding.ledger, binding.input.limits, binding.deadline, signal);
+  const ledger = new BudgetLedger(binding.ledger, binding.input.limits, binding.deadline, signal, binding.caseKey);
   pi.on("session_start", (_event, ctx) => {
     for (const id of new Set(binding.models.map(m => m.provider))) {
       const base = ctx.modelRegistry.getProvider(id);
@@ -31,11 +39,11 @@ export default function observer(pi: ExtensionAPI): void {
   pi.on("tool_call", async event => {
     try {
       signal.throwIfAborted();
-      requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL", "Only scenario-local read/write/edit are authorized");
-      await toolPath(binding.cwd, "path" in event.input ? event.input.path : undefined);
-      if (event.toolName === "write") requireValue(typeof event.input.content === "string" && Buffer.byteLength(event.input.content) <= 1_000_000, "TOOL", "Artifact write exceeds bound");
+      requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL_KIND", "Only scenario-local read/write/edit are authorized");
+      await toolPath(binding.cwd, "path" in event.input ? event.input.path : undefined, event.toolName as "read" | "write" | "edit");
+      if (event.toolName === "write") requireValue(typeof event.input.content === "string" && Buffer.byteLength(event.input.content) <= 1_000_000, "WRITE_SIZE", "Artifact write exceeds bound");
       log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
-    } catch { return { block: true, reason: "Tool action outside task scope or after deadline" }; }
+    } catch (error) { return { block: true, reason: toolBlockReason(error, signal.aborted) }; }
   });
   pi.on("tool_result", event => log("action", { type: "tool_result", toolName: event.toolName, toolCallId: event.toolCallId, isError: event.isError, content: event.content }));
   pi.registerCommand("nunc-observer-quit", { handler: async (_args, ctx) => ctx.shutdown() });

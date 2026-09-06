@@ -95,6 +95,19 @@ test("public CLI rejects empty stdin/unknown args; real preflight consumes track
   assert.equal(result.status, 0, result.stderr); assert.equal(JSON.parse(result.stdout).receipt.callsMade, 0);
   await assert.rejects(lstat(input.target.stateRoot), { code: "ENOENT" });
 });
+test("seven legal unique scenario combinations are admitted; duplicates still fail", async () => {
+  const input = await fixture();
+  const config = input.scenarios[0]!.config;
+  const full = { ...config, nunc: { ...config.nunc, extraction: { ...config.nunc.extraction, toolResults: "full" as const } } };
+  const combos: Array<{ id: "c1" | "c2" | "c3" | "c4" | "c5"; variant?: "full" | "capacity" | "late-d"; config: typeof config }> = [
+    { id: "c1", config }, { id: "c1", variant: "late-d", config }, { id: "c2", config }, { id: "c3", config },
+    { id: "c4", variant: "full", config: full }, { id: "c4", variant: "capacity", config }, { id: "c5", config },
+  ];
+  const models = [input.models[0]!, { ...input.models[0]!, id: "smaller-authorized", contextWindow: Math.max(16, Number(input.models[0]!.contextWindow) - 1) }];
+  assert.doesNotThrow(() => parseInput({ ...input, models, scenarios: combos }));
+  const duplicated = [...combos, combos[0]!];
+  assert.throws(() => parseInput({ ...input, models, scenarios: duplicated }));
+});
 test("child environment is constructed without caller credentials, proxy or NODE_OPTIONS", () => {
   const env = childEnvironment("/isolated");
   assert.deepEqual(Object.keys(env).sort(), ["HOME", "NO_COLOR", "PATH", "PI_CODING_AGENT_DIR", "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME"].sort());

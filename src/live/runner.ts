@@ -45,8 +45,12 @@ export interface RunReport {
 export async function execute(value: unknown, repository: string, script: string, signal: AbortSignal): Promise<RunReport> {
   const input = parseInput(value, true);
   const receipt = await preflight(input, repository);
-  await mkdir(input.target.stateRoot, { mode: 0o700 });
-  await mkdir(join(input.target.stateRoot, "tmp"), { mode: 0o700 });
+  return ownedExecute(input, receipt, script, signal);
+}
+/** Isolated-target execution after admission. Tests may call this with a substitute worker script. */
+export async function ownedExecute(input: RunInput, receipt: Receipt, script: string, signal: AbortSignal): Promise<RunReport> {
+  await mkdir(input.target.stateRoot, { recursive: true, mode: 0o700 });
+  await mkdir(join(input.target.stateRoot, "tmp"), { recursive: true, mode: 0o700 });
   input.receipt = receipt;
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
   const started = Date.now(), deadline = started + input.limits.maxDurationMs;
@@ -57,11 +61,12 @@ export async function execute(value: unknown, repository: string, script: string
     "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
     "Semantic reasons, repeated failed attempts, restatement needs and unsupported claims require independent review of recorded actions/session evidence. No judge or additional model calls are authorized by this runner.",
     "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Reservations are never refunded; missing usage stays null.",
-    "A local abort/terminated process does not prove remote cancellation or final billing. Unresolved requests stop all further effects and retain isolated evidence for reconciliation.",
+    "A local abort/terminated process does not prove remote cancellation or final billing. Unresolved requests, cancellation, and exhausted shared call/token/time/known-cost limits stop further effects and retain isolated evidence. A completed failed independent scenario keeps its reservation and is not replayed; later authorized isolated scenarios may continue within remaining shared limits. Unknown usage stays null.",
   ] };
   try {
     await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600 });
-    if (input.observations?.some(m => m !== "continuation")) report.stock = await runStock(input, repository, deadline, signal);
+    if (input.observations?.some(m => m !== "continuation")) report.stock = await runStock(input, input.target.repository, deadline, signal);
+    let failed = false;
     for (let scenarioIndex = 0; scenarioIndex < (input.observations && !input.observations.includes("continuation") ? 0 : input.scenarios.length); scenarioIndex++) {
       const selection = input.scenarios[scenarioIndex]!;
       const caseRoot = join(root, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
@@ -74,13 +79,13 @@ export async function execute(value: unknown, repository: string, script: string
         const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
         report.segments.push(segment);
         requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
-        requireValue(segment.status === "OBSERVED" || segment.status === "PAUSED", "OBSERVATION", "Required observation did not complete");
-        requireValue(segment.prerequisites.every(c => c.status === "PROVEN"), "PREREQUISITE", "Scenario setup did not establish required placement");
-        if (segment.status === "PAUSED") { requireValue(!resume && selection.id === "c3", "RESTART", "Unexpected repeated pause"); resume = true; }
-        else break;
+        if (segment.status === "PAUSED") { requireValue(!resume && selection.id === "c3", "RESTART", "Unexpected repeated pause"); resume = true; continue; }
+        if (segment.status !== "OBSERVED" || segment.prerequisites.some(c => c.status !== "PROVEN")) failed = true;
+        break;
       } while (resume);
     }
-    report.status = "OBSERVED";
+    report.status = failed ? "UNPROVEN" : "OBSERVED";
+    if (failed) report.reason = report.segments.find(s => s.status !== "OBSERVED" && s.status !== "PAUSED")?.reason ?? "OBSERVATION";
   } catch (error) { report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR"; }
   finally {
     try { report.usage = ledgerSummary(readLedger(join(root, "calls.jsonl"))); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }

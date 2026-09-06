@@ -13,7 +13,7 @@ import { calibrateRetention, type RetentionCalibration } from "./calibration.js"
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean }
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig }
-export interface SegmentReport { pid: number; scenario: string; status: "PAUSED" | "OBSERVED" | "UNPROVEN" | "STOPPED"; reason?: string; prerequisites: CheckResult[]; sessionFile?: string; nextTurn: number; score?: Awaited<ReturnType<typeof scoreArtifacts>>; contexts: Array<{ turn: string; model: string; kind: string; context: Context }>; maintenance: unknown[]; actions: unknown[]; commands?: Array<{ type: string; message?: string }>; calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>; preparationFailure?: { afterTurn: string; message: string } }
+export interface SegmentReport { pid: number; scenario: string; status: "PAUSED" | "OBSERVED" | "UNPROVEN" | "STOPPED"; reason?: string; diagnostic?: string; prerequisites: CheckResult[]; sessionFile?: string; nextTurn: number; score?: Awaited<ReturnType<typeof scoreArtifacts>>; contexts: Array<{ turn: string; model: string; kind: string; context: Context }>; maintenance: unknown[]; actions: unknown[]; commands?: Array<{ type: string; message?: string }>; calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>; preparationFailure?: { afterTurn: string; message: string } }
 function userText(entry: SessionEntry): string | undefined {
   if (entry.type !== "message" || entry.message.role !== "user") return undefined;
   const content = entry.message.content;
@@ -70,7 +70,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
       const last = session.messages.findLast(m => m.role === "assistant");
-      requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", "Main run did not end in a complete stop state");
+      requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", last?.role === "assistant" && last.errorMessage ? last.errorMessage : "Main run did not end in a complete stop state");
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
       for (const id of scheduledSteers) {
         const text = scenario.turns.find(t => t.id === id)?.text; if (!text) continue;
@@ -192,7 +192,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     }
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites);
     report.status = report.prerequisites.every(p => p.status === "PROVEN") && !report.score.checks.some(c => c.status === "DISPROVEN") ? "OBSERVED" : "UNPROVEN";
-  } catch (error) { report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "HOST_ERROR"; }
+  } catch (error) {
+    report.status = "UNPROVEN";
+    report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "HOST_ERROR";
+    if (error instanceof RunnerError) report.diagnostic = error.message;
+  }
   finally {
     if (runtime) {
       report.commands = runtime.commands.slice();
