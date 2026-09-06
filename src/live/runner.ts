@@ -1,25 +1,36 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
+import { object, canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
 import { ledgerSummary, readLedger } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
 import { childEnvironment, nativeEnvironment } from "./host.js";
 export { childEnvironment } from "./host.js";
 
-export interface ChildReceipt { exitCode: number | null; signal: string | null; timedOut: boolean }
+export interface ChildReceipt { exitCode: number | null; signal: string | null; timedOut: boolean; diagnostic?: { code: string; message: string } }
 export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal): Promise<ChildReceipt> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [script, "--worker"], { cwd: job.input.target.stateRoot, env: nativeEnvironment(job.input.target.stateRoot), detached: true, stdio: ["pipe", "ignore", "ignore"] });
+    // The orchestration worker must validate against the supervisor's temp root.
+    // Only the native task host redirects TMPDIR to task-local scratch.
+    const env = { ...nativeEnvironment(job.input.target.stateRoot), TMPDIR: process.env.TMPDIR };
+    const child = spawn(process.execPath, [script, "--worker"], { cwd: job.input.target.stateRoot, env, detached: true, stdio: ["pipe", "ignore", "ignore", "ipc"] });
+    let diagnostic: ChildReceipt["diagnostic"];
+    child.on("message", (value: unknown) => {
+      if (!diagnostic && object(value) && value.type === "nunc-worker-rejection" && typeof value.code === "string" && /^[A-Z_]{1,64}$/.test(value.code) && typeof value.message === "string" && /^[\x20-\x7e]{1,256}$/.test(value.message)) {
+        diagnostic = { code: value.code, message: value.message };
+      }
+    });
     let timedOut = false, hard: NodeJS.Timeout | undefined;
     const kill = (signal: NodeJS.Signals) => { if (child.pid) { try { process.kill(-child.pid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; } } };
     const stop = () => { timedOut = true; kill("SIGTERM"); hard ??= setTimeout(() => kill("SIGKILL"), 2000); };
     const timer = setTimeout(stop, Math.max(1, job.deadline - Date.now()));
     signal.addEventListener("abort", stop, { once: true });
     child.once("error", error => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); reject(error); });
-    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut }); });
-    child.stdin.on("error", () => { /* Early rejection is reported by child exit, never replayed. */ });
-    child.stdin.end(JSON.stringify(job));
+    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut, ...(diagnostic ? { diagnostic } : {}) }); });
+    // The explicit stdin pipe above is guaranteed; the IPC overload loses that type refinement.
+    const stdin = child.stdin!;
+    stdin.on("error", () => { /* Early rejection is reported by child exit, never replayed. */ });
+    stdin.end(JSON.stringify(job));
     if (signal.aborted) stop();
   });
 }
@@ -58,7 +69,7 @@ export async function execute(value: unknown, repository: string, script: string
         signal.throwIfAborted(); requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
         const child = await launchWorker(script, { input, scenarioIndex, deadline, resume }, signal); report.children.push(child);
         report.usage = ledgerSummary(readLedger(join(root, "calls.jsonl")));
-        requireValue(!child.signal && !child.timedOut && child.exitCode === 0, "WORKER", "Worker did not complete; inspect saved state before any new run");
+        requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete; inspect saved state before any new run");
         const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
         report.segments.push(segment);
         requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
@@ -142,5 +153,8 @@ export async function finalizeRun(input: RunInput, receipt: Receipt, report: Run
       report.sessions[file] = text.trim().split("\n").map(line => JSON.parse(line));
     }
     await rm(root, { recursive: true }); report.cleanup = "removed";
-  } else await writeFile(join(root, "report.json"), JSON.stringify(report, null, 2), { mode: 0o600 });
+  } else {
+    await writeFile(join(root, "report.json"), JSON.stringify(report, null, 2), { mode: 0o600 });
+    await writeFile(join(root, "owner.json"), JSON.stringify({ ...bound, status: "terminal", result: report.status, reason: report.reason, cleanup: report.cleanup }), { mode: 0o600 });
+  }
 }

@@ -13,7 +13,7 @@ const systemTemp = process.argv[2] === '--system-temp';
 const originalTemp = await realpath(tmpdir());
 const targetParent = systemTemp ? await mkdtemp(join(originalTemp, 'nunc-runner-test-')) : f.dir;
 const stateRoot = join(targetParent, 'nunc-live-runner');
-if (systemTemp) assert(!stateRoot.startsWith(join(root, '.scratch') + '/')); 
+if (systemTemp) assert(!stateRoot.startsWith(join(root, '.scratch') + '/'));
 const settings = { ...f.settings, defaultProvider: 'openai-codex', defaultModel: 'gpt-6-astra' };
 await writeFile(join(f.state, 'agent/settings.json'), JSON.stringify(settings));
 const selection = { target: { repository: root, stateRoot, cleanup: 'retain' }, limits: { maxCalls: 20, maxTotalTokens: 8000000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 128000 }, scenarios: [{ id: 'c2' }], overrides: [{ requirement: 'c2-retiring-constraints', reason: 'Establish each observer-only legal rollover placement', config: { retentionCalibration: { minFraction: 0.0001, maxFraction: 0.95 } } }] };
@@ -39,6 +39,9 @@ try {
   assert.equal(execution.code, 0, execution.stdout.slice(0, 4000) + execution.stderr);
   const report = JSON.parse(execution.stdout); assert.equal(report.status, 'OBSERVED'); assert.equal(report.usage.calls, 12); assert.equal(report.usage.costUsd, null); assert.equal(report.segments[0].calibrations.length, 3);
   assert(report.children.every(c => c.exitCode === 0 && !c.signal));
+  assert.deepEqual(report.usage.unreconciledCallIds, []);
+  const owner = JSON.parse(await readFile(join(stateRoot, 'owner.json'), 'utf8'));
+  assert.equal(owner.status, 'terminal'); assert.equal(owner.result, 'OBSERVED');
   assert(f.requests.some(r => r.payload.reasoning?.effort === 'medium'));
   await assert.rejects(lstat(join(stateRoot, 'host/auth.json')), { code: 'ENOENT' });
   assert.deepEqual(JSON.parse(await readFile(join(f.state, 'agent/settings.json'), 'utf8')), settings);

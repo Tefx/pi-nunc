@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { finalizeRun, launchWorker, type RunReport } from "../../src/live/runner.js";
 import { ledgerSummary } from "../../src/live/budget.js";
@@ -14,6 +14,33 @@ test("worker deadline terminates an actual uncooperative process group and waits
   try {
     const result = await launchWorker(script, { input, scenarioIndex: 0, deadline: Date.now() + 200, resume: false }, new AbortController().signal);
     assert.equal(result.timedOut, true); assert.equal(result.signal, "SIGKILL");
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+test("actual worker target/binding rejection returns bounded diagnostics and reconciles terminal ownership", async () => {
+  const input = await fixture(); input.mode = "native";
+  const receipt = await preflight(input, repository); input.receipt = receipt;
+  await mkdir(input.target.stateRoot);
+  const deadline = Date.now() + 20000;
+  await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }));
+  try {
+    for (const code of ["TARGET", "RECEIPT"]) {
+      const changed = structuredClone(input);
+      if (code === "TARGET") changed.target.repository = "/";
+      else changed.receipt!.binding = "mismatched-execution";
+      const child = await launchWorker(join(repository, "scripts/verify-live.mjs"), { input: changed, scenarioIndex: 0, deadline, resume: false }, new AbortController().signal);
+      assert.equal(child.exitCode, 1); assert.equal(child.signal, null); assert.equal(child.timedOut, false);
+      assert.equal(child.diagnostic?.code, code); assert(child.diagnostic!.message.length <= 256);
+      assert(!JSON.stringify(child).includes(input.target.stateRoot));
+      await assert.rejects(lstat(join(input.target.stateRoot, "calls.jsonl")), { code: "ENOENT" });
+      await assert.rejects(lstat(join(input.target.stateRoot, "c2")), { code: "ENOENT" });
+      const report: RunReport = { version: 1, status: "UNPROVEN", reason: code, selection: input, children: [child], segments: [], usage: ledgerSummary([]), elapsedMs: 1, cleanup: "retained", limitations: [] };
+      await finalizeRun(input, receipt, report);
+      const owner = JSON.parse(await readFile(join(input.target.stateRoot, "owner.json"), "utf8"));
+      assert.equal(owner.status, "terminal"); assert.equal(owner.result, "UNPROVEN"); assert.equal(owner.reason, code);
+      assert.deepEqual(owner.receipt, receipt);
+      const saved = JSON.parse(await readFile(join(input.target.stateRoot, "report.json"), "utf8"));
+      assert.equal(saved.children[0].diagnostic.code, code); assert.equal(saved.usage.calls, 0);
+    }
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 test("an already-created target is never implicitly resumed or overwritten", async () => {
