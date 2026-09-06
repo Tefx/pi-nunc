@@ -10,37 +10,43 @@ version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
 context: "交付 README/DESIGN 定义的完整 Nunc 项目，唯一 phase 为 nunc-v1，ENGINE、PI、POLICY、DEVELOPMENT、LIVE\
-  \ 与跟踪场景承载接口、检查与观察。最新用户明确要求修正不必要 API 限制，彻底检查全仓同类过度设计并修正，然后继续完整交付；实现说明和既有支持名单不能自行授权重复\
-  \ native 职责。nunc.policy、nunc.engine、nunc.pi、nunc.observation-support 四个 DONE 的定义/状态/证据/历史不变。nunc.discovery\
-  \ 交付完整只读根因批次给 nunc.simplification 的可写 owner；原 nunc.runtime 消费修正并补/复用真实事实；原 nunc.acceptance\
-  \ 作包含全部结果的唯一最终项目接受，不增加逐发现节点或修后重复全仓 reviewer。\n\n保留已接受公共边界：维护冻结有效 F、全部 M、当前活动路径已交付的完整\
-  \ R_t=B|K、模型/选项/策略；未来 D 不预测或提前消费，交付后原样进入主请求及后续维护来源。普通请求自动包含全部 M 和已交付原文。合法 K 保持原文、顺序及跨旧\
-  \ checkpoint 重叠，仅最新 M。M 有界、增量、整条预算、未改正文复用、纠正/替换/合并/退役且失效旧项不复活。Pi 独占 native 模型目录/选择、配置、认证、transport、compaction\
-  \ 调度、队列、单 CompactionEntry 发布、append/rebuild、usage 和活动路径恢复。Nunc 保留独立请求容量准入，按真实输入/输出/thinking/defaults/媒体/unknown-cache\
-  \ 语义核算，正向识别本地容量失败并进入原生有界恢复。无递归维护、输入重放、队列撤回/丢失/重排、未知来源旁路或失效 wrapper；取消优先，自动恢复不调用\
-  \ TUI 用户停止；失败/取消不交付、不落默认摘要。完整来源、normal full extraction、可选有界显式缩减及不改变 K/D 的边界按 DESIGN\
-  \ 保持。\n\n当前默认/认证约定：产品使用活动测试 session 的有效 model/provider/options/config，包含启动选择和 runtime\
-  \ switch；新 standalone 场景继承效果前最新普通保存 Pi defaults。只转发当前被测调用确实需要的非秘密未保存有效选择；旧父 capsule/Astra\
-  \ 不进入后续新批次，不反向固定 Gemini。必要命名 override 只影响当前新任务并记录理由/差异，不重建 catalog、不重复填写 defaults/approval。隔离新任务\
-  \ session/cwd/文件/输出，保护既有 sessions、settings/defaults、dotfiles/控制面、其他项目与秘密。Pi 正常认证解析/刷新/保存保持原有\
-  \ owner；Nunc/runner 不复制 profile/凭据、不实现 auth-handoff/OAuth storage/refresh/login，不改账户绕过\
-  \ native OAuth，不要求 auth bytes 冻结。凭据值及来源位置不进提示、Plan、stdin/argv 或报告。无可执行输出 cap 时保留完整原生能力，不放宽估计、虚构小\
-  \ output 或小 window 换取通过；unknown usage/billing 不是零，catalog 估算/原生零占位不能证明实付零或绝对 USD\
-  \ 保证。\n\n仅独立 persistent-session Pi 扩展；无 SDK host、替代启动器、CustomEntry 自有 M/K、双历史 mapper、core/private\
-  \ patch、其他项目依赖/配置修改、自动跨 session、主动检索、记忆库、文档写入服务、额外维护调度或多 provider 缓存框架。按合作型产品 actors/local\
-  \ processes 处理缺陷、错误输入、失败/竞态/泄漏/遗漏；不加入 hostile-local-agent 威胁或风格偏好 blocker。推荐协议、参数、算法、可选路径保留等价实现空间，不要求\
-  \ benchmark 胜出。\n\n完整实施、同目标可逆准备/锁定依赖安装、离线检查及有界真实验证已有预授权。真实效果前 Orchestrator 重新绑定实际新任务\
-  \ target、native 非秘密 metadata、必要 named override、call/token/time/known-cost 限额与清理；不沿用已完成批次剩余额度或旧模型配置，metadata\
-  \ 可行性不构成调用/可用性证明，不以付费 quota probes 搜索目标。主请求/维护共同受效果限额控制。可能开始的效果先核对再继续，不重放旧 targets，失败/取消/不明状态停止后续效果。缺现有绑定同权限准备；只有新目标、不可恢复损失、新费用/凭据/账户、未定义产品含义、明确禁止或无法安全确定既有效果等真实人工边界才询问。禁止发布、全局安装扩展和\
-  \ push。\n\n证明消费者明确：完整 discovery 的静态 findings/coverage ledger 留在该报告供修正消费，不成为新 registry/authority。生产者交付候选、全部有依据发现处置及必要行为检查，不默认另加\
-  \ verifier。运行 owner 提供真实事实/有界要求判断，最终 gate 判全部必要要求覆盖、证据适用性、跨结果矛盾和质量。c4/full 仍须真正巨型完整暴露/无省略\
-  \ extraction/退役/实际产物；late-D 输入/oracle 要有产品依据，保留冻结排除/时序/一次交付/真实约束行动，错误 exact oracle\
-  \ 与正向事实分开，修改断言不构成行为 PASS；c4/capacity 要实际可达取消/零 extraction/saved M-K 不变/无默认摘要，CONFIG\
-  \ 不等同；c5 要实际大到严格更小 native 模型与重算/维护/续做。旧模型窗口和失败假设不能豁免或固定新场景，降低 H 不缩已冻结 full source。\n\
-  \n报告绑定最终整合不可变候选，底层观察按 source/lock/config/命令/modality/authority/要求是否仍适用独立判断。保留有效\
-  \ c1–c3、stock TUI/native 生命周期及 late-D 正向事实；Plan-only/格式/绑定变化不自动重放。源码/依赖/整合变化补受影响证明及最终整合完整离线\
-  \ inventory。受控服务/固定 M 只证明机械行为，docs/prompt token、预期答案或自报 PASS 不证明真实续做。所有必要要求有当前正向证据、完整发现处置有据、最终回归有效且无阻断缺陷才接受项目；只读消费者缺\
-  \ tracked runner 时需要兼容 writable producer，不重开 DONE。\n\n```yaml\ncheck_environment:\n\
+  \ 与跟踪场景承载接口、检查与观察。最新用户要求在原运行自然结束后修正有据过度防御并检查同类问题，再继续剩余运行及完整接受。已完成 policy、engine、pi、observation-support、discovery、simplification\
+  \ 的定义/状态/证据/历史不变。nunc.defensive-controls 交付一个有用安全诊断与有据限制修正的仓库能力，供原 nunc.runtime\
+  \ 消费，再由原 nunc.acceptance 作唯一完整项目决定。独立定向 intake 属新增实现步骤内的准备/完成程序，复用旧完整全仓覆盖和已处置根因，不新增\
+  \ read-only 阶段、逐发现节点、修后全仓 reviewer 或重复接受。\n\n保留公共产品边界：维护冻结有效 F、全部 M、活动路径已经交付的完整\
+  \ R_t=B|K、模型/选项/策略；未来 D 不预测/提前消费，交付后原样进入主请求及后续维护。普通请求自动包含全部 M 和已交付原文。K 原文/顺序/合法跨旧\
+  \ checkpoint 重叠保留，仅最新 M；M 有界、增量、整条预算、未改正文复用、纠正/替换/合并/退役且失效旧项不复活。Pi 独占 native 模型目录/选择、配置、认证、transport、compaction\
+  \ 调度、队列、单 CompactionEntry 发布、append/rebuild、usage 和活动路径恢复。Nunc 独立容量准入按真实输入/输出/thinking/defaults/媒体/unknown-cache\
+  \ 语义核算，正向识别本地容量失败进入原生有界恢复。无递归维护、输入重放、队列撤回/丢失/重排、未知来源旁路、失效 wrapper；取消优先，自动恢复不调用 TUI\
+  \ 用户停止；失败/取消不交付、不落默认摘要。完整来源、normal full extraction、可选有界显式缩减且不改 K/D 的 DESIGN 边界不变。\n\
+  \n默认与认证：产品用活动测试 session 的有效 model/provider/options/config，含启动选择和 runtime switch；新\
+  \ standalone 场景继承效果前最新普通保存 Pi defaults。只转发当前被测调用必要的非秘密未保存有效选择，旧父 capsule/Astra 不进新批次，不反向固定\
+  \ Gemini。必要 named override 只影响新任务并记录理由/差异，不重建 catalog、不重复填写 defaults/approval。隔离新\
+  \ session/cwd/文件/输出，保护既有 sessions/settings/defaults、dotfiles/控制面、宿主、其他项目和秘密。Pi 正常认证解析/刷新/保存保持既有\
+  \ owner；Nunc/runner 不复制 profile/凭据、不实现 auth-handoff/OAuth store/refresh/login、不改账户绕过\
+  \ native OAuth、不要求 auth bytes 冻结。凭据值及来源位置不进提示、Plan、stdin/argv 或报告。诊断只保留安全且有用的 native\
+  \ status/code/原因，禁止 raw auth/provider 日志或未筛选私密正文。不能从已抹除的错误推断 HTTP 原因、认证或可用性。\n\n\
+  无可执行输出 cap 时保留完整原生能力，不放宽估计、虚构小 output/window 或 provider framing 换取绿色。unknown usage/billing\
+  \ 保持未知，catalog/native 估算或零占位不证明账单、实付零或绝对 USD 保证。仅独立 persistent-session Pi 扩展；无 SDK\
+  \ host/替代启动器/CustomEntry 自有 M-K/双历史 mapper/core-private patch/自动跨 session/主动检索/记忆库/文档写入服务/额外维护调度或多\
+  \ provider 缓存框架。按合作型 actors/local processes 处理错误、无效输入、失败/竞态/泄漏/遗漏，不加入 hostile-local-agent\
+  \ 威胁或风格 blocker。推荐协议/算法/参数及可选路径允许等价方案，不要求 benchmark 胜出。\n\n完整实施、同目标可逆准备/锁定依赖安装、离线检查及有界真实验证已有预授权。仓库\
+  \ producer 只做新建受控 host/service 检查，真实模型效果留在 runtime。Orchestrator 在每个新效果批次绑定实际新任务\
+  \ target、native 非秘密 metadata、必要 named override、有限总 call/token/time/known-cost 和清理，不隐式沿用已结束配额/旧模型，不作付费\
+  \ quota probes。caller 的 per-case 过小分配在既有总授权内修正，按场景步骤和实际变动留余量，不把历史 call 数变成产品上限、保证或固定最小值。主请求/维护共用额度，全部成功/失败/unknown\
+  \ reservations 保留、不退款。失败停止受影响场景并核对；一个已终结且本地效果已核对的独立失败，不自动禁止其余隔离、无依赖且总预算成立的场景。缺终态、活动进程、损坏账本、可能越界或无法核对的关联效果仍停止相关执行；全局取消/总限额停止全部。unknown\
+  \ billing 与未知本地执行分开，local terminal/abort 不证明远端取消/账单。旧 single-use targets 不重放，新增诊断不授权盲目\
+  \ paid retry。缺现有绑定先做同权限准备；仅实际新目标、不可恢复损失、新费用/凭据/账户、产品含义矛盾、明确禁止或安全核对仍无法确定既有效果等人工边界才询问。禁止发布、全局安装扩展和\
+  \ push。\n\n证明：旧完整 discovery 的静态覆盖与根因处置留在适用原报告，新线索沿实际消费者作定向检查；报告/建议不创设额外义务。新增 producer\
+  \ 在同一事务交付有据完整相关批次、有效诊断/控制能力和必要行为检查，runtime 提供真实事实与有界要求判断，唯一 gate 判断完整覆盖/适用性/矛盾与质量。c4/full\
+  \ 必须有巨型完整工具暴露、中部例外、无省略 extraction、退役和产物；late-D 必须冻结排除、维护中接收、原样一次交付、真实约束行动，错误 exact\
+  \ oracle 与正向事实分开，改断言不等同语义 PASS。两者已成立观察按适用性保留，不为信心重跑。c4/capacity 须实际可达 CAPACITY、零\
+  \ extraction、saved M-K 不变/无默认摘要，CONFIG 不等同。c5 须真正严格更小 native 模型、两类预算/M-K 重算、维护和续做；已成立\
+  \ switch/thinking/主预算事实不替代剩余模型维护/产物。旧窗口/失败假设不能固定或豁免新场景，降低 H 不缩 frozen full source。\n\
+  \n报告绑定最终整合不可变候选；底层观察按 source/lock/config/命令/modality/authority/要求因果适用性独立判断。复用有效\
+  \ c1–c3、stock TUI/native、c4/full、late-D 和 c5 已观察事实；Plan-only/格式/报告绑定变化不重放。源码/依赖/整合变化補受影响证明及最终整合完整\
+  \ offline inventory。受控服务/固定 M 只证明机械行为，docs/prompt token、预期答案、自报 PASS 不证明真实续做。全部必要要求有当前正向证明、全部有据发现处置闭合、最终完整回归有效且无阻断缺陷才接受；只读消费者缺\
+  \ tracked runner/check 需兼容 writable producer，不重开 DONE。\n\n```yaml\ncheck_environment:\n\
   \  node_version: 26.7.0\n  npm_version: 11.19.0\n  stock_pi_version: 0.85.1\n  development_dependencies:\n\
   \    \"@earendil-works/pi-coding-agent\": 0.85.1\n    \"@earendil-works/pi-ai\"\
   : 0.85.1\n    \"@types/node\": 26.4.1\n    typebox: 1.3.7\n    typescript: 5.9.3\n\
@@ -49,34 +55,37 @@ context: "交付 README/DESIGN 定义的完整 Nunc 项目，唯一 phase 为 nu
   \ npm_config_ignore_scripts=true, npm_config_update_notifier=false, /opt/homebrew/bin/node,\
   \ /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js, ci, --include=dev, --no-audit,\
   \ --no-fund]\n  tui_python_argv: [/usr/bin/python3]\n  tui_prerequisites: [POSIX\
-  \ PTY, Python 3 standard library]\n```\n检查从获准干净 checkout 与跟踪 lock 重现；准备/检查分开，检查不隐式安装/更新、导入全局\
-  \ Pi 或复制 native profile。版本错误、缺依赖/入口/必要子集、空 inventory 明确失败；all 覆盖全部 engine/Pi/live\
-  \ 及跨组件行为，不固定历史测试数量或把旧候选组件结果重标为最终 proof。"
-project_guidance: 先执行 nunc.discovery 的完整只读发现，再由 nunc.simplification 的 node-typescript-engineer
-  消费全根因批次修正 source/tests/docs；不只补新 API 名称、不制造重设计义务、不启动 manual loop。四个 DONE 定义/证据/历史不可变。原
-  nunc.runtime 保持真实新任务/模型效果边界；原 nunc.acceptance 是唯一项目接受，消费完整发现处置、最终整合 all 与必要运行事实，无额外修后全仓
-  reviewer。产品跟随当前测试 session 的有效模型/切换，新 standalone 批次读取最新正常保存 Pi defaults；不转发旧父 capsule/Astra、不固定
-  Gemini、不继承旧剩余额度。新效果先绑定真实 target/metadata/必要命名 overrides/call-token-time-known-cost。保留
-  native auth/transport/目录/compaction/队列/persistence、实际输出、unknown billing、bounded
-  M/verbatim K/frozen R/future D 及单次效果/核对/保护。c4/full、late-D 真实约束行动、可达 capacity 取消及
-  c5 真正严格更小模型续做仍必需；错误 exact oracle 与正向时序/交付证据分开，旧模型余量不限制当前默认。复用适用 c1–c3/stock TUI/native/late-D
-  正向事实；source/lock/config/integration 变化补受影响证明及最终完整离线回归，报告重绑定不重放有效观察。缺报告先修报告、缺观察在原
-  owner 补齐、DONE 后可写缺口经 Planner 接入兼容交付，不 reject/reclaim DONE、不逐问题建节点。除 Vectl 管理 Plan
-  外不改 dotfiles/控制面、既有 sessions/settings/其他项目/秘密；无 host patch、复制凭据/auth 子系统、发布/全局安装/push。
+  \ PTY, Python 3 standard library]\n```\n检查从获准干净 checkout/跟踪 lock 重现；准备与检查分开，无隐式安装/更新/全局\
+  \ Pi 导入或 native profile 复制。错误版本、缺依赖/入口/必要子集或空 inventory 明确失败；all 覆盖全部 engine/Pi/live\
+  \ 和跨组件行为，不固定历史测试数，不重标旧候选组件 PASS。"
+project_guidance: 先执行唯一新增 nunc.defensive-controls：Orchestrator 在本步骤内取得独立只读定向 intake，node-typescript-engineer
+  消费有据完整相关根因批次并交付 source/tests/docs、有效安全诊断、独立场景失败隔离和全量离线证明。复用旧完整 discovery 与 D1/D2、A1/A2/A3
+  处置，无重复全仓扫描/独立 read-only 节点/manual loop。六个 DONE 定义/状态/证据/历史不可变。原 nunc.runtime 后续补真实
+  capacity 与 c5 更小模型维护/续做，原 nunc.acceptance 是唯一完整项目接受。已成立 full、late-D 和适用 c1–c3/TUI/native
+  事实保留，不为信心或 Plan-only 重跑；因果相关变化补受影响证明及最终整合完整 all。caller 过小 per-case allocation 由
+  Orchestrator 在既有有限总 call/token/time/known-cost 内修正，不升格历史 call 数为产品限制/确定最小值；独立已终结且核对的失败不无条件停止无依赖场景，真正取消/总限额/未核对相关效果仍停止。所有
+  reservations 保留，usage/billing 未知不按零，旧 targets 不重放，无盲目 paid retry/quota probe。产品跟随活动
+  session 选择，新 standalone 使用最新普通保存 defaults，剔除旧父 capsule/Astra，不固定 Gemini/旧配额；仅必要命名
+  override。保留 native 目录/auth/transport/compaction/队列/persistence、实际目的地/输出、完整 R_t/D、bounded
+  M/verbatim K、取消和失败不提交。除 Vectl 管理 Plan 外不改 dotfiles/控制面、既有 sessions/settings、宿主、其他项目、秘密或未跟踪
+  dashboard；不复制凭据/建立 auth 子系统，不发布、全局安装或 push。缺报告先修报告、缺观察在原 owner 补齐、DONE 后可写缺口通过兼容
+  producer，不重开 DONE、不逐发现建节点。
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
   status: in_progress
-  gate: 唯一 nunc.acceptance 覆盖 nunc-v1 的 policy、engine、pi、observation-support、discovery、simplification、runtime
-    全部结果；判断完整发现与有依据根因批次处置、native Pi 职责保留、最终整合完整离线 inventory、逐必要要求的适用证明与跨结果矛盾。真实 full
-    巨型完整来源续做、维护中 corrective D、可达 capacity 取消及真实严格更小模型续做等必要项全部关闭，默认选择/auth/输出/unknown
-    billing/取消/队列/持久化/受保护状态和新批次效果界限成立且无阻断缺陷才接受。仅一个 FULL 或同一 gate 的适用 Delta 决定，无修后重复全仓
-    review；不含发布、全局安装或 push。
-  context: 完整 Nunc 交付包含四个不可变 DONE 生产者 nunc.policy、nunc.engine、nunc.pi、nunc.observation-support。最新用户要求先全仓发现并修正不必要
-    API 限制及同类过度设计：nunc.discovery 由只读 architectural-demolitionist 交付完整根因批次给 nunc.simplification
-    的 node-typescript-engineer；修正后的原 nunc.runtime 获取/复用仍需真实事实，原 nunc.acceptance 作唯一项目/phase
-    质量决定。发现与可写修正有独立消费者和权限，运行有独立新任务/模型效果边界；不按文件/发现拆节点，不再加修后全仓 reviewer。最新 native Pi
-    defaults/活动测试 session、认证、输出、队列、持久化、效果限额和既有状态保护保持；旧模型/配额不沿用，完整要求不缩范围。
+  gate: 唯一 nunc.acceptance 覆盖 nunc-v1 的 policy、engine、pi、observation-support、discovery、simplification、defensive-controls、runtime
+    全部结果；消费旧完整发现/处置、新定向修正证明、最终整合完整离线 inventory 和逐必要要求的适用运行事实，判断覆盖/适用性/跨结果矛盾。真实 full、维护中
+    corrective D、capacity 取消、严格更小模型重算/维护/续做与 native 默认/auth/输出/取消/队列/persistence、秘密和有限总效果界限均满足且无阻断缺陷才接受。有效
+    full/late-D/c1–c3/TUI/native 证据复用，不因 Plan-only 或诊断修改重放。保留有用非秘密诊断、失败独立隔离、unknown
+    reservations 和不明状态核对；无额外接受、修后全仓 review、发布、全局安装或 push。
+  context: 完整 Nunc 交付保留 policy、engine、pi、observation-support、discovery、simplification
+    六个 DONE 的定义/状态/证据/历史。用户授权在原批次自然结束后修正有依据的过度防御并检查同类问题；当前无活动 claim/运行效果。唯一新增 nunc.defensive-controls
+    由 node-typescript-engineer 在同一源/tests/docs 事务恢复可用安全诊断、修正有据的独立场景停止耦合；独立定向 intake
+    在该步骤内安排，复用旧完整全仓发现，无第二 read-only 阶段。原 nunc.runtime 随后补/复用必要事实，原 nunc.acceptance
+    作唯一 phase/完整项目接受。caller 过小分配由 Orchestrator 在既有有限总授权内调整。新工作不授权修改 dotfiles/控制面；保护
+    native 职责、真实输出、unknown usage/billing、取消/单次效果/核对和既有状态。已成立 full/late-D 不为信心重跑，c5
+    剩余续做与真实 capacity 必须关闭。
   steps:
   - id: nunc.policy
     name: 通用增量维护策略与可观察续做场景
@@ -354,55 +363,62 @@ phases:
       , \".node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
       plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \"\
       .env.*\", \"**/auth.json\"]\n\nDeliver: 在同一 nunc.runtime 补齐并复用 DESIGN §8.2–§8.4\
-      \ 的真实宿主/模型观察，逐必要运行要求报告 PROVEN/DISPROVEN/UNPROVEN 和具体关闭条件，供同一 nunc.acceptance\
-      \ 判断最终覆盖及适用性。观察事实及有界要求判断与项目接受分开；生产者完成和 runner 退出均不替代模型效果。\n\nAdmit: 消费四个 DONE\
-      \ 生产者、nunc.discovery 的完整发现及 nunc.simplification 的整合修正、匹配完整离线 inventory。Orchestrator\
+      \ 的真实宿主/模型观察，逐必要运行要求报告 PROVEN/DISPROVEN/UNPROVEN 及具体关闭条件，供同一 nunc.acceptance\
+      \ 判断覆盖与适用性。观察事实与项目接受分开；生产者完成和 runner 退出不替代模型效果。\n\nAdmit: 消费 policy、engine、pi、observation-support、discovery、simplification\
+      \ 的已完成结果及 nunc.defensive-controls 的整合能力、完整相关发现处置和匹配完整离线 inventory。Orchestrator\
       \ 绑定最终整合不可变候选、stock Pi/Node/lock、当前有效非秘密 model/provider/options/config/策略、必要命名\
-      \ overrides 和新任务效果界限。按 discovery/fix 的实际变更判断已有 c1 K 纠正、c2 精确条件跨滚动、c3 重启/未完成工作、stock\
-      \ TUI/native 生命周期及 late-D 正向时序/约束行动等证据是否仍适用。报告绑定与底层观察分别判断；source/lock/config/integration\
-      \ 变化补受影响证明并保证最终完整离线回归有效，不为 Plan-only、报告格式或绑定变化重放有效观察。\n\n新批次默认规则：产品遵循当前被测 Pi\
-      \ session 的有效模型和 runtime switch；新的 standalone 场景使用执行前最新普通保存 defaults，不转发旧父 capsule\
-      \ 或沿用已经结束批次的 Astra 选择。只有当前被测 invoking-runtime 的真实未保存选择才通过公开非秘密路径转发。不得反向固定 Gemini\
-      \ 或把旧模型窗口、输出/reserve、fixture 规模作为普遍约束。新批次 call/token/time/known-cost 配额由 Orchestrator\
-      \ 重新绑定，旧批次未用额度不隐式继承。metadata-only 候选可行性不等于调用许可、服务可用性或实际证明；不用付费调用探测账户/quota。\n\
-      \n剩余必要真实观察：\n- c4/full：实际工具完整暴露超过 native 截断/分块阈值的巨型来源及中部例外，全量无省略 extraction、真实维护/证据退役和任务产物。按当前实际\
-      \ native window/output 和真实来源核算，不因旧 Astra 余量强制缩 fixture；降低 H 不缩已冻结 full source。容量取消或省略分支不替代\
-      \ full 续做成功。\n- 维护中 corrective D：消费修正后的有产品依据场景/私有判据，D 不在 frozen extraction，维护仍进行时\
-      \ public steer 已被接受，之后 native 原样且仅一次交付，无 clear_queue、普通 promptD 或串行 schedule\
-      \ 重提；真实行动/产物受新约束支配。既有时序/一次交付/排除不相容 cache 的事实与原来缺 direct 证据却强求 direct 的 oracle\
-      \ 矛盾分别处理，不能把 latter 推断为丢 D，也不能仅改断言就宣告语义通过。保留适用正向证据；输入/判据相关变化补受影响语义观察，未见重叠仍为\
-      \ UNPROVEN，不重放/泄露预期答案。\n- c4/capacity：效果前以实际 native 容量、来源、H/retention/full 模式核算可达完整\
-      \ extraction 超限。原始 fixture 若不再超过新默认窗口，可使用有依据的必要命名配置/模型场景或生产者已交付的真实来源变体；不得虚构更小窗口、降低原生输出或拿\
-      \ CONFIG 拒绝当此分支。观察 CAPACITY 取消、零 extraction dispatch、交付前 saved M/K 不变且无默认摘要。该失败处理可证明，正常\
-      \ continuation 仍不能因此报成功。\n- c5：Orchestrator 在效果前绑定真实大窗口到严格更小模型的必要命名 override\
-      \ 和有限效果，按实际 native 元数据/输出语义证明两类请求有正安全输入及增长空间，再观察真正切换、budget/M/K 重算、维护和任务产物。旧\
-      \ Codex 候选死路不是当前普遍限制；不可伪造窗口、暗降输出、换新账户或以受控 switch 顶替真实效果。未建立可行目标/必要观察时保留此项及接受未完成。\n\
-      \n其余必要 native 生命周期/保护证据继续按 DESIGN、PI/ENGINE 和跟踪 tests 消费：实际 stock TUI 队列/编辑器及用户停止不能被\
-      \ RPC 替代；threshold/manual/overflow、pre-transport 容量拒绝与原生有界恢复、完整 R_t/D 分离、单 CompactionEntry、合法重叠\
-      \ K/仅最新 M、restart/resume/new/tree/fork/clone、provider/model/config/reload、维护分类、取消/失效候选不提交。无需模型判断的行为可用真实宿主和受控服务证明；固定\
-      \ M 或媒体运输不证明模型理解，不默认全宿主重查。\n\nBoundary: exact owner integration-verifier；仓库源/配置/文档/Plan/仓库报告只读，仅在绑定的新\
-      \ session、task cwd/文件与输出上运行跟踪 runner。完整交付已有预授权，无逐步批准仪式。Pi 既有 owner 负责正常认证解析/刷新/保存；本\
-      \ owner 不复制 profile/token、导出凭据、创建 auth-handoff/login 系统、改账户或承诺 auth bytes 冻结。命名\
-      \ override 仅作用于当前新任务，不覆盖 saved defaults。既有 sessions/settings、dotfiles/控制面、宿主、其他项目与秘密受保护，凭据值/来源位置不进记录。不安装、不修仓库、不写临时替代执行逻辑、不全局安装/发布/push。\n\
-      \n效果前无调用 preflight 绑定实际 target、完整 main/extraction 预算、输出/thinking/defaults、H/保留配置/模式、call/token/time、已知成本和清理。unknown\
-      \ billing 保持 unknown/null，不以 catalog 估算/原生零占位许诺实际 USD 上限；PI_OFFLINE 不限制模型调用。主请求/维护共用效果配额，保留单次执行与不明状态拒绝。私有脱敏报告区分\
-      \ real/controlled modality、配置差异、容量/省略、usage/cache、reservation/actual、已知/估算/未知费用、延迟、行动/产物和限制。\n\
-      \nRecovery: 缺绑定先做同权限无效果准备；缺/坏报告从保留证据修复，不重放模型调用。效果可能开始后先核对 usage、session、子进程和终态；失败、额度到达、用户取消或状态不明立即停止后续效果，按绑定范围清理并保留证据。本地取消不证明远端调用/账单取消。缺\
-      \ tracked runner 或有依据的产品矛盾交兼容未完成可写 owner；生产者已 DONE 时保留历史和此消费者，由 Planner 接入兼容可写交付再继续受影响观察。不重开\
-      \ DONE、不建 per-finding/retry 节点，MISSING_OBSERVATION 不自动等于产品矛盾。"
+      \ overrides 和新任务效果界限。报告重绑定与底层观察独立判断，按 source/lock/config/命令/modality/authority/要求的因果适用性复用。c1\
+      \ K 纠正、c2 精确条件跨滚动、c3 重启/未完成工作、stock TUI/native 生命周期、c4/full 与维护中 corrective\
+      \ D 已成立的正向证据不能为信心、Plan-only、格式或诊断增加而重跑；实际改动使必要断言失效时仅补受影响证明。源/依赖/整合变化仍要求有意义的最终完整离线回归。\n\
+      \n真实要求与剩余关闭条件：\n- 保留 c4/full 的巨型工具完整暴露/中部例外、全量无省略 extraction、证据退役和真实产物证明。按实际\
+      \ native 容量/原生输出核算；降低 H 不缩已冻结来源，容量失败不代替 full 续做成功。\n- 保留 late-D 真实正向证明：D 不在\
+      \ frozen extraction，维护仍进行时 public steer 被接受，随后 native 原样一次交付，无 clear_queue、普通\
+      \ promptD 或串行重提，行动/产物遵守纠正。原先没有 direct 可行证据的 exact oracle 与真实要求分别判断；有据不确定性可成立，断言修改本身不证明语义。未见重叠不报通过。\n\
+      - c4/capacity 仍需真实可达的完整 extraction 超限、CAPACITY 取消、零 extraction dispatch、交付前\
+      \ saved M/K 不变且无默认摘要。效果前按实际来源、native window/output、H/retention/full 和必要命名 application\
+      \ budget 建立可达性；不虚构 window、padding 或小 output，不将 CONFIG 或受控两次读取结果等同当前真实分支。预备配置仍是待观察假设，参数变化必须有产品依据和新绑定。\n\
+      - c5 已观察的真实 native 严格更小模型切换、thinking 调整与主请求 input/output 重算按适用性保留；仍需更小模型上的真实维护、M/K\
+      \ 重算及约束依赖续做/产物。效果前确定两类请求的正安全输入与增长空间，使用 native metadata 和必要命名 override，不能伪造容量、暗降输出、换新账户或以受控\
+      \ switch 顶替真实效果。旧 provider terminal 错误的具体 HTTP/cause 不可从被抹除信息推断，unknown usage\
+      \ 保持未知。先消费修正后安全诊断能力并完成同权限无效果准备；进一步效果必须有实质修正或有据绑定变化及仍成立的授权，禁止仅为找回旧原因而盲目 paid\
+      \ retry/probe。\n\n其余 native 证明覆盖实际 stock TUI 队列/编辑器/用户停止、threshold/manual/overflow、pre-transport\
+      \ 本地容量拒绝和原生有界恢复、完整 R_t/D 分离、单 CompactionEntry、合法跨 checkpoint 原文 K/仅最新 M、restart/resume/new/tree/fork/clone、provider/model/config/reload、维护分类及取消/失效候选不提交。无需模型判断的行为可用真实宿主和受控服务证明；RPC\
+      \ 不替代 TUI，固定 M/媒体运输不证明模型理解，不默认重查全宿主。\n\n新效果分配：Orchestrator 保留有限总 call/token/time/known-cost\
+      \ 授权，为必要剩余场景按实际步骤和观测变动留合理余量，不把历史 per-case 小分区当作 Nunc/Pi/model 限制或确定性最小调用数。主请求和维护共用总额；成功、失败和未知\
+      \ usage 的 reservation 均保留。新批次重新绑定，不隐式继承已结束批次剩余额度。单个已终结且核对的独立失败不强制终止其余已隔离、无依赖、预算仍成立的场景；不得重试旧\
+      \ target 或由放宽分配新增付费探测。实际全局取消/总限额、可能越界或无法核对的关联效果仍停止后续效果。\n\n默认规则：产品跟随被测 Pi session\
+      \ 的有效选择和 runtime switch；新 standalone 场景继承效果前最新普通保存 defaults，不转发旧父 capsule/Astra，不反向固定\
+      \ Gemini。只有当前被测调用的真实未保存非秘密有效选择才可公开转发；不把旧窗口/输出/reserve/fixture 规模固定成普遍约束。metadata\
+      \ 可行性不构成调用、可用性或账单证明，不探测账户/quota。named override 只改变新任务并记录理由/差异，不重建 catalog/approval/auth\
+      \ receipt。\n\nBoundary: exact owner integration-verifier；源/配置/docs/Plan/仓库报告只读，仅在绑定的新\
+      \ session、task cwd/文件和私有输出运行跟踪 runner。完整交付预授权有效，Pi 正常认证解析/刷新/保存仍由既有 owner 负责；不复制\
+      \ profile/token、记录凭据或来源位置、建立 auth-handoff/login、改账户或承诺 auth bytes 冻结。既有 sessions/settings/defaults、dotfiles/控制面、宿主、其他项目与秘密受保护。不安装、不修仓库、不写临时替代执行逻辑、不全局安装/发布/push。\n\
+      \n效果前无调用 preflight 绑定 target、main/extraction 预算、真实输出/thinking/defaults、H/保留配置/模式、call/token/time/known-cost\
+      \ 和清理。unknown billing 保持 unknown/null；catalog 估算/原生零占位不许诺实付零或绝对 USD 上限。私有安全诊断报告区分\
+      \ real/controlled、配置差异、容量/省略、usage/cache、reservation/actual、已知/估算/未知费用、延迟、行动/产物、local\
+      \ terminal 与远端账单未知。\n\nRecovery: 缺绑定先做无效果准备；缺/坏报告从保留证据修复，不重放调用。失败停止受影响场景，核对\
+      \ usage、session、子进程与终态后才决定无依赖新场景是否可继续；缺终态/损坏账本/活动进程/超限或不明相关效果不得跳过。保留所有失败/unknown\
+      \ reservations 和旧单次 targets，不以 local abort 证明远端取消。缺 tracked runner 或有据产品矛盾交兼容未完成可写\
+      \ owner；producer DONE 后保留历史和此消费者，经 Planner 接入兼容交付再继续。MISSING_OBSERVATION 不自动等于产品缺陷；不重开\
+      \ DONE、不建 per-finding/retry 节点。必要观察仍 UNPROVEN/DISPROVEN 时此步与最终接受均未完成。"
     verification: "```yaml\nchecks:\n  - id: selected-host-preflight\n    argv: [/usr/bin/env,\
-      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
-      \ scripts/verify-live.mjs, --preflight]\n    stdin:\n      format: json\n  \
-      \    source: fresh_nonsecret_selection_with_current_native_pi_defaults\n   \
-      \   required: [target, limits, scenarios]\n      optional: [overrides]\n   \
-      \ exit_code: 0\n  - id: authorized-host-and-live-continuation\n    argv: [/usr/bin/env,\
-      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
-      \ scripts/verify-live.mjs]\n    stdin:\n      format: json\n      source: preflighted_selection_with_current_effective_metadata_and_new_batch_limits\n\
+      \ -u, NODE_OPTIONS, -u, PI_CODING_AGENT_DIR, -u, PI_PROVIDER, -u, PI_MODEL,\
+      \ -u, PI_REASONING_LEVEL, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
+      \ /opt/homebrew/bin/node, scripts/verify-live.mjs, --preflight]\n    stdin:\n\
+      \      format: json\n      source: fresh_nonsecret_selection_with_current_native_pi_defaults\n\
+      \      required: [target, limits, scenarios]\n      optional: [overrides]\n\
+      \    exit_code: 0\n  - id: authorized-host-and-live-continuation\n    argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, -u, PI_CODING_AGENT_DIR, -u, PI_PROVIDER,\
+      \ -u, PI_MODEL, -u, PI_REASONING_LEVEL, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    stdin:\n\
+      \      format: json\n      source: preflighted_selection_with_current_effective_metadata_and_new_batch_limits\n\
       \      required: [target, limits, scenarios]\n      optional: [overrides]\n\
       \    observation_modalities: [stock_rpc, real_model_continuation]\n    exit_code:\
       \ 0\n  - id: explicit-capacity-cancellation-observation\n    argv: [/usr/bin/env,\
-      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
-      \ scripts/verify-live.mjs]\n    stdin:\n      format: json\n      source: preflighted_reachable_full_capacity_scenario_with_actual_native_metadata\n\
+      \ -u, NODE_OPTIONS, -u, PI_CODING_AGENT_DIR, -u, PI_PROVIDER, -u, PI_MODEL,\
+      \ -u, PI_REASONING_LEVEL, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
+      \ /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    stdin:\n      format:\
+      \ json\n      source: preflighted_reachable_full_capacity_scenario_with_actual_native_metadata\n\
       \      required: [target, limits, scenarios, overrides]\n      scenarios: [{id:\
       \ c4, variant: capacity}]\n    exit_code: 2\n    contains_all: [CAPACITY]\n\
       \  - id: applicable-stock-tui-rpc-observation\n    argv: [/usr/bin/env, -u,\
@@ -411,14 +427,14 @@ phases:
       \      source: named_controlled_stock_observation_selection\n      required:\
       \ [target, limits, scenarios, overrides, observations]\n      observations:\
       \ [stock_rpc, stock_tui]\n    observation_modalities: [stock_rpc, stock_tui]\n\
-      \    exit_code: 0\n```\n按 Plan check_environment、DEVELOPMENT 与 LIVE 的跟踪入口执行或复用适用结果。preflight\
-      \ 不调用模型、解析/复制凭据或写新 session。Orchestrator 在每个新效果批次绑定实际选择和有效非秘密 forwarding，排除旧父\
-      \ capsule，不能隐式继承旧配额/模型或重构 catalog/approval/auth receipt。\n\n每个真实成功路径还须有来源、时序、持久化、真实维护与约束依赖产物/行动的正向证明；exit\
-      \ 0/OBSERVED 不足。capacity 的 exit 2/CAPACITY 只标识专门失败处理：从实际 maintenance/native\
-      \ session 确认超限、零 extraction dispatch、原 memory/boundary 未变、无 fallback；CONFIG\
-      \ 或其他错误无效。它不豁免 c4/full、late D、c5 成功续做。\n\n复用适用 c1–c3、实际 TUI/native 生命周期及 late-D\
-      \ 正向事实；输入或证据影响变化才补对应观察。错误 exact oracle 的修改不自动构成真实语义 PASS，保留真实要求并明确新判据依据。必要观察未执行、DISPROVEN/UNPROVEN\
-      \ 时本步及最终接受保持未完成，报告具体关闭条件。"
+      \    exit_code: 0\n```\n按 Plan check_environment、DEVELOPMENT、LIVE 执行或复用适用结果。前三个\
+      \ argv 明确 standalone defaults，去除旧父转发；不得借环境清理更换账户。preflight 不调用模型/解析复制凭据/写新 session。Orchestrator\
+      \ 绑定实际选择、必要非秘密差异、足够且有限的总分配，不重复填写默认目录/批准文本。\n\n成功路径需要来源、时序、持久化、真实维护及约束依赖产物/行动；exit\
+      \ 0/OBSERVED 不足。capacity 的 exit 2/CAPACITY 只标识指定失败处理，还须读取实际维护/native session\
+      \ 验证正常 H headroom、真实 full 超限、零 extraction、M/K 不变与无 fallback；CONFIG 或其他错误无效。c5\
+      \ 必须补更小模型维护/续做，旧 switch/rebudget 事实按范围保留。\n\n复用已成立 c4/full、late-D 与适用 c1–c3/TUI/native\
+      \ 证据，不做信心重跑或 plan-only paid runs。报告绑定与底层证明分开，实际因果变化只补受影响范围；最终整合 all 仍须有效。修复后的安全诊断只证明新可观察能力，不能追溯制造旧\
+      \ HTTP/cause 或将 unknown usage 计为零。任一必要要求 UNPROVEN/DISPROVEN 则本步和最终接受保持未完成，报告明确关闭条件。"
     refs:
     - README.md
     - docs/DESIGN.md
@@ -433,8 +449,11 @@ phases:
     - docs/PI.md
     - docs/LIVE.md
     - scripts/verify-live.mjs
+    - src/live/budget.ts
+    - src/live/runner.ts
+    - src/live/host.ts
     depends_on:
-    - nunc.simplification
+    - nunc.defensive-controls
     agent: integration-verifier
   - id: nunc.acceptance
     name: 最终整合 Nunc 完整项目验收
@@ -446,41 +465,42 @@ phases:
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\"\
       , \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 对唯一 phase nunc-v1 的完整\
       \ Nunc 项目作唯一终端接受决定，包含 nunc.policy 策略/场景、nunc.engine 增量滚动引擎、nunc.pi 原生维护/队列安全准入与检查生产者、nunc.observation-support\
-      \ 巨型完整来源和维护中纠正观察能力、nunc.discovery 完整发现、nunc.simplification 全批次原生职责/观察合同修正、nunc.runtime\
-      \ 真实宿主/模型事实。本 gate 同时承担 phase 和完整项目的同一质量判断；不新增修后全仓 reviewer，不重复这个接受决定。接受不授权发布、全局安装、日常配置变更或额外模型效果。\n\
-      \nAdmit: Orchestrator 提供最终整合不可变 candidate、完整适用原生离线 inventory、匹配 stock Pi/Node/lock\
-      \ 和有效非秘密配置、完整 discovery 报告及修正处置、实际 runtime 事实与证据适用性。最新用户彻底检查并修正类似过度设计、继续完整交付及\
-      \ native Pi 默认/认证边界优先，README/DESIGN 全部必要要求为项目权威，§8.2 作覆盖索引，ENGINE/PI/POLICY/DEVELOPMENT/LIVE\
-      \ 与跟踪场景为接口/检查依据。实现 prose 不能自行证明不必要限制，推荐/可选/历史局限不升格为义务。\n\n最终判断覆盖：全部发现 Targets\
-      \ 已完整分类，根因批次中有当前依据的缺陷已修正，有消费者的复杂度保留有据，advisory/不适用项处置有依据且不留必要证明缺口；generic native\
-      \ 委托未重新变成 API 名单、平行 model/catalog/auth/transport 或无消费者机制。判断修正与整个 Nunc 结果的覆盖、适用性、跨结果矛盾及剩余接受限制，消费已建立事实，不默认全源重读、重做所有语义调查、重复全项目检查或重放真实模型/TUI。\n\
-      \n最终完整离线 inventory 必须对最终整合候选有效，覆盖 engine/Pi/live 与跨组件正常/边界/失败/取消/恢复/支持组合，不能以分散组件\
-      \ PASS、固定旧测试数或历史版本重标替代。报告绑定与底层观察分别判断；source/lock/config/command/modality/authority\
-      \ 和要求未变时复用有效证据。源、依赖或整合变化要有受影响证明及有意义的最终全量回归；Plan-only/格式/绑定变化不触发模型效果重放。\n\n必要运行证明包含实际\
-      \ stock TUI 队列/编辑器/用户停止、native loader/compaction/persistence、合法跨 checkpoint\
-      \ 原文 K/仅最新 M、真实当前主模型维护与续做。c1–c3 复用适用正向事实；c4/full 巨型完整来源/中部例外/无省略 extraction/退役/真实产物、维护中\
-      \ corrective D 冻结排除/原样一次 native 交付/约束行动、c4/capacity 真正可达超限取消与状态不变、c5 真实严格更小模型/重算/续做均不可遗漏。错误\
-      \ late-D exact oracle 不能直接证明 D 丢失，修正判据亦不能自行证明模型通过；既有时序/行动与受影响语义分别判断。capacity\
-      \ 失败处理不代替 full 成功，旧模型余量或旧更小目标 dead end 不豁免必要要求，受控模型/固定 M/预期答案不能顶替真实语义。\n\n保持产品活动\
-      \ session 当前模型/运行时切换，新 standalone 批次最新普通保存 defaults；旧父 capsule/Astra 和旧配额不成为后续默认，不反向固定\
-      \ Gemini。命名 override 只服务必要场景并有新批次 target/call/token/time/known-cost 绑定。原生认证、transport、模型目录/选择、compaction/队列/usage、单\
-      \ CompactionEntry 与交付后 append/rebuild/恢复继续由 Pi 拥有；无 Nunc profile/凭据复制、auth-handoff/OAuth\
-      \ 子系统或新账户绕行。实际完整输出和 unknown billing、bounded incremental M、完整冻结 R_t/future D、原文\
-      \ K、主请求准入/本地容量分类/原生有界恢复、取消优先、失败不交付/无默认摘要等必要安全不变量保持。既有 sessions/settings/defaults、dotfiles/控制面、宿主、其他项目与秘密受保护，单次效果/额度/停止/核对有证据。\n\
-      \nBoundary: exact owner gate-reviewer；只读终端判断，只消费授权证据并在确有缺口时执行声明离线检查，不写 source/config/docs/Plan/tests/仓库报告，不改变运行/认证状态，不作模型调用、安装、清理、发布或\
-      \ push。排除未接受新需求、未选可选实现、benchmark 胜出、风格偏好和 hostile-local-agent/无关威胁调查。\n\nRecovery:\
-      \ 返回一个完整兼容问题批次，区分缺/坏报告、缺观察/前提和有依据产品矛盾。报告用保留观察修复，缺观察由原 owner 在边界内补齐；不能因此重开 DONE。若必要\
-      \ runner/check 或产品修复需 writable owner，保留已完成历史和本 gate，经 Planner 接入兼容交付。整合后同一 gate\
-      \ 的适用 Delta 覆盖受影响要求、直接依赖、未解决发现与触及不变量，保留其余有效证据，不建重复 gate/重试 phase。阻断缺陷、必要检查失败或必要要求未证明均阻止接受；完整发现批次处置有据、所有必要要求有当前正向证明、最终完整回归有效且无矛盾才允许项目完成。生命周期由\
-      \ Orchestrator 决定。"
+      \ 巨型来源/维护中纠正观察能力、nunc.discovery 完整发现、nunc.simplification 原生职责/观察合同修正、nunc.defensive-controls\
+      \ 可用安全诊断/有据过度防御修正及 nunc.runtime 真实宿主/模型事实。本 gate 同时承担 phase 和完整项目的同一质量判断，无第二接受、修后全仓\
+      \ reviewer 或 release 效果。\n\nAdmit: Orchestrator 提供最终整合不可变 candidate、完整适用原生离线\
+      \ inventory、匹配 stock Pi/Node/lock 和非秘密配置、完整 discovery/处置及新定向根因批次/关闭依据、真实 runtime\
+      \ 事实和证据适用性。最新用户继续完整交付、修正有据过度防御及原生默认/认证边界为权威；README/DESIGN 全部必要要求不缩范围，§8.2 是覆盖索引，ENGINE/PI/POLICY/DEVELOPMENT/LIVE\
+      \ 和跟踪场景提供接口/检查依据。实现说明、历史限制、advisory、示例/可选方案不能自行增加义务。\n\n判断全部发现范围已分类、必要根因修正有据、有消费者的复杂度保留有据且没有证明缺口；旧全仓覆盖/处置与新定向发现按适用性消费，不重新全仓调查。generic\
+      \ native 委托不得退回 API 名单、平行 catalog/auth/transport；恢复的诊断须对实际消费者有用且不泄漏秘密，不能只改固定报错文本或宣称可另查并不存在的日志。独立场景失败隔离、合理\
+      \ caller 分配与有限总额度共存，保留失败/unknown reservations、取消、单次效果和不明状态核对，不借简化增添自动付费重试。\n\
+      \n最终 all 必须对最终整合候选有效，包含 engine/Pi/live 和跨组件正常/边界/失败/取消/恢复/支持组合；分散组件 PASS、固定历史测试数或版本重标不够。source/lock/config/命令/modality/authority/要求未变且因果适用时复用底层证明；源、依赖或整合变化补受影响证明及有意义的最终完整回归。Plan-only、报告绑定/格式或新增诊断不自动触发真实模型/TUI\
+      \ 重放。已成立 c4/full、late-D、适用 c1–c3/TUI/native 事实保留，不为信心再跑。\n\n完整运行要求包含真实 stock\
+      \ TUI 队列/编辑器/用户停止、native loader/compaction/persistence、合法跨 checkpoint 原文 K/仅最新\
+      \ M、当前主模型真实维护和续做；c4/full 巨型完整来源/中部例外/无省略 extraction/退役/产物、维护中 D 冻结排除/原样一次交付/约束行动、c4/capacity\
+      \ 真正可达超限取消/零 extraction/M-K 不变/无默认摘要、c5 真实严格更小模型及两类预算/M/K 重算/维护/约束产物均不可遗漏。c5\
+      \ 仅 switch/thinking/主预算变化不能替代剩余维护与续做。缺失 provider 原因保持未知，不从脱敏错误推断认证或可用性，不将新的诊断能力追溯当成旧原因证据。错误\
+      \ exact oracle 与真实行动分开，断言修改、受控响应、固定 M、预期答案或自报 PASS 不证明模型语义；CONFIG 不代替 capacity，失败处理不代替正常\
+      \ full 成功。\n\n保留活动 session 有效选择/运行切换、新 standalone 最新普通保存 defaults；不转发旧父 capsule/Astra、不固定\
+      \ Gemini、不隐式沿用已结束配额。named override 仅服务必要新任务并绑定实际 target/call/token/time/known-cost。Pi\
+      \ 独占模型目录/选择/配置/auth/transport/compaction/队列/usage、单 CompactionEntry 与交付后 append/rebuild/恢复；无\
+      \ Nunc credential-copy/auth-handoff/OAuth 子系统、新账户绕行、SDK host 或私有 patch。完整真实输出、unknown\
+      \ billing、有界增量 M、完整冻结 R_t/future D、原文 K、独立主请求容量准入/本地容量分类/有界原生恢复、取消优先、失败不交付/无默认摘要成立。既有\
+      \ sessions/settings/defaults、dotfiles/控制面、宿主、其他项目与秘密受保护。\n\nBoundary: exact\
+      \ owner gate-reviewer；只读终端判断，仅消费授权证据并在确有缺口时执行声明离线检查；不写 source/config/docs/Plan/tests/仓库报告，不改变运行/认证状态，不调用模型、安装、清理、发布、全局安装或\
+      \ push。排除未接受新需求、benchmark 胜出、可选实现、风格和 hostile-local-agent/无关威胁调查。\n\nRecovery:\
+      \ 返回一个完整兼容问题批次，区分报告缺陷、缺观察/前提与有据产品矛盾。保留观察修报告，原 owner 补缺观察；所需源码/runner/check 修复交兼容未完成\
+      \ writable producer，已完成时经 Planner 接入兼容交付，所有 DONE 历史保持。整合后继续同一 gate 的适用 Delta，覆盖受影响要求、直接依赖、未解决发现和触及不变量并保留其余证据，无重复\
+      \ gate/重试 phase。所有必要要求有当前正向证明、发现义务有据关闭、最终全量回归有效且无阻断缺陷/跨结果矛盾，才可接受完整项目；负面或未知必要项阻止接受。Orchestrator\
+      \ 独占生命周期，接受不授权发布、日常配置改变或额外模型效果。"
     verification: "```yaml\nchecks:\n  - id: integrated-project-offline-regression\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
-      \ 0\n```\n消费最终整合候选上完整适用 all 结果；只有确实缺少适用执行结果才在获准 immutable checkout 补跑，不为 gate\
-      \ 名称额外重测。检查环境按 Plan 与 DEVELOPMENT，非空完整库存和 lock/版本是机械合同，不固定测试数量。\n\nFULL 作唯一完整项目判断；适用\
-      \ Delta 保留未变证据。核对 discovery 完整覆盖及根因批次处置、native 简化未损必要安全与行为、全部 DESIGN 要求、最终整合回归和必要真实\
-      \ full/late-D/capacity/c5 证明。现有 c1–c3、TUI/native 生命周期及 late-D 正向事实按实际适用性复用。报告绑定/原子断言修改不能代替行为证明。全部必要要求有当前匹配的正向证据、发现义务无遗漏、最终完整回归有效且无阻断缺陷才\
-      \ PASS；报告交 Orchestrator，gate 不改生命周期。"
+      \ 0\n```\n消费最终整合候选的完整适用 all；只有缺少适用执行证据才在绑定的 immutable checkout 补跑，不为 gate 名称额外重测。按\
+      \ Plan check_environment 与 DEVELOPMENT，缺版本/lock/必要非空库存明确失败，不固定测试数量。\n\nFULL\
+      \ 作唯一完整项目决定；适用 Delta 保留未变证明。消费旧完整 discovery/全部处置、新定向 intake 与 defensive-controls\
+      \ 关闭证明、native 安全/行为、全部 DESIGN 要求及实际 runtime 事实；c5 剩余更小模型维护/续做与真实 capacity 必须关闭。复用已成立\
+      \ full、late-D 和适用 c1–c3/TUI/native，报告或 oracle 修改不等同真实行为证据。所有必要要求 PROVEN、全部有据义务解决、最终完整回归有效且无阻断缺陷才\
+      \ PASS；报告交 Orchestrator，不改生命周期。"
     refs:
     - README.md
     - docs/DESIGN.md
@@ -503,6 +523,9 @@ phases:
     - policies/default.md
     - .gitignore
     - .gitattributes
+    - src/live/runner.ts
+    - src/live/host.ts
+    - tests/live/budget.test.ts
     depends_on:
     - nunc.runtime
     agent: gate-reviewer
@@ -774,3 +797,80 @@ phases:
       previous real/TUI evidence retained. Native model quality, current-default actual
       effects, c4/full/capacity and c5 remain existing runtime requirements; no final
       project acceptance asserted.'
+  - id: nunc.defensive-controls
+    name: 恢复可用诊断并消除有据的过度防御
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
+      , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
+      , \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".pi/**\", \".agents/**\", \".gitignore\", \".gitattributes\"\
+      , \".node-version\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 交付一个供原\
+      \ nunc.runtime 消费的可诊断、有界且不过度耦合的观察执行能力：恢复 native 失败的安全有效诊断，定向检查同一 producer 范围内的类似限制/重复\
+      \ guards，并在同一可 Git 回退事务修正全部有当前依据的问题。source、行为 tests、必要 runner/fixtures 与外部 workflow\
+      \ 文档一起交付；不扩建日志、provider、重试、预算或审查框架。所有 DONE 定义/证据/历史不可变，原 runtime 与唯一 acceptance\
+      \ 保持身份。\n\n已证实入口是 boundedProvider 将每个 native terminal.errorMessage 一律替换成要求另查\
+      \ host 的固定文本，而 retained host/worker 路径没有保留可用原因。必须在所选 native seam 可获取时保留有诊断价值的\
+      \ HTTP status、native failure code/category 与有用的脱敏原因，并将它们送达调用者实际消费的终态/报告；只在确实缺信息时明确缺失，不能再指向并不存在的私下日志。未知原始错误不能事后恢复，新增记录能力不证明既有失败的具体原因，也不证明\
+      \ provider 不可用或认证错误。具体小型诊断表示与安全提取方法由 owner 选择，不逐 provider 建名单。禁止凭据/来源位置、认证 headers、原始\
+      \ auth/provider 日志或未经筛选的请求/响应正文进入报告；保持 native stream/stopReason、usage 和 cancellation\
+      \ 语义，不把错误改成成功。\n\n定向独立检查及修正范围沿实际反向消费者展开：native terminal/exception、HTTP、RPC、worker/supervisor\
+      \ 的信息丢弃与错误归类；调用分配、终态/usage 核对、预算与跨场景停止的耦合；实际来源/输出/容量校验的重复或更强无依据谓词。复用已完成全仓 discovery\
+      \ 的覆盖与 D1/D2、A1/A2/A3 处置，只检查新线索和因果相关 sibling seams，不再安排仪式性全仓扫描。每个新增有据缺陷列出真实消费者、可达反例、保留不变量及关闭证据；advisory\
+      \ 或无当前消费者矛盾的 guard 可有据保留，不因防御性命名或风格删除。\n\n执行控制须区分实际效果边界：失败的场景停止并核对子进程、请求终态与持久状态，不重试或重放该\
+      \ target。一个已终结且本地效果已核对的独立场景失败，不应无条件禁止另一个已绑定、隔离、无依赖的新场景；保留共享总 call/token/time/known-cost\
+      \ 上限，成功/失败/unknown 的 reservations 均计入，不退款。缺终态、活动进程、账本损坏、可能越界效果或无法成立的总额度使相关效果停止，真正全局取消/总限额仍停止全部。unknown\
+      \ usage/billing 与未核对本地执行分别表示，不伪装为零或远端取消证明。不因此增加自动付费 retry、quota probe、并行执行或跨\
+      \ target resume。caller 的过小 per-case 分配由 Orchestrator 在现有总授权内修正；不要把某个历史 call\
+      \ 数移成产品最大值、固定最小值或新增配置层。\n\nBoundary: exact owner node-typescript-engineer；本仓库隔离\
+      \ worktree 中的可回退 source/tests/docs 事务。允许同目标锁定依赖准备和离线受控 native host/service 检查，不读取真实凭据、不做真实模型/网络探测。scope\
+      \ 是预期改动面；受保护 dotfiles/控制面、未跟踪 dashboard、既有 sessions/settings/defaults、宿主、其他项目与秘密不变。保留\
+      \ native 目录/选择/auth/transport/compaction/queue/persistence、真实目的地和输出约束、取消、单次效果、完整\
+      \ R_t/D 分离、bounded M/verbatim K、失败不提交/无默认摘要。无 host patch、发布、全局安装、push。\n\nAdmit:\
+      \ Orchestrator 在本步骤内先安排独立只读定向 intake，向 owner 交付当前线索、适用旧发现与完整相关根因批次；它是本交付的准备/完成程序，不新增\
+      \ read-only Plan 节点、manual loop 或接受决定。owner 核对当前产品要求和所选 stock Pi 公开 seam，完成所有有依据的兼容修正及有据保留处置。交付候选、相关行为证明、最终整合完整\
+      \ all 与旧观察适用性说明；无需等待下游真实模型续做才交付自身能力。已成立 c4/full、late-D 及 c1–c3/TUI/native 事实按因果适用性复用，诊断与分配变化不自动使成功路径失效。\n\
+      \nRecovery: 检查/诊断/报告缺口和兼容修正留在本未完成 owner；不逐发现建节点或重开 DONE。可能开始的受控效果先核对再清理。不能安全保留某类原因时说明具体不可获得/不可输出的信息和最小仍有用诊断，不靠放开原始秘密日志解决。必要源码缺口在交付前修完；真实\
+      \ provider 原因未知和缺少模型观察仍由原 runtime 在效果边界内处理，禁止盲目付费重试。"
+    verification: "```yaml\nchecks:\n  - id: defensive-controls-and-final-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [完整engine-Pi-live与跨组件库存, native失败诊断到实际报告消费者, 敏感字段不泄漏, 终态与缺终态及unknown-usage区分,\
+      \ 独立场景失败隔离与共享总额, 取消和单次效果及清理, 真实destination-output-capacity约束, 有据同类修正的实际行为]\n\
+      ```\n使用 Plan check_environment、DEVELOPMENT 与跟踪 lock，从干净 checkout 重现；不隐式安装。真实\
+      \ native Provider/HTTP 或受影响 RPC/worker seam 的受控失败应能区分可取得的状态/原因与本地容量/取消/未知错误；加入虚构敏感值，证明消费者收到有效诊断且凭据、auth\
+      \ headers、原始私密正文未被转存。检查必须经过所断言的传输/终态/报告路径，不能只测孤立 sanitizer、断言固定文本、mock 掉 native\
+      \ seam 或以自报 PASS 作证明。\n\n对独立场景控制执行可证伪测试：前一场景已终结且核对的失败被保留为失败，后一独立已授权场景能在剩余总额度内执行；同\
+      \ target 不被重放，未知 usage 的全 reservation 保留；真正未核对效果、取消、总 call/token/time/known-cost\
+      \ 耗尽仍在下一效果前停止。覆盖同类根因的实际正/负向消费者，保留现有必要安全测试的含义。全量 all 必须对最终整合候选有效；当前已有检查可复用其未变范围，源/依赖/整合变化补受影响证明及最终完整回归，不固定历史测试数。没有新真实模型调用要求，不把诊断\
+      \ fixtures 当作 c5 续做证明。"
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/ENGINE.md
+    - docs/PI.md
+    - docs/DEVELOPMENT.md
+    - docs/LIVE.md
+    - package.json
+    - package-lock.json
+    - tsconfig.json
+    - .node-version
+    - src/live/budget.ts
+    - src/live/runner.ts
+    - src/live/host.ts
+    - src/live/worker.ts
+    - src/live/observer.ts
+    - src/live/contract.ts
+    - src/live/defaults.ts
+    - src/pi/admission.ts
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - tests/live/budget.test.ts
+    - tests/live/lifecycle.test.ts
+    - tests/live/host.test.ts
+    - tests/live/native-delegation.test.ts
+    - tests/scenarios/inputs.json
+    - tests/scenarios/observer.json
+    depends_on:
+    - nunc.simplification
+    agent: node-typescript-engineer
