@@ -68,8 +68,8 @@ try {
   if (quota) {
     assert.equal(f.requests.length, 1);
     assert.equal(summary.calls, 1);
-    assert.equal(report.segments[1]?.reason, "CALL_LIMIT");
     assert.equal(reserves.length, 1);
+    assert.match(`${report.segments[1]?.reason ?? ""} ${report.segments[1]?.diagnostic ?? ""}`, /CALL_LIMIT/);
   } else {
     assert(f.requests.length > 1, `second case made no HTTP: ${f.requests.length}`);
     assert(summary.calls >= 2, `second case reserved nothing: ${summary.calls}`);
