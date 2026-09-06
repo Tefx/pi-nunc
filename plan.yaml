@@ -344,7 +344,7 @@ phases:
       reviewer: integration-verifier
   - id: nunc.runtime
     name: Stock TUI 与隔离真实主模型的运行证据
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"README.md\", \"docs/**\", \"package.json\", \"package-lock.json\", \".node-version\"\
@@ -420,6 +420,8 @@ phases:
     depends_on:
     - nunc.pi
     agent: integration-verifier
+    claimed_by: integration-verifier
+    claimed_at: '2026-09-06T13:06:53.194297Z'
   - id: nunc.acceptance
     name: 最终整合 Nunc 完整项目验收
     status: pending
