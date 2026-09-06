@@ -470,7 +470,7 @@ phases:
     agent: gate-reviewer
   - id: nunc.observation-support
     name: 巨型完整来源与维护中纠正的跟踪观察能力
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"README.md\",\
       \ \"docs/**\", \"examples/**\", \"package.json\", \"package-lock.json\", \"\
@@ -523,3 +523,5 @@ phases:
     depends_on:
     - nunc.pi
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-06T14:29:28.935403Z'
