@@ -672,7 +672,7 @@ phases:
       runtime evidence preserved. All four completed producers remain immutable.'
   - id: nunc.simplification
     name: 消除重复原生职责并修正全批次观察合同
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -747,3 +747,5 @@ phases:
     depends_on:
     - nunc.discovery
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-06T16:45:36.454259Z'
