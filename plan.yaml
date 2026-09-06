@@ -799,7 +799,7 @@ phases:
       project acceptance asserted.'
   - id: nunc.defensive-controls
     name: 恢复可用诊断并消除有据的过度防御
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -874,3 +874,5 @@ phases:
     depends_on:
     - nunc.simplification
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-06T19:08:50.330448Z'
