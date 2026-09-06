@@ -1,0 +1,82 @@
+// purpose: Exercise downstream continuation controls through real stock RPC with a loopback fixture.
+// usage: node scripts/observe-segment.mjs c1|c2|c3|outside|codex|codex-timeout
+// effects: New isolated target; native tools/session/HTTP; bounded cleanup; retained mechanics evidence.
+// requires: Locked build and stock-driver.mjs. Scripted outputs cannot establish memory quality.
+import assert from 'node:assert/strict';
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { StockFixture, root, records } from './stock-driver.mjs';
+import { runSegment } from '../dist/src/live/worker.js';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
+import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex';
+import { readLedger, ledgerSummary } from '../dist/src/live/budget.js';
+const which = process.argv[2] ?? 'c1', nativeDefaults = which === 'codex-defaults', timeout = which === 'codex-timeout', codex = which === 'codex' || nativeDefaults || timeout, id = timeout ? 'c1' : codex ? 'c2' : which === 'outside' ? 'c1' : which;
+assert(['c1', 'c2', 'c3'].includes(id));
+const f = await new StockFixture().setup(codex ? { api: 'openai-codex-responses' } : {}), target = join(f.dir, 'nunc-live-controlled'); await mkdir(target);
+const input = JSON.parse(await readFile(join(root, codex ? 'tests/live/preflight-codex-input.json' : 'tests/live/preflight-input.json'), 'utf8'));
+input.target.repository = root; input.target.stateRoot = target;
+input.scenarios[0].id = id;
+if (!codex) input.scenarios[0].config = { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
+const model = codex ? { ...openaiCodexProvider().getModels().find(m => m.id === 'gpt-6-astra'), baseUrl: f.endpoint } : { id: 'nunc-native', name: 'nunc-native', provider: 'groq', api: 'openai-completions', baseUrl: f.endpoint, reasoning: false, input: ['text', 'image'], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+const overrides = { models: [model], ...(nativeDefaults ? {} : { controlledModels: JSON.parse(await readFile(join(f.state, 'agent/models.json'), 'utf8')) }) };
+if (nativeDefaults) {
+  process.env.PI_CODING_AGENT_DIR = join(f.state, 'agent');
+  process.env.HOME = join(f.state, 'home');
+  input.effective = { source: 'invoking-runtime', provider: model.provider, model: model.id, thinking: 'high', transport: 'sse', compaction: input.scenarios[0].config.compaction, settings: {} };
+}
+if (codex && !nativeDefaults) {
+  await mkdir(join(target, 'host'));
+  await writeFile(join(target, 'host/auth.json'), JSON.stringify({ 'openai-codex': f.oauth }), { mode: 0o600 });
+}
+const write = (path, content) => [{ tool: { name: 'write', input: { path, content: JSON.stringify(content) } } }, 'Saved.'];
+const read = path => [{ tool: { name: 'read', input: { path } } }, 'Read.'];
+const steps = id === 'c1' ? ['Pending.', ...read('probe.json'), ...write('decision.json', { route: 'direct', reason: 'Controlled fixture reason.' })] : id === 'c2' ? ['Pending.', ...write('sum.json', { sum: 46 }), ...write('product.json', { product: 104 }), ...write('difference.json', { difference: 63 }), ...write('retry.json', { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })] : [read('routes.json')[0], read('records.json')[0], 'Read.', ...write('note.txt', 'Chlorophyll absorbs other wavelengths. Reflected green light reaches the eye.'), 'Cannot establish the requested continuation from controlled empty memory.'];
+f.response = (row, source) => source ? JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id) }) : (() => { assert(steps.length, 'scripted native service inventory exceeded'); return steps.shift(); })();
+let outcome = { status: 'FAIL', case: which };
+try {
+  if (timeout) f.hold('main');
+  const job = { input, scenarioIndex: 0, deadline: Date.now() + (timeout ? 5000 : 45000), resume: false };
+  const report = await runSegment(job, overrides);
+  assert.equal(report.status, which === 'outside' || timeout ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, prerequisites: report.prerequisites, preparationFailure: report.preparationFailure }));
+  if (timeout) {
+    assert.equal(f.requests.length, 1); assert(f.requests[0].closed);
+    const ledger = readLedger(join(target, 'calls.jsonl')), usage = ledgerSummary(ledger);
+    assert.equal(usage.calls, 1); assert.equal(usage.reservedTokens, 400000); assert.equal(usage.reservedCostUsd, null);
+    assert(report.pid > 0); assert.throws(() => process.kill(report.pid, 0), { code: 'ESRCH' });
+    await writeFile(join(f.dir, 'ledger.json'), JSON.stringify(ledger));
+  } else if (which === 'outside') { assert.equal(report.reason, 'CALIBRATION'); assert.equal(report.maintenance.length, 0); assert.equal(f.requests.length, 3); }
+  else {
+    const expected = id === 'c2' ? 3 : 1;
+    assert.equal(report.calibrations.length, expected); assert.equal(report.maintenance.length, expected);
+    assert(report.prerequisites.every(p => p.status === 'PROVEN'), JSON.stringify(report.prerequisites));
+    const saved = SessionManager.open(report.sessionFile), branch = saved.getBranch(), checkpoints = branch.filter(e => e.type === 'compaction');
+    assert.equal(checkpoints.length, expected);
+    for (let n = 0; n < checkpoints.length; n++) assert.equal(checkpoints[n].firstKeptEntryId, report.calibrations[n].firstKeptEntryId);
+    assert(f.requests.some(r => (r.payload.messages ?? r.payload.input).some(m => m.role === 'tool' || m.type === 'function_call_output')), 'genuine stock tool result delivered');
+    if (codex) {
+      const ledger = readLedger(join(target, 'calls.jsonl')), usage = ledgerSummary(ledger);
+      assert(report.maintenance.every(r => r.observations.usage.cost === null), 'subscription placeholders never claim observed billing');
+      assert.equal(usage.calls, 12); assert.equal(usage.reservedTokens, 4800000); assert.equal(usage.reservedCostUsd, null); assert.equal(usage.costUsd, null);
+      assert.deepEqual(usage.unreconciledCallIds, []);
+      assert(ledger.filter(r => r.kind === 'reserve').every(r => r.outputCeiling === 128000 && r.catalogReservationUsd > 0));
+      assert(f.requests.every(r => r.payload.max_output_tokens === undefined));
+      if (nativeDefaults) {
+        assert(f.requests.filter(r => !r.source).some(r => r.payload.reasoning?.effort === 'high'), 'native current thinking survives invocation');
+        await assert.rejects(readFile(join(target, 'host/auth.json')), { code: 'ENOENT' });
+        assert((await readFile(join(f.state, 'agent/auth.json'), 'utf8')).length > 0, 'fictional pre-existing native owner remains in place');
+      }
+      await writeFile(join(f.dir, 'ledger.json'), JSON.stringify(ledger));
+    }
+    await writeFile(join(f.dir, 'native-session.jsonl'), await readFile(report.sessionFile));
+    if (id === 'c3') {
+      const before = saved.buildContextEntries(), resumed = await runSegment({ ...job, resume: true }, overrides);
+      assert.notEqual(resumed.pid, report.pid); assert.equal(resumed.sessionFile, report.sessionFile);
+      assert(resumed.prerequisites.some(p => p.check.startsWith('new process resumed') && p.status === 'PROVEN'));
+      assert.equal(resumed.status, 'UNPROVEN', 'missing artifact cannot claim quality success');
+      await writeFile(join(f.dir, 'resumed.json'), JSON.stringify(resumed));
+    }
+  }
+  await writeFile(join(f.dir, 'segment.json'), JSON.stringify(report));
+  outcome = { status: 'PROVEN_CONTROLLED', case: which, nativePid: report.pid, requests: f.requests.length, calibrations: report.calibrations.length, memoryQuality: 'UNPROVEN: scripted service responses test plumbing only' };
+} catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
+finally { await rm(target, { recursive: true, force: true }); await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }

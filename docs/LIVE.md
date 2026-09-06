@@ -24,6 +24,22 @@ Producer tests use fictional pre-existing native profiles and controlled service
 
 `--preflight` resolves nonsecret configuration, checks the locked build and actual target/limits, and makes no model call, auth resolution/copy, new task session or installation. `--observe-stock` runs named controlled RPC/TUI checks. Missing prerequisites fail explicitly; RPC cannot substitute for TUI. `PI_OFFLINE` suppresses startup/catalog refresh, without limiting model calls itself.
 
+The exact public schema is:
+
+- `target: {repository, stateRoot, cleanup: "retain" | "remove"}` with canonical absolute paths.
+- `limits: {maxCalls, maxTotalTokens, maxDurationMs, maxOutputTokens, maxCostUsd}` with positive finite integer counts/time/output; `maxCostUsd` is positive for a known-cost reservation or null for unknown billing. Codex defaults an omitted cost ceiling to null.
+- `scenarios: [{id: "c1" | "c2" | "c3" | "c4" | "c5", variant?: "full" | "capacity"}]`; c4 requires its variant.
+- Optional `overrides: [{requirement, reason, model?: {provider,id}, smallerModel?: {provider,id}, thinking?, config?: {nunc?, compaction?, retentionCalibration?}}]`. Partial compaction overrides merge with native defaults. Calibration supplies `minFraction`/`maxFraction`; c5 requires a named smaller-model selection. Reports include before/after differences.
+- Optional `observations`: `continuation` alone (default), or `stock_rpc`/`stock_tui` for controlled-only observations.
+
+`examples/live-selection.json` is a path template using native defaults. No `authorization`, `models`, `credentials`, `receipt`, credential path or preparation fields are accepted on public stdin. Internal synthetic job fixtures under `tests/live` include normalized metadata solely to test private quota/worker interfaces; they are not operator templates.
+
+Public `ModelRuntime.create` with an empty in-memory credential store and `refreshOnCreate:false` resolves nonsecret model configuration, including native models.json endpoint/capacity overrides, without opening native auth or constructing a session. Supported verification providers are Anthropic, OpenAI and OpenAI Codex. Unsupported model headers/sampling overrides or endpoints containing credentials/query data fail before effects.
+
+`PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` are Pi's public shell-tool forwarding path. Without those values, startup resolution uses saved settings and persisted/default project trust. No-call preflight refuses an unresolved startup model rather than probing accounts to choose one. Other running extensions' unsaved configuration and transient project-trust choices are not discoverable from another process; use a supported standalone invocation or explicitly forward the required nonsecret differences. Nunc itself always receives the active host's public context and actual request options.
+
+The verification-only `bounded-observation` requirement records its restricted tools/context/resources, SSE and zero-retry differences. It preserves main output/thinking. The new scenario cwd receives only a narrow nonsecret task settings overlay (compaction and request/delivery options) through Pi's native project settings, with invocation-only `--approve`; no saved trust decision or existing repository/daily `.pi` directory is modified. Native global model configuration and credential ownership stay inherited. No whole profile is cloned.
+
 `target` identifies the checkout and a new canonical task root beneath its `.scratch/` or the system temporary directory, plus retain/remove cleanup. `limits` bounds calls, total reserved tokens, time, total output and known costs. Both main and maintenance consume the same finite quota. Preserve single-use target binding and uncertain-effect reconciliation; do not rerun an executed target. No separate default-inheritance receipt or free-form approval is required.
 
 Uncapped native Codex requests reserve `model.maxTokens`, without inventing `max_output_tokens`. The native provider owns serialization, compression, authentication and transport. Subscription billing is unknown/null; catalog estimates and native zero placeholders do not prove an invoice or absolute USD cap. Known costs enforce their configured bound. Failed or unresolved calls stop later effects; reservations are not refunded. Local cancellation cannot prove remote cancellation or final billing.

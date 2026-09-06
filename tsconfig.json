@@ -1,11 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2023",
+    "target": "ES2024",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2024", "DOM"],
     "types": ["node"],
-    "paths": { "pi-nunc/engine": ["./src/engine/index.ts"] },
+    "paths": {
+      "pi-nunc": ["./src/index.ts"],
+      "pi-nunc/engine": ["./src/engine/index.ts"],
+      "pi-nunc/pi": ["./src/pi/index.ts"]
+    },
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,

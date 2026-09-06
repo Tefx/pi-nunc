@@ -1,0 +1,171 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { EventEmitter } from "node:events";
+import type { Api, Context, Model } from "@earendil-works/pi-ai";
+import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { object, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
+export { toolPath } from "./tool-path.js";
+export interface HostOptions {
+  repository: string; input: RunInput; selection: Selection; caseRoot: string; modelTargets: Model<Api>[];
+  deadline: number; signal: AbortSignal; sessionFile?: string;
+  /** Test-only native models.json overlay; it replaces the service endpoint, never the host or Provider. */
+  controlledModels?: unknown;
+  onMaintenance?: (event: unknown) => void;
+  onContext?: (model: Model<Api>, context: Context, kind: string) => void;
+  onAction?: (event: unknown) => void;
+}
+export function childEnvironment(state: string): NodeJS.ProcessEnv {
+  return { HOME: join(state, "home"), PI_CODING_AGENT_DIR: join(state, "host"), TMPDIR: join(state, "tmp"),
+    XDG_CONFIG_HOME: join(state, "xdg/config"), XDG_CACHE_HOME: join(state, "xdg/cache"), XDG_DATA_HOME: join(state, "xdg/data"),
+    PATH: "/opt/homebrew/bin:/usr/bin:/bin", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
+}
+/** Native owner configuration/auth stays inherited, only task scratch is redirected. */
+export function nativeEnvironment(state: string): NodeJS.ProcessEnv {
+  const { NODE_OPTIONS: _node, PI_SESSION_ID: _session, PI_SESSION_FILE: _file, ...env } = process.env;
+  return { ...env, TMPDIR: join(state, "tmp"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
+}
+/** A protocol client and read-only native session view. Stock Pi owns every write/run/retry. */
+export class NativeHost {
+  readonly session = this;
+  readonly sessionManager = {
+    getBranch: (): SessionEntry[] => this.saved()?.getBranch() ?? [],
+    buildContextEntries: (): SessionEntry[] => this.saved()?.buildContextEntries() ?? [],
+    getSessionId: (): string => this.sessionId,
+    getLeafId: (): string | null => this.saved()?.getLeafId() ?? null,
+  };
+  readonly fixed: { systemPrompt: string; tools: NonNullable<Context["tools"]> } = { systemPrompt: "", tools: [] };
+  model: Model<Api> | undefined;
+  sessionFile: string | undefined;
+  sessionId = "";
+  pid: number | undefined;
+  private child!: ChildProcessWithoutNullStreams;
+  private readonly changed = new EventEmitter();
+  private readonly pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  private readonly events: Array<Record<string, unknown>> = [];
+  private cursor = 0;
+  private output = "";
+  private bytes = 0;
+  private exited = false;
+  private closed: Promise<void> = Promise.resolve();
+  private serial = 0;
+  private killTimer: NodeJS.Timeout | undefined;
+  private readonly abort = () => { this.child?.kill("SIGTERM"); this.killTimer ??= setTimeout(() => this.child?.kill("SIGKILL"), 1000); };
+  constructor(readonly options: HostOptions) {}
+  private saved(): SessionManager | undefined { return this.sessionFile && existsSync(this.sessionFile) ? SessionManager.open(this.sessionFile) : undefined; }
+  get messages() { return this.saved()?.buildSessionContext().messages ?? []; }
+  async start(): Promise<this> {
+    const o = this.options, state = o.input.target.stateRoot, cwd = join(o.caseRoot, "task"), host = join(state, "host");
+    for (const path of [join(state, "tmp"), join(o.caseRoot, "sessions")]) await mkdir(path, { recursive: true });
+    if (o.controlledModels) for (const path of [host, join(state, "home")]) await mkdir(path, { recursive: true });
+    const config = join(o.caseRoot, "nunc-config.json"), binding = join(o.caseRoot, "observer-binding.json");
+    await writeFile(config, JSON.stringify(o.selection.config.nunc), { mode: 0o600 });
+    const taskSettings = { ...o.input.effective?.settings, compaction: o.selection.config.compaction, retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0 } }, transport: "sse", packages: [], extensions: [], skills: [], prompts: [], themes: [], enableSkillCommands: false };
+    if (o.controlledModels) await writeFile(join(host, "settings.json"), JSON.stringify(taskSettings), { mode: 0o600 });
+    else if (!o.sessionFile) {
+      // Only this newly created task's narrow nonsecret settings overlay. Native
+      // global settings/auth are neither copied nor rewritten.
+      await mkdir(join(cwd, ".pi"), { mode: 0o700 });
+      await writeFile(join(cwd, ".pi", "settings.json"), JSON.stringify(taskSettings), { mode: 0o600, flag: "wx" });
+    }
+    if (o.controlledModels) await writeFile(join(host, "models.json"), JSON.stringify(o.controlledModels), { mode: 0o600 });
+    const events = join(o.caseRoot, `events-${process.pid}-${Date.now()}.jsonl`);
+    await writeFile(events, "", { mode: 0o600, flag: "wx" });
+    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd }), { mode: 0o600 });
+    this.eventsFile = events;
+    const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
+    const packageDir = join(o.repository, "node_modules/@earendil-works/pi-coding-agent");
+    const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
+    const cli = join(packageDir, manifest.bin.pi);
+    const args = [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", "-e", join(o.repository, "dist/src/live/observer.js"), "-e", join(o.repository, "dist/src/index.js"), "--nunc-config", config, "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
+    this.child = spawn(process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
+    this.pid = this.child.pid;
+    this.child.stdin.on("error", () => this.abort());
+    this.child.stdout.on("data", (buffer: Buffer) => {
+      this.bytes += buffer.length;
+      if (this.bytes > 32_000_000) { this.abort(); return; }
+      this.output += buffer.toString(); let end: number;
+      while ((end = this.output.indexOf("\n")) >= 0) {
+        const line = this.output.slice(0, end); this.output = this.output.slice(end + 1);
+        try {
+          const e: unknown = JSON.parse(line); if (!object(e)) continue;
+          if (e.type === "response" && typeof e.id === "string") {
+            const pending = this.pending.get(e.id); this.pending.delete(e.id);
+            if (e.success === false) pending?.reject(new RunnerError("RPC", `Native command ${String(e.command)} failed`)); else pending?.resolve(e.data);
+          } else this.events.push(e);
+          this.changed.emit("event");
+        } catch { this.abort(); }
+      }
+    });
+    // Never retain auth/provider error bodies. The bounded provider reports codes/usage separately.
+    this.child.stderr.on("data", (buffer: Buffer) => { this.bytes += buffer.length; if (this.bytes > 32_000_000) this.abort(); });
+    this.closed = new Promise<void>(resolve => {
+      const end = () => {
+        this.exited = true; for (const p of this.pending.values()) p.reject(new RunnerError("HOST_EXIT", "Native host exited"));
+        this.pending.clear(); this.changed.emit("event"); resolve();
+      };
+      this.child.once("error", end); this.child.once("close", end);
+    });
+    o.signal.addEventListener("abort", this.abort, { once: true }); if (o.signal.aborted) this.abort();
+    await this.refresh(); return this;
+  }
+  private eventsFile = "";
+  private drain(): void {
+    const data = readFileSync(this.eventsFile, "utf8");
+    requireValue(data.length <= 64_000_000, "OUTPUT", "Observer evidence limit reached");
+    const rows = data.slice(this.cursor).split("\n"); rows.pop();
+    for (const row of rows) {
+      this.cursor += row.length + 1;
+      const e: unknown = JSON.parse(row); requireValue(object(e), "OBSERVER", "Invalid observer record");
+      if (e.type === "maintenance") this.options.onMaintenance?.(e.data);
+      if (e.type === "action") this.options.onAction?.(e.data);
+      if (e.type === "context") {
+        requireValue(object(e.data) && object(e.data.model) && object(e.data.context) && Array.isArray(e.data.context.messages), "OBSERVER", "Invalid observed context");
+        const observedModel = e.data.model;
+        const model = this.options.modelTargets.find(m => m.provider === observedModel.provider && m.id === observedModel.id);
+        requireValue(model, "MODEL", "Observed model outside authorization");
+        const context = e.data.context as unknown as Context;
+        if (e.data.kind === "main") { this.fixed.systemPrompt = context.systemPrompt ?? ""; this.fixed.tools = context.tools ?? []; }
+        this.options.onContext?.(model, context, String(e.data.kind));
+      }
+    }
+  }
+  async command(type: string, values: Record<string, unknown> = {}): Promise<unknown> {
+    this.options.signal.throwIfAborted(); requireValue(!this.exited, "HOST_EXIT", "Native host unavailable");
+    const id = String(++this.serial);
+    const result = new Promise<unknown>((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    this.child.stdin.write(JSON.stringify({ id, type, ...values }) + "\n");
+    return result;
+  }
+  async refresh(): Promise<void> {
+    const state = await this.command("get_state");
+    requireValue(object(state) && typeof state.sessionId === "string", "RPC", "Invalid native session state");
+    this.sessionId = state.sessionId;
+    if (typeof state.sessionFile === "string") { requireValue(within(state.sessionFile, join(this.options.caseRoot, "sessions")), "PERSISTENCE", "Native session escaped isolated target"); this.sessionFile = state.sessionFile; }
+    if (object(state.model)) { const selected = state.model; this.model = this.options.modelTargets.find(m => m.provider === selected.provider && m.id === selected.id); }
+    requireValue(this.model, "MODEL", "Native fallback or saved model outside authorization"); this.drain();
+  }
+  async prompt(message: string, _options?: unknown): Promise<void> {
+    const start = this.events.length;
+    await this.command("prompt", { message });
+    await new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (this.exited) { this.changed.off("event", check); reject(new RunnerError("HOST_EXIT", "Native host stopped during prompt")); }
+        else if (this.events.slice(start).some(e => e.type === "agent_settled")) { this.changed.off("event", check); resolve(); }
+      };
+      this.changed.on("event", check); check();
+    });
+    await this.refresh();
+  }
+  async compact(): Promise<void> { try { await this.command("compact"); } finally { await this.refresh(); } }
+  async setModel(model: Model<Api>, _options?: unknown): Promise<void> { await this.command("set_model", { provider: model.provider, modelId: model.id }); await this.refresh(); }
+  async close(): Promise<void> {
+    this.options.signal.removeEventListener("abort", this.abort);
+    let grace: NodeJS.Timeout | undefined;
+    if (!this.exited && this.child) { this.child.stdin.write(JSON.stringify({ type: "prompt", message: "/nunc-observer-quit" }) + "\n"); grace = setTimeout(this.abort, 1000); }
+    await this.closed; if (grace) clearTimeout(grace); if (this.killTimer) clearTimeout(this.killTimer); if (this.eventsFile) this.drain();
+  }
+}
+export async function openHost(options: HostOptions): Promise<NativeHost> { const host = new NativeHost(options); try { return await host.start(); } catch (error) { await host.close(); throw error; } }
+export async function closeHost(host: NativeHost): Promise<void> { await host.close(); }
