@@ -799,7 +799,7 @@ phases:
       project acceptance asserted.'
   - id: nunc.defensive-controls
     name: 恢复可用诊断并消除有据的过度防御
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -876,3 +876,25 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-06T19:08:50.330448Z'
+    done_at: '2026-09-06T20:02:53.564006+00:00'
+    evidence: 'Integrated dde732cc0bd514d6fdb249e1823b50837efa3b37 by fast-forward
+      from claimed a115d9c; retained refs/retained/nunc-defensive-controls, initiald445db2
+      preserved. Independent focused intake /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-06T19-04-35-821Z-2026-09-06T19-00-58-825Z_01a07818-6149-73f2-b13b-a1e3ada11cfd.js-1c6418eee2a06d18.txt
+      R1–R4 repaired: safe terminal/ledger/report HTTP/stage/network facts without
+      raw secret logs; proved local pre-send rejection terminal vs sent/no-terminal
+      unresolved; caseKey-scoped terminal failure permitting independent cases with
+      all reservations/global boundaries retained; native cwd-read delegation and
+      accurate fixed denials. Removed arbitrary6case cap; retained other advisory
+      guards with consumers. Parent found/repaired failed-PAUSED resume, STOPPED/CLEANUP
+      continuation, synthetic-terminal-after-send and substitute-worker proof gap
+      within same owner. Production atomic targetmkdir retained; ownedExecute removed.
+      Actual native verify-live workers+stockPi+loopback proof scripts/observe-independent-cases.mjs:
+      terminal-error case then independentcase,2children/13requests; shared quota2children/1request.
+      Failed PAUSED noresume and STOPPED/CLEANUP no-next-child covered as explicitly
+      labeled supervisor-loop fixtures. Required finalall actual raw .scratch/final-all.log
+      in /Users/tefx/Projects/pi-nunc-worktrees/nunc-defensive-controls:223/223,26files,0failed/cancelled/skipped,exit0;
+      git diff --check clean. Delivery .scratch/nunc-defensive-controls-delivery.md.
+      No realcalls/source-outsidescope/Plan writes by producer. Reuse applicable c1-c3/TUI/c4full/lateD
+      and c5switch/clamp/admission facts; old c5 cause remains unknown, smaller-model
+      maintenance/continuation and actualcapacity remain original runtime obligations.
+      No final acceptance.'
