@@ -176,6 +176,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             report.prerequisites.push({ check: "corrective D absent from frozen extraction", status: overlap && absent ? "PROVEN" : overlap && frozen.length > 0 ? "DISPROVEN" : "UNPROVEN", observed: { frozenRequests: frozen.length, absent } });
           }
         } else if (control.action === "pause_resume_same_session") {
+          requireValue(report.prerequisites.every(p => p.status === "PROVEN"), "PREREQUISITE", "Required source placement/capacity was not established; no retries or observer hints are injected");
           const sessionFile = session.sessionFile; requireValue(sessionFile, "PERSISTENCE", "Pause requires persistent session");
           const saved = SessionManager.open(sessionFile, join(caseRoot, "sessions"));
           const next: Checkpoint = { pid: report.pid, sessionFile, sessionId: saved.getSessionId(), leafId: saved.getLeafId(), nextTurn: index + 1, turnEntries: turns, rebuilt: saved.buildContextEntries(), prerequisites: report.prerequisites, nuncConfig: effectiveConfig };

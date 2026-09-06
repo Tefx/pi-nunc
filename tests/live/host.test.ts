@@ -9,6 +9,14 @@ for (const scenario of ["c1", "c2", "c3", "outside", "codex", "codex-defaults", 
   const result = spawnSync(process.execPath, [join(repository, "scripts/observe-segment.mjs"), scenario], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: scenario === "c4-full" || scenario === "c4-capacity" || scenario.startsWith("late-") ? 85000 : 55000, maxBuffer: 4_000_000 });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
 });
+test("actual supervisor/worker continues an independent case after a native HTTP error", { timeout: 110000 }, () => {
+  const result = spawnSync(process.execPath, [join(repository, "scripts/observe-independent-cases.mjs")], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: 105000, maxBuffer: 4_000_000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
+});
+test("actual supervisor/worker stops extra sends once the shared call ceiling is exhausted", { timeout: 110000 }, () => {
+  const result = spawnSync(process.execPath, [join(repository, "scripts/observe-independent-cases.mjs"), "--quota"], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: 105000, maxBuffer: 4_000_000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
+});
 test("default-input CLI preflight and supervisor/worker delegate existing fictional native Codex without an auth copy", { timeout: 110000 }, () => {
   const result = spawnSync(process.execPath, [join(repository, "scripts/observe-runner.mjs")], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: 105000, maxBuffer: 4_000_000 });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());

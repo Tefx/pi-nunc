@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxProvider, type Context, type Provider } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
@@ -9,13 +9,13 @@ import { createReadToolDefinition, type ExtensionAPI } from "@earendil-works/pi-
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
 import observer from "../../src/live/observer.js";
 import { openHost } from "../../src/live/host.js";
-import { ownedExecute } from "../../src/live/runner.js";
+import { execute } from "../../src/live/runner.js";
 import { fixture, repository } from "./fixtures.js";
 
 const SECRET = "fake-secret-s3ntinel";
 const context: Context = { systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] };
 const hostChild = join(repository, "tests/live/host-child.mjs");
-const caseWorker = join(repository, "tests/live/case-worker.mjs");
+const supervisorLoopWorker = join(repository, "tests/live/supervisor-loop-worker.mjs");
 
 function leak(value: unknown): void {
   assert.doesNotMatch(JSON.stringify(value), new RegExp(SECRET));
@@ -128,6 +128,38 @@ test("local payload rejection terminals without transport; post-send gap stays u
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
+test("first fetch then a denied second attempt without a provider terminal stays unresolved", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] });
+    const custom = { ...faux.getModel(), baseUrl: "https://api.example.test" };
+    const path = join(input.target.stateRoot, "retry.jsonl");
+    const ledger = new BudgetLedger(path, input.limits, Date.now() + 10000, new AbortController().signal);
+    let sends = 0;
+    const twice: Provider = {
+      ...faux.provider,
+      stream(model, ctx, options) {
+        const output = new AssistantMessageEventStream();
+        void (async () => {
+          const payload = { model: model.id, stream: true, max_tokens: options?.maxTokens ?? 16 };
+          await options?.onPayload?.(payload, model);
+          await (options?.fetch ?? fetch)(new URL("/v1", model.baseUrl).href, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+          try { await (options?.fetch ?? fetch)(new URL("/v1", model.baseUrl).href, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); }
+          catch { /* expected local CALL_LIMIT after the first send */ }
+          output.end();
+        })();
+        return output;
+      },
+      streamSimple(model, ctx, options) { return this.stream(model, ctx, options); },
+    };
+    const response = await boundedProvider(twice, [custom], ledger, { fetch: async () => { sends++; return new Response("{}", { status: 200 }); } }).streamSimple(custom, context, { maxTokens: 16 }).result();
+    assert.equal(sends, 1);
+    assert.equal(readLedger(path).filter(r => r.kind === "terminal").length, 0);
+    assert.deepEqual(ledgerSummary(readLedger(path)).unreconciledCallIds, [1]);
+    assert.equal(response.stopReason, "error");
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
 test("same-case failed terminal still blocks a second send; a later case can reserve", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
@@ -146,53 +178,30 @@ test("same-case failed terminal still blocks a second send; a later case can res
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
-async function twoCaseInput() {
-  const input = await fixture();
-  const config = input.scenarios[0]!.config;
-  input.scenarios = [{ id: "c1", config }, { id: "c2", config }];
-  return input;
-}
-
-test("independent worker case continues after a terminal failure with unknown usage retained", async () => {
-  const input = await twoCaseInput();
-  const receipt = { version: 1 as const, binding: "case-worker", candidate: "case-worker", node: process.versions.node, pi: "0.85.1" as const, callsMade: 0 as const };
-  try {
-    const report = await ownedExecute(input, receipt, caseWorker, new AbortController().signal);
-    assert.equal(report.status, "UNPROVEN");
-    assert.equal(report.children.length, 2);
-    assert.equal(report.segments.length, 2);
-    assert.equal(report.segments[0]?.status, "UNPROVEN");
-    assert.equal(report.segments[1]?.status, "OBSERVED");
-    assert.equal(report.usage.calls, 2);
-    assert.equal(report.usage.totalTokens, null);
-    assert.deepEqual(report.usage.unreconciledCallIds, []);
-    assert.equal(report.children.every(c => c.exitCode === 0 && !c.timedOut && !c.signal), true);
-  } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
-});
-
-test("unresolved, cancel, and exhausted shared calls stop the next worker before extra sends", async () => {
-  for (const mode of ["unresolved", "hang", "quota"] as const) {
-    const input = await twoCaseInput();
-    if (mode === "quota") input.limits.maxCalls = 1;
-    const receipt = { version: 1 as const, binding: `case-${mode}`, candidate: "case-worker", node: process.versions.node, pi: "0.85.1" as const, callsMade: 0 as const };
+test("supervisor loop: failed PAUSED does not resume; STOPPED/CLEANUP stops; semantic UNPROVEN continues", { timeout: 60000 }, async () => {
+  for (const mode of ["paused-unproven", "stopped-cleanup", "unproven-main"] as const) {
+    const input = await fixture();
+    input.mode = "native";
+    const config = input.scenarios[0]!.config;
+    input.scenarios = mode === "paused-unproven" ? [{ id: "c3", config }, { id: "c2", config }] : [{ id: "c1", config }, { id: "c2", config }];
+    input.overrides = [{ requirement: `supervisor-loop:${mode}`, reason: "Supervisor loop regression; not a native worker proof" }];
     try {
-      if (mode !== "quota") await mkdir(input.target.stateRoot, { recursive: true });
-      if (mode !== "quota") await writeFile(join(input.target.stateRoot, "case-worker.json"), JSON.stringify({ mode: mode === "hang" ? "hang" : "unresolved" }));
-      const controller = new AbortController();
-      const run = ownedExecute(input, receipt, caseWorker, controller.signal);
-      if (mode === "hang") setTimeout(() => controller.abort(), 300);
-      const report = await run;
+      const report = await execute(input, repository, supervisorLoopWorker, new AbortController().signal);
       assert.equal(report.status, "UNPROVEN");
-      if (mode === "quota") {
-        assert.equal(report.children.length, 2);
-        assert.equal(report.usage.calls, 1);
-        assert.equal(report.segments[1]?.reason, "CALL_LIMIT");
-      } else {
+      if (mode === "stopped-cleanup") {
         assert.equal(report.children.length, 1);
-        if (mode === "unresolved") {
-          assert.deepEqual(report.usage.unreconciledCallIds, [1]);
-          assert.equal(report.reason, "RECONCILIATION");
-        }
+        assert.equal(report.segments.length, 1);
+        assert.equal(report.segments[0]?.status, "STOPPED");
+        assert.equal(report.reason, "CLEANUP");
+      } else {
+        assert.equal(report.children.length, 2);
+        assert.equal(report.segments.length, 2);
+        assert.equal(report.segments[1]?.scenario, "c2");
+        assert.equal(report.segments[1]?.status, "OBSERVED");
+        if (mode === "paused-unproven") {
+          assert.equal(report.segments[0]?.status, "PAUSED");
+          await assert.rejects(lstat(join(input.target.stateRoot, "c3", "resumed-observation.json")), { code: "ENOENT" });
+        } else assert.equal(report.segments[0]?.status, "UNPROVEN");
       }
     } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
   }

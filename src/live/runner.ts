@@ -45,12 +45,8 @@ export interface RunReport {
 export async function execute(value: unknown, repository: string, script: string, signal: AbortSignal): Promise<RunReport> {
   const input = parseInput(value, true);
   const receipt = await preflight(input, repository);
-  return ownedExecute(input, receipt, script, signal);
-}
-/** Isolated-target execution after admission. Tests may call this with a substitute worker script. */
-export async function ownedExecute(input: RunInput, receipt: Receipt, script: string, signal: AbortSignal): Promise<RunReport> {
-  await mkdir(input.target.stateRoot, { recursive: true, mode: 0o700 });
-  await mkdir(join(input.target.stateRoot, "tmp"), { recursive: true, mode: 0o700 });
+  await mkdir(input.target.stateRoot, { mode: 0o700 });
+  await mkdir(join(input.target.stateRoot, "tmp"), { mode: 0o700 });
   input.receipt = receipt;
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
   const started = Date.now(), deadline = started + input.limits.maxDurationMs;
@@ -65,7 +61,7 @@ export async function ownedExecute(input: RunInput, receipt: Receipt, script: st
   ] };
   try {
     await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600 });
-    if (input.observations?.some(m => m !== "continuation")) report.stock = await runStock(input, input.target.repository, deadline, signal);
+    if (input.observations?.some(m => m !== "continuation")) report.stock = await runStock(input, repository, deadline, signal);
     let failed = false;
     for (let scenarioIndex = 0; scenarioIndex < (input.observations && !input.observations.includes("continuation") ? 0 : input.scenarios.length); scenarioIndex++) {
       const selection = input.scenarios[scenarioIndex]!;
@@ -79,13 +75,19 @@ export async function ownedExecute(input: RunInput, receipt: Receipt, script: st
         const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
         report.segments.push(segment);
         requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
-        if (segment.status === "PAUSED") { requireValue(!resume && selection.id === "c3", "RESTART", "Unexpected repeated pause"); resume = true; continue; }
-        if (segment.status !== "OBSERVED" || segment.prerequisites.some(c => c.status !== "PROVEN")) failed = true;
+        const failedPlacement = segment.prerequisites.some(c => c.status !== "PROVEN");
+        requireValue(segment.status !== "STOPPED" && segment.reason !== "CLEANUP", segment.reason === "CLEANUP" ? "CLEANUP" : segment.reason ?? "WORKER", segment.diagnostic ?? "Worker stopped; inspect saved state before any new run");
+        if (segment.status === "PAUSED") {
+          requireValue(!resume && selection.id === "c3", "RESTART", "Unexpected repeated pause");
+          if (failedPlacement) { failed = true; break; }
+          resume = true; continue;
+        }
+        if (segment.status !== "OBSERVED" || failedPlacement) failed = true;
         break;
       } while (resume);
     }
     report.status = failed ? "UNPROVEN" : "OBSERVED";
-    if (failed) report.reason = report.segments.find(s => s.status !== "OBSERVED" && s.status !== "PAUSED")?.reason ?? "OBSERVATION";
+    if (failed) report.reason = report.segments.find(s => s.status === "UNPROVEN" || s.status === "STOPPED" || (s.status === "PAUSED" && s.prerequisites.some(c => c.status !== "PROVEN")))?.reason ?? "OBSERVATION";
   } catch (error) { report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR"; }
   finally {
     try { report.usage = ledgerSummary(readLedger(join(root, "calls.jsonl"))); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }

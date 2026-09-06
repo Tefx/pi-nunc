@@ -133,8 +133,8 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         options.onContext?.(model, structuredClone({ ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) } : {}) }), simple ? "main" : "maintenance");
         const combined = AbortSignal.any([ledger.signal, ...(original?.signal ? [original.signal] : [])]);
         const onPayload = async (payload: unknown, selected: Model<Api>) => {
+          const replacement = await original?.onPayload?.(payload, selected);
           try {
-            const replacement = await original?.onPayload?.(payload, selected);
             const body = replacement === undefined ? payload : replacement;
             requireValue(object(body), "PAYLOAD", "Native payload is not a JSON object");
             requireValue(body.stream === true && body.background !== true, "PAYLOAD", "Native payload is not a single SSE request");
@@ -181,7 +181,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
               const code = localCode ?? (terminal.stopReason === "aborted" || ledger.signal.aborted ? "CANCELLED" : httpStatus === 200 ? "PROVIDER_PROTOCOL" : httpStatus !== undefined ? "PROVIDER_HTTP" : transportStarted ? (net ? "NETWORK" : "PROVIDER_ERROR") : "PROVIDER_ERROR");
               const info = describeFailure(code, snapshot());
               terminal.errorMessage = info.message;
-              if (options.controlled || transportStarted || localCode) complete(terminal, info);
+              if (options.controlled || transportStarted || (localCode && !transportStarted)) complete(terminal, info);
             } else {
               requireValue(options.controlled || transportStarted, "TRANSPORT", "No bounded HTTP transport was observed");
               complete(terminal);
@@ -196,7 +196,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         const code = error instanceof RunnerError ? error.code : aborted ? "CANCELLED" : net ? "NETWORK" : "PROVIDER_ERROR";
         const info = describeFailure(code, snapshot());
         const message = errorMessage(model, info.message);
-        const provenLocal = Boolean(localCode) || error instanceof RunnerError && LOCAL_GATE.has(error.code) && !transportStarted;
+        const provenLocal = !transportStarted && (Boolean(localCode) || error instanceof RunnerError && LOCAL_GATE.has(error.code));
         if (provenLocal || (options.controlled && !transportStarted)) complete(message, info);
         if (!ended) { ended = true; output.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); output.end(message); }
       }
