@@ -13,13 +13,13 @@ Memory maintenance asks: **If only the retained history K and normal working too
 
 ## Status
 
-**DESIGN_ONLY — RECOMMENDED_DESIGN** · Updated 2026-09-05.
+**IMPLEMENTATION_IN_PROGRESS** · Updated 2026-09-06.
 
-The current design makes explicit choices based on the intended workflow and mechanism reasoning. Nunc has no implementation or task benchmark yet. `DESIGN_ONLY` records that current state; the delivery target is the complete project defined in the design.
+Policy assets and the maintenance engine are integrated. The Pi adapter candidate is not integrated; real-model continuation and final project acceptance remain incomplete. The selected integration keeps Pi's native compaction and persistence, with an independent request-capacity check. Controlled stock Pi 0.85.1 CLI/RPC probes establish bounded interface feasibility, not a finished extension or memory-quality result.
 
 ## Scope
 
-- Pi only; no Codex CLI/App integration.
+- An independent Pi extension; no Codex CLI/App integration, replacement launcher, core patch or dependency on another extension.
 - One continuing session, with same-session resume through Pi's existing JSONL.
 - All current memory is included automatically; no proactive memory search.
 - No automatic cross-session memory, memory database or document-writing service.
@@ -31,15 +31,17 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 ## Design choices
 
-**Extract when history leaves.** Maintenance sees M, B and K together. Later progress can clarify which earlier hypotheses, constraints and results are still useful.
+**Extract from delivered history.** Maintenance freezes the current active path and sees complete M, B and K together. Messages delivered later remain verbatim input to subsequent requests; they are not predicted, consumed early or replayed. This follows Pi's native timing, at the cost of not using those later messages to guide the current memory selection.
 
 **Keep continuity.** Recent work remains verbatim in K. Unchanged memory slots retain their text. Local correction, replacement and merging remain possible; obsolete text does not gain protection merely by surviving earlier rollovers.
 
-**Roll in batches.** A configurable working threshold and retained-history target control context size and maintenance frequency. Physical model capacity is a safety constraint. Pi's lifecycle handles triggering and persistence; its default threshold is not a fixed product choice.
+**Roll in batches.** A configurable working threshold and retained-history target control context size and maintenance frequency. Pi's lifecycle handles triggering and persistence; its default threshold is not a fixed product choice.
+
+**Check each request separately.** New input can exceed the space left by earlier maintenance. A queue-preserving admission check rejects requests exceeding the supported input budget and uses Pi's bounded native compaction/retry when recovery is possible. It does not replay user input, turn user cancellation into capacity recovery, or use the TUI stop action to withdraw queued instructions. Oversized indivisible input and unsupported accounting receive explicit diagnostics.
 
 **Let the model judge content.** The model proposes changes and retention choices. Code validates references, enforces token budgets and preserves complete slots. A stable policy can support mixed tasks without mandatory content categories or a weight language.
 
-**Keep tool evidence.** Ordinary requests retain active tool-result bodies. Maintenance starts from the same complete source, with explicit input reduction only when capacity requires it. Cache reuse depends on the actual request prefix and provider behavior.
+**Keep tool evidence.** Ordinary requests retain active tool-result bodies. Maintenance uses the complete source available at its frozen delivered-history boundary, with explicit extraction-only reduction when capacity requires it. Cache reuse depends on the actual request prefix and provider behavior.
 
 **Submit one snapshot.** Nunc validates a complete memory snapshot and retained boundary before handing them to Pi. Failure or cancellation before handoff leaves the saved state unchanged. Once handed over, persistence, context rebuilding and their error handling belong to Pi.
 
@@ -47,7 +49,7 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 Implementation may proceed incrementally. Final acceptance applies to the integrated project and every necessary requirement in the design: rolling and memory behavior, capacity handling, failure and cancellation, Pi persistence, same-session recovery and compatibility. A working happy path or earlier component checks alone do not establish completion.
 
-Acceptance requires a complete regression of the final integrated version, observed behavior in the selected real Pi host, authorized real-model evidence for rollover and continued work, and a per-requirement delivery judgment. Missing required behavior or evidence keeps acceptance incomplete. Real calls require authorization for the target and usage budget before execution.
+Acceptance requires a complete regression of the final integrated version, observed behavior in the selected real Pi host, authorized real-model evidence for rollover and continued work, and a per-requirement delivery judgment. This includes actual TUI queue/cancellation behavior, request admission with native recovery, repeated overlapping rollovers, and session/path/model changes. RPC probes do not substitute for TUI behavior. Missing required behavior or evidence keeps acceptance incomplete. Real calls require authorization for the target and usage budget before execution.
 
 Comparisons may guide design improvements; benchmark superiority is not a delivery requirement. The existing session and platform scope remains unchanged.
 
