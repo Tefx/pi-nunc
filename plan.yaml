@@ -192,7 +192,7 @@ phases:
       protected state remains untouched.'
   - id: nunc.pi
     name: Pi 原生维护、队列安全请求准入与完整检查生产者
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"package.json\"\
       , \"package-lock.json\", \"tsconfig.json\", \".node-version\", \"README.md\"\
@@ -299,6 +299,8 @@ phases:
     depends_on:
     - nunc.engine
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-06T11:55:57.554268Z'
   - id: nunc.runtime
     name: Stock TUI 与隔离真实主模型的运行证据
     status: pending
