@@ -470,7 +470,7 @@ phases:
     agent: gate-reviewer
   - id: nunc.observation-support
     name: 巨型完整来源与维护中纠正的跟踪观察能力
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"README.md\",\
       \ \"docs/**\", \"examples/**\", \"package.json\", \"package-lock.json\", \"\
@@ -525,3 +525,22 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-06T14:29:28.935403Z'
+    done_at: '2026-09-06T15:17:22.528481+00:00'
+    evidence: Integrated exact candidate7a0b26d4bfe2cca04dce2ebed35869a6f9810944 by
+      fast-forward from postclaimdb1b39d, same exact node-typescript-engineer owner.
+      Pristine base/Plan verified at dispatch; final clean candidate has no Plan diff.
+      Recoverable refs/retained/nunc-observation-support preserves candidate; priorade9539
+      remains history. Producer all exit0:204tests24files, zero failed/cancelled/skipped,
+      recorded bash result2026-09-06T15:14:44.013Z inspected by parent (childsession2026-09-06T14-31-22-813Z_01a07721-8dbd-7318-a921-9953d4bea4f2.jsonl).
+      Parent examined worker/host/test diffs and native observation artifacts; initial
+      clear_queue/serial-replay gap fixed within this unfinished step, no extra reviewer/lifecycle
+      reset. c4full now78309bytes>native51200, exception absent firstchunk; actualstock
+      two reads/full extraction/retirement/artifact qualification observed undercontrolledresponses;
+      originalcapacitysource retained. LateD actual commandtrace prompt a,prompt b,compact,steerD,prompt
+      c; zero clear_queue/promptD, frozenabsence, accepted steer while nativeisCompacting,
+      firstpostfreeze main includesDonce; race/cancel remainUNPROVEN with no later
+      effects. Evidence /Users/tefx/Projects/pi-nunc-worktrees/nunc-observation-support/.scratch/observation-support-handoff/{late-d,c4-full,late-d-race,late-d-cancel}/
+      includes observation.json,events,nativeJSONL,stock/wire.json. No realcalls or
+      daily-statechanges. Candidate/source checks satisfy producercapability only;
+      realc4full/lateD/capacity and unresolvedc5 semantics remainruntime; existingc1-c3
+      positive evidence preserved, no projectacceptanceclaim.
