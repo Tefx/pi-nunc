@@ -44,7 +44,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   requireValue(!runtime.getError(), "MODEL", "Native model configuration could not be resolved");
   const resolvedModels = [{ provider, id }, ...(second ? [second] : [])].map(target => {
     const model = runtime.getModel(target.provider, target.id);
-    requireValue(model && ["anthropic", "openai", "openai-codex"].includes(model.provider), "MODEL", "Effective model is outside the supported native providers; no fallback account is selected");
+    requireValue(model, "MODEL", "Effective model is absent from native metadata; no fallback account is selected");
     requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     const url = new URL(model.baseUrl);
     requireValue(!url.username && !url.password && !url.search && !url.hash, "MODEL", "Model endpoint contains unsupported private or query data");

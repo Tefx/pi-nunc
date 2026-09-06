@@ -31,6 +31,10 @@ test("every tracked input/observer variant loads separately; only task fixture f
         assert(scenario.observer.controls.some(c => c.steer === "d"));
         assert.equal(scenario.input.turns.map(t => t.id).join(","), "a,b,d,c");
         assert.equal(scenario.input.generatedFiles, undefined);
+        assert.equal(scenario.input.files["probe.json"], undefined);
+        assert(scenario.observer.artifactChecks.some(c => c.pointer === "/route" && c.operator === "unequal" && c.value === "cache"));
+        assert(!scenario.observer.artifactChecks.some(c => c.operator === "equal" && c.value === "direct"));
+        assert(scenario.input.turns.find(t => t.id === "c")?.text.includes("leave route null"));
       }
       assert(!Object.hasOwn(scenario.input.files, "observer.json"));
     }
@@ -87,6 +91,14 @@ test("artifact observers detect wrong exact constraints, null loss and unsafe ch
   assert.equal(checkArtifact({ path: "x", pointer: "/reason", operator: "semantic", criterion: "Requires independent evidence" }, { reason: "PASS: all requirements proven" }).status, "UNPROVEN");
   assert.equal(jsonPointer({ "a/b": { "~key": [17] } }, "/a~1b/~0key/0"), 17);
   assert.equal(jsonPointer({}, "/toString"), undefined);
+});
+test("late-d cache refusal is mechanical; missing alternative is not a direct-route failure", () => {
+  const forbidden = { path: "decision.json", pointer: "/route", operator: "unequal" as const, value: "cache" };
+  assert.equal(checkArtifact(forbidden, { route: "cache" }).status, "DISPROVEN");
+  assert.equal(checkArtifact(forbidden, { route: null }).status, "PROVEN");
+  assert.equal(checkArtifact(forbidden, { route: "direct" }).status, "PROVEN");
+  assert.equal(checkArtifact({ path: "decision.json", pointer: "/route", operator: "equal", value: "direct" }, { route: null }).status, "DISPROVEN");
+  assert.equal(checkArtifact({ path: "decision.json", pointer: "/reason", operator: "semantic", criterion: "Independent evidence review" }, { reason: "direct because the previous run said so" }).status, "UNPROVEN");
 });
 test("even a correct artifact cannot score when actual rollover prerequisites are missing", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);

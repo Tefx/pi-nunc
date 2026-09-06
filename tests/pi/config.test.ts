@@ -17,6 +17,9 @@ test("actual host settings drive H, memory/keep configuration and stock output/t
   assert.equal(first.main.outputTokens, model.maxTokens);
   const second = engineConfig(config, { ...model, contextWindow: 45000 }, { reserveTokens: 36000, keepRecentTokens: 100 });
   assert.equal(second.triggerTokens, 9000); assert(second.triggerTokens < first.triggerTokens);
+  const belowMax = engineConfig({}, model, { reserveTokens: 1000, keepRecentTokens: 1 });
+  assert.equal(belowMax.triggerTokens, 59000); assert.equal(belowMax.main.outputTokens, model.maxTokens);
+  assert(belowMax.triggerTokens > model.contextWindow - model.maxTokens);
   assert.throws(() => engineConfig({}, model, { reserveTokens: 60000, keepRecentTokens: 1 }));
   assert.throws(() => engineConfig({}, model, { reserveTokens: 59900, keepRecentTokens: 100 }));
   assert.deepEqual(readConfig(undefined, "/unused"), { config: {} });

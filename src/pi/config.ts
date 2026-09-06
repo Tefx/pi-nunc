@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { EngineConfig } from "../engine/index.js";
-import { EngineError, record, validateConfig } from "../engine/validation.js";
+import { omitsSerializedOutputCap } from "../engine/accounting.js";
+import { EngineError, validateConfig } from "../engine/validation.js";
 
 export interface NuncConfig {
   policyFile?: string;
@@ -59,9 +60,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
   // to available context. Reserve that actual host-default upper bound. A host
   // overriding stream options/payload must provide a separately verified adapter.
   const mainOutput = model.maxTokens;
-  const uncapped = model.api === "openai-codex-responses" ||
-    (model.api === "openai-responses" && record(model.compat) && model.compat.supportsMaxOutputTokens === false);
-  const outputTokens = config.extraction?.outputTokens ?? (uncapped ? model.maxTokens : Math.min(4096, model.maxTokens));
+  const outputTokens = config.extraction?.outputTokens ?? (omitsSerializedOutputCap(model) ? model.maxTokens : Math.min(4096, model.maxTokens));
   const common = { safetyTokens: config.budget?.safetyTokens ?? 1024, ...(config.budget?.inputLimit === undefined ? {} : { inputLimit: config.budget.inputLimit }) };
   const result: EngineConfig = {
     triggerTokens,

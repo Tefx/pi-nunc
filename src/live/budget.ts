@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import type { Api, ApiStreamOptions, AssistantMessage, Context, Model, Provider, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
-import { observeUsage, requestTokens } from "../engine/accounting.js";
+import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
 import type { UsageObservation } from "../engine/types.js";
 import { canonical, object, requireValue, RunnerError, type Limits } from "./contract.js";
 
@@ -22,7 +22,7 @@ export class BudgetLedger {
     this.signal.throwIfAborted();
     requireValue(Date.now() < this.deadline, "TIME_LIMIT", "Run deadline reached");
     requireValue(!this.active, "CONCURRENCY", "Concurrent model calls are unsupported");
-    requireValue(outputCeiling >= 16 && outputCeiling <= this.limits.maxOutputTokens && outputCeiling <= model.maxTokens && (model.api !== "openai-codex-responses" || outputCeiling === model.maxTokens), "OUTPUT_LIMIT", "Request exceeds its output authorization");
+    requireValue(outputCeiling >= 16 && outputCeiling <= this.limits.maxOutputTokens && outputCeiling <= model.maxTokens && (!omitsSerializedOutputCap(model) || outputCeiling === model.maxTokens), "OUTPUT_LIMIT", "Request exceeds its output authorization");
     const inputEstimate = requestTokens(context);
     requireValue(inputEstimate + outputCeiling <= model.contextWindow, "INPUT_LIMIT", "Request estimate plus output exceeds model capacity");
     // Full-window reservation tolerates estimator error, cached tokens, and unavailable usage.
@@ -74,24 +74,26 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         requireValue(selected && ["id", "provider", "api", "baseUrl", "contextWindow", "maxTokens", "cost"].every(key => canonical(selected[key as keyof Model<Api>]) === canonical(model[key as keyof Model<Api>])), "MODEL", "Request changed its authorized model");
         options.checkAuth?.(model);
         const maxTokens = original?.maxTokens ?? model.maxTokens;
+        const uncapped = omitsSerializedOutputCap(model);
+        const path = model.api === "openai-codex-responses" ? "codex/responses" : model.api === "anthropic-messages" ? "/v1/messages" : model.api === "openai-completions" ? "chat/completions" : model.api === "openai-responses" ? "responses" : undefined;
+        requireValue(path, "ENDPOINT", "Native API endpoint cannot be established from model metadata");
         reservation = ledger.reserve(model, context, maxTokens);
         // Agent tools also carry executable callbacks. Observe only the public model-facing Tool fields.
         options.onContext?.(model, structuredClone({ ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) } : {}) }), simple ? "main" : "maintenance");
         const combined = AbortSignal.any([ledger.signal, ...(original?.signal ? [original.signal] : [])]);
         let sends = 0, payloadChecked = false;
-        const codex = model.api === "openai-codex-responses";
         const onPayload = async (payload: unknown, selected: Model<Api>) => {
           const replacement = await original?.onPayload?.(payload, selected);
           const body = replacement === undefined ? payload : replacement;
           const ceiling = object(body) ? body.max_tokens ?? body.max_output_tokens ?? body.max_completion_tokens : undefined;
-          requireValue(object(body) && body.model === model.id && body.stream === true && body.background !== true && (codex ? ceiling === undefined && maxTokens === model.maxTokens : typeof ceiling === "number" && ceiling > 0 && ceiling <= maxTokens), "PAYLOAD", "Native model/output/SSE contract differs from authorization");
+          requireValue(object(body) && body.model === model.id && body.stream === true && body.background !== true && (uncapped ? ceiling === undefined && maxTokens === model.maxTokens : typeof ceiling === "number" && ceiling > 0 && ceiling <= maxTokens), "PAYLOAD", "Native model/output/SSE contract differs from authorization");
           payloadChecked = true; return replacement;
         };
         const boundedFetch: typeof fetch = async (resource, init) => {
           combined.throwIfAborted();
           requireValue(++sends === 1, "CALL_LIMIT", "Transport retry or auxiliary request refused");
           const request = new Request(resource, init);
-          const expected = new URL(codex ? "codex/responses" : model.api === "anthropic-messages" ? "/v1/messages" : model.api === "openai-completions" ? "chat/completions" : "responses", model.baseUrl.endsWith("/") ? model.baseUrl : `${model.baseUrl}/`);
+          const expected = new URL(path, model.baseUrl.endsWith("/") ? model.baseUrl : `${model.baseUrl}/`);
           const url = new URL(request.url);
           requireValue(request.url.split("?")[0] === expected.href && (url.search === "" || (model.api === "anthropic-messages" && url.search === "?beta=true")) && request.method === "POST", "ENDPOINT", "Transport target is outside authorization");
           // Codex compresses JSON after onPayload. Validate that public seam;

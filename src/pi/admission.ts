@@ -82,7 +82,7 @@ export class Admission {
       options?.signal?.throwIfAborted();
       if (ctx.modelRegistry.getRegisteredNativeProvider(model.provider) !== wrapper) throw new EngineError("CONFIG", "Provider changed after request preparation; reload before continuing");
       if (legacyStream) throw new EngineError("CONFIG", "Legacy stream overrides are unsupported; select a native Provider without a legacy stream override");
-      if (!["openai-completions", "openai-responses", "anthropic-messages", "openai-codex-responses"].includes(model.api)) throw new EngineError("CONFIG", `Unsupported native admission API: ${model.api}`);
+      if (!["openai-completions", "openai-responses", "anthropic-messages", "openai-codex-responses"].includes(model.api)) throw new EngineError("CONFIG", `Cannot establish native request accounting for API: ${model.api}`);
       if (model.samplingParams && Object.keys(model.samplingParams).length || options?.samplingParams && Object.keys(options.samplingParams).length) throw new EngineError("CONFIG", "Raw sampling payload overrides are unsupported");
       if (kind !== "maintenance") {
         const ticket = this.ticket;

@@ -24,7 +24,7 @@ const mutations: Array<[string, (value: Record<string, any>) => void]> = [
   ["absent limits", v => delete v.limits],
   ["zero calls", v => v.limits.maxCalls = 0], ["negative tokens", v => v.limits.maxTotalTokens = -1], ["fractional tokens", v => v.limits.maxTotalTokens = 1.5],
   ["invalid cost ceiling", v => v.limits.maxCostUsd = "free"], ["infinite time", v => v.limits.maxDurationMs = Infinity], ["missing output cap", v => delete v.limits.maxOutputTokens],
-  ["empty model list", v => v.models = []], ["unknown provider", v => v.models[0].provider = "ambient-auth"], ["model without capacity", v => delete v.models[0].contextWindow],
+  ["empty model list", v => v.models = []], ["empty provider", v => v.models[0].provider = ""], ["model without capacity", v => delete v.models[0].contextWindow],
   ["empty scenario selection", v => v.scenarios = []], ["unknown scenario", v => v.scenarios[0].id = "answer"], ["duplicate scenario", v => v.scenarios.push(v.scenarios[0])],
   ["missing giant variant", v => v.scenarios[0].id = "c4"], ["late-d is not a c4 variant", v => { v.scenarios[0].id = "c4"; v.scenarios[0].variant = "late-d"; }],
   ["c2 has no late-d variant", v => v.scenarios[0].variant = "late-d"], ["smaller switch needs second model", v => v.scenarios[0].id = "c5"],
@@ -61,11 +61,13 @@ test("daily/existing/aliased/wrong-repository targets are refused before state c
   finally { await rm(alias); }
   await assert.rejects(validateTarget({ ...input, target: { ...input.target, repository: "/" } }, repository), /differs/);
 });
-test("catalog binding rejects changed endpoint/capacity, unavailable models and unusable settings", async () => {
+test("native-resolved metadata rejects changed endpoint/capacity, unavailable models and unusable H", async () => {
   const input = await fixture(); assert.equal(selectedModels(input)[0]?.contextWindow, 200000);
-  for (const mutate of [(v: typeof input) => v.models[0]!.baseUrl = "https://example.invalid", (v: typeof input) => v.models[0]!.contextWindow = 100000, (v: typeof input) => v.models[0]!.id = "unavailable", (v: typeof input) => v.scenarios[0]!.config.compaction.reserveTokens = 200000]) {
+  for (const mutate of [(v: typeof input) => v.models[0]!.baseUrl = "https://example.invalid", (v: typeof input) => v.models[0]!.contextWindow = 100000, (v: typeof input) => v.models[0]!.id = "unavailable", (v: typeof input) => v.scenarios[0]!.config.compaction.reserveTokens = 200000, (v: typeof input) => { delete v.resolvedModels; }]) {
     const changed = structuredClone(input); mutate(changed); assert.throws(() => selectedModels(changed));
   }
+  const renamed = structuredClone(input); renamed.models[0]!.provider = "ambient-auth";
+  assert.doesNotThrow(() => parseInput(renamed)); assert.throws(() => selectedModels(renamed));
 });
 test("tracked fixture yields effect-free receipt bound to scenario/config/limits/target", async () => {
   const input = await fixture(), receipt = await preflight(input, repository);

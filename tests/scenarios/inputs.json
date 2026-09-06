@@ -19,7 +19,7 @@
             {"id": "a", "text": "We need an account-isolated lookup plan. My provisional guess is that the cache route will work. Keep this task pending; wait for my next instruction before choosing a route."},
             {"id": "b", "text": "Write scratch.json with a status field of pending. Do not write the final lookup plan yet."},
             {"id": "d", "text": "Correction: the cache route is incompatible with account isolation. Do not use it."},
-            {"id": "c", "text": "Write decision.json with fields route and reason for the lookup plan using the evidence collected so far."}
+            {"id": "c", "text": "Write decision.json with fields route and reason for the lookup plan using the evidence collected so far. If the evidence available to you cannot establish a viable route, leave route null and explain the uncertainty instead of guessing."}
           ]
         }
       ]

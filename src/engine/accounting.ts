@@ -33,13 +33,16 @@ export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEn
 export function memoryTokens(slots: Slot[], imageTokens?: number): number {
   return messageTokens(memoryMessage(slots), imageTokens) - messageTokens(memoryMessage([]), imageTokens);
 }
+/** Native serializers that omit an output cap; a smaller configured ceiling is not enforceable. */
+export function omitsSerializedOutputCap(model: Model<Api>): boolean {
+  return model.api === "openai-codex-responses" || (model.api === "openai-responses" && record(model.compat) && model.compat.supportsMaxOutputTokens === false);
+}
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   requireThat(integer(model.contextWindow, 1) && integer(model.maxTokens, 1), "CONFIG", "Invalid effective model capacity");
   requireThat(budget.outputTokens <= Math.min(model.maxTokens, budget.outputLimit ?? model.maxTokens), "CONFIG", "Configured total output (including thinking) exceeds model/provider output capacity");
   // Pi 0.85 Codex omits max_output_tokens; some Responses endpoints opt out too.
   // In those cases a requested small cap provides no safety: require the actual model ceiling.
-  const uncapped = model.api === "openai-codex-responses" || (model.api === "openai-responses" && record(model.compat) && model.compat.supportsMaxOutputTokens === false);
-  requireThat(!uncapped || budget.outputTokens === model.maxTokens, "CONFIG", "Selected Pi API does not send an output cap; explicitly reserve model.maxTokens for this request");
+  requireThat(!omitsSerializedOutputCap(model) || budget.outputTokens === model.maxTokens, "CONFIG", "Selected Pi API does not send an output cap; explicitly reserve model.maxTokens for this request");
   requireThat(!["openai-responses", "azure-openai-responses"].includes(model.api) || budget.outputTokens >= 16, "CONFIG", "Pi Responses APIs floor max_output_tokens at 16; reserve at least 16");
   const limit = Math.min(model.contextWindow - budget.outputTokens, budget.inputLimit ?? model.contextWindow) - budget.safetyTokens;
   requireThat(limit > 0, "CAPACITY", "Output and safety reserves leave no input capacity");

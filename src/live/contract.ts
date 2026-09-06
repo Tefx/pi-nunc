@@ -4,9 +4,7 @@ import { lstat, readFile, realpath, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
-import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+import { omitsSerializedOutputCap } from "../engine/accounting.js";
 import { engineConfig, parseConfig, type NuncConfig } from "../pi/config.js";
 export type { NuncConfig } from "../pi/config.js";
 
@@ -38,7 +36,7 @@ export interface RunInput {
   resolvedModels?: Model<Api>[];
   mode: "controlled" | "native";
   target: { repository: string; stateRoot: string; cleanup: "retain" | "remove" };
-  models: Array<{ provider: "anthropic" | "openai" | "openai-codex"; id: string; contextWindow: number; maxTokens: number; baseUrl: string }>;
+  models: Array<{ provider: string; id: string; contextWindow: number; maxTokens: number; baseUrl: string }>;
   limits: Limits;
   scenarios: Selection[];
   receipt?: Receipt;
@@ -85,7 +83,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
   const modelKeys = new Set<string>();
   for (const model of value.models) {
     keys(model, ["provider", "id", "contextWindow", "maxTokens", "baseUrl"], "model");
-    requireValue(typeof model.provider === "string" && ["anthropic", "openai", "openai-codex"].includes(model.provider) && text(model.id) && positive(model.contextWindow) && positive(model.maxTokens) && text(model.baseUrl), "MODEL", "Supported targets are native Anthropic, OpenAI and OpenAI Codex catalog models");
+    requireValue(text(model.provider) && text(model.id) && positive(model.contextWindow) && positive(model.maxTokens) && text(model.baseUrl), "MODEL", "Authorize provider/id with native capacity and endpoint");
     const key = `${model.provider}/${model.id}`; requireValue(!modelKeys.has(key), "MODEL", "Duplicate model"); modelKeys.add(key);
   }
   requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0 && value.scenarios.length <= 6, "SCENARIO", "Nonempty scenario selection required");
@@ -120,20 +118,20 @@ export async function validateTarget(input: RunInput, repository: string, existi
   }
 }
 export function selectedModels(input: RunInput): Model<Api>[] {
+  requireValue(Array.isArray(input.resolvedModels) && input.resolvedModels.length === input.models.length, "MODEL", "Native-resolved model metadata is required; no catalog fallback");
   return input.models.map(target => {
-    const provider = target.provider === "anthropic" ? anthropicProvider() : target.provider === "openai-codex" ? openaiCodexProvider() : openaiProvider();
-    const model = (input.resolvedModels ?? provider.getModels()).find(m => m.id === target.id && m.provider === target.provider);
-    requireValue(model && ["anthropic-messages", "openai-responses", "openai-codex-responses"].includes(model.api), "MODEL", "Model is absent from the locked supported catalog");
-    requireValue(model.contextWindow === target.contextWindow && model.maxTokens === target.maxTokens && model.baseUrl === target.baseUrl, "MODEL", "Authorized model capacity/endpoint differs from the locked catalog");
-    requireValue(model.api === "openai-codex-responses" || !object(model.compat) || model.compat.supportsMaxOutputTokens !== false, "MODEL", "Target does not enforce an output cap");
+    const model = input.resolvedModels!.find(m => m.id === target.id && m.provider === target.provider);
+    requireValue(model, "MODEL", "Authorized model is absent from native-resolved metadata");
+    requireValue(model.contextWindow === target.contextWindow && model.maxTokens === target.maxTokens && model.baseUrl === target.baseUrl, "MODEL", "Authorized model capacity/endpoint differs from native resolution");
+    requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     requireValue(input.limits.maxOutputTokens >= model.maxTokens, "LIMIT", "Authorize the stock main model's total default output ceiling, including thinking");
     if (model.api === "openai-codex-responses") requireValue(input.limits.maxCostUsd === null, "BILLING", "Codex OAuth subscription billing requires an explicit token/call-limited observation with unknown USD billing");
     if (input.limits.maxCostUsd !== null) requireValue([model.cost, ...(model.cost.tiers ?? [])].every(rate => [rate.input, rate.output, rate.cacheRead, rate.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && Math.max(model.cost.input, model.cost.output) > 0, "MODEL", "Known catalog pricing required for a USD reservation");
     for (const s of input.scenarios) {
       const config = engineConfig(s.config.nunc, model, s.config.compaction);
-      if (model.api === "openai-codex-responses") requireValue(config.extraction.outputTokens === model.maxTokens, "CONFIG", "Uncapped Codex extraction requires the full native model output allowance");
+      if (omitsSerializedOutputCap(model)) requireValue(config.extraction.outputTokens === model.maxTokens, "CONFIG", "Uncapped extraction requires the full native model output allowance");
       const h = model.contextWindow - s.config.compaction.reserveTokens;
-      requireValue(h > 0 && s.config.compaction.keepRecentTokens < h && s.config.compaction.reserveTokens >= model.maxTokens, "CONFIG", "reserve/keepRecent/output cannot establish a usable hook threshold");
+      requireValue(h > 0 && s.config.compaction.keepRecentTokens < h, "CONFIG", "reserve/keepRecent cannot establish a usable hook threshold");
       requireValue(config.extraction.outputTokens <= input.limits.maxOutputTokens, "CONFIG", "Extraction output exceeds authorization");
     }
     return model;

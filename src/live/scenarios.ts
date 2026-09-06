@@ -11,7 +11,7 @@ export interface GeneratedFile { path: string; segments: Array<{ repeat: number;
 export interface ScenarioInput { id: string; files: Record<string, string>; generatedFiles?: GeneratedFile[]; turns: Turn[] }
 export interface Control { afterTurn: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string }; capacity?: string; steer?: string }
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-export type ArtifactCheck = { path: string; pointer: string } & ({ operator: "equal" | "contains"; value: JsonValue } | { operator: "semantic"; criterion: string });
+export type ArtifactCheck = { path: string; pointer: string } & ({ operator: "equal" | "contains" | "unequal"; value: JsonValue } | { operator: "semantic"; criterion: string });
 export interface ScenarioObserver { id: string; controls: Control[]; setupChecks: string[]; artifactChecks: ArtifactCheck[]; actionChecks: string[] }
 export interface CheckResult { check: string; status: "PROVEN" | "DISPROVEN" | "UNPROVEN"; observed?: unknown; reason?: string }
 
@@ -28,7 +28,7 @@ export function validateArtifactCheck(value: unknown): asserts value is Artifact
   fields(value, ["path", "pointer", "operator", "value", "criterion"], "artifact check");
   requireValue(localPath(value.path) && typeof value.pointer === "string" && /^(?:|\/(?:[^~]|~[01])*)$/.test(value.pointer), "SCENARIO", "Invalid artifact path/JSON pointer");
   if (value.operator === "semantic") requireValue(nonempty(value.criterion) && !Object.hasOwn(value, "value"), "SCENARIO", "Semantic check requires an independent criterion");
-  else requireValue((value.operator === "equal" || value.operator === "contains") && Object.hasOwn(value, "value") && jsonValue(value.value) && !Object.hasOwn(value, "criterion"), "SCENARIO", "Exact artifact check requires a defined JSON value and supported operator");
+  else requireValue((value.operator === "equal" || value.operator === "contains" || value.operator === "unequal") && Object.hasOwn(value, "value") && jsonValue(value.value) && !Object.hasOwn(value, "criterion"), "SCENARIO", "Exact artifact check requires a defined JSON value and supported operator");
 }
 export function expandGeneratedText(file: GeneratedFile): string {
   return file.segments.map(s => s.text.repeat(s.repeat)).join("");
@@ -151,7 +151,7 @@ export function checkArtifact(check: ArtifactCheck, artifact: unknown): CheckRes
   validateArtifactCheck(check);
   const observed = jsonPointer(artifact, check.pointer);
   if (check.operator === "semantic") return { check: `${check.path}${check.pointer}`, status: "UNPROVEN", observed: observed ?? null, reason: check.criterion ?? "Independent semantic review required" };
-  const passed = observed !== undefined && (check.operator === "equal" ? isDeepStrictEqual(observed, check.value) : Array.isArray(observed) && observed.some(v => isDeepStrictEqual(v, check.value)));
+  const passed = observed !== undefined && (check.operator === "equal" ? isDeepStrictEqual(observed, check.value) : check.operator === "unequal" ? !isDeepStrictEqual(observed, check.value) : Array.isArray(observed) && observed.some(v => isDeepStrictEqual(v, check.value)));
   return { check: `${check.path}${check.pointer}`, status: passed ? "PROVEN" : "DISPROVEN", observed: observed ?? null };
 }
 export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[]) {

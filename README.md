@@ -15,7 +15,7 @@ Memory maintenance asks: **If only the retained history K and normal working too
 
 **IMPLEMENTATION_IN_PROGRESS** · Updated 2026-09-06.
 
-Policy assets and the maintenance engine are integrated. The Pi adapter candidate is not integrated; real-model continuation and final project acceptance remain incomplete. The selected integration keeps Pi's native compaction and persistence, with an independent request-capacity check. Controlled stock Pi 0.85.1 CLI/RPC probes establish bounded interface feasibility, not a finished extension or memory-quality result.
+Policy assets, the maintenance engine, and the stock Pi adapter are in the checked tree. Real-model continuation and final project acceptance remain incomplete. The selected integration keeps Pi's native compaction, persistence, model catalog, and transport, with an independent request-capacity check. Controlled stock Pi 0.85.1 CLI/RPC probes establish bounded interface feasibility, not a finished extension or memory-quality result.
 
 ## Scope
 
