@@ -1,14 +1,12 @@
 # Local development
 
-Integrated engine check environment: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **0.85.0**, TypeScript **5.9.3**, Node types **26.4.1**. These are selected targets, not a minimum-version compatibility claim. The package is private ESM; source/tests use strict TypeScript and the native Node test runner. `skipLibCheck` skips upstream declaration internals; project source, tests and their typed public API calls are checked.
+Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **0.85.1**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
 
-`package-lock.json` locks dependencies. Pi packages are host peers and explicit development dependencies, with no implicit global import resolution. Pi 0.85.0's unbundled public root imports `@earendil-works/pi-server` although its published dependency manifest omits it. The pinned **development** `pi-server@0.85.0` is a local SDK-load prerequisite. It is not a running server, core patch or change to an installed daily Pi. Future packaging/host integration must reconcile that upstream packaging limitation before claiming standalone distribution support.
+`package-lock.json` pins dependencies. Pi packages are exact host peers and development dependencies. Pi 0.85.1 declares its own server dependency; Nunc requires no separate `pi-server` workaround, running server, global import or private core patch.
 
-The revised integration design targets stock Pi's native compaction plus an independent, queue-preserving main-request admission check. Diagnostic CLI/RPC probes used installed Pi **0.85.1** with controlled loopback responses; the tracked dependencies still describe the engine environment above. The Pi producer must select and reconcile the final host/lock and test the actual TUI as well as RPC. Do not infer product readiness, real token accuracy or memory quality from those diagnostic probes. No replacement CLI, global extension installation or daily configuration change is part of this documentation revision.
+## Explicit installation
 
-## Install explicitly
-
-Installation is separate from checks and needs target/effect authorization. Within the authorized checkout:
+Inside the authorized checkout, use its isolated environment and selected toolchain:
 
 ```sh
 /usr/bin/env -u NODE_OPTIONS \
@@ -17,34 +15,38 @@ Installation is separate from checks and needs target/effect authorization. With
   ci --include=dev --no-audit --no-fund
 ```
 
-Ignoring dependency lifecycle scripts follows Pi's npm installation guidance. No global package installation, version update or daily configuration edit is required. npm may print an update notice; do not follow it as part of this selected-runtime check. `.npm-cache/`, `.scratch/`, `node_modules/` and `dist/` are local ignored working state. No credentials belong there.
+Installation requires the corresponding effect authorization and runs separately from checks. Dependency lifecycle scripts remain disabled. No check installs, downloads, updates packages, refreshes a live model catalog, or changes daily Pi settings. `node_modules/`, `dist/`, `.npm-cache/` and `.scratch/` are ignored local working state. Offline fixtures use dummy task-owned authentication only; do not copy daily credentials into fixtures or reports.
 
-## Required engine check
+## Required checks
 
 ```sh
 /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
-  /opt/homebrew/bin/node scripts/check.mjs engine
+  /opt/homebrew/bin/node scripts/check.mjs all
 ```
 
-The tracked runner:
+Use `engine` instead of `all` for the narrower engine inventory. Missing, multiple, unknown and empty selections fail. `all` discovers every tracked `tests/**/*.test.ts`, requires nonempty engine/Pi/live suites, compiles their full source closure and executes every emitted test. It includes the actual CLI's bounded-stdin/preflight negatives and stock RPC/TUI observation selection. Compilation errors, missing emitted files, process signals and test failures exit nonzero.
 
-1. Rejects missing, multiple and unknown selections. `all` intentionally fails until the Pi producer delivers the integrated inventory.
-2. Enforces `.node-version`/manifest Node agreement and the selected npm version using the absolute npm CLI. It checks local direct development package versions against the tracked lock and fails on missing/mismatched tools.
-3. Invokes the local TypeScript compiler through the current absolute Node executable. Emits declarations and JavaScript under `dist/`.
-4. Discovers all nonempty `tests/engine/**/*.test.ts` selections and invokes their emitted files with the native Node test runner. Compile errors, missing emitted files, process signals and test failures exit nonzero.
+The runner checks the selected Node/npm versions and installed direct development packages against the lock. Child processes receive constructed offline environments. `npm run build` emits JavaScript/declarations for `pi-nunc`, `pi-nunc/pi` and `pi-nunc/engine`; it performs no tests. `npm run check` and `npm run check:engine` are aliases when the shell selects the declared Node.
 
-The runner never installs, downloads, updates or refreshes models. Compiler/test subprocesses get a minimal environment, worktree-local HOME/Pi directories and offline/telemetry flags, with no inherited credentials. The bridge fixture creates explicit in-memory credential/catalog state and no configured models file. `PI_OFFLINE` suppresses host startup network operations; tests additionally use only controlled service providers and perform no live model request. `npm run check:engine` is a convenience alias when the shell already selects the declared Node.
+Real TUI tests require POSIX PTYs and `/usr/bin/python3` with its standard library. `scripts/pty-driver.py` creates an actual terminal for the pinned stock CLI, sends real input bytes, forwards termination and waits for child exit. Missing prerequisites fail explicitly; the runner never installs Python or substitutes an RPC/SDK test for the TUI.
 
-For build-only consumers, `npm run build` emits the public `pi-nunc/engine` export. The engine's policy loader resolves `policies/default.md` for both direct source loading and emitted `dist/src/engine` layout. Optional user policies use an explicit absolute path or resolve relative to the supplied absolute configuration file's directory, never implicit process cwd.
+## Default inheritance and test isolation
 
-## Verification ownership
+Product and real verification use Pi's effective native configuration/model/authentication. A standalone process resolves its own defaults; an invoking runtime forwards its current nonsecret selection to preserve unsaved startup/runtime choices. Tests use a fictional pre-existing native profile and named loopback/configuration overrides; they never inspect real auth. Isolate task sessions/cwd/files/output, without cloning agent/config/auth profiles. Saved settings/defaults and daily sessions remain untouched. Normal native credential refresh/persistence remains Pi-owned and is not subject to a byte-freeze promise.
 
-- `tests/engine/memory.test.ts`: incremental changes, complete priorities, whole-slot capacity, IDs and stable order.
-- `tests/engine/source.test.ts`: complete projected evidence, tool pairing, host boundary restrictions, bounded reduction and native/unsupported input.
-- `tests/engine/budget.test.ts`: complete request estimates, provider input/output ceilings, Pi output-cap exceptions, cache/unknown usage, growth and changed models/configuration.
-- `tests/engine/lifecycle.test.ts`: terminal response validation, cancellation, frozen state and explicit failures.
-- `tests/engine/policy.test.ts`: real policy loading, UTF-8 failures, path base and next-load behavior. Exact content comparison tests the asset-loading contract only.
-- `tests/engine/pi-model.test.ts`: public package import and real Pi model registry/runtime to controlled pi-ai provider; actual host summary projection used in budgeting.
-- `tests/engine/runner.test.ts`: CLI failure behavior for invalid selection and injected Node options.
+The runner requires actual target, call/token/time/known-cost limits and scenarios; defaults need no repeated catalog or approval text. Named overrides record a test reason and differences and affect only the invocation/new task state. Unknown billing stays null. Single-use/quota/reconciliation checks protect actual effects; there is no Nunc authentication preparation or refresh suite. Producer tests prove controlled mechanics; downstream runtime owns real authentication/model use and acceptance judges completeness.
 
-Policy quality, real-model task continuation and final project acceptance are not established by these tests. The Pi producer must add real extension loader/hook/persistence tests, configuration and session lifecycle handling, the integrated `all` inventory and bounded live observation runner. The revised integration additionally requires delivered-history/D separation, request admission without queue withdrawal, main/maintenance request classification, native compact-and-retry without duplicate input, cancellation priority, repeated overlapping checkpoints, and provider/model/reload composition evidence. Test these behaviors through the actual host seams; phrase checks in documentation or fixed-memory probes do not establish product behavior. No daily/global Pi installation or real-model testing is part of this engine delivery.
+## Evidence layers
+
+| Inventory | Behavior exercised |
+|---|---|
+| `tests/engine` | Slot changes/priorities, source fidelity/tool pairing, full/reduced accounting, output/thinking limits, unknown/cache usage, growth, policy loading, cancellation and public model bridge. |
+| `tests/pi` component fixtures | Public package/extension loading, hooks, native JSONL/path rebuilding, source/media/config changes, cancellation and real isolated append failure. Their SDK fixtures supplement stock-host evidence. |
+| `scripts/observe-stock.mjs` via `tests/pi/queue.test.ts` | `verify-live` stdin/preflight → stock RPC or actual PTY/TUI → native local capacity rejection → engine maintenance → Pi retry. Delivered B/K versus future D, original queue/custom delivery, future images, editor state, main and maintenance cancellation. |
+| `scripts/observe-lifecycle.mjs` | Three legal overlapping checkpoints, actual restart/reload, model/tree/fork/clone/new, threshold/manual/disabled-auto behavior, provider replacement, unknown contexts/calls, payload/sampling/API rejection, bounded failures. |
+| `scripts/observe-apis.mjs` | Stock native Responses and Anthropic adapters against loopback SSE, with pre-HTTP rejection and native recovery. Completions is exercised by the other stock drivers. |
+| `tests/live` | Bounded nonsecret stdin/target/receipt/build parity, no-call preflight, quotas/failure/unknown usage, actual stock RPC/tools/calibrated rollovers/restart, child termination, cleanup and prerequisite-gated artifact checks. |
+
+Drivers preserve mechanical reports, native sessions, request payloads and process/PTY observations under their isolated artifact directories before cleaning fixture state. The downstream `--observe-stock` route embeds evidence in its returned report before authorized removal. Controlled services return protocol fixtures, including incremental patches derived from the structured request; they make no model judgment. Fixed or scripted artifact contents test plumbing and scorer behavior only.
+
+`all` proves the checked local mechanics. Real token accuracy, cache benefit, model policy quality, paid-service behavior, continued-task effectiveness and final integrated acceptance require separately authorized observation and judgment. See [PI](PI.md) for the extension contract and [LIVE](LIVE.md) for the bounded downstream runner. This producer neither installs a daily extension nor performs live/paid calls.

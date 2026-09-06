@@ -45,11 +45,19 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 **Submit one snapshot.** Nunc validates a complete memory snapshot and retained boundary before handing them to Pi. Failure or cancellation before handoff leaves the saved state unchanged. Once handed over, persistence, context rebuilding and their error handling belong to Pi.
 
+## Pi defaults and verification
+
+Nunc uses Pi's current effective model/provider/options and native authentication, including startup flags and runtime selection. It does not select another account, copy credentials or manage OAuth. Main output/thinking settings remain unchanged; APIs without a serialized output cap reserve their full native output allowance. Unknown subscription billing remains unknown.
+
+Verification isolates new task sessions, cwd/files and artifacts while reusing native configuration/authentication ownership. Only named test requirements justify invocation-local overrides, recorded with their reason and differences. Standalone startup resolves Pi defaults; an invoking runtime must forward its nonsecret effective selection through public context/invocation facilities to preserve unsaved choices. A separate process cannot discover those choices implicitly. Saved defaults and daily sessions remain protected; Pi owns ordinary credential refresh and persistence.
+
+See [extension usage](docs/PI.md), [bounded observations](docs/LIVE.md) and [development checks](docs/DEVELOPMENT.md). Producer tests use fictional native profiles and controlled services. Real authentication/model calls and final acceptance belong to downstream verification.
+
 ## Delivery and acceptance
 
 Implementation may proceed incrementally. Final acceptance applies to the integrated project and every necessary requirement in the design: rolling and memory behavior, capacity handling, failure and cancellation, Pi persistence, same-session recovery and compatibility. A working happy path or earlier component checks alone do not establish completion.
 
-Acceptance requires a complete regression of the final integrated version, observed behavior in the selected real Pi host, authorized real-model evidence for rollover and continued work, and a per-requirement delivery judgment. This includes actual TUI queue/cancellation behavior, request admission with native recovery, repeated overlapping rollovers, and session/path/model changes. RPC probes do not substitute for TUI behavior. Missing required behavior or evidence keeps acceptance incomplete. Real calls require authorization for the target and usage budget before execution.
+Acceptance requires a complete regression of the final integrated version, observed behavior in the selected real Pi host, authorized real-model evidence for rollover and continued work, and a per-requirement delivery judgment. This includes actual TUI queue/cancellation behavior, request admission with native recovery, repeated overlapping rollovers, and session/path/model changes. RPC probes do not substitute for TUI behavior. Missing required behavior or evidence keeps acceptance incomplete. Existing full-delivery authorization covers bounded real verification; execution binds the new task target and call/token/time/known-cost limits without another approval ceremony.
 
 Comparisons may guide design improvements; benchmark superiority is not a delivery requirement. The existing session and platform scope remains unchanged.
 
