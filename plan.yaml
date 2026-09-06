@@ -192,7 +192,7 @@ phases:
       protected state remains untouched.'
   - id: nunc.pi
     name: Pi 原生维护、队列安全请求准入与完整检查生产者
-    status: done
+    status: rejected
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"package.json\"\
       , \"package-lock.json\", \"tsconfig.json\", \".node-version\", \"README.md\"\
@@ -302,26 +302,30 @@ phases:
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-06T11:55:57.554268Z'
     done_at: '2026-09-06T12:41:50.050487+00:00'
-    evidence: 'Artifact: Fast-forward integrated final product 0f4ebe36361d721d0988fae861659ad7c1b30426
-      from pristine post-claim3f0cc082 worktree impl/nunc-pi-defaults, exact owner
-      node-typescript-engineer. Docs-first72f8a83 precedes implementation; no Plan
-      contamination or protected daily-state edits. Native Pi0.85.1 compaction/admission
-      and stock verification retained; removed credential-copy/auth-handoff and redundant
-      approval/catalog input. Public effective defaults/native credential ownership
-      reused; named task-only overrides and actual quota/single-use/cancellation retained.
-      Verification: producer''s final-commit `/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1
-      PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /opt/homebrew/bin/node scripts/check.mjs
-      all` exit0,195/195 tests24 files; parent inspected final-all.log totals, handoff,
-      defaults.ts/LIVE contract, clean candidate and fast-forward identity. Unchanged
-      source/lock evidence reused, not rerun for confidence. Logs and complete real
-      PTY/TUI/RPC/Codex-controlled native evidence: /Users/tefx/Projects/pi-nunc-worktrees/nunc-pi-defaults/.scratch/nunc-pi-delivery.md
-      and final-all.log; stock-tui-report.json/stock-rpc-report.json each8 controlled
-      requests, run-rpmLJN/run-OAnQsq each12 calls3 rollovers, run-khSJnD native lifecycle27
-      controlled requests. Evidence is mechanical only; real default-model policy/continuation
-      and project acceptance explicitly remain nunc.runtime/nunc.acceptance. User
-      effective nonsecret shell selection observed openai-codex/gpt-6-astra, medium.
-      No real authentication/model calls or new auth system in producer. Main protected
-      untracked .pi/ and plan-dashboard.html preserved.'
+    rejection_reason: 'Integrated0f4ebe3 fails the supported system-temp runner target:
+      supervisor preflight accepts target under original OS tmp; nativeEnvironment
+      sets TMPDIR=<target>/tmp; workerMain repeats preflight; validateTarget re-derives
+      tmpdir and rejects parent outside its own child tmp. Real run exits2 before
+      any model/session, 0 calls/reservations. Reproduction and matching controlled
+      evidence in /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-runtime-PgokN2/runtime-verification.md.
+      Original node-typescript-engineer must correct stable supervisor/worker target
+      authorization and add actual temp-root supervisor/worker regression, retaining
+      ownership/single-use/quota protections. No new Plan topology/auth work. Failed
+      target remains retained, never replayed;195 tests retain tested narrower scope
+      only.'
+    rejection_history:
+    - reason: 'Integrated0f4ebe3 fails the supported system-temp runner target: supervisor
+        preflight accepts target under original OS tmp; nativeEnvironment sets TMPDIR=<target>/tmp;
+        workerMain repeats preflight; validateTarget re-derives tmpdir and rejects
+        parent outside its own child tmp. Real run exits2 before any model/session,
+        0 calls/reservations. Reproduction and matching controlled evidence in /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-runtime-PgokN2/runtime-verification.md.
+        Original node-typescript-engineer must correct stable supervisor/worker target
+        authorization and add actual temp-root supervisor/worker regression, retaining
+        ownership/single-use/quota protections. No new Plan topology/auth work. Failed
+        target remains retained, never replayed;195 tests retain tested narrower scope
+        only.'
+      timestamp: '2026-09-06T12:52:58.225352+00:00'
+      reviewer: integration-verifier
   - id: nunc.runtime
     name: Stock TUI 与隔离真实主模型的运行证据
     status: pending
