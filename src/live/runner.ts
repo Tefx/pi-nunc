@@ -34,12 +34,13 @@ export async function execute(value: unknown, repository: string, script: string
   const input = parseInput(value, true);
   const receipt = await preflight(input, repository);
   await mkdir(input.target.stateRoot, { mode: 0o700 });
+  await mkdir(join(input.target.stateRoot, "tmp"), { mode: 0o700 });
   input.receipt = receipt;
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
   const started = Date.now(), deadline = Math.min(started + input.limits.maxDurationMs, Date.parse(input.authorization.expiresAt));
   requireValue(deadline > started, "AUTHORIZATION", "Authorization expired before execution");
   const root = input.target.stateRoot;
-  // A prepared target is single-use; no silent rerun of possible prior effects.
+  // A newly created target is single-use; no silent rerun of possible prior effects.
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
   const report: RunReport = { version: 1, status: "STOPPED", authorization: publicInput(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
     "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
