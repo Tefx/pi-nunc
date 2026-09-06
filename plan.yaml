@@ -192,7 +192,7 @@ phases:
       protected state remains untouched.'
   - id: nunc.pi
     name: Pi 原生维护、队列安全请求准入与完整检查生产者
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"package.json\"\
       , \"package-lock.json\", \"tsconfig.json\", \".node-version\", \"README.md\"\
@@ -301,7 +301,23 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-06T12:53:02.290522Z'
-    done_at: '2026-09-06T12:41:50.050487+00:00'
+    done_at: '2026-09-06T13:06:46.112146+00:00'
+    evidence: Repaired downstream system-temp worker rejection, integrated fast-forward0da9c30c112a116c7e9039a30f2d9c87873c0ee2
+      from post-claim4245832, exact node-typescript-engineer owner, clean candidate/no
+      Plan diff. Orchestration preserves supervisor TMPDIR and checked repository
+      cwd; native host still uses task cwd/temp. Target validation/single-use/quota/native
+      config/auth/admission unchanged. Bounded fixed worker IPC diagnostics and terminal
+      local owner reporting added. Real public system-temp regression failed before
+      fix (aa81df7) with0calls then passed on repaired candidate with12 controlled
+      native Codex calls/3rollovers. Affected4/4; final committed all197/197 in24files,
+      zero failed/cancelled/skipped. Parent inspected changed source, handoff and
+      final-all.log totals; reused unchanged evidence rather than rerunning. Evidence
+      /Users/tefx/Projects/pi-nunc-worktrees/nunc-pi-temp-worker/.scratch/nunc-temp-worker-delivery.md,
+      final-all.log, affected.log, stock/run-dINmbB. Original failed runtime root
+      PgokN2 remains untouched/single-use; zero real calls there, no live process.
+      Final TUI/RPC reports retained; fixed responses establish mechanics only. Real
+      native-auth/model maintenance/continuation and final acceptance remain downstream,
+      require fresh target/candidate binding.
     rejection_reason: 'Integrated0f4ebe3 fails the supported system-temp runner target:
       supervisor preflight accepts target under original OS tmp; nativeEnvironment
       sets TMPDIR=<target>/tmp; workerMain repeats preflight; validateTarget re-derives
