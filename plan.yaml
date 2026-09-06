@@ -672,7 +672,7 @@ phases:
       runtime evidence preserved. All four completed producers remain immutable.'
   - id: nunc.simplification
     name: 消除重复原生职责并修正全批次观察合同
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -749,3 +749,28 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-06T16:45:36.454259Z'
+    done_at: '2026-09-06T17:47:36.421723+00:00'
+    evidence: 'Integrated exact 13f62f562e914175cb587392f7bfa96fb9672a12 by fast-forward
+      from unchanged postclaim84c20c4; clean exact-owner candidate, no managed Plan
+      changes. Retained refs/retained/nunc-simplification; earlier277b6b5 and3801c77
+      remain history (initial retained ref also preserved). Complete discovery batch
+      disposition: D1 removes provider/type/schema/factory catalogs AND actual product
+      API-name gate; native Azure Responses outside old four delegates and its real
+      native serializer reaches controlled fetch. Observer binds destination origin/path
+      and actual output/SSE/single-send constraints without per-API endpoint map;
+      native Google custom-fetch limitation is explicitly unclaimed. D2 replaces unsupported
+      exact-direct oracle with cache exclusion plus independent justified-action/uncertainty
+      judgment, preserving lateD queue/freeze mechanics. A1 stronger reserve predicate
+      removed with native-default counterexample; A2 uncapped arithmetic shared; A3
+      retained for identified consumers. Parent rejected initial error-message-only
+      gate change and fabricated900000 framing fixture; both repaired on this same
+      unfinished step. Final genuine c4 capacity configuration uses application inputLimit128000/safety1024/H10000,
+      no extra padding, unchanged native1048576/65536: actual main106068 fits126976;
+      full221048 exceeds126976; normalAtTrigger124980 fits; stock CAPACITY, zero extraction,
+      prior savedM/K preserved. Raw /Users/tefx/Projects/pi-nunc-worktrees/nunc-simplification/.scratch/observation-support-handoff/c4-capacity/segment.json
+      inspected. Actual final command stdout/stderr .scratch/final-all.log inspected:
+      required all exit0,212/212,25files; relevant source unchanged afterward. Handoff
+      .scratch/nunc-simplification-delivery.md. No real model/auth calls by producer;
+      previous real/TUI evidence retained. Native model quality, current-default actual
+      effects, c4/full/capacity and c5 remain existing runtime requirements; no final
+      project acceptance asserted.'
