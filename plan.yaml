@@ -584,7 +584,7 @@ phases:
       positive evidence preserved, no projectacceptanceclaim.
   - id: nunc.discovery
     name: 全仓原生职责与过度设计完整发现
-    status: claimed
+    status: done
     description: "step_type: review\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -651,6 +651,25 @@ phases:
     agent: architectural-demolitionist
     claimed_by: architectural-demolitionist
     claimed_at: '2026-09-06T16:04:49.822750Z'
+    done_at: '2026-09-06T16:45:22.776029+00:00'
+    evidence: 'Completed the user-requested static discovery on immutable clean 5772d44595e1200518457f8079030a1bbd5f5728.
+      Exact owner architectural-demolitionist delivered a consolidated Markdown report:
+      /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-06T16-42-56-277Z-2026-09-06T16-07-31-207Z_01a07779-9287-70f2-a497-0651b57a67f1.js-90aa46261da336ea.txt.
+      Parent read the entire report and reconciled its grouped ledger against all
+      82 targets in /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-discovery-9Exuch/targets.txt.
+      Initial truncated-read gaps and mistaken exclusion of three explicitly allowed
+      tracked dotfiles were repaired on the same review step; no unread manifest scope
+      remains. Two supported root causes: D1 parallel native provider/API catalog
+      restrictions across types, schema, loader, admission and runner; D2 late-D oracle
+      demands an alternative without supporting task evidence. A1 stronger preflight
+      capacity predicate, A2 repeated output arithmetic and A3 settings/calibration
+      duplication remain conditional, requiring concrete consumer/counterexample evaluation.
+      Version-matched public Pi references and mechanisms with actual safety/state/effect
+      consumers are documented. Product FAIL is compatible with a complete discovery
+      deliverable; this is not project acceptance or permission to weaken tests. Complete
+      finding batch is consumed by nunc.simplification, then existing runtime and
+      sole acceptance. No shell/model/test calls, writes or effects by reviewer; prior
+      runtime evidence preserved. All four completed producers remain immutable.'
   - id: nunc.simplification
     name: 消除重复原生职责并修正全批次观察合同
     status: pending
