@@ -13,7 +13,7 @@ import { calibrateRetention, type RetentionCalibration } from "./calibration.js"
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean }
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig }
-export interface SegmentReport { pid: number; scenario: string; status: "PAUSED" | "OBSERVED" | "UNPROVEN" | "STOPPED"; reason?: string; prerequisites: CheckResult[]; sessionFile?: string; nextTurn: number; score?: Awaited<ReturnType<typeof scoreArtifacts>>; contexts: Array<{ turn: string; model: string; kind: string; context: Context }>; maintenance: unknown[]; actions: unknown[]; calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>; preparationFailure?: { afterTurn: string; message: string } }
+export interface SegmentReport { pid: number; scenario: string; status: "PAUSED" | "OBSERVED" | "UNPROVEN" | "STOPPED"; reason?: string; prerequisites: CheckResult[]; sessionFile?: string; nextTurn: number; score?: Awaited<ReturnType<typeof scoreArtifacts>>; contexts: Array<{ turn: string; model: string; kind: string; context: Context }>; maintenance: unknown[]; actions: unknown[]; commands?: Array<{ type: string; message?: string }>; calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>; preparationFailure?: { afterTurn: string; message: string } }
 function userText(entry: SessionEntry): string | undefined {
   if (entry.type !== "message" || entry.message.role !== "user") return undefined;
   const content = entry.message.content;
@@ -32,8 +32,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   const local = new AbortController();
   const signal = AbortSignal.any([local.signal, AbortSignal.timeout(Math.max(1, job.deadline - Date.now())), ...(overrides.signal ? [overrides.signal] : [])]);
   const onSignal = () => local.abort(); process.once("SIGTERM", onSignal); process.once("SIGINT", onSignal);
-  const report: SegmentReport = { pid: process.pid, scenario: selection.id, status: "STOPPED", prerequisites: [], nextTurn: 0, contexts: [], maintenance: [], actions: [], calibrations: [] };
+  const report: SegmentReport = { pid: process.pid, scenario: selection.id, status: "STOPPED", prerequisites: [], nextTurn: 0, contexts: [], maintenance: [], actions: [], commands: [], calibrations: [] };
   let runtime: NativeHost | undefined, turn = "startup", turns: Record<string, string[]> = {};
+  const scheduledSteers = new Set<string>();
   let checkpoint: Checkpoint | undefined;
   let effectiveConfig = structuredClone(selection.config.nunc);
   try {
@@ -59,11 +60,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     }
     for (let index = report.nextTurn; index < scenario.turns.length; index++) {
       signal.throwIfAborted(); const inputTurn = scenario.turns[index]!; turn = inputTurn.id;
-      const already = deliveredUserIds(sm.getBranch(), inputTurn.text);
-      if (already.length > 0) {
-        turns[turn] = already; report.nextTurn = index + 1;
-        report.prerequisites.push({ check: `turn ${turn} consumed from prior public delivery without a second serial submit`, status: already.length === 1 ? "PROVEN" : "DISPROVEN", observed: { count: already.length } });
-        requireValue(report.prerequisites.every(p => p.status === "PROVEN"), "PREREQUISITE", "Required source placement/capacity was not established; no retries or observer hints are injected");
+      if (scheduledSteers.has(turn)) {
+        const delivered = deliveredUserIds(sm.getBranch(), inputTurn.text);
+        turns[turn] = delivered; report.nextTurn = index + 1;
         continue;
       }
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
@@ -73,15 +72,21 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const last = session.messages.findLast(m => m.role === "assistant");
       requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", "Main run did not end in a complete stop state");
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
+      for (const id of scheduledSteers) {
+        const text = scenario.turns.find(t => t.id === id)?.text; if (!text) continue;
+        if (report.prerequisites.some(p => p.check === "corrective D delivered verbatim once after freeze without a serial prompt")) continue;
+        const count = deliveredUserIds(sm.getBranch(), text).length; if (count === 0) continue;
+        const freezeAt = report.contexts.findIndex(c => c.kind === "maintenance");
+        const firstMain = freezeAt >= 0 ? report.contexts.slice(freezeAt + 1).find(c => c.kind === "main") : undefined;
+        const includes = Boolean(firstMain && JSON.stringify(firstMain.context).includes(text));
+        turns[id] = deliveredUserIds(sm.getBranch(), text);
+        report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze without a serial prompt", status: count === 1 && includes ? "PROVEN" : count > 1 ? "DISPROVEN" : "UNPROVEN", observed: { count, firstPostFreezeMainIncludesD: includes } });
+      }
       if ((selection.id === "c3" || selection.id === "c5") && turn === "a") {
         for (const [path, content] of Object.entries(scenario.files)) {
           const visible = sm.buildContextEntries().some(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError && e.message.content.some(b => b.type === "text" && b.text.includes(content.trim())));
           report.prerequisites.push({ check: `required ${path} observation actually visible`, status: visible ? "PROVEN" : "UNPROVEN" });
         }
-      }
-      if (observer.controls.some(c => c.steer === turn)) {
-        const count = deliveredUserIds(sm.getBranch(), inputTurn.text).length;
-        report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze", status: count === 1 ? "PROVEN" : count > 1 ? "DISPROVEN" : "UNPROVEN", observed: { count } });
       }
       if (selection.id === "c1" && turn === "b" && scenario.files["probe.json"]) {
         const probe = scenario.files["probe.json"]?.trim();
@@ -120,18 +125,19 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           }
           const steerTurn = control.steer ? scenario.turns.find(t => t.id === control.steer) : undefined;
           let steered = false, overlap = false;
-          const freezeSeen = () => report.contexts.some(c => c.turn === turn && c.kind === "maintenance") || report.actions.some(a => object(a) && a.turn === turn && object(a.event) && a.event.phase === "maintenance-start");
+          const frozenContext = () => report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
           let failed = false;
           try {
             await session.compact(steerTurn ? async steerSignal => {
-              while (!steerSignal.aborted && !freezeSeen()) await new Promise(resolve => setTimeout(resolve, 25));
-              if (steerSignal.aborted || !freezeSeen()) return;
-              overlap = true;
+              while (!steerSignal.aborted && frozenContext().length === 0) await new Promise(resolve => setTimeout(resolve, 25));
+              if (steerSignal.aborted || frozenContext().length === 0) return;
+              if (!(await session.getState()).isCompacting) return;
               await session.steer(steerTurn.text);
               steered = true;
+              scheduledSteers.add(steerTurn.id);
+              overlap = (await session.getState()).isCompacting && frozenContext().length > 0;
             } : undefined);
           } catch { failed = true; }
-          if (steered) await session.clearQueue();
           const result = maintenanceResult(report.maintenance.at(-1));
           const file = session.sessionFile; requireValue(file, "PERSISTENCE", "No persistent session file");
           const saved = SessionManager.open(file, join(caseRoot, "sessions"));
@@ -164,9 +170,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             }
           } else report.prerequisites.push({ check: "normal rollover used full extraction", status: result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
           if (steerTurn) {
-            const frozen = report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
+            const frozen = frozenContext();
             const absent = frozen.length > 0 && frozen.every(c => !JSON.stringify(c.context).includes(steerTurn.text));
-            report.prerequisites.push({ check: "public maintenance-start/frozen boundary overlapped one steer", status: overlap && steered ? "PROVEN" : "UNPROVEN", observed: { overlap, steered, maintenanceStart: report.actions.some(a => object(a) && a.turn === turn && object(a.event) && a.event.phase === "maintenance-start") } });
+            report.prerequisites.push({ check: "public frozen extraction overlapped one accepted steer", status: overlap && steered ? "PROVEN" : "UNPROVEN", observed: { overlap, steered, frozenRequests: frozen.length, compactingAck: overlap } });
             report.prerequisites.push({ check: "corrective D absent from frozen extraction", status: overlap && absent ? "PROVEN" : overlap && frozen.length > 0 ? "DISPROVEN" : "UNPROVEN", observed: { frozenRequests: frozen.length, absent } });
           }
         } else if (control.action === "pause_resume_same_session") {
@@ -180,11 +186,19 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       // Do not spend more calls on a setup that cannot establish the requested observation.
       requireValue(report.prerequisites.every(p => p.status === "PROVEN"), "PREREQUISITE", "Required source placement/capacity was not established; no retries or observer hints are injected");
     }
+    for (const id of scheduledSteers) {
+      const text = scenario.turns.find(t => t.id === id)?.text;
+      if (text && deliveredUserIds(sm.getBranch(), text).length === 0) report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze without a serial prompt", status: "UNPROVEN", reason: "Accepted steer was never delivered by native continuation" });
+    }
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites);
     report.status = report.prerequisites.every(p => p.status === "PROVEN") && !report.score.checks.some(c => c.status === "DISPROVEN") ? "OBSERVED" : "UNPROVEN";
   } catch (error) { report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "HOST_ERROR"; }
   finally {
-    if (runtime) { if (runtime.session.sessionFile) report.sessionFile = runtime.session.sessionFile; try { await closeHost(runtime); } catch { report.status = "STOPPED"; report.reason = "CLEANUP"; } }
+    if (runtime) {
+      report.commands = runtime.commands.slice();
+      if (runtime.session.sessionFile) report.sessionFile = runtime.session.sessionFile;
+      try { await closeHost(runtime); } catch { report.status = "STOPPED"; report.reason = "CLEANUP"; }
+    }
     process.removeListener("SIGTERM", onSignal); process.removeListener("SIGINT", onSignal);
     await mkdir(caseRoot, { recursive: true });
     await writeFile(join(caseRoot, job.resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(report, null, 2), { mode: 0o600 });

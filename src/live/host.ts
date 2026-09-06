@@ -52,6 +52,7 @@ export class NativeHost {
   private serial = 0;
   private killTimer: NodeJS.Timeout | undefined;
   private watch: NodeJS.Timeout | undefined;
+  readonly commands: Array<{ type: string; message?: string }> = [];
   private readonly abort = () => { this.child?.kill("SIGTERM"); this.killTimer ??= setTimeout(() => this.child?.kill("SIGKILL"), 1000); };
   constructor(readonly options: HostOptions) {}
   private saved(): SessionManager | undefined { return this.sessionFile && existsSync(this.sessionFile) ? SessionManager.open(this.sessionFile) : undefined; }
@@ -135,6 +136,7 @@ export class NativeHost {
   }
   async command(type: string, values: Record<string, unknown> = {}): Promise<unknown> {
     this.options.signal.throwIfAborted(); requireValue(!this.exited, "HOST_EXIT", "Native host unavailable");
+    if (["prompt", "steer", "compact", "clear_queue", "abort"].includes(type)) this.commands.push({ type, ...(typeof values.message === "string" ? { message: values.message } : {}) });
     const id = String(++this.serial);
     const result = new Promise<unknown>((resolve, reject) => this.pending.set(id, { resolve, reject }));
     this.child.stdin.write(JSON.stringify({ id, type, ...values }) + "\n");
@@ -174,7 +176,11 @@ export class NativeHost {
   }
   async steer(message: string): Promise<void> { await this.command("steer", { message }); }
   async abortRun(): Promise<void> { await this.command("abort"); }
-  async clearQueue(): Promise<void> { await this.command("clear_queue"); }
+  async getState(): Promise<{ isCompacting: boolean; pendingMessageCount: number }> {
+    const state = await this.command("get_state");
+    requireValue(object(state), "RPC", "Invalid native session state");
+    return { isCompacting: state.isCompacting === true, pendingMessageCount: Number(state.pendingMessageCount) || 0 };
+  }
   async setModel(model: Model<Api>, _options?: unknown): Promise<void> { await this.command("set_model", { provider: model.provider, modelId: model.id }); await this.refresh(); }
   async close(): Promise<void> {
     this.options.signal.removeEventListener("abort", this.abort);
