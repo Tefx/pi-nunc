@@ -25,7 +25,7 @@ export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal
 }
 export interface RunReport {
   version: 1; status: "OBSERVED" | "UNPROVEN" | "STOPPED";
-  authorization: RunInput; segments: SegmentReport[]; children: ChildReceipt[];
+  selection: RunInput; segments: SegmentReport[]; children: ChildReceipt[];
   usage: ReturnType<typeof ledgerSummary>; elapsedMs: number;
   cleanup: "retained" | "removed" | "retained-for-reconciliation";
   limitations: string[]; reason?: string; sessions?: Record<string, unknown[]>; stock?: unknown[];
@@ -37,12 +37,11 @@ export async function execute(value: unknown, repository: string, script: string
   await mkdir(join(input.target.stateRoot, "tmp"), { mode: 0o700 });
   input.receipt = receipt;
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
-  const started = Date.now(), deadline = Math.min(started + input.limits.maxDurationMs, Date.parse(input.authorization.expiresAt));
-  requireValue(deadline > started, "AUTHORIZATION", "Authorization expired before execution");
+  const started = Date.now(), deadline = started + input.limits.maxDurationMs;
   const root = input.target.stateRoot;
   // A newly created target is single-use; no silent rerun of possible prior effects.
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
-  const report: RunReport = { version: 1, status: "STOPPED", authorization: publicInput(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
+  const report: RunReport = { version: 1, status: "STOPPED", selection: publicInput(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
     "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
     "Semantic reasons, repeated failed attempts, restatement needs and unsupported claims require independent review of recorded actions/session evidence. No judge or additional model calls are authorized by this runner.",
     "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Reservations are never refunded; missing usage stays null.",
@@ -116,12 +115,12 @@ async function runStock(input: RunInput, repository: string, deadline: number, s
 }
 export async function observeStock(value: unknown, repository: string, signal: AbortSignal): Promise<RunReport> {
   const input = parseInput(value), receipt = await preflight(input, repository);
-  requireValue(input.authorization.kind === "offline-preflight" && input.observations?.length && !input.observations.includes("continuation"), "AUTHORIZATION", "Controlled stock mode requires stock_rpc/stock_tui only");
+  requireValue(input.mode === "controlled" && input.observations?.length && !input.observations.includes("continuation"), "AUTHORIZATION", "Controlled stock mode requires stock_rpc/stock_tui only");
   await mkdir(input.target.stateRoot, { mode: 0o700 });
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
   const start = Date.now();
-  const report: RunReport = { version: 1, status: "UNPROVEN", authorization: input, segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: ["Controlled loopback service proves actual stock CLI/RPC/TUI mechanics; real model memory quality and billing remain UNPROVEN."] };
-  try { report.stock = await runStock(input, repository, Math.min(start + input.limits.maxDurationMs, Date.parse(input.authorization.expiresAt)), signal); report.status = "OBSERVED"; }
+  const report: RunReport = { version: 1, status: "UNPROVEN", selection: input, segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: ["Controlled loopback service proves actual stock CLI/RPC/TUI mechanics; real model memory quality and billing remain UNPROVEN."] };
+  try { report.stock = await runStock(input, repository, start + input.limits.maxDurationMs, signal); report.status = "OBSERVED"; }
   catch (error) { report.reason = error instanceof RunnerError ? error.code : "STOCK_OBSERVATION"; }
   finally { report.elapsedMs = Date.now() - start; await finalizeRun(input, receipt, report); }
   return report;
@@ -134,7 +133,6 @@ export async function finalizeRun(input: RunInput, receipt: Receipt, report: Run
   const bound = JSON.parse(await readFile(join(root, "owner.json"), "utf8"));
   requireValue(canonical(bound.receipt) === canonical(receipt), "CLEANUP", "Run ownership changed; retain state");
   if (input.target.cleanup === "remove" && report.status === "OBSERVED" && report.cleanup !== "retained-for-reconciliation") {
-    requireValue(input.authorization.allowCleanup, "AUTHORIZATION", "No cleanup permission");
     // Preserve actual persistent evidence in the returned observer report before deleting its source directory.
     report.sessions = {};
     for (const file of new Set(report.segments.flatMap(s => s.sessionFile ? [s.sessionFile] : []))) {

@@ -14,36 +14,35 @@ test("bounded stdin rejects empty/malformed/oversized JSON and accepts one compl
 });
 // Deliberately invalid boundary mutations: test-only any permits deleting required fields and wrong JSON shapes.
 const mutations: Array<[string, (value: Record<string, any>) => void]> = [
-  ["missing catalog cost authorization", v => delete v.authorization.costBasis],
+  ["missing cost bound", v => delete v.limits.maxCostUsd],
   ["calibration missing lower bound", v => delete v.scenarios[0].config.retentionCalibration.minFraction],
   ["calibration outside valid fraction", v => v.scenarios[0].config.retentionCalibration.minFraction = 0],
   ["calibration reversed range", v => v.scenarios[0].config.retentionCalibration = { minFraction: 0.8, maxFraction: 0.2 }],
   ["calibration missing upper bound", v => delete v.scenarios[0].config.retentionCalibration.maxFraction],
   ["calibration unknown option", v => v.scenarios[0].config.retentionCalibration.force = true],
-  ["missing authorization", v => delete v.authorization], ["expired authorization", v => v.authorization.expiresAt = "2000-01-01"],
-  ["invalid date", v => v.authorization.expiresAt = "tomorrow"], ["missing effect scope", v => delete v.authorization.allowStateCreation],
-  ["offline fixture cannot grant calls", v => v.authorization.allowModelCalls = true], ["absent limits", v => delete v.limits],
+  ["missing internal mode", v => delete v.mode], ["invalid internal mode", v => v.mode = "unknown"],
+  ["absent limits", v => delete v.limits],
   ["zero calls", v => v.limits.maxCalls = 0], ["negative tokens", v => v.limits.maxTotalTokens = -1], ["fractional tokens", v => v.limits.maxTotalTokens = 1.5],
-  ["unknown cost ceiling", v => v.limits.maxCostUsd = null], ["infinite time", v => v.limits.maxDurationMs = Infinity], ["missing output cap", v => delete v.limits.maxOutputTokens],
+  ["invalid cost ceiling", v => v.limits.maxCostUsd = "free"], ["infinite time", v => v.limits.maxDurationMs = Infinity], ["missing output cap", v => delete v.limits.maxOutputTokens],
   ["empty model list", v => v.models = []], ["unknown provider", v => v.models[0].provider = "ambient-auth"], ["model without capacity", v => delete v.models[0].contextWindow],
   ["empty scenario selection", v => v.scenarios = []], ["unknown scenario", v => v.scenarios[0].id = "answer"], ["duplicate scenario", v => v.scenarios.push(v.scenarios[0])],
   ["missing giant variant", v => v.scenarios[0].id = "c4"], ["smaller switch needs second model", v => v.scenarios[0].id = "c5"],
-  ["missing compaction settings", v => delete v.scenarios[0].config.compaction], ["zero keepRecent", v => v.scenarios[0].config.compaction.keepRecentTokens = 0],
+  ["missing compaction settings", v => delete v.scenarios[0].config.compaction], ["negative keepRecent", v => v.scenarios[0].config.compaction.keepRecentTokens = -1],
   ["invalid memory ratio", v => v.scenarios[0].config.nunc.memory.fraction = 1], ["invalid K ratio", v => v.scenarios[0].config.nunc.rolling.keepRecentFraction = 0],
   ["unknown config field", v => v.scenarios[0].config.nunc.expectedAnswer = "secret"], ["relative policy path", v => v.scenarios[0].config.nunc.policyFile = "./policy.md"],
-  ["unapproved cleanup", v => { v.target.cleanup = "remove"; v.authorization.allowCleanup = false; }],
+  ["unknown cleanup", v => { v.target.cleanup = "elsewhere"; }],
   ["selected provider credential value rejected", v => v.credentials = { anthropic: "dummy-never-secret" }],
   ["credential source location rejected", v => v.credentialsPath = "/dummy/location"],
   ["mixed controlled/live observations", v => v.observations = ["continuation", "stock_tui"]],
   ["unknown observation", v => v.observations = ["imaginary"]],
-  ["credential provider outside selection", v => v.credentials = { unrelated: "fixture" }], ["implicit target", v => delete v.target.stateRoot], ["unknown authorization field", v => v.authorization.assume = true],
+  ["credential provider outside selection", v => v.credentials = { unrelated: "fixture" }], ["implicit target", v => delete v.target.stateRoot], ["obsolete authorization field", v => v.authorization = {}],
 ];
 for (const [name, mutate] of mutations) test(`pre-call rejection: ${name}`, async () => {
   const input = await fixture(); mutate(input); assert.throws(() => parseInput(input));
 });
 test("internal offline job cannot cross the live execution boundary", async () => {
   const input = await fixture(); assert.throws(() => parseInput(input, true));
-  input.authorization.kind = "live"; input.authorization.allowModelCalls = true;
+  input.mode = "native";
   assert.doesNotThrow(() => parseInput(input, true));
   await assert.rejects(execute(await fixture(), repository, join(repository, "scripts/verify-live.mjs"), new AbortController().signal));
   await assert.rejects(lstat(input.target.stateRoot), { code: "ENOENT" });

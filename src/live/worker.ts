@@ -148,13 +148,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   }
   return report;
 }
-/** Private subprocess protocol still revalidates explicit authorization and the supervisor's bound owner receipt. */
+/** Private subprocess protocol revalidates the target, quotas and supervisor's execution binding. */
 export async function workerMain(value: unknown, repository: string): Promise<SegmentReport> {
   requireValue(object(value), "INPUT", "Invalid worker job");
   const input = parseInput(value.input, true);
   requireValue(Number.isSafeInteger(value.scenarioIndex) && Number(value.scenarioIndex) >= 0 && Number(value.scenarioIndex) < input.scenarios.length && typeof value.deadline === "number" && value.deadline > Date.now() && typeof value.resume === "boolean", "INPUT", "Invalid worker segment");
   await preflight(input, repository, true);
-  requireValue(value.deadline <= Date.parse(input.authorization.expiresAt) && value.deadline <= Date.now() + input.limits.maxDurationMs, "AUTHORIZATION", "Worker deadline exceeds authorization");
+  requireValue(value.deadline <= Date.now() + input.limits.maxDurationMs, "TIME_LIMIT", "Worker deadline exceeds the task bound");
   const owner: unknown = JSON.parse(await readFile(join(input.target.stateRoot, "owner.json"), "utf8"));
   requireValue(object(owner) && canonical(owner.receipt) === canonical(input.receipt) && owner.deadline === value.deadline, "RECEIPT", "Worker is not bound to the supervisor's new isolated run");
   return runSegment({ input, scenarioIndex: Number(value.scenarioIndex), deadline: value.deadline, resume: value.resume });

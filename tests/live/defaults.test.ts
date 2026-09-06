@@ -21,6 +21,10 @@ test("public stdin resolves synthetic native defaults and current shell selectio
   try {
     const defaultRun = run(selection); assert.equal(defaultRun.status, 0, defaultRun.stderr);
     const defaults = JSON.parse(defaultRun.stdout); assert.equal(defaults.models[0].id, "gpt-6-astra"); assert.equal(defaults.models[0].maxTokens, 128000);
+    await writeFile(settingsFile, JSON.stringify({ ...settings, defaultThinkingLevel: undefined, compaction: { ...settings.compaction, keepRecentTokens: 0 } }));
+    const nativeFallback = run({ ...selection, limits: { ...selection.limits, maxCostUsd: undefined } });
+    assert.equal(nativeFallback.status, 0, nativeFallback.stderr); assert.equal(JSON.parse(nativeFallback.stdout).effective.thinking, "medium");
+    assert.equal(JSON.parse(nativeFallback.stdout).limits.maxCostUsd, null); assert.equal(JSON.parse(nativeFallback.stdout).effective.compaction.keepRecentTokens, 0);
     await writeFile(settingsFile, JSON.stringify({ ...settings, defaultProvider: "anthropic", defaultModel: "absent-static-model" }));
     const current = run(selection, { PI_PROVIDER: "openai-codex", PI_MODEL: "gpt-6-astra", PI_REASONING_LEVEL: "medium" });
     assert.equal(current.status, 0, current.stderr); assert.equal(JSON.parse(current.stdout).effective.source, "invoking-runtime"); assert.equal(JSON.parse(current.stdout).effective.thinking, "medium");

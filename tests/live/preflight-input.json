@@ -1,31 +1,57 @@
 {
   "version": 1,
-  "authorization": {
-    "kind": "offline-preflight",
-    "reference": "tracked fictitious offline fixture; grants no live calls",
-    "allowModelCalls": false,
-    "allowStateCreation": true,
-    "allowCleanup": true,
-    "costBasis": "catalog-reservation",
-    "expiresAt": "2099-01-01T00:00:00.000Z"
-  },
   "target": {
     "repository": "__CHECKOUT__",
     "stateRoot": "__NEW_STATE_ROOT__",
     "cleanup": "retain"
   },
   "models": [
-    {"provider": "anthropic", "id": "claude-haiku-4-5", "contextWindow": 200000, "maxTokens": 64000, "baseUrl": "https://api.anthropic.com"}
+    {
+      "provider": "anthropic",
+      "id": "claude-haiku-4-5",
+      "contextWindow": 200000,
+      "maxTokens": 64000,
+      "baseUrl": "https://api.anthropic.com"
+    }
   ],
-  "limits": {"maxCalls": 20, "maxTotalTokens": 5000000, "maxCostUsd": 100, "maxDurationMs": 120000, "maxOutputTokens": 64000},
+  "limits": {
+    "maxCalls": 20,
+    "maxTotalTokens": 5000000,
+    "maxCostUsd": 100,
+    "maxDurationMs": 120000,
+    "maxOutputTokens": 64000
+  },
   "scenarios": [
     {
       "id": "c2",
       "config": {
-        "nunc": {"memory": {"fraction": 0.1}, "rolling": {"keepRecentFraction": 0.2}, "extraction": {"toolResults": "full", "outputTokens": 4096}, "budget": {"safetyTokens": 2048, "growthTokens": 512}},
-        "compaction": {"enabled": false, "reserveTokens": 190000, "keepRecentTokens": 1},
-        "retentionCalibration": {"minFraction": 0.0001, "maxFraction": 0.95}
+        "nunc": {
+          "memory": {
+            "fraction": 0.1
+          },
+          "rolling": {
+            "keepRecentFraction": 0.2
+          },
+          "extraction": {
+            "toolResults": "full",
+            "outputTokens": 4096
+          },
+          "budget": {
+            "safetyTokens": 2048,
+            "growthTokens": 512
+          }
+        },
+        "compaction": {
+          "enabled": false,
+          "reserveTokens": 190000,
+          "keepRecentTokens": 1
+        },
+        "retentionCalibration": {
+          "minFraction": 0.0001,
+          "maxFraction": 0.95
+        }
       }
     }
-  ]
+  ],
+  "mode": "controlled"
 }

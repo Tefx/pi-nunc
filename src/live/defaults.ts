@@ -1,6 +1,7 @@
 import { SettingsManager, ProjectTrustStore, ModelRuntime, getAgentDir } from "@earendil-works/pi-coding-agent";
 
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { clampThinkingLevel } from "@earendil-works/pi-ai/compat";
 import { object, parseInput, requireValue, type RunInput } from "./contract.js";
 
 /** Public stdin boundary. Native configuration is read-only; no auth API is called. */
@@ -16,7 +17,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   requireValue(Boolean(env.PI_PROVIDER) === Boolean(env.PI_MODEL), "MODEL", "Incomplete invoking runtime selection");
   let provider = env.PI_PROVIDER ?? settings.getDefaultProvider();
   let id = env.PI_MODEL ?? settings.getDefaultModel();
-  let thinking = env.PI_REASONING_LEVEL ?? (provider && id ? settings.getModelThinkingLevel(provider, id) : undefined) ?? settings.getDefaultThinkingLevel() ?? "off";
+  let thinking = env.PI_REASONING_LEVEL ?? (provider && id ? settings.getModelThinkingLevel(provider, id) : undefined) ?? settings.getDefaultThinkingLevel() ?? "medium"; // Stock Pi 0.85.1 startup default.
   let second: { provider: string; id: string } | undefined;
   const differences: RunInput["overrides"] = [];
   let config: Record<string, unknown> = { nunc: {}, compaction: settings.getCompactionSettings() };
@@ -49,13 +50,16 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
     requireValue(!url.username && !url.password && !url.search && !url.hash, "MODEL", "Model endpoint contains unsupported private or query data");
     return structuredClone(model);
   });
+  // Validation above restricts the input to Pi's declared levels. Apply the same
+  // public model-capability clamp as stock startup before recording metadata.
+  thinking = clampThinkingLevel(resolvedModels[0]!, thinking as Parameters<typeof clampThinkingLevel>[1]);
   const models = resolvedModels.map(model => ({ provider: model.provider, id: model.id, contextWindow: model.contextWindow, maxTokens: model.maxTokens, baseUrl: model.baseUrl }));
   const observations = value.observations ?? ["continuation"];
   requireValue(Array.isArray(observations), "OBSERVATION", "Invalid observations");
   const offline = !observations.includes("continuation");
   const limits = { ...value.limits, ...(value.limits.maxCostUsd === undefined && provider === "openai-codex" ? { maxCostUsd: null } : {}) };
   const input = parseInput({ version: 1,
-    authorization: { kind: offline ? "offline-preflight" : "live", reference: "existing project execution authorization", allowModelCalls: !offline, allowStateCreation: true, allowCleanup: true, costBasis: limits.maxCostUsd === null ? "token-call-reservation" : "catalog-reservation", expiresAt: new Date(Date.now() + 86400000).toISOString() },
+    mode: offline ? "controlled" : "native",
     target: value.target, limits, models,
     scenarios: value.scenarios.map(s => { requireValue(object(s) && Object.keys(s).every(k => ["id", "variant"].includes(k)), "SCENARIO", "Scenario config belongs in a named override"); return { ...s, config }; }), observations,
   });

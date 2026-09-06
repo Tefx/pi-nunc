@@ -12,16 +12,16 @@ test("selected native Codex catalog/uncapped output and explicit unknown billing
   assert.equal(model.api, "openai-codex-responses"); assert.equal(model.maxTokens, 128000); assert.equal(model.contextWindow, 272000);
   assert.equal((await preflight(input, repository)).callsMade, 0);
   for (const change of [
-    (v: typeof input) => { v.authorization.costBasis = "catalog-reservation"; v.limits.maxCostUsd = 100; },
+    (v: typeof input) => { v.limits.maxCostUsd = 100; },
     (v: typeof input) => { v.limits.maxOutputTokens = 4096; },
     (v: typeof input) => { v.models[0]!.baseUrl = "https://example.invalid"; },
     (v: typeof input) => { v.scenarios[0]!.config.nunc.extraction!.outputTokens = 4096; },
     (v: typeof input) => { v.models[0]!.id = "unbound-model"; },
   ]) { const changed = structuredClone(input); change(changed); assert.throws(() => selectedModels(changed)); }
   assert.throws(() => parseInput({ ...input, models: [{ ...input.models[0], provider: ["openai-codex"] }] }));
-  assert.throws(() => parseInput({ ...input, authorization: { ...input.authorization, costBasis: ["token-call-reservation"] } }));
+  assert.throws(() => parseInput({ ...input, limits: { ...input.limits, maxCostUsd: ["unknown"] } }));
   const malformed = structuredClone(input); malformed.limits.maxCostUsd = 0; assert.throws(() => parseInput(malformed));
-  delete (malformed.authorization as Partial<typeof malformed.authorization>).costBasis; assert.throws(() => parseInput(malformed));
+  delete (malformed.limits as Partial<typeof malformed.limits>).maxCostUsd; assert.throws(() => parseInput(malformed));
 });
 
 test("uncapped Codex reserves its full 400000-token allowance, preserves unknown billing and stops at limits", async () => {

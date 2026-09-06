@@ -36,7 +36,7 @@ export interface RunInput {
   effective?: { source: "invoking-runtime" | "standalone-defaults"; provider: string; model: string; thinking: string; transport: string; compaction: RunConfig["compaction"]; settings: Record<string, unknown> };
   overrides?: Record<string, unknown>[];
   resolvedModels?: Model<Api>[];
-  authorization: { kind: "offline-preflight" | "live"; reference: string; allowModelCalls: boolean; allowStateCreation: boolean; allowCleanup: boolean; costBasis: "catalog-reservation" | "token-call-reservation"; expiresAt: string };
+  mode: "controlled" | "native";
   target: { repository: string; stateRoot: string; cleanup: "retain" | "remove" };
   models: Array<{ provider: "anthropic" | "openai" | "openai-codex"; id: string; contextWindow: number; maxTokens: number; baseUrl: string }>;
   limits: Limits;
@@ -44,7 +44,7 @@ export interface RunInput {
   receipt?: Receipt;
   observations?: Array<"stock_rpc" | "stock_tui" | "continuation">;
 }
-export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.85.1"; expiresAt: string; callsMade: 0 }
+export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.85.1"; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
 export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>): Promise<unknown> {
   const chunks: Buffer[] = []; let length = 0;
@@ -52,7 +52,7 @@ export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string>
     const bytes = Buffer.from(chunk); length += bytes.length;
     requireValue(length <= MAX_STDIN_BYTES, "INPUT_SIZE", "stdin exceeds 65536 bytes"); chunks.push(bytes);
   }
-  requireValue(length > 0, "INPUT", "Explicit bounded authorization JSON is required on stdin");
+  requireValue(length > 0, "INPUT", "A bounded task selection JSON object is required on stdin");
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); } catch { throw new RunnerError("INPUT", "stdin must contain one JSON object"); }
 }
 export function within(path: string, parent: string): boolean {
@@ -66,26 +66,21 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
     requireValue(typeof minFraction === "number" && typeof maxFraction === "number" && Number.isFinite(minFraction) && Number.isFinite(maxFraction) && minFraction > 0 && minFraction <= maxFraction && maxFraction < 1, "CONFIG", "Calibration requires explicit 0 < minFraction <= maxFraction < 1 authorization");
   }
   keys(value.compaction, ["enabled", "reserveTokens", "keepRecentTokens"], "compaction");
-  requireValue(typeof value.compaction.enabled === "boolean" && positive(value.compaction.reserveTokens) && positive(value.compaction.keepRecentTokens), "CONFIG", "Explicit enabled/reserveTokens/keepRecentTokens required");
+  requireValue(typeof value.compaction.enabled === "boolean" && positive(value.compaction.reserveTokens) && Number.isSafeInteger(value.compaction.keepRecentTokens) && Number(value.compaction.keepRecentTokens) >= 0, "CONFIG", "Explicit enabled/reserveTokens/keepRecentTokens required");
   const config = parseConfig(value.nunc);
   if (config.policyFile !== undefined) requireValue(text(config.policyFile) && isAbsolute(config.policyFile), "CONFIG", "Runner policyFile must be absolute and repository-local");
 }
-export function parseInput(value: unknown, execution = false, now = Date.now()): RunInput {
-  keys(value, ["version", "authorization", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels"], "input");
+export function parseInput(value: unknown, execution = false): RunInput {
+  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels"], "input");
   requireValue(value.version === 1, "INPUT", "Expected input version 1");
-  keys(value.authorization, ["kind", "reference", "allowModelCalls", "allowStateCreation", "allowCleanup", "costBasis", "expiresAt"], "authorization");
-  const a = value.authorization;
-  requireValue((a.kind === "offline-preflight" || a.kind === "live") && text(a.reference) && text(a.expiresAt) && Number.isFinite(Date.parse(a.expiresAt)) && Date.parse(a.expiresAt) > now, "AUTHORIZATION", "Explicit unexpired authorization required");
-  requireValue(typeof a.allowModelCalls === "boolean" && a.allowStateCreation === true && typeof a.allowCleanup === "boolean" && (a.costBasis === "catalog-reservation" || a.costBasis === "token-call-reservation"), "AUTHORIZATION", "Explicit effect permissions and accounting basis required");
-  requireValue(a.kind !== "offline-preflight" || a.allowModelCalls === false, "AUTHORIZATION", "Offline fixture cannot authorize calls");
-  requireValue(!execution || (a.kind === "live" && a.allowModelCalls === true), "AUTHORIZATION", "Execution requires live model-call authorization");
+  requireValue(value.mode === "controlled" || value.mode === "native", "INPUT", "Invalid internal execution mode");
+  requireValue(!execution || value.mode === "native", "EXECUTION", "Controlled observations cannot dispatch native service calls");
   keys(value.target, ["repository", "stateRoot", "cleanup"], "target");
   requireValue(text(value.target.repository) && isAbsolute(value.target.repository) && text(value.target.stateRoot) && isAbsolute(value.target.stateRoot), "TARGET", "Explicit absolute repository and new stateRoot required");
   requireValue(value.target.cleanup === "retain" || value.target.cleanup === "remove", "TARGET", "Explicit cleanup disposition required");
-  requireValue(value.target.cleanup !== "remove" || a.allowCleanup === true, "AUTHORIZATION", "Removal needs explicit cleanup authorization");
   keys(value.limits, ["maxCalls", "maxTotalTokens", "maxCostUsd", "maxDurationMs", "maxOutputTokens"], "limits");
   for (const key of ["maxCalls", "maxTotalTokens", "maxDurationMs", "maxOutputTokens"]) requireValue(positive(value.limits[key]), "LIMIT", `Positive bounded ${key} required`);
-  requireValue(Number(value.limits.maxCalls) <= 1000 && Number(value.limits.maxDurationMs) <= 86400000 && (a.costBasis === "token-call-reservation" ? value.limits.maxCostUsd === null : typeof value.limits.maxCostUsd === "number" && Number.isFinite(value.limits.maxCostUsd) && value.limits.maxCostUsd > 0), "LIMIT", "Invalid call/time/cost ceiling");
+  requireValue(Number(value.limits.maxCalls) <= 1000 && Number(value.limits.maxDurationMs) <= 86400000 && (value.limits.maxCostUsd === null || typeof value.limits.maxCostUsd === "number" && Number.isFinite(value.limits.maxCostUsd) && value.limits.maxCostUsd > 0), "LIMIT", "Invalid call/time/cost ceiling");
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
   for (const model of value.models) {
@@ -132,8 +127,8 @@ export function selectedModels(input: RunInput): Model<Api>[] {
     requireValue(model.contextWindow === target.contextWindow && model.maxTokens === target.maxTokens && model.baseUrl === target.baseUrl, "MODEL", "Authorized model capacity/endpoint differs from the locked catalog");
     requireValue(model.api === "openai-codex-responses" || !object(model.compat) || model.compat.supportsMaxOutputTokens !== false, "MODEL", "Target does not enforce an output cap");
     requireValue(input.limits.maxOutputTokens >= model.maxTokens, "LIMIT", "Authorize the stock main model's total default output ceiling, including thinking");
-    if (model.api === "openai-codex-responses") requireValue(input.authorization.costBasis === "token-call-reservation", "BILLING", "Codex OAuth subscription billing requires an explicit token/call-limited observation with unknown USD billing");
-    if (input.authorization.costBasis === "catalog-reservation") requireValue([model.cost, ...(model.cost.tiers ?? [])].every(rate => [rate.input, rate.output, rate.cacheRead, rate.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && Math.max(model.cost.input, model.cost.output) > 0, "MODEL", "Known catalog pricing required for a USD reservation");
+    if (model.api === "openai-codex-responses") requireValue(input.limits.maxCostUsd === null, "BILLING", "Codex OAuth subscription billing requires an explicit token/call-limited observation with unknown USD billing");
+    if (input.limits.maxCostUsd !== null) requireValue([model.cost, ...(model.cost.tiers ?? [])].every(rate => [rate.input, rate.output, rate.cacheRead, rate.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && Math.max(model.cost.input, model.cost.output) > 0, "MODEL", "Known catalog pricing required for a USD reservation");
     for (const s of input.scenarios) {
       const config = engineConfig(s.config.nunc, model, s.config.compaction);
       if (model.api === "openai-codex-responses") requireValue(config.extraction.outputTokens === model.maxTokens, "CONFIG", "Uncapped Codex extraction requires the full native model output allowance");
@@ -167,7 +162,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   const { assertBuildParity } = await import("./build.js");
   await assertBuildParity(repository);
   const candidate = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-  if (input.authorization.kind === "live") {
+  if (input.mode === "native") {
     const dirty = execFileSync("/usr/bin/git", ["-C", repository, "status", "--porcelain", "--untracked-files=normal", "--", "src", "scripts", "tests", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8" });
     requireValue(dirty === "", "CANDIDATE", "Live execution requires committed clean product/check inputs");
   }
@@ -187,7 +182,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     execFileSync("/usr/bin/git", ["-C", repository, "ls-files", "--error-unmatch", s.config.nunc.policyFile], { stdio: "pipe" });
     await bind(s.config.nunc.policyFile);
   }
-  const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.85.1", expiresAt: input.authorization.expiresAt, callsMade: 0 };
+  const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.85.1", callsMade: 0 };
   if (input.receipt !== undefined) requireValue(canonical(input.receipt) === canonical(receipt), "RECEIPT", "Preflight receipt does not match current target/config/scenarios/candidate");
   return receipt;
 }
