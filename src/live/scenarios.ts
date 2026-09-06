@@ -1,18 +1,20 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { convertToLlm, sessionEntryToContextMessages, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, sessionEntryToContextMessages, DEFAULT_MAX_BYTES, truncateHead, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
 import type { Context } from "@earendil-works/pi-ai";
 import type { MaintenanceResult } from "../engine/types.js";
 import { object, requireValue, within, type Selection } from "./contract.js";
 
 export interface Turn { id: string; text: string }
-export interface ScenarioInput { id: string; files: Record<string, string>; generatedFiles?: Array<{ path: string; segments: Array<{ repeat: number; text: string }> }>; turns: Turn[] }
-export interface Control { afterTurn: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string }; capacity?: string }
+export interface GeneratedFile { path: string; segments: Array<{ repeat: number; text: string }> }
+export interface ScenarioInput { id: string; files: Record<string, string>; generatedFiles?: GeneratedFile[]; turns: Turn[] }
+export interface Control { afterTurn: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string }; capacity?: string; steer?: string }
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type ArtifactCheck = { path: string; pointer: string } & ({ operator: "equal" | "contains"; value: JsonValue } | { operator: "semantic"; criterion: string });
 export interface ScenarioObserver { id: string; controls: Control[]; setupChecks: string[]; artifactChecks: ArtifactCheck[]; actionChecks: string[] }
 export interface CheckResult { check: string; status: "PROVEN" | "DISPROVEN" | "UNPROVEN"; observed?: unknown; reason?: string }
+
 function fields(value: unknown, allowed: string[], label: string): asserts value is Record<string, unknown> {
   requireValue(object(value) && Object.keys(value).every(k => allowed.includes(k)), "SCENARIO", `Invalid ${label} fields`);
 }
@@ -28,12 +30,26 @@ export function validateArtifactCheck(value: unknown): asserts value is Artifact
   if (value.operator === "semantic") requireValue(nonempty(value.criterion) && !Object.hasOwn(value, "value"), "SCENARIO", "Semantic check requires an independent criterion");
   else requireValue((value.operator === "equal" || value.operator === "contains") && Object.hasOwn(value, "value") && jsonValue(value.value) && !Object.hasOwn(value, "criterion"), "SCENARIO", "Exact artifact check requires a defined JSON value and supported operator");
 }
+export function expandGeneratedText(file: GeneratedFile): string {
+  return file.segments.map(s => s.text.repeat(s.repeat)).join("");
+}
+export function qualifyFullGiantSource(generated: GeneratedFile[] | undefined): CheckResult {
+  const file = generated?.[0];
+  const exception = file?.segments.find(s => s.repeat === 1)?.text.trim();
+  const text = file ? expandGeneratedText(file) : "";
+  const bytes = Buffer.byteLength(text);
+  const truncation = truncateHead(text);
+  const inFirst = Boolean(exception) && truncation.content.includes(exception!);
+  const pass = Boolean(file) && bytes > DEFAULT_MAX_BYTES && truncation.truncated === true && Boolean(exception) && text.includes(exception!) && !inFirst;
+  return { check: "c4/full source exceeds native read truncation and hides the middle exception until complete exposure", status: pass ? "PROVEN" : "UNPROVEN", observed: { bytes, nativeMaxBytes: DEFAULT_MAX_BYTES, truncated: truncation.truncated, truncatedBy: truncation.truncatedBy, firstChunkLines: truncation.outputLines, exceptionInFirstChunk: inFirst } };
+}
 export function validateControl(value: unknown, turns: string[]): asserts value is Control {
-  fields(value, ["afterTurn", "action", "placement", "capacity"], "control");
+  fields(value, ["afterTurn", "action", "placement", "capacity", "steer"], "control");
   requireValue(nonempty(value.afterTurn) && turns.includes(value.afterTurn) && ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model"].includes(String(value.action)), "SCENARIO", "Invalid control action/turn");
   const after = turns.indexOf(value.afterTurn);
-  if (value.action !== "rollover") { requireValue(value.placement === undefined && value.capacity === undefined, "SCENARIO", "Placement/capacity applies only to rollover"); return; }
+  if (value.action !== "rollover") { requireValue(value.placement === undefined && value.capacity === undefined && value.steer === undefined, "SCENARIO", "Placement/capacity/steer apply only to rollover"); return; }
   requireValue(value.capacity === undefined || nonempty(value.capacity), "SCENARIO", "Invalid capacity condition");
+  requireValue(value.steer === undefined || nonempty(value.steer) && turns.includes(value.steer) && turns.indexOf(value.steer) > after, "SCENARIO", "Steer must name a later task turn");
   requireValue(value.placement !== undefined || value.capacity !== undefined, "SCENARIO", "Rollover needs a placement or capacity prerequisite");
   if (value.placement !== undefined) {
     fields(value.placement, ["retireThroughTurn", "retainTurns", "retireEvidenceFromTurn"], "placement");
@@ -55,7 +71,19 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
   for (const cases of [source.cases, reference.cases]) requireValue(cases.length > 0 && cases.every(c => object(c) && nonempty(c.id)) && new Set(cases.map(c => c.id)).size === cases.length, "SCENARIO", "Invalid/duplicate case IDs");
   const raw: unknown = source.cases.find(c => c.id === selection.id);
   let obs: unknown = reference.cases.find(c => c.id === selection.id);
-  fields(raw, ["id", "files", "generatedFiles", "turns"], "scenario input");
+  fields(raw, ["id", "files", "generatedFiles", "turns", "variants"], "scenario input");
+  if (raw.variants !== undefined) {
+    requireValue(Array.isArray(raw.variants) && raw.variants.every(v => object(v) && nonempty(v.id)) && new Set(raw.variants.map(v => String(v.id))).size === raw.variants.length, "SCENARIO", "Invalid/duplicate input variants");
+    if (selection.variant) {
+      const overlay = raw.variants.find(v => v.id === selection.variant);
+      if (overlay !== undefined) {
+        fields(overlay, ["id", "files", "generatedFiles", "turns"], "input variant");
+        if (overlay.files !== undefined) raw.files = overlay.files;
+        if (overlay.generatedFiles !== undefined) raw.generatedFiles = overlay.generatedFiles;
+        if (overlay.turns !== undefined) raw.turns = overlay.turns;
+      }
+    }
+  }
   requireValue(object(raw.files) && Object.entries(raw.files).every(([path, text]) => localPath(path) && typeof text === "string"), "SCENARIO", "Invalid fixture files");
   requireValue(Array.isArray(raw.turns) && raw.turns.length > 0, "SCENARIO", "Missing task turns");
   const turns: string[] = [];
@@ -71,17 +99,23 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
       requireValue(bytes <= 1_000_000, "SCENARIO", "Generated file exceeds bound");
     }
   }
+  if (selection.id === "c4" && selection.variant === "full") requireValue(qualifyFullGiantSource(raw.generatedFiles as GeneratedFile[] | undefined).status === "PROVEN", "SCENARIO", "c4/full fixture must exceed native read truncation and hide the middle exception from the first chunk");
+  if (selection.id === "c4" && selection.variant === "capacity") {
+    const bytes = (raw.generatedFiles as GeneratedFile[] | undefined)?.reduce((n, file) => n + Buffer.byteLength(expandGeneratedText(file)), 0) ?? 0;
+    requireValue(bytes > DEFAULT_MAX_BYTES, "SCENARIO", "c4/capacity must keep a giant source above the native read threshold");
+  }
   fields(obs, ["id", "covers", "controls", "setupChecks", "artifactChecks", "actionChecks", "failureExample", "variants"], "observer");
   if (selection.variant) {
     requireValue(Array.isArray(obs.variants) && obs.variants.every(v => object(v) && nonempty(v.id)) && new Set(obs.variants.map(v => v.id)).size === obs.variants.length, "SCENARIO", "Invalid/duplicate variants");
     obs = obs.variants.find(v => v.id === selection.variant);
     fields(obs, ["id", "controls", "setupChecks", "artifactChecks", "actionChecks"], "variant");
-  } else requireValue(obs.variants === undefined, "SCENARIO", "Variant selection required");
+  }
   requireValue(Array.isArray(obs.controls) && obs.controls.length > 0, "SCENARIO", "Missing observer controls");
-  let lastTurn = -1; const controls = new Set<string>();
+  let lastTurn = -1; const controls = new Set<string>(); const steered = new Set<string>();
   for (const control of obs.controls) {
     validateControl(control, turns); const at = turns.indexOf(control.afterTurn), key = `${at}/${control.action}`;
     requireValue(at >= lastTurn && !controls.has(key), "SCENARIO", "Duplicate/out-of-order observer control"); lastTurn = at; controls.add(key);
+    if (control.steer) { requireValue(!steered.has(control.steer), "SCENARIO", "Duplicate steer turn"); steered.add(control.steer); }
     if (control.action !== "rollover") requireValue(controls.has(`${at}/rollover`) && (control.action === "pause_resume_same_session" ? selection.id === "c3" : selection.id === "c5"), "SCENARIO", "Unsupported restart/switch placement");
   }
   requireValue(Array.isArray(obs.artifactChecks), "SCENARIO", "Missing artifact checks"); obs.artifactChecks.forEach(validateArtifactCheck);
@@ -96,7 +130,7 @@ export async function seedScenario(input: ScenarioInput, cwd: string): Promise<v
   const files = { ...input.files };
   for (const generated of input.generatedFiles ?? []) {
     requireValue(Array.isArray(generated.segments) && generated.segments.every(s => Number.isSafeInteger(s.repeat) && s.repeat > 0 && typeof s.text === "string" && s.repeat * Buffer.byteLength(s.text) <= 1_000_000), "SCENARIO", "Invalid generated fixture");
-    files[generated.path] = generated.segments.map(s => s.text.repeat(s.repeat)).join("");
+    files[generated.path] = expandGeneratedText(generated);
   }
   for (const [path, text] of Object.entries(files)) {
     const target = join(cwd, path); requireValue(within(target, cwd), "SCENARIO", "Fixture escapes task directory");

@@ -10,6 +10,18 @@
         {"id": "a", "text": "We need an account-isolated lookup plan. My provisional guess is that the cache route will work. Keep this task pending; wait for my probe instruction before choosing a route."},
         {"id": "b", "text": "Read probe.json for the completed probe results. Do not write the final plan yet."},
         {"id": "c", "text": "Write decision.json with fields route and reason for the lookup plan using the evidence collected so far."}
+      ],
+      "variants": [
+        {
+          "id": "late-d",
+          "files": {},
+          "turns": [
+            {"id": "a", "text": "We need an account-isolated lookup plan. My provisional guess is that the cache route will work. Keep this task pending; wait for my next instruction before choosing a route."},
+            {"id": "b", "text": "Write scratch.json with a status field of pending. Do not write the final lookup plan yet."},
+            {"id": "d", "text": "Correction: the cache route is incompatible with account isolation. Do not use it."},
+            {"id": "c", "text": "Write decision.json with fields route and reason for the lookup plan using the evidence collected so far."}
+          ]
+        }
       ]
     },
     {
@@ -51,6 +63,21 @@
       "turns": [
         {"id": "a", "text": "Read the inspection report inspection.txt using normal tools. We need a disposition for batch Q7 based on the report. Leave the disposition pending until my next request."},
         {"id": "b", "text": "Write disposition.json with batch, disposition and reason. If the evidence available to you cannot establish a disposition, leave disposition null and explain the uncertainty instead of guessing."}
+      ],
+      "variants": [
+        {
+          "id": "full",
+          "generatedFiles": [
+            {
+              "path": "inspection.txt",
+              "segments": [
+                {"repeat": 1300, "text": "sample: nominal; no routing decision recorded\n"},
+                {"repeat": 1, "text": "verified exception: batch Q7 requires quarantine because its seal is broken; nominal samples do not clear Q7\n"},
+                {"repeat": 400, "text": "sample: nominal; no routing decision recorded\n"}
+              ]
+            }
+          ]
+        }
       ]
     },
     {

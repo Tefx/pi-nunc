@@ -1,5 +1,5 @@
 // purpose: Exercise downstream continuation controls through real stock RPC with a loopback fixture.
-// usage: node scripts/observe-segment.mjs c1|c2|c3|outside|codex|codex-timeout
+// usage: node scripts/observe-segment.mjs c1|c2|c3|outside|codex|codex-timeout|c4-full|late-d|late-d-cancel
 // effects: New isolated target; native tools/session/HTTP; bounded cleanup; retained mechanics evidence.
 // requires: Locked build and stock-driver.mjs. Scripted outputs cannot establish memory quality.
 import assert from 'node:assert/strict';
@@ -7,17 +7,28 @@ import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StockFixture, root, records } from './stock-driver.mjs';
 import { runSegment } from '../dist/src/live/worker.js';
-import { SessionManager } from '@earendil-works/pi-coding-agent';
+import { expandGeneratedText, loadScenario } from '../dist/src/live/scenarios.js';
+import { SessionManager, truncateHead } from '@earendil-works/pi-coding-agent';
 import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex';
 import { readLedger, ledgerSummary } from '../dist/src/live/budget.js';
-const which = process.argv[2] ?? 'c1', nativeDefaults = which === 'codex-defaults', timeout = which === 'codex-timeout', codex = which === 'codex' || nativeDefaults || timeout, id = timeout ? 'c1' : codex ? 'c2' : which === 'outside' ? 'c1' : which;
-assert(['c1', 'c2', 'c3'].includes(id));
+const which = process.argv[2] ?? 'c1', nativeDefaults = which === 'codex-defaults', timeout = which === 'codex-timeout';
+const late = which === 'late-d' || which === 'late-d-cancel', cancelLate = which === 'late-d-cancel', full = which === 'c4-full';
+const codex = which === 'codex' || nativeDefaults || timeout, id = timeout ? 'c1' : codex ? 'c2' : which === 'outside' ? 'c1' : late ? 'c1' : full ? 'c4' : which;
+assert(['c1', 'c2', 'c3', 'c4'].includes(id));
 const f = await new StockFixture().setup(codex ? { api: 'openai-codex-responses' } : {}), target = join(f.dir, 'nunc-live-controlled'); await mkdir(target);
 const input = JSON.parse(await readFile(join(root, codex ? 'tests/live/preflight-codex-input.json' : 'tests/live/preflight-input.json'), 'utf8'));
 input.target.repository = root; input.target.stateRoot = target;
 input.scenarios[0].id = id;
-if (!codex) input.scenarios[0].config = { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
+if (full) input.scenarios[0].variant = 'full';
+if (late) input.scenarios[0].variant = 'late-d';
+if (!codex) input.scenarios[0].config = { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: full ? 100000 : 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
 const model = codex ? { ...openaiCodexProvider().getModels().find(m => m.id === 'gpt-6-astra'), baseUrl: f.endpoint } : { id: 'nunc-native', name: 'nunc-native', provider: 'groq', api: 'openai-completions', baseUrl: f.endpoint, reasoning: false, input: ['text', 'image'], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+if (full) {
+  model.contextWindow = 200000;
+  const catalog = JSON.parse(await readFile(join(f.state, 'agent/models.json'), 'utf8'));
+  catalog.providers.groq.models[0].contextWindow = 200000;
+  await writeFile(join(f.state, 'agent/models.json'), JSON.stringify(catalog));
+}
 const overrides = { models: [model], ...(nativeDefaults ? {} : { controlledModels: JSON.parse(await readFile(join(f.state, 'agent/models.json'), 'utf8')) }) };
 if (nativeDefaults) {
   process.env.PI_CODING_AGENT_DIR = join(f.state, 'agent');
@@ -30,14 +41,26 @@ if (codex && !nativeDefaults) {
 }
 const write = (path, content) => [{ tool: { name: 'write', input: { path, content: JSON.stringify(content) } } }, 'Saved.'];
 const read = path => [{ tool: { name: 'read', input: { path } } }, 'Read.'];
-const steps = id === 'c1' ? ['Pending.', ...read('probe.json'), ...write('decision.json', { route: 'direct', reason: 'Controlled fixture reason.' })] : id === 'c2' ? ['Pending.', ...write('sum.json', { sum: 46 }), ...write('product.json', { product: 104 }), ...write('difference.json', { difference: 63 }), ...write('retry.json', { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })] : [read('routes.json')[0], read('records.json')[0], 'Read.', ...write('note.txt', 'Chlorophyll absorbs other wavelengths. Reflected green light reaches the eye.'), 'Cannot establish the requested continuation from controlled empty memory.'];
+const loaded = full ? await loadScenario(root, input.scenarios[0]) : undefined;
+const fullOffset = full ? truncateHead(expandGeneratedText(loaded.input.generatedFiles[0])).outputLines + 1 : 0;
+const steps = full ? [{ tool: { name: 'read', input: { path: 'inspection.txt' } } }, { tool: { name: 'read', input: { path: 'inspection.txt', offset: fullOffset } } }, 'Read complete.', ...write('disposition.json', { batch: 'Q7', disposition: 'quarantine', reason: 'Controlled fixture reason.' })] : late ? ['Pending.', ...write('scratch.json', { status: 'pending' }), 'Noted the correction.', ...write('decision.json', { route: 'direct', reason: 'Controlled fixture reason.' })] : id === 'c1' ? ['Pending.', ...read('probe.json'), ...write('decision.json', { route: 'direct', reason: 'Controlled fixture reason.' })] : id === 'c2' ? ['Pending.', ...write('sum.json', { sum: 46 }), ...write('product.json', { product: 104 }), ...write('difference.json', { difference: 63 }), ...write('retry.json', { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })] : [read('routes.json')[0], read('records.json')[0], 'Read.', ...write('note.txt', 'Chlorophyll absorbs other wavelengths. Reflected green light reaches the eye.'), 'Cannot establish the requested continuation from controlled empty memory.'];
 f.response = (row, source) => source ? JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id) }) : (() => { assert(steps.length, 'scripted native service inventory exceeded'); return steps.shift(); })();
 let outcome = { status: 'FAIL', case: which };
 try {
   if (timeout) f.hold('main');
-  const job = { input, scenarioIndex: 0, deadline: Date.now() + (timeout ? 5000 : 45000), resume: false };
+  const cancel = new AbortController();
+  if (late) overrides.signal = cancel.signal;
+  if (late) {
+    f.hold('maintenance');
+    void f.wait(() => f.requests.some(r => r.kind === 'maintenance'), 'maintenance').then(async () => {
+      if (cancelLate) cancel.abort();
+      await new Promise(resolve => setTimeout(resolve, 800));
+      f.release('maintenance');
+    }).catch(() => f.release('maintenance'));
+  }
+  const job = { input, scenarioIndex: 0, deadline: Date.now() + (timeout ? 5000 : full || late ? 70000 : 45000), resume: false };
   const report = await runSegment(job, overrides);
-  assert.equal(report.status, which === 'outside' || timeout ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, prerequisites: report.prerequisites, preparationFailure: report.preparationFailure }));
+  assert.equal(report.status, which === 'outside' || timeout || cancelLate ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, prerequisites: report.prerequisites, preparationFailure: report.preparationFailure }));
   if (timeout) {
     assert.equal(f.requests.length, 1); assert(f.requests[0].closed);
     const ledger = readLedger(join(target, 'calls.jsonl')), usage = ledgerSummary(ledger);
@@ -45,6 +68,14 @@ try {
     assert(report.pid > 0); assert.throws(() => process.kill(report.pid, 0), { code: 'ESRCH' });
     await writeFile(join(f.dir, 'ledger.json'), JSON.stringify(ledger));
   } else if (which === 'outside') { assert.equal(report.reason, 'CALIBRATION'); assert.equal(report.maintenance.length, 0); assert.equal(f.requests.length, 3); }
+  else if (cancelLate) {
+    assert(!report.prerequisites.some(p => p.check.includes('delivered verbatim once') && p.status === 'PROVEN'));
+    const after = f.requests.length;
+    await new Promise(resolve => setTimeout(resolve, 250));
+    assert.equal(f.requests.length, after, 'cancelled maintenance must not continue later effects');
+    const extraction = f.requests.find(r => r.kind === 'maintenance');
+    if (extraction) assert(!JSON.stringify(extraction.payload).includes('the cache route is incompatible'));
+  }
   else {
     const expected = id === 'c2' ? 3 : 1;
     assert.equal(report.calibrations.length, expected); assert.equal(report.maintenance.length, expected);
@@ -53,6 +84,16 @@ try {
     assert.equal(checkpoints.length, expected);
     for (let n = 0; n < checkpoints.length; n++) assert.equal(checkpoints[n].firstKeptEntryId, report.calibrations[n].firstKeptEntryId);
     assert(f.requests.some(r => (r.payload.messages ?? r.payload.input).some(m => m.role === 'tool' || m.type === 'function_call_output')), 'genuine stock tool result delivered');
+    if (full) {
+      const extraction = f.requests.find(r => r.kind === 'maintenance');
+      assert(JSON.stringify(extraction.payload).includes('verified exception: batch Q7'));
+      assert.equal(report.prerequisites.filter(p => p.check.includes('native truncation hid') || p.check.includes('c4/full source exceeds')).every(p => p.status === 'PROVEN'), true);
+    }
+    if (late) {
+      const extraction = f.requests.find(r => r.kind === 'maintenance');
+      assert(!JSON.stringify(extraction.payload).includes('the cache route is incompatible'));
+      assert.equal(branch.filter(e => e.type === 'message' && e.message.role === 'user' && JSON.stringify(e.message).includes('the cache route is incompatible')).length, 1);
+    }
     if (codex) {
       const ledger = readLedger(join(target, 'calls.jsonl')), usage = ledgerSummary(ledger);
       assert(report.maintenance.every(r => r.observations.usage.cost === null), 'subscription placeholders never claim observed billing');

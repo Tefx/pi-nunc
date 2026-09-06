@@ -2,21 +2,48 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { checkArtifact, checkRollover, jsonPointer, loadScenario, parseScenario, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
+import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";
+import { checkArtifact, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
 import { fixture, repository } from "./fixtures.js";
 
 test("every tracked input/observer variant loads separately; only task fixture files are seeded", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
-    for (const id of ["c1", "c2", "c3", "c4", "c5"] as const) for (const variant of id === "c4" ? ["full", "capacity"] as const : [undefined]) {
+    const sizes: Record<string, number> = {};
+    for (const id of ["c1", "c2", "c3", "c4", "c5"] as const) for (const variant of id === "c4" ? ["full", "capacity"] as const : id === "c1" ? [undefined, "late-d"] as const : [undefined]) {
       const selected = { ...input.scenarios[0]!, id, ...(variant ? { variant } : {}) };
       const scenario = await loadScenario(repository, selected); assert.equal(scenario.input.id, id); assert(scenario.input.turns.length > 0); assert(scenario.observer.controls.length > 0);
       const cwd = join(input.target.stateRoot, `${id}-${variant ?? "base"}`);
       await seedScenario(scenario.input, cwd);
-      if (id === "c4") { const text = await readFile(join(cwd, "inspection.txt"), "utf8"); assert.equal(text.split("\n").length, 6002); assert(text.length > 250000); }
+      if (id === "c4") {
+        const text = await readFile(join(cwd, "inspection.txt"), "utf8");
+        sizes[variant!] = Buffer.byteLength(text);
+        assert(text.includes("verified exception: batch Q7"));
+        if (variant === "full") {
+          assert.equal(qualifyFullGiantSource(scenario.input.generatedFiles).status, "PROVEN");
+          assert(sizes.full! > DEFAULT_MAX_BYTES);
+          assert.notEqual(text.split("\n").length, 6002);
+        } else {
+          assert.equal(text.split("\n").length, 6002); assert(text.length > 250000);
+        }
+      }
+      if (id === "c1" && variant === "late-d") {
+        assert(scenario.observer.controls.some(c => c.steer === "d"));
+        assert.equal(scenario.input.turns.map(t => t.id).join(","), "a,b,d,c");
+        assert.equal(scenario.input.generatedFiles, undefined);
+      }
       assert(!Object.hasOwn(scenario.input.files, "observer.json"));
     }
+    assert(sizes.capacity! > sizes.full!);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+test("c4/full rejects a fixture that fits in one native read or exposes the exception in the first chunk", async () => {
+  const source = JSON.parse(await readFile(join(repository, "tests/scenarios/inputs.json"), "utf8"));
+  const observer = JSON.parse(await readFile(join(repository, "tests/scenarios/observer.json"), "utf8"));
+  const selection = { ...(await fixture()).scenarios[0]!, id: "c4" as const, variant: "full" as const };
+  const full = source.cases.find((c: { id: string }) => c.id === "c4").variants.find((v: { id: string }) => v.id === "full");
+  full.generatedFiles[0].segments = [{ repeat: 10, text: "sample: nominal; no routing decision recorded\n" }, { repeat: 1, text: "verified exception: batch Q7 requires quarantine because its seal is broken; nominal samples do not clear Q7\n" }, { repeat: 10, text: "sample: nominal; no routing decision recorded\n" }];
+  assert.throws(() => parseScenario(source, observer, selection));
 });
 test("consumed scenario schema rejects malformed placements, operators, expected values and source structure", async () => {
   const source = JSON.parse(await readFile(join(repository, "tests/scenarios/inputs.json"), "utf8"));
@@ -34,6 +61,8 @@ test("consumed scenario schema rejects malformed placements, operators, expected
     (_s, o) => o.cases[1].controls[0].placement.retainTurns = ["b", "b"],
     (_s, o) => o.cases[1].controls[0].capacity = {},
     (_s, o) => o.cases[1].controls[0].action = "force_boundary",
+    (_s, o) => o.cases[1].controls[0].steer = "a",
+    (_s, o) => o.cases[1].controls[0].steer = "b",
     (_s, o) => o.cases[1].controls.push(o.cases[1].controls[0]),
     (_s, o) => o.cases[1].artifactChecks[0].operator = "anything",
     (_s, o) => delete o.cases[1].artifactChecks[0].value,

@@ -51,6 +51,7 @@ export class NativeHost {
   private closed: Promise<void> = Promise.resolve();
   private serial = 0;
   private killTimer: NodeJS.Timeout | undefined;
+  private watch: NodeJS.Timeout | undefined;
   private readonly abort = () => { this.child?.kill("SIGTERM"); this.killTimer ??= setTimeout(() => this.child?.kill("SIGKILL"), 1000); };
   constructor(readonly options: HostOptions) {}
   private saved(): SessionManager | undefined { return this.sessionFile && existsSync(this.sessionFile) ? SessionManager.open(this.sessionFile) : undefined; }
@@ -108,6 +109,7 @@ export class NativeHost {
       this.child.once("error", end); this.child.once("close", end);
     });
     o.signal.addEventListener("abort", this.abort, { once: true }); if (o.signal.aborted) this.abort();
+    this.watch = setInterval(() => { try { this.drain(); this.changed.emit("event"); } catch { this.abort(); } }, 25);
     await this.refresh(); return this;
   }
   private eventsFile = "";
@@ -119,7 +121,7 @@ export class NativeHost {
       this.cursor += row.length + 1;
       const e: unknown = JSON.parse(row); requireValue(object(e), "OBSERVER", "Invalid observer record");
       if (e.type === "maintenance") this.options.onMaintenance?.(e.data);
-      if (e.type === "action") this.options.onAction?.(e.data);
+      if (e.type === "action" || e.type === "lifecycle") this.options.onAction?.(e.data);
       if (e.type === "context") {
         requireValue(object(e.data) && object(e.data.model) && object(e.data.context) && Array.isArray(e.data.context.messages), "OBSERVER", "Invalid observed context");
         const observedModel = e.data.model;
@@ -158,10 +160,25 @@ export class NativeHost {
     });
     await this.refresh();
   }
-  async compact(): Promise<void> { try { await this.command("compact"); } finally { await this.refresh(); } }
+  async compact(during?: (signal: AbortSignal) => Promise<void>): Promise<void> {
+    const stop = new AbortController();
+    const done = this.command("compact").finally(() => stop.abort());
+    try {
+      if (during) {
+        const work = during(AbortSignal.any([stop.signal, this.options.signal]));
+        const results = await Promise.allSettled([done, work]);
+        if (results[1].status === "rejected" && !stop.signal.aborted) throw results[1].reason;
+      }
+      await done;
+    } finally { await this.refresh(); }
+  }
+  async steer(message: string): Promise<void> { await this.command("steer", { message }); }
+  async abortRun(): Promise<void> { await this.command("abort"); }
+  async clearQueue(): Promise<void> { await this.command("clear_queue"); }
   async setModel(model: Model<Api>, _options?: unknown): Promise<void> { await this.command("set_model", { provider: model.provider, modelId: model.id }); await this.refresh(); }
   async close(): Promise<void> {
     this.options.signal.removeEventListener("abort", this.abort);
+    if (this.watch) clearInterval(this.watch);
     let grace: NodeJS.Timeout | undefined;
     if (!this.exited && this.child) { this.child.stdin.write(JSON.stringify({ type: "prompt", message: "/nunc-observer-quit" }) + "\n"); grace = setTimeout(this.abort, 1000); }
     await this.closed; if (grace) clearTimeout(grace); if (this.killTimer) clearTimeout(this.killTimer); if (this.eventsFile) this.drain();

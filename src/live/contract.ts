@@ -30,7 +30,7 @@ function text(value: unknown): value is string { return typeof value === "string
 export interface Limits { maxCalls: number; maxTotalTokens: number; maxCostUsd: number | null; maxDurationMs: number; maxOutputTokens: number }
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5"; variant?: "full" | "capacity"; config: RunConfig }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5"; variant?: "full" | "capacity" | "late-d"; config: RunConfig }
 export interface RunInput {
   version: 1;
   effective?: { source: "invoking-runtime" | "standalone-defaults"; provider: string; model: string; thinking: string; transport: string; compaction: RunConfig["compaction"]; settings: Record<string, unknown> };
@@ -93,7 +93,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
   for (const selection of value.scenarios) {
     keys(selection, ["id", "variant", "config"], "scenario");
     requireValue(["c1", "c2", "c3", "c4", "c5"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
-    requireValue(selection.id === "c4" ? ["full", "capacity"].includes(String(selection.variant)) : selection.variant === undefined, "SCENARIO", "c4 requires full/capacity variant; others have no variant");
+    requireValue(selection.id === "c4" ? ["full", "capacity"].includes(String(selection.variant)) : selection.id === "c1" ? selection.variant === undefined || selection.variant === "late-d" : selection.variant === undefined, "SCENARIO", "c4 requires full/capacity; c1 may select late-d; others have no variant");
     const key = `${selection.id}/${selection.variant ?? ""}`; requireValue(!ids.has(key), "SCENARIO", "Duplicate scenario"); ids.add(key);
     validateConfig(selection.config);
     if (selection.id === "c4" && selection.variant === "full") requireValue(selection.config.nunc.extraction?.toolResults === "full", "CONFIG", "c4/full requires full extraction");

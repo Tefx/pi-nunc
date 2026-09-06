@@ -28,7 +28,7 @@ The exact public schema is:
 
 - `target: {repository, stateRoot, cleanup: "retain" | "remove"}` with canonical absolute paths.
 - `limits: {maxCalls, maxTotalTokens, maxDurationMs, maxOutputTokens, maxCostUsd}` with positive finite integer counts/time/output; `maxCostUsd` is positive for a known-cost reservation or null for unknown billing. Codex defaults an omitted cost ceiling to null. Omitted `maxOutputTokens` resolves to the selected native output allowance; it never lowers Pi's main output.
-- `scenarios: [{id: "c1" | "c2" | "c3" | "c4" | "c5", variant?: "full" | "capacity"}]`; c4 requires its variant.
+- `scenarios: [{id: "c1" | "c2" | "c3" | "c4" | "c5", variant?: "full" | "capacity" | "late-d"}]`; c4 requires `full` or `capacity`. c1 may select `late-d`. Other cases have no variant.
 - Optional `overrides: [{requirement, reason, model?: {provider,id}, smallerModel?: {provider,id}, thinking?, config?: {nunc?, compaction?, retentionCalibration?}}]`. Partial compaction overrides merge with native defaults. Calibration supplies `minFraction`/`maxFraction`; c5 requires a named smaller-model selection. Reports include before/after differences.
 - Optional `observations`: `continuation` alone (default), or `stock_rpc`/`stock_tui` for controlled-only observations.
 
@@ -55,10 +55,11 @@ The supervisor propagates signals/deadline cancellation, waits for child exit, a
 Each scenario uses a fresh persistent session and task cwd. Public tools are bounded to scenario files. The model sees tracked input turns and seeded task files only; observer criteria and future turns remain private. Native RPC compact/model changes, saved JSONL and actual process restart establish lifecycle. No manual M, manufactured checkpoints, scripted expected answers or replayed prompts establish continuation quality.
 
 - c1: Retire a provisional conclusion while its corrective evidence remains in K.
+- c1/late-d: After an observable maintenance-start/frozen boundary, one public RPC `steer` delivers corrective D while maintenance is outstanding. D is absent from frozen extraction, then delivered verbatim once after freeze and is not submitted again. Missing overlap is `UNPROVEN`; cancelled maintenance cannot continue later effects.
 - c2: Three rollovers precede checks of exact continuing constraints.
 - c3: Pause and restart the same saved session, then resume unfinished work without repeating excluded actions.
-- c4/full: Complete giant tool evidence, including its middle exception, enters extraction and retires. Native truncation cannot count as complete evidence.
-- c4/capacity: Observe bounded extraction omission/failure and unchanged state after cancellation; failed continuation remains unproven.
+- c4/full: A giant fixture distinct from the original capacity source still exceeds native read truncation, hides the middle exception from the first chunk, and requires complete tool exposure. Full extraction, retirement and later artifact qualification cannot succeed if those prerequisites fail.
+- c4/capacity: Keep the original giant source. Observe bounded extraction omission/failure and unchanged state after cancellation; failed continuation remains unproven.
 - c5: A named smaller-model override changes only task runtime state, then checks native model-change persistence and recalculated budgets.
 
 Optional retention calibration is a named test override within its declared fraction interval. It derives legal source placement from actual F/M/R and tool units, then changes only task configuration. Impossible placement stops before maintenance. Nunc still selects its own K and Pi persists one native snapshot. Actual checks confirm candidate/summary/boundary agreement, unchanged K/order, no retired source, and only the latest summary carrier.

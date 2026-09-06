@@ -5,7 +5,7 @@ import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { closeHost, openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type RunInput } from "./contract.js";
-import { checkFullExtraction, checkRollover, loadScenario, maintenanceResult, scoreArtifacts, seedScenario, type CheckResult } from "./scenarios.js";
+import { checkFullExtraction, checkRollover, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, type CheckResult } from "./scenarios.js";
 import { ledgerSummary, readLedger } from "./budget.js";
 import { loadPolicy } from "../engine/index.js";
 import { engineConfig, eligibleStarts, project, type NuncConfig } from "../pi/index.js";
@@ -14,6 +14,15 @@ import { calibrateRetention, type RetentionCalibration } from "./calibration.js"
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean }
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig }
 export interface SegmentReport { pid: number; scenario: string; status: "PAUSED" | "OBSERVED" | "UNPROVEN" | "STOPPED"; reason?: string; prerequisites: CheckResult[]; sessionFile?: string; nextTurn: number; score?: Awaited<ReturnType<typeof scoreArtifacts>>; contexts: Array<{ turn: string; model: string; kind: string; context: Context }>; maintenance: unknown[]; actions: unknown[]; calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>; preparationFailure?: { afterTurn: string; message: string } }
+function userText(entry: SessionEntry): string | undefined {
+  if (entry.type !== "message" || entry.message.role !== "user") return undefined;
+  const content = entry.message.content;
+  if (typeof content === "string") return content;
+  return Array.isArray(content) ? content.filter(b => b.type === "text").map(b => b.text).join("") : undefined;
+}
+function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
+  return branch.filter(e => userText(e) === text).map(e => e.id);
+}
 export async function runSegment(job: WorkerJob, overrides: { controlledModels?: unknown; models?: Model<Api>[]; signal?: AbortSignal } = {}): Promise<SegmentReport> {
   const { input } = job, selection = input.scenarios[job.scenarioIndex];
   requireValue(selection, "SCENARIO", "Invalid worker selection");
@@ -50,6 +59,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     }
     for (let index = report.nextTurn; index < scenario.turns.length; index++) {
       signal.throwIfAborted(); const inputTurn = scenario.turns[index]!; turn = inputTurn.id;
+      const already = deliveredUserIds(sm.getBranch(), inputTurn.text);
+      if (already.length > 0) {
+        turns[turn] = already; report.nextTurn = index + 1;
+        report.prerequisites.push({ check: `turn ${turn} consumed from prior public delivery without a second serial submit`, status: already.length === 1 ? "PROVEN" : "DISPROVEN", observed: { count: already.length } });
+        requireValue(report.prerequisites.every(p => p.status === "PROVEN"), "PREREQUISITE", "Required source placement/capacity was not established; no retries or observer hints are injected");
+        continue;
+      }
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
       await session.prompt(inputTurn.text, { expandPromptTemplates: false });
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !beforeIds.has(e.id)).map(e => e.id);
@@ -63,7 +79,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           report.prerequisites.push({ check: `required ${path} observation actually visible`, status: visible ? "PROVEN" : "UNPROVEN" });
         }
       }
-      if (selection.id === "c1" && turn === "b") {
+      if (observer.controls.some(c => c.steer === turn)) {
+        const count = deliveredUserIds(sm.getBranch(), inputTurn.text).length;
+        report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze", status: count === 1 ? "PROVEN" : count > 1 ? "DISPROVEN" : "UNPROVEN", observed: { count } });
+      }
+      if (selection.id === "c1" && turn === "b" && scenario.files["probe.json"]) {
         const probe = scenario.files["probe.json"]?.trim();
         const visible = sm.buildContextEntries().some(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError && e.message.content.some(b => b.type === "text" && Boolean(probe) && b.text.includes(probe!)));
         report.prerequisites.push({ check: "complete probe result actually visible before rollover", status: visible ? "PROVEN" : "UNPROVEN" });
@@ -98,8 +118,20 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               throw new RunnerError("CALIBRATION", report.preparationFailure.message);
             }
           }
+          const steerTurn = control.steer ? scenario.turns.find(t => t.id === control.steer) : undefined;
+          let steered = false, overlap = false;
+          const freezeSeen = () => report.contexts.some(c => c.turn === turn && c.kind === "maintenance") || report.actions.some(a => object(a) && a.turn === turn && object(a.event) && a.event.phase === "maintenance-start");
           let failed = false;
-          try { await session.compact(); } catch { failed = true; }
+          try {
+            await session.compact(steerTurn ? async steerSignal => {
+              while (!steerSignal.aborted && !freezeSeen()) await new Promise(resolve => setTimeout(resolve, 25));
+              if (steerSignal.aborted || !freezeSeen()) return;
+              overlap = true;
+              await session.steer(steerTurn.text);
+              steered = true;
+            } : undefined);
+          } catch { failed = true; }
+          if (steered) await session.clearQueue();
           const result = maintenanceResult(report.maintenance.at(-1));
           const file = session.sessionFile; requireValue(file, "PERSISTENCE", "No persistent session file");
           const saved = SessionManager.open(file, join(caseRoot, "sessions"));
@@ -120,12 +152,23 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             const requests = report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
             const extracted = Boolean(exception) && requests.some(r => JSON.stringify(r.context).includes(exception!));
             if (selection.variant === "full") {
+              report.prerequisites.push(qualifyFullGiantSource(scenario.generatedFiles));
+              const toolTexts: string[] = [];
+              for (const e of before) if (e.type === "message" && e.message.role === "toolResult" && !e.message.isError) for (const b of e.message.content) if (b.type === "text") toolTexts.push(b.text);
+              const truncatedWithout = toolTexts.some(t => /Use offset=\d+/.test(t) && Boolean(exception) && !t.includes(exception!));
+              report.prerequisites.push({ check: "native truncation hid the middle exception until complete tool exposure", status: truncatedWithout && visible ? "PROVEN" : "UNPROVEN", observed: { truncatedWithoutException: truncatedWithout, completeException: visible } });
               report.prerequisites.push({ check: "middle exception visible in actual Pi tool projection and full maintenance request", status: visible && extracted && result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
             } else {
               const accounting = result.observations.accounting;
               report.prerequisites.push({ check: "actual full-request overflow triggered bounded reduction", status: accounting && accounting.fullExtractionTokens > accounting.extractionInputLimit && result.observations.omissions.length > 0 ? "PROVEN" : "UNPROVEN", observed: { accounting, omissions: result.observations.omissions, middleVisibleBefore: visible, middleVisibleExtraction: extracted } });
             }
           } else report.prerequisites.push({ check: "normal rollover used full extraction", status: result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
+          if (steerTurn) {
+            const frozen = report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
+            const absent = frozen.length > 0 && frozen.every(c => !JSON.stringify(c.context).includes(steerTurn.text));
+            report.prerequisites.push({ check: "public maintenance-start/frozen boundary overlapped one steer", status: overlap && steered ? "PROVEN" : "UNPROVEN", observed: { overlap, steered, maintenanceStart: report.actions.some(a => object(a) && a.turn === turn && object(a.event) && a.event.phase === "maintenance-start") } });
+            report.prerequisites.push({ check: "corrective D absent from frozen extraction", status: overlap && absent ? "PROVEN" : overlap && frozen.length > 0 ? "DISPROVEN" : "UNPROVEN", observed: { frozenRequests: frozen.length, absent } });
+          }
         } else if (control.action === "pause_resume_same_session") {
           const sessionFile = session.sessionFile; requireValue(sessionFile, "PERSISTENCE", "Pause requires persistent session");
           const saved = SessionManager.open(sessionFile, join(caseRoot, "sessions"));

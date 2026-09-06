@@ -15,7 +15,26 @@
         {"path": "decision.json", "pointer": "/reason", "operator": "semantic", "criterion": "Explains cache incompatibility with account isolation, without claiming it passed."}
       ],
       "actionChecks": ["Fail if the continuation selects or implements cache despite the completed contrary probe. Do not score an earlier provisional guess as a violation."],
-      "failureExample": "A retained cache recommendation drives decision.json after the contradictory probe was available in K."
+      "failureExample": "A retained cache recommendation drives decision.json after the contradictory probe was available in K.",
+      "variants": [
+        {
+          "id": "late-d",
+          "controls": [
+            {"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}, "steer": "d"}
+          ],
+          "setupChecks": [
+            "Public maintenance-start and the frozen extraction are observed while maintenance is outstanding.",
+            "The corrective D turn is absent from frozen extraction.",
+            "One public RPC steer is acknowledged during outstanding maintenance.",
+            "D is delivered verbatim once after freeze and is not submitted again by the ordinary serial schedule. Missing overlap is UNPROVEN, not a fabricated success."
+          ],
+          "artifactChecks": [
+            {"path": "decision.json", "pointer": "/route", "operator": "equal", "value": "direct"},
+            {"path": "decision.json", "pointer": "/reason", "operator": "semantic", "criterion": "Explains cache incompatibility with account isolation, without claiming it passed."}
+          ],
+          "actionChecks": ["Fail if the continuation selects or implements cache despite the corrective D that arrived after freeze. Do not score an earlier provisional guess as a violation."]
+        }
+      ]
     },
     {
       "id": "c2",
@@ -57,7 +76,7 @@
         {
           "id": "full",
           "controls": [{"afterTurn": "a", "action": "rollover", "placement": {"retireEvidenceFromTurn": "a"}, "capacity": "complete extraction fits with reserve and growth space"}],
-          "setupChecks": ["The main agent's tool reads expose the middle exception in Pi's actual visible projection. Full extraction contains all visible tool bodies, including that exception. A host-truncated body with an invisible exception does not qualify for this variant."],
+          "setupChecks": ["The full fixture is distinct from the original capacity giant source, still exceeds the native read truncation/chunk threshold, and hides the middle exception from the first truncated chunk. Complete native tool exposure includes that exception. Full extraction contains all visible tool bodies without omission. A host-truncated body with an invisible exception does not qualify."],
           "artifactChecks": [
             {"path": "disposition.json", "pointer": "/batch", "operator": "equal", "value": "Q7"},
             {"path": "disposition.json", "pointer": "/disposition", "operator": "equal", "value": "quarantine"},
