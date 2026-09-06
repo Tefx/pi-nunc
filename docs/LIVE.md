@@ -27,7 +27,7 @@ Producer tests use fictional pre-existing native profiles and controlled service
 The exact public schema is:
 
 - `target: {repository, stateRoot, cleanup: "retain" | "remove"}` with canonical absolute paths.
-- `limits: {maxCalls, maxTotalTokens, maxDurationMs, maxOutputTokens, maxCostUsd}` with positive finite integer counts/time/output; `maxCostUsd` is positive for a known-cost reservation or null for unknown billing. Codex defaults an omitted cost ceiling to null.
+- `limits: {maxCalls, maxTotalTokens, maxDurationMs, maxOutputTokens, maxCostUsd}` with positive finite integer counts/time/output; `maxCostUsd` is positive for a known-cost reservation or null for unknown billing. Codex defaults an omitted cost ceiling to null. Omitted `maxOutputTokens` resolves to the selected native output allowance; it never lowers Pi's main output.
 - `scenarios: [{id: "c1" | "c2" | "c3" | "c4" | "c5", variant?: "full" | "capacity"}]`; c4 requires its variant.
 - Optional `overrides: [{requirement, reason, model?: {provider,id}, smallerModel?: {provider,id}, thinking?, config?: {nunc?, compaction?, retentionCalibration?}}]`. Partial compaction overrides merge with native defaults. Calibration supplies `minFraction`/`maxFraction`; c5 requires a named smaller-model selection. Reports include before/after differences.
 - Optional `observations`: `continuation` alone (default), or `stock_rpc`/`stock_tui` for controlled-only observations.
