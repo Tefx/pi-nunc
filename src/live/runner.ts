@@ -10,10 +10,11 @@ export { childEnvironment } from "./host.js";
 export interface ChildReceipt { exitCode: number | null; signal: string | null; timedOut: boolean; diagnostic?: { code: string; message: string } }
 export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal): Promise<ChildReceipt> {
   return new Promise((resolve, reject) => {
-    // The orchestration worker must validate against the supervisor's temp root.
-    // Only the native task host redirects TMPDIR to task-local scratch.
+    // Orchestration keeps the checked repository cwd and supervisor's temp root.
+    // Only the native task host uses task cwd/TMPDIR. Compiler validation also
+    // needs the repository cwd to resolve the locked toolchain consistently.
     const env = { ...nativeEnvironment(job.input.target.stateRoot), TMPDIR: process.env.TMPDIR };
-    const child = spawn(process.execPath, [script, "--worker"], { cwd: job.input.target.stateRoot, env, detached: true, stdio: ["pipe", "ignore", "ignore", "ipc"] });
+    const child = spawn(process.execPath, [script, "--worker"], { cwd: job.input.target.repository, env, detached: true, stdio: ["pipe", "ignore", "ignore", "ipc"] });
     let diagnostic: ChildReceipt["diagnostic"];
     child.on("message", (value: unknown) => {
       if (!diagnostic && object(value) && value.type === "nunc-worker-rejection" && typeof value.code === "string" && /^[A-Z_]{1,64}$/.test(value.code) && typeof value.message === "string" && /^[\x20-\x7e]{1,256}$/.test(value.message)) {

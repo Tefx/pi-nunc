@@ -47,6 +47,7 @@ try {
       TIME_LIMIT: "Worker deadline is invalid or exceeds the task bound.",
       CANDIDATE: "Worker candidate must have committed clean product and check inputs.",
       DEPENDENCY: "Worker local dependencies do not match the selected lock.",
+      BUILD: "Worker could not verify the compiled runtime against tracked source.",
       ENVIRONMENT: "Worker runtime does not match the selected check environment.",
       INPUT: "Worker job input is invalid.",
     };
