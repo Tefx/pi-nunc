@@ -36,42 +36,6 @@ project_guidance: 执行前先确认用户已授权该类工作；本次规划�
   是预期审查面，不是 isolated worktree 的写沙箱。保护 Plan、dashboard、日常配置、秘密和全局状态。只读证据 owner 不修代码、不写仓库报告。先做已授权的离线检查，再申请仍缺的具体运行目标/额度授权；不可把该证据永久降为可选。失败诊断、普通修复、runner
   和环境纠正留在当前可写生产者内；只读终端验收发现已完成生产者缺陷时，保持历史不可变，由 Planner 统一接入一个兼容修复结果并让同一验收依赖它，之后 Delta
   复核，保留仍有效的无关证据。
-clipboard:
-  author: vectl-orchestrator
-  summary: Pi source-timing blocker confirmed; candidate preserved, runtime not run
-  content: 'User authorizes full Plan execution/preauthorization, no repeated permission
-    requests. policy fb2e7e0 and engine2432839 integrated/done. nunc.pi candidate
-    caa1331a5b969c1f12bf880fcc44977fdb1bb25f clean branch impl/nunc-pi worktree /Users/tefx/Projects/pi-nunc-worktrees/nunc-engine;
-    NOT merged; integration /Users/tefx/Projects/pi-nunc. 187/187 offline tests (69
-    engine56 Pi62 runner), preflight fixture0/no calls/target absent, missing stdin1.
-    Only producer evidence, not full delivery. nunc.pi deferred pending due confirmed
-    host lifecycle blocker; runtime/acceptance blocked. No live calls, daily/global
-    mutations or publish/push. Protected untracked .pi/ and plan-dashboard.html remain
-    untouched. Helpers none.
-
-    Independent source diagnosis: /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-05T23-35-10-332Z-2026-09-05T23-28-20-982Z_01a073e6-cdf6-7320-b9df-2ee99a7b9ae3.js-759921d94021bd9e.txt.
-    Pi0.85 agent-loop selects queue into local pendingMessages then prepareNextTurn
-    causes host compaction; injection and complete context happen AFTER hook returns.
-    Getter queue text conflates selected/future and omits images. Direct SDK queues
-    bypass input. Public context complete but too late for nonaborting host-owned
-    compaction. No supported same-target public SDK solution identified. Need a host
-    public selected-batch source seam, or user-accepted host/lifecycle scope change.
-    Existing Plan prohibits private core patches/new scheduler/context compact abort;
-    do not unilaterally weaken requirements.
-
-    Known candidate inaccuracies to repair on continuation: src/index.ts:120 says
-    preprompt check precedes expansion; actual host expansion precedes check, expanded
-    local value becomes public at before_agent_start later. Idle-only deferral probe
-    could improve idle case but not queue blocker. hasPendingMessages misses custom
-    Agent queued messages; it isn''t complete-source proof. Current queue tests prove
-    safe cancellation and extraction AFTER delivery, not successful pre-request queued-source
-    requirement.
-
-    Producer reusable exact child /Users/tefx/.pi/larva/child-sessions/2026-09-05T21-05-46-142Z_01a07364-449d-76ce-9e55-dc95ae93b225.jsonl
-    node-typescript-engineer. Independent read-only child /Users/tefx/.pi/larva/child-sessions/2026-09-05T23-28-20-982Z_01a073e6-cdf6-7320-b9df-2ee99a7b9ae3.jsonl.
-    No running children. Preserve candidate/evidence; do not declare complete.'
-  written_at: '2026-09-05T23:36:05.893805Z'
-  expires_at: '2026-09-06T23:36:05.893805Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
