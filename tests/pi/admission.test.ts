@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
+import { azureOpenAIResponsesProvider } from "@earendil-works/pi-ai/providers/azure-openai-responses";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { sourceRecords } from "../engine/fixtures.js";
 import { Type } from "typebox";
@@ -11,6 +12,24 @@ test("constrained tool metadata unavailable at native maintenance seam is explic
   t.after(() => f.close()); await f.runtime.session.prompt("Use the configured tool");
   assert.equal(f.faux.state.callCount, 0);
   const last = f.runtime.session.messages.at(-1); assert(last?.role === "assistant"); assert.match(last.errorMessage ?? "", /Constrained tool sampling is unsupported/);
+});
+
+test("admission delegates a registered native Azure Responses provider outside the old API list", async t => {
+  const admissions: Array<{ outcome?: string; code?: string }> = [];
+  const f = await fixture({ extras: [{ name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as { outcome?: string; code?: string })); } }] });
+  t.after(() => f.close());
+  const azure = azureOpenAIResponsesProvider();
+  new ModelRegistry(f.modelRuntime).registerProvider(azure);
+  const model = azure.getModels().find(m => m.id === "gpt-4o-mini");
+  assert(model && model.api === "azure-openai-responses");
+  assert(!["openai-completions", "openai-responses", "anthropic-messages", "openai-codex-responses"].includes(model.api));
+  await f.modelRuntime.setRuntimeApiKey("azure-openai-responses", "offline-fixture-key");
+  await f.runtime.session.setModel(model);
+  await f.runtime.session.prompt("Use the currently selected native provider").catch(() => {});
+  assert.equal(f.faux.state.callCount, 0);
+  const last = admissions.at(-1);
+  assert.equal(last?.outcome, "delegate", JSON.stringify(admissions));
+  assert.notEqual(last?.code, "CONFIG");
 });
 
 test("async maintenance scope authorizes only its exact one-shot request, never a nested foreign request", async t => {

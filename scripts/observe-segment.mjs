@@ -1,5 +1,5 @@
 // purpose: Exercise downstream continuation controls through real stock RPC with a loopback fixture.
-// usage: node scripts/observe-segment.mjs c1|c2|c3|outside|codex|codex-timeout|c4-full|late-d|late-d-cancel|late-d-race
+// usage: node scripts/observe-segment.mjs c1|c2|c3|outside|codex|codex-timeout|c4-full|c4-capacity|late-d|late-d-cancel|late-d-race
 // effects: New isolated target; native tools/session/HTTP; bounded cleanup; retained mechanics evidence.
 // requires: Locked build and stock-driver.mjs. Scripted outputs cannot establish memory quality.
 import assert from 'node:assert/strict';
@@ -9,24 +9,32 @@ import { StockFixture, root, records } from './stock-driver.mjs';
 import { runSegment } from '../dist/src/live/worker.js';
 import { expandGeneratedText, loadScenario } from '../dist/src/live/scenarios.js';
 import { SessionManager, truncateHead } from '@earendil-works/pi-coding-agent';
+import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex';
+import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { readLedger, ledgerSummary } from '../dist/src/live/budget.js';
 const which = process.argv[2] ?? 'c1', nativeDefaults = which === 'codex-defaults', timeout = which === 'codex-timeout';
-const late = which === 'late-d' || which === 'late-d-cancel' || which === 'late-d-race', cancelLate = which === 'late-d-cancel', raceLate = which === 'late-d-race', full = which === 'c4-full';
-const codex = which === 'codex' || nativeDefaults || timeout, id = timeout ? 'c1' : codex ? 'c2' : which === 'outside' ? 'c1' : late ? 'c1' : full ? 'c4' : which;
+const late = which === 'late-d' || which === 'late-d-cancel' || which === 'late-d-race', cancelLate = which === 'late-d-cancel', raceLate = which === 'late-d-race', full = which === 'c4-full', capacity = which === 'c4-capacity';
+const codex = which === 'codex' || nativeDefaults || timeout, id = timeout ? 'c1' : codex ? 'c2' : which === 'outside' ? 'c1' : late ? 'c1' : full || capacity ? 'c4' : which;
 assert(['c1', 'c2', 'c3', 'c4'].includes(id));
 const f = await new StockFixture().setup(codex ? { api: 'openai-codex-responses' } : {}), target = join(f.dir, 'nunc-live-controlled'); await mkdir(target);
 const input = JSON.parse(await readFile(join(root, codex ? 'tests/live/preflight-codex-input.json' : 'tests/live/preflight-input.json'), 'utf8'));
 input.target.repository = root; input.target.stateRoot = target;
 input.scenarios[0].id = id;
 if (full) input.scenarios[0].variant = 'full';
+if (capacity) input.scenarios[0].variant = 'capacity';
 if (late) input.scenarios[0].variant = 'late-d';
-if (!codex) input.scenarios[0].config = { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: full ? 100000 : 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
-const model = codex ? { ...openaiCodexProvider().getModels().find(m => m.id === 'gpt-6-astra'), baseUrl: f.endpoint } : { id: 'nunc-native', name: 'nunc-native', provider: 'groq', api: 'openai-completions', baseUrl: f.endpoint, reasoning: false, input: ['text', 'image'], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
-if (full) {
-  model.contextWindow = 200000;
+const runtime = capacity ? await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), refreshOnCreate: false, allowModelNetwork: false }) : undefined;
+const gemini = capacity ? runtime.getModel('openrouter', 'google/gemini-3.8-flash') : undefined;
+if (capacity) assert(gemini && gemini.contextWindow === 1048576 && gemini.maxTokens === 65536);
+if (!codex) input.scenarios[0].config = capacity ? { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 4096 }, budget: { safetyTokens: 1024, growthTokens: 128, extraExtractionInputTokens: 900000 } }, compaction: { enabled: false, reserveTokens: gemini.contextWindow - 20000, keepRecentTokens: 1 } } : { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: full ? 100000 : 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
+const model = codex ? { ...openaiCodexProvider().getModels().find(m => m.id === 'gpt-6-astra'), baseUrl: f.endpoint } : { id: 'nunc-native', name: 'nunc-native', provider: 'groq', api: 'openai-completions', baseUrl: f.endpoint, reasoning: false, input: ['text', 'image'], contextWindow: capacity ? gemini.contextWindow : 60000, maxTokens: capacity ? gemini.maxTokens : 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+if (full || capacity) {
+  if (full) model.contextWindow = 200000;
+  if (capacity) { input.limits.maxOutputTokens = gemini.maxTokens; input.limits.maxCostUsd = null; }
   const catalog = JSON.parse(await readFile(join(f.state, 'agent/models.json'), 'utf8'));
-  catalog.providers.groq.models[0].contextWindow = 200000;
+  catalog.providers.groq.models[0].contextWindow = model.contextWindow;
+  catalog.providers.groq.models[0].maxTokens = model.maxTokens;
   await writeFile(join(f.state, 'agent/models.json'), JSON.stringify(catalog));
 }
 const overrides = { models: [model], ...(nativeDefaults ? {} : { controlledModels: JSON.parse(await readFile(join(f.state, 'agent/models.json'), 'utf8')) }) };
@@ -41,9 +49,10 @@ if (codex && !nativeDefaults) {
 }
 const write = (path, content) => [{ tool: { name: 'write', input: { path, content: JSON.stringify(content) } } }, 'Saved.'];
 const read = path => [{ tool: { name: 'read', input: { path } } }, 'Read.'];
-const loaded = full ? await loadScenario(root, input.scenarios[0]) : undefined;
-const fullOffset = full ? truncateHead(expandGeneratedText(loaded.input.generatedFiles[0])).outputLines + 1 : 0;
-const steps = full ? [{ tool: { name: 'read', input: { path: 'inspection.txt' } } }, { tool: { name: 'read', input: { path: 'inspection.txt', offset: fullOffset } } }, 'Read complete.', ...write('disposition.json', { batch: 'Q7', disposition: 'quarantine', reason: 'Controlled fixture reason.' })] : late ? ['Pending.', ...write('scratch.json', { status: 'pending' }), ...write('decision.json', { route: null, reason: 'Controlled fixture reason.' })] : id === 'c1' ? ['Pending.', ...read('probe.json'), ...write('decision.json', { route: 'direct', reason: 'Controlled fixture reason.' })] : id === 'c2' ? ['Pending.', ...write('sum.json', { sum: 46 }), ...write('product.json', { product: 104 }), ...write('difference.json', { difference: 63 }), ...write('retry.json', { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })] : [read('routes.json')[0], read('records.json')[0], 'Read.', ...write('note.txt', 'Chlorophyll absorbs other wavelengths. Reflected green light reaches the eye.'), 'Cannot establish the requested continuation from controlled empty memory.'];
+const loaded = full || capacity ? await loadScenario(root, input.scenarios[0]) : undefined;
+const fullOffset = full || capacity ? truncateHead(expandGeneratedText(loaded.input.generatedFiles[0])).outputLines + 1 : 0;
+const giantRead = [{ tool: { name: 'read', input: { path: 'inspection.txt' } } }, { tool: { name: 'read', input: { path: 'inspection.txt', offset: fullOffset } } }, 'Read complete.'];
+const steps = full ? [...giantRead, ...write('disposition.json', { batch: 'Q7', disposition: 'quarantine', reason: 'Controlled fixture reason.' })] : capacity ? giantRead : late ? ['Pending.', ...write('scratch.json', { status: 'pending' }), ...write('decision.json', { route: null, reason: 'Controlled fixture reason.' })] : id === 'c1' ? ['Pending.', ...read('probe.json'), ...write('decision.json', { route: 'direct', reason: 'Controlled fixture reason.' })] : id === 'c2' ? ['Pending.', ...write('sum.json', { sum: 46 }), ...write('product.json', { product: 104 }), ...write('difference.json', { difference: 63 }), ...write('retry.json', { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })] : [read('routes.json')[0], read('records.json')[0], 'Read.', ...write('note.txt', 'Chlorophyll absorbs other wavelengths. Reflected green light reaches the eye.'), 'Cannot establish the requested continuation from controlled empty memory.'];
 f.response = (row, source) => source ? JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id) }) : (() => { assert(steps.length, 'scripted native service inventory exceeded'); return steps.shift(); })();
 let outcome = { status: 'FAIL', case: which };
 try {
@@ -58,9 +67,9 @@ try {
       f.release('maintenance');
     }).catch(() => f.release('maintenance'));
   }
-  const job = { input, scenarioIndex: 0, deadline: Date.now() + (timeout ? 5000 : full || late ? 70000 : 45000), resume: false };
+  const job = { input, scenarioIndex: 0, deadline: Date.now() + (timeout ? 5000 : full || late || capacity ? 70000 : 45000), resume: false };
   const report = await runSegment(job, overrides);
-  assert.equal(report.status, which === 'outside' || timeout || cancelLate || raceLate ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, prerequisites: report.prerequisites, commands: report.commands, preparationFailure: report.preparationFailure }));
+  assert.equal(report.status, which === 'outside' || timeout || cancelLate || raceLate || capacity ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, prerequisites: report.prerequisites, commands: report.commands, preparationFailure: report.preparationFailure }));
   if (timeout) {
     assert.equal(f.requests.length, 1); assert(f.requests[0].closed);
     const ledger = readLedger(join(target, 'calls.jsonl')), usage = ledgerSummary(ledger);
@@ -68,6 +77,24 @@ try {
     assert(report.pid > 0); assert.throws(() => process.kill(report.pid, 0), { code: 'ESRCH' });
     await writeFile(join(f.dir, 'ledger.json'), JSON.stringify(ledger));
   } else if (which === 'outside') { assert.equal(report.reason, 'CALIBRATION'); assert.equal(report.maintenance.length, 0); assert.equal(f.requests.length, 3); }
+  else if (capacity) {
+    assert.equal(report.reason, 'MAINTENANCE');
+    const result = report.maintenance.at(-1);
+    assert.equal(result?.ok, false);
+    assert.equal(result.code, 'CAPACITY', JSON.stringify(result));
+    assert.equal(result.observations.requests, 0);
+    const accounting = result.observations.accounting;
+    assert(accounting && accounting.fullExtractionTokens > accounting.extractionInputLimit, JSON.stringify(accounting));
+    assert(accounting.normalExtractionAtTrigger <= accounting.extractionInputLimit, 'normal-at-trigger headroom must remain CONFIG-safe');
+    assert.equal(accounting.extractionInputLimit, 1043456);
+    assert.equal(model.contextWindow, 1048576); assert.equal(model.maxTokens, 65536);
+    assert.equal(input.scenarios[0].config.nunc.budget.extraExtractionInputTokens, 900000);
+    assert.equal(f.requests.filter(r => r.kind === 'maintenance').length, 0);
+    assert(report.prerequisites.some(p => p.check.includes('full extraction demonstrably exceeds') && p.status === 'PROVEN'));
+    assert(report.prerequisites.some(p => p.check.includes('preserved prior saved memory') && p.status === 'PROVEN'));
+    const saved = SessionManager.open(report.sessionFile);
+    assert.equal(saved.getBranch().filter(e => e.type === 'compaction').length, 0);
+  }
   else if (cancelLate || raceLate) {
     const cmds = report.commands ?? [];
     assert.equal(cmds.filter(c => c.type === 'clear_queue').length, 0);

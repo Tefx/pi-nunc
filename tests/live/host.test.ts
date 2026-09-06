@@ -5,8 +5,8 @@ import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { toolPath, childEnvironment } from "../../src/live/host.js";
 import { fixture, repository } from "./fixtures.js";
-for (const scenario of ["c1", "c2", "c3", "outside", "codex", "codex-defaults", "codex-timeout", "c4-full", "late-d", "late-d-cancel", "late-d-race"]) test(`downstream ${scenario}: actual stock CLI/tools/native service/calibration/persistence (controlled responses)`, { timeout: scenario === "c4-full" || scenario.startsWith("late-") ? 90000 : 60000 }, () => {
-  const result = spawnSync(process.execPath, [join(repository, "scripts/observe-segment.mjs"), scenario], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: scenario === "c4-full" || scenario.startsWith("late-") ? 85000 : 55000, maxBuffer: 4_000_000 });
+for (const scenario of ["c1", "c2", "c3", "outside", "codex", "codex-defaults", "codex-timeout", "c4-full", "c4-capacity", "late-d", "late-d-cancel", "late-d-race"]) test(`downstream ${scenario}: actual stock CLI/tools/native service/calibration/persistence (controlled responses)`, { timeout: scenario === "c4-full" || scenario === "c4-capacity" || scenario.startsWith("late-") ? 90000 : 60000 }, () => {
+  const result = spawnSync(process.execPath, [join(repository, "scripts/observe-segment.mjs"), scenario], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: scenario === "c4-full" || scenario === "c4-capacity" || scenario.startsWith("late-") ? 85000 : 55000, maxBuffer: 4_000_000 });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
 });
 test("default-input CLI preflight and supervisor/worker delegate existing fictional native Codex without an auth copy", { timeout: 110000 }, () => {

@@ -72,7 +72,11 @@ try {
   const beforeSampling = f.requests.length; await p.prompt('Raw sampling override unsupported'); assert.equal(f.requests.length, beforeSampling);
   delete models.providers.groq.models[0].samplingParams;
   models.providers.groq.models[0].api = 'fixture-unsupported-api'; await writeFile(modelFile, JSON.stringify(models)); await p.send('/fixture-reload'); await p.command('set_model', { provider: 'groq', modelId: 'nunc-native' });
-  const beforeApi = f.requests.length; await p.prompt('Unsupported native API'); assert.equal(f.requests.length, beforeApi);
+  const beforeApi = f.requests.length, beforeAdmissions = f.log.filter(e => e.type === 'admission').length;
+  await p.prompt('Captured native provider still owns an unknown API label');
+  const apiAdmissions = f.log.filter(e => e.type === 'admission').slice(beforeAdmissions);
+  assert(!apiAdmissions.some(e => e.data?.code === 'CONFIG'), 'API-name membership must not reject captured native dispatch');
+  if (apiAdmissions.some(e => e.data?.outcome === 'delegate')) assert.ok(f.requests.length >= beforeApi);
   models.providers.groq.models[0].api = 'openai-completions'; await writeFile(modelFile, JSON.stringify(models)); await p.send('/fixture-reload'); await p.command('set_model', { provider: 'groq', modelId: 'nunc-native' }); await p.prompt('Native model defaults restored');
   // Real threshold: service usage crosses H after a delivered history response.
   await p.prompt('Threshold seed ' + 'y'.repeat(6000));

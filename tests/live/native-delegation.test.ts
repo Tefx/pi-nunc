@@ -4,13 +4,11 @@ import { spawnSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InMemoryCredentialStore, fauxProvider, type Context } from "@earendil-works/pi-ai";
+import { azureOpenAIResponsesProvider } from "@earendil-works/pi-ai/providers/azure-openai-responses";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { inputLimit } from "../../src/engine/accounting.js";
-import { engineConfig } from "../../src/pi/config.js";
 import { boundedProvider, BudgetLedger } from "../../src/live/budget.js";
 import { parseInput, selectedModels } from "../../src/live/contract.js";
 import { childEnvironment } from "../../src/live/host.js";
-import { expandGeneratedText, loadScenario } from "../../src/live/scenarios.js";
 import { fixture, nativeModels, repository } from "./fixtures.js";
 
 const context: Context = { systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] };
@@ -69,20 +67,6 @@ test("native metadata binds OpenRouter Completions and a strictly smaller same-p
   assert.throws(() => parseInput(swapped));
 });
 
-test("c4/capacity overflow is reachable on smaller native metadata without shrinking the source", async () => {
-  const [gemini, nemo] = await nativeModels({ provider: "openrouter", id: "google/gemini-3.8-flash" }, { provider: "openrouter", id: "mistralai/mistral-nemo" });
-  assert(gemini && nemo);
-  const input = await fixture();
-  const scenario = await loadScenario(repository, { ...input.scenarios[0]!, id: "c4", variant: "capacity" });
-  const bytes = Buffer.byteLength(expandGeneratedText(scenario.input.generatedFiles![0]!));
-  const compaction = { reserveTokens: 16384, keepRecentTokens: 1 };
-  const geminiLimit = inputLimit(gemini, engineConfig({ extraction: { toolResults: "full" } }, gemini, compaction).extraction);
-  const nemoLimit = inputLimit(nemo, engineConfig({ extraction: { toolResults: "full" } }, nemo, compaction).extraction);
-  assert(bytes > nemoLimit, "named mistral-nemo window must be able to miss full extraction");
-  assert(geminiLimit > nemoLimit);
-  assert.equal(scenario.input.generatedFiles![0]!.segments.reduce((n, s) => n + s.repeat, 0), 6001);
-});
-
 test("native Completions serializer remains the bounded OpenRouter dispatch seam", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
@@ -109,15 +93,42 @@ test("native Completions serializer remains the bounded OpenRouter dispatch seam
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
-test("unknown native APIs fail closed before dispatch; Responses opt-out reserves the full ceiling", async () => {
+test("native Azure OpenAI Responses serializer remains the bounded dispatch seam outside the old API list", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const azure = azureOpenAIResponsesProvider();
+    const catalog = azure.getModels().find(m => m.id === "gpt-4o-mini"); assert(catalog);
+    assert.equal(catalog.api, "azure-openai-responses");
+    assert(!["openai-completions", "openai-responses", "anthropic-messages", "openai-codex-responses"].includes(catalog.api));
+    const model = { ...catalog, baseUrl: "https://nunc-fixture.openai.azure.com/openai/v1" };
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "calls.jsonl"), { ...input.limits, maxOutputTokens: model.maxTokens }, Date.now() + 10000, new AbortController().signal);
+    let requests = 0, observed: { url?: string; body?: Record<string, unknown> } = {};
+    const transport: typeof fetch = async (resource, init) => {
+      const request = new Request(resource, init); requests++;
+      observed = { url: request.url, body: await request.json() as Record<string, unknown> };
+      return new Response(JSON.stringify({ error: { message: "Controlled rate-limit response", type: "rate_limit_error" } }), { status: 429, headers: { "content-type": "application/json" } });
+    };
+    const provider = boundedProvider(azure, [model], ledger, { fetch: transport });
+    const response = await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result();
+    assert.equal(response.stopReason, "error"); assert.equal(requests, 1);
+    assert.equal(new URL(observed.url ?? "").origin, "https://nunc-fixture.openai.azure.com");
+    assert.equal(new URL(observed.url ?? "").pathname, "/openai/v1/responses");
+    const body = observed.body ?? {};
+    assert.equal(body.model, model.id); assert.equal(body.stream, true); assert.notEqual(body.background, true);
+    assert.equal(body.max_output_tokens, 1000);
+    assert.equal((await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result()).stopReason, "error");
+    assert.equal(requests, 1);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+test("missing model baseUrl fails as a missing destination field; Responses opt-out still reserves the full ceiling", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
     const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] }), model = faux.getModel();
     model.cost = { input: 10, output: 10, cacheRead: 5, cacheWrite: 20 };
     const ledger = new BudgetLedger(join(input.target.stateRoot, "calls.jsonl"), { ...input.limits, maxOutputTokens: 8192 }, Date.now() + 10000, new AbortController().signal);
-    const unknown = { ...model, api: "fixture-unsupported-api" as typeof model.api };
-    const blocked = boundedProvider(faux.provider, [unknown], ledger, { controlled: true });
-    assert.equal((await blocked.streamSimple(unknown, context, { maxTokens: 1000 }).result()).stopReason, "error");
+    const missing = { ...model, baseUrl: "" };
+    const blocked = boundedProvider(faux.provider, [missing], ledger, { controlled: true });
+    assert.equal((await blocked.streamSimple(missing, context, { maxTokens: 1000 }).result()).stopReason, "error");
     assert.equal(faux.state.callCount, 0);
     const opted = { ...model, api: "openai-responses" as const, compat: { supportsMaxOutputTokens: false } };
     assert.throws(() => ledger.reserve(opted, context, 4096));

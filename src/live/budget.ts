@@ -63,6 +63,23 @@ export function ledgerSummary(records: LedgerRecord[]) {
 function errorMessage(model: Model<Api>, reason: string): AssistantMessage {
   return { role: "assistant", api: model.api, provider: model.provider, model: model.id, content: [], usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "error", errorMessage: reason, timestamp: Date.now() };
 }
+function payloadOutputCeiling(body: Record<string, unknown>): unknown {
+  if (typeof body.max_tokens === "number" || typeof body.max_output_tokens === "number" || typeof body.max_completion_tokens === "number") return body.max_tokens ?? body.max_output_tokens ?? body.max_completion_tokens;
+  return object(body.generationConfig) ? body.generationConfig.maxOutputTokens : undefined;
+}
+function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void {
+  requireValue(typeof baseUrl === "string" && baseUrl.trim().length > 0, "ENDPOINT", "Authorized model baseUrl is missing");
+  let authorized: URL | undefined, url: URL | undefined;
+  try { authorized = new URL(baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`); } catch { /* named below */ }
+  requireValue(authorized, "ENDPOINT", "Authorized model baseUrl is not an absolute URL");
+  requireValue(!authorized.username && !authorized.password && !authorized.hash, "ENDPOINT", "Authorized model endpoint contains private URL data");
+  try { url = new URL(requestUrl); } catch { /* named below */ }
+  requireValue(url, "ENDPOINT", "Transport target is not an absolute URL");
+  requireValue(!url.username && !url.password && !url.hash, "ENDPOINT", "Transport target contains private URL data");
+  requireValue(url.origin === authorized.origin, "ENDPOINT", "Transport origin differs from authorized model baseUrl");
+  const prefix = authorized.pathname.replace(/\/+$/, "") || "/";
+  requireValue(prefix === "/" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`), "ENDPOINT", "Transport path is outside authorized model baseUrl");
+}
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
 export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void } = {}): Provider {
   function stream(model: Model<Api>, context: Context, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
@@ -74,9 +91,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         requireValue(selected && ["id", "provider", "api", "baseUrl", "contextWindow", "maxTokens", "cost"].every(key => canonical(selected[key as keyof Model<Api>]) === canonical(model[key as keyof Model<Api>])), "MODEL", "Request changed its authorized model");
         options.checkAuth?.(model);
         const maxTokens = original?.maxTokens ?? model.maxTokens;
-        const uncapped = omitsSerializedOutputCap(model);
-        const path = model.api === "openai-codex-responses" ? "codex/responses" : model.api === "anthropic-messages" ? "/v1/messages" : model.api === "openai-completions" ? "chat/completions" : model.api === "openai-responses" ? "responses" : undefined;
-        requireValue(path, "ENDPOINT", "Native API endpoint cannot be established from model metadata");
+        requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "ENDPOINT", "Authorized model baseUrl is missing");
         reservation = ledger.reserve(model, context, maxTokens);
         // Agent tools also carry executable callbacks. Observe only the public model-facing Tool fields.
         options.onContext?.(model, structuredClone({ ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) } : {}) }), simple ? "main" : "maintenance");
@@ -85,17 +100,20 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         const onPayload = async (payload: unknown, selected: Model<Api>) => {
           const replacement = await original?.onPayload?.(payload, selected);
           const body = replacement === undefined ? payload : replacement;
-          const ceiling = object(body) ? body.max_tokens ?? body.max_output_tokens ?? body.max_completion_tokens : undefined;
-          requireValue(object(body) && body.model === model.id && body.stream === true && body.background !== true && (uncapped ? ceiling === undefined && maxTokens === model.maxTokens : typeof ceiling === "number" && ceiling > 0 && ceiling <= maxTokens), "PAYLOAD", "Native model/output/SSE contract differs from authorization");
+          requireValue(object(body), "PAYLOAD", "Native payload is not a JSON object");
+          requireValue(body.stream === true && body.background !== true, "PAYLOAD", "Native payload is not a single SSE request");
+          if (Object.hasOwn(body, "model")) requireValue(body.model === model.id, "PAYLOAD", "Native payload model differs from authorization");
+          const ceiling = payloadOutputCeiling(body);
+          if (ceiling === undefined) requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
+          else requireValue(typeof ceiling === "number" && Number.isFinite(ceiling) && ceiling > 0 && ceiling <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
           payloadChecked = true; return replacement;
         };
         const boundedFetch: typeof fetch = async (resource, init) => {
           combined.throwIfAborted();
           requireValue(++sends === 1, "CALL_LIMIT", "Transport retry or auxiliary request refused");
           const request = new Request(resource, init);
-          const expected = new URL(path, model.baseUrl.endsWith("/") ? model.baseUrl : `${model.baseUrl}/`);
-          const url = new URL(request.url);
-          requireValue(request.url.split("?")[0] === expected.href && (url.search === "" || (model.api === "anthropic-messages" && url.search === "?beta=true")) && request.method === "POST", "ENDPOINT", "Transport target is outside authorization");
+          requireValue(request.method === "POST", "ENDPOINT", "Transport method is outside authorization");
+          assertAuthorizedDestination(model.baseUrl, request.url);
           // Codex compresses JSON after onPayload. Validate that public seam;
           // forward native compressed bytes unchanged, never invent an output cap.
           requireValue(payloadChecked, "PAYLOAD", "Native payload validation did not precede HTTP");

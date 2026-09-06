@@ -46,7 +46,10 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
     const model = runtime.getModel(target.provider, target.id);
     requireValue(model, "MODEL", "Effective model is absent from native metadata; no fallback account is selected");
     requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
-    const url = new URL(model.baseUrl);
+    requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "MODEL", "Model endpoint is missing from native metadata");
+    let url: URL | undefined;
+    try { url = new URL(model.baseUrl); } catch { /* requireValue below names the missing field. */ }
+    requireValue(url, "MODEL", "Model endpoint is not an absolute URL");
     requireValue(!url.username && !url.password && !url.search && !url.hash, "MODEL", "Model endpoint contains unsupported private or query data");
     return structuredClone(model);
   });
