@@ -13,6 +13,11 @@ test("default-input CLI preflight and supervisor/worker delegate existing fictio
   const result = spawnSync(process.execPath, [join(repository, "scripts/observe-runner.mjs")], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: 105000, maxBuffer: 4_000_000 });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
 });
+test("system-temp public-input supervisor/worker reaches native Codex and cleans its external task root", { timeout: 110000 }, () => {
+  const env = childEnvironment(join(repository, ".scratch")); delete env.TMPDIR;
+  const result = spawnSync(process.execPath, [join(repository, "scripts/observe-runner.mjs"), "--system-temp"], { encoding: "utf8", env, timeout: 105000, maxBuffer: 4_000_000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
+});
 test("scenario-local tool paths reject traversal, protected names and external symlinks", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   const cwd = join(input.target.stateRoot, "task"); await mkdir(cwd); await writeFile(join(cwd, "valid.txt"), "ok");
