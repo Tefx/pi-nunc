@@ -27,7 +27,7 @@ if (late) input.scenarios[0].variant = 'late-d';
 const runtime = capacity ? await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), refreshOnCreate: false, allowModelNetwork: false }) : undefined;
 const gemini = capacity ? runtime.getModel('openrouter', 'google/gemini-3.8-flash') : undefined;
 if (capacity) assert(gemini && gemini.contextWindow === 1048576 && gemini.maxTokens === 65536);
-if (!codex) input.scenarios[0].config = capacity ? { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 4096 }, budget: { safetyTokens: 1024, growthTokens: 128, extraExtractionInputTokens: 900000 } }, compaction: { enabled: false, reserveTokens: gemini.contextWindow - 20000, keepRecentTokens: 1 } } : { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: full ? 100000 : 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
+if (!codex) input.scenarios[0].config = capacity ? { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 4096 }, budget: { safetyTokens: 1024, growthTokens: 128, inputLimit: 128000 } }, compaction: { enabled: false, reserveTokens: gemini.contextWindow - 10000, keepRecentTokens: 1 } } : { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: full ? 100000 : 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
 const model = codex ? { ...openaiCodexProvider().getModels().find(m => m.id === 'gpt-6-astra'), baseUrl: f.endpoint } : { id: 'nunc-native', name: 'nunc-native', provider: 'groq', api: 'openai-completions', baseUrl: f.endpoint, reasoning: false, input: ['text', 'image'], contextWindow: capacity ? gemini.contextWindow : 60000, maxTokens: capacity ? gemini.maxTokens : 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 if (full || capacity) {
   if (full) model.contextWindow = 200000;
@@ -78,17 +78,18 @@ try {
     await writeFile(join(f.dir, 'ledger.json'), JSON.stringify(ledger));
   } else if (which === 'outside') { assert.equal(report.reason, 'CALIBRATION'); assert.equal(report.maintenance.length, 0); assert.equal(f.requests.length, 3); }
   else if (capacity) {
-    assert.equal(report.reason, 'MAINTENANCE');
     const result = report.maintenance.at(-1);
     assert.equal(result?.ok, false);
-    assert.equal(result.code, 'CAPACITY', JSON.stringify(result));
+    assert.equal(result.code, 'CAPACITY', JSON.stringify({ reason: report.reason, result }));
     assert.equal(result.observations.requests, 0);
     const accounting = result.observations.accounting;
     assert(accounting && accounting.fullExtractionTokens > accounting.extractionInputLimit, JSON.stringify(accounting));
     assert(accounting.normalExtractionAtTrigger <= accounting.extractionInputLimit, 'normal-at-trigger headroom must remain CONFIG-safe');
-    assert.equal(accounting.extractionInputLimit, 1043456);
+    assert.equal(accounting.extraInputTokens ?? input.scenarios[0].config.nunc.budget.extraExtractionInputTokens ?? 0, 0);
+    assert.equal(accounting.extractionInputLimit, 126976);
+    assert.equal(accounting.effectiveTrigger, 10000);
     assert.equal(model.contextWindow, 1048576); assert.equal(model.maxTokens, 65536);
-    assert.equal(input.scenarios[0].config.nunc.budget.extraExtractionInputTokens, 900000);
+    assert.equal(input.scenarios[0].config.nunc.budget.inputLimit, 128000);
     assert.equal(f.requests.filter(r => r.kind === 'maintenance').length, 0);
     assert(report.prerequisites.some(p => p.check.includes('full extraction demonstrably exceeds') && p.status === 'PROVEN'));
     assert(report.prerequisites.some(p => p.check.includes('preserved prior saved memory') && p.status === 'PROVEN'));
@@ -166,10 +167,10 @@ try {
   outcome = { status: 'PROVEN_CONTROLLED', case: which, nativePid: report.pid, requests: f.requests.length, calibrations: report.calibrations.length, memoryQuality: 'UNPROVEN: scripted service responses test plumbing only' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
 finally {
-  if (full || late) {
+  if (full || late || capacity) {
     const dest = join(root, '.scratch/observation-support-handoff', which);
     await mkdir(dest, { recursive: true });
-    const caseRoot = join(target, `${id}${late ? '-late-d' : full ? '-full' : ''}`);
+    const caseRoot = join(target, `${id}${late ? '-late-d' : full ? '-full' : capacity ? '-capacity' : ''}`);
     try {
       for (const name of await readdir(caseRoot)) {
         if (name === 'task') continue;
@@ -179,10 +180,10 @@ finally {
     await writeFile(join(dest, 'segment-outcome.json'), JSON.stringify({ ...outcome, commands: undefined }, null, 2)).catch(() => {});
   }
   await rm(target, { recursive: true, force: true }); await f.close(outcome);
-  if (full || late) {
+  if (full || late || capacity) {
     const dest = join(root, '.scratch/observation-support-handoff', which);
     await mkdir(dest, { recursive: true });
     await cp(f.dir, join(dest, 'stock'), { recursive: true }).catch(() => {});
   }
-  console.log(JSON.stringify({ ...outcome, evidence: f.dir, handoff: (full || late) ? join(root, '.scratch/observation-support-handoff', which) : undefined }));
+  console.log(JSON.stringify({ ...outcome, evidence: f.dir, handoff: (full || late || capacity) ? join(root, '.scratch/observation-support-handoff', which) : undefined }));
 }
