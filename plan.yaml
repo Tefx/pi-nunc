@@ -192,7 +192,7 @@ phases:
       protected state remains untouched.'
   - id: nunc.pi
     name: Pi 原生维护、队列安全请求准入与完整检查生产者
-    status: rejected
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"package.json\"\
       , \"package-lock.json\", \"tsconfig.json\", \".node-version\", \"README.md\"\
@@ -300,7 +300,7 @@ phases:
     - nunc.engine
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
-    claimed_at: '2026-09-06T11:55:57.554268Z'
+    claimed_at: '2026-09-06T12:53:02.290522Z'
     done_at: '2026-09-06T12:41:50.050487+00:00'
     rejection_reason: 'Integrated0f4ebe3 fails the supported system-temp runner target:
       supervisor preflight accepts target under original OS tmp; nativeEnvironment
