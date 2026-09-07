@@ -4,7 +4,7 @@ import { EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
 export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "metadata";
-export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[] }
+export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[]; transform?: "last-user-text-append" }
 export interface PayloadDelta {
   mode: PayloadMode;
   categories: PayloadCategory[];
@@ -141,6 +141,107 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
   };
 }
 
+const LAST_USER_TEXT_PART = { input: "input_text", messages: "text" } as const;
+export type LastUserTextAppendReason = "empty-content" | "unsupported-payload-shape" | "missing-user-message" | "unsupported-user-content-shape";
+export type LastUserTextAppendResult =
+  | { changed: true; payload: unknown }
+  | { changed: false; payload: unknown; reason: LastUserTextAppendReason };
+
+function lastUserIndex(messages: unknown[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (record(message) && message.role === "user") return index;
+  }
+  return -1;
+}
+
+function textPart(type: "input_text" | "text", text: string): { type: "input_text" | "text"; text: string } {
+  return { type, text };
+}
+
+function appendTextPart(message: Record<string, unknown>, content: string, textPartType: "input_text" | "text"): LastUserTextAppendReason | null {
+  const currentContent = message.content;
+  const ambientPart = textPart(textPartType, content);
+  if (typeof currentContent === "string") {
+    if (currentContent.trim().length === 0) return "unsupported-user-content-shape";
+    message.content = [textPart(textPartType, currentContent), ambientPart];
+    return null;
+  }
+  if (!Array.isArray(currentContent)) return "unsupported-user-content-shape";
+  message.content = [...currentContent, ambientPart];
+  return null;
+}
+
+/** Last-user text append: clone input[]/messages[], keep prefix, wrap a nonempty string, add one text part. */
+export function applyLastUserTextAppend(payload: unknown, content: string): LastUserTextAppendResult {
+  if (content.trim().length === 0) return { changed: false, payload, reason: "empty-content" };
+  if (!record(payload)) return { changed: false, payload, reason: "unsupported-payload-shape" };
+  const inject = (key: "input" | "messages", part: "input_text" | "text"): LastUserTextAppendResult => {
+    const next = structuredClone(payload);
+    const list = next[key];
+    if (!Array.isArray(list)) return { changed: false, payload, reason: "unsupported-payload-shape" };
+    const index = lastUserIndex(list);
+    if (index < 0) return { changed: false, payload, reason: "missing-user-message" };
+    const message = list[index];
+    if (!record(message)) return { changed: false, payload, reason: "unsupported-user-content-shape" };
+    const reason = appendTextPart(message, content, part);
+    return reason === null ? { changed: true, payload: next } : { changed: false, payload, reason };
+  };
+  if (Array.isArray(payload.input)) return inject("input", "input_text");
+  if (Array.isArray(payload.messages)) return inject("messages", "text");
+  return { changed: false, payload, reason: "unsupported-payload-shape" };
+}
+
+function addedLastUserText(beforeContent: unknown, afterContent: unknown, partType: "input_text" | "text"): string | undefined {
+  const isPart = (value: unknown): value is { type: string; text: string } => {
+    if (!record(value) || value.type !== partType || typeof value.text !== "string" || value.text.trim().length === 0) return false;
+    return Object.keys(value).filter(k => value[k] !== undefined).sort().join("\0") === "text\0type";
+  };
+  if (typeof beforeContent === "string") {
+    if (beforeContent.trim().length === 0 || !Array.isArray(afterContent) || afterContent.length !== 2) return;
+    if (canonical(afterContent[0]) !== canonical(textPart(partType, beforeContent))) return;
+    if (!isPart(afterContent[1])) return;
+    return afterContent[1].text;
+  }
+  if (!Array.isArray(beforeContent) || !Array.isArray(afterContent) || afterContent.length !== beforeContent.length + 1) return;
+  for (let i = 0; i < beforeContent.length; i++) {
+    if (canonical(beforeContent[i]) !== canonical(afterContent[i])) return;
+  }
+  const last = afterContent[afterContent.length - 1];
+  if (!isPart(last)) return;
+  return last.text;
+}
+
+export function lastUserTextAppend(before: unknown, after: unknown): { ok: true; addedTokens: number } | { ok: false } {
+  if (!record(before) || !record(after)) return { ok: false };
+  const key: "input" | "messages" | undefined = Array.isArray(before.input) && Array.isArray(after.input) ? "input"
+    : !Array.isArray(before.input) && !Array.isArray(after.input) && Array.isArray(before.messages) && Array.isArray(after.messages) ? "messages"
+    : undefined;
+  if (!key) return { ok: false };
+  for (const field of INPUT_KEYS) {
+    if (field === key) continue;
+    if (canonical(before[field]) !== canonical(after[field])) return { ok: false };
+  }
+  const beforeList = before[key] as unknown[];
+  const afterList = after[key] as unknown[];
+  if (beforeList.length !== afterList.length) return { ok: false };
+  const index = lastUserIndex(beforeList);
+  if (index < 0 || lastUserIndex(afterList) !== index) return { ok: false };
+  for (let i = 0; i < beforeList.length; i++) {
+    if (i === index) continue;
+    if (canonical(beforeList[i]) !== canonical(afterList[i])) return { ok: false };
+  }
+  const prior = beforeList[index], next = afterList[index];
+  if (!record(prior) || !record(next) || next.role !== "user") return { ok: false };
+  const priorKeys = Object.keys(prior).filter(k => k !== "content" && prior[k] !== undefined).sort();
+  const nextKeys = Object.keys(next).filter(k => k !== "content" && next[k] !== undefined).sort();
+  if (priorKeys.join("\0") !== nextKeys.join("\0")) return { ok: false };
+  for (const field of priorKeys) if (canonical(prior[field]) !== canonical(next[field])) return { ok: false };
+  const added = addedLastUserText(prior.content, next.content, LAST_USER_TEXT_PART[key]);
+  if (added === undefined) return { ok: false };
+  return { ok: true, addedTokens: textTokens(added) };
+}
+
 function outputFloor(model: Model<Api>): number {
   return ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
 }
@@ -184,7 +285,20 @@ export function authorizePayload(args: {
   }
   if (args.delta.unsupportedAdded.length) throw new EngineError("UNSUPPORTED_INPUT", "Nunc: payload contains unsupported media; request was not sent");
   if (args.delta.imagesAdded > 0 && !args.model.input.includes("image")) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
+  const append = lastUserTextAppend(prior, body);
   const structural = args.delta.categories.filter(c => UNVALIDATED.has(c));
+  if (append.ok) {
+    if (structural.some(c => c !== "input")) throw new EngineError("CONFIG", `Nunc: unvalidated payload ${structural.join(",")} rewrite; request was not sent`);
+    const added = Math.max(args.delta.grewTokens, args.delta.inputGrewTokens, append.addedTokens);
+    if (args.inputTokens + added > args.inputLimit) {
+      throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining safe input; request was not sent`);
+    }
+    const serializedOutput = args.delta.outputAfter ?? args.delta.outputBefore;
+    if (serializedOutput !== undefined && args.inputTokens + added + serializedOutput > args.model.contextWindow) {
+      throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining safe input after native output clamp; request was not sent`);
+    }
+    return;
+  }
   if (structural.length) throw new EngineError("CONFIG", `Nunc: unvalidated payload ${structural.join(",")} rewrite; request was not sent`);
   if (args.delta.grewTokens > 0 && args.inputTokens + args.delta.grewTokens > args.inputLimit) {
     throw new EngineError("CAPACITY", `Payload input growth ${args.delta.grewTokens} exceeds remaining safe input; request was not sent`);

@@ -17,6 +17,10 @@ export function requireValue(value: unknown, code: string, message: string): ass
 export function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+/** Named live override: load the tracked synthetic last-user append callback. */
+export function payloadAppendEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
+  return (input.overrides ?? []).some(o => object(o) && o.requirement === "payload-append");
+}
 function keys(value: unknown, allowed: string[], label: string): asserts value is Record<string, unknown> {
   requireValue(object(value), "INPUT", `${label} must be an object`);
   requireValue(Object.keys(value).every(k => allowed.includes(k)), "INPUT", `Unknown ${label} field`);

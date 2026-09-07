@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-wo
 import type { Complete, EngineConfig } from "../engine/index.js";
 import { inputLimit, requestTokens, textTokens } from "../engine/accounting.js";
 import { EngineError, legalCuts } from "../engine/validation.js";
-import { authorizePayload, classifyPayloadChange, jsonView, payloadMode, type PayloadObservation } from "./payload.js";
+import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; outputTokens?: number; code?: string; payload?: PayloadObservation }
@@ -122,7 +122,10 @@ export class Admission {
         const final = replacement === undefined ? payload : replacement;
         const after = jsonView(final);
         const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload));
-        const observation: PayloadObservation = { mode: delta.mode, categories: delta.categories };
+        const append = lastUserTextAppend(before, after);
+        const observation: PayloadObservation = append.ok
+          ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
+          : { mode: delta.mode, categories: delta.categories };
         try {
           authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens! });
           this.observe({ kind, outcome: "delegate", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });

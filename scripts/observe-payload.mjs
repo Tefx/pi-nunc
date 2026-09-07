@@ -1,4 +1,4 @@
-// purpose: Exercise stock loader before_provider_request noop/identity/in-place/replacement plus overcap/illegal zero-send.
+// purpose: Exercise stock loader before_provider_request metadata, last-user append, and overcap/illegal/rewrite zero-send.
 // usage: node scripts/observe-payload.mjs
 // effects: Isolated stock RPC and bounded loopback SSE only; no live models or daily credentials.
 // requires: Locked build, stock-driver.mjs and compiled stock-extension.
@@ -22,6 +22,17 @@ try {
   await p.prompt('Replacement metadata');
   assert.equal(f.requests.length, 4);
   assert.equal(f.requests.at(-1).payload.nunc_fixture, 'meta');
+  await p.send('/fixture-payload-mode append');
+  await p.prompt('Last-user text append must send');
+  assert.equal(f.requests.length, 5);
+  const appended = f.requests.at(-1).payload;
+  const conversation = appended.messages ?? appended.input;
+  const lastUser = [...conversation].reverse().find(m => m.role === 'user');
+  assert(Array.isArray(lastUser.content));
+  assert.equal(lastUser.content.at(-1).type, Array.isArray(appended.input) ? 'input_text' : 'text');
+  assert.equal(lastUser.content.at(-1).text, 'nunc-synthetic-last-user-append');
+  assert.match(typeof lastUser.content[0] === 'string' ? lastUser.content[0] : lastUser.content[0].text, /Last-user text append must send/);
+  assert(!JSON.stringify(f.log).includes('nunc-synthetic-last-user-append'));
   const beforeOvercap = f.requests.length;
   await p.send('/fixture-payload-mode overcap');
   await p.prompt('Output overcap must not send');
@@ -38,8 +49,18 @@ try {
   await p.send('/fixture-payload-mode illegal-model');
   await p.prompt('Illegal model rewrite must not send');
   assert.equal(f.requests.length, beforeModel);
+  const beforeRewrite = f.requests.length;
+  await p.send('/fixture-payload-mode rewrite-user');
+  await p.prompt('Last-user text replacement must not send');
+  assert.equal(f.requests.length, beforeRewrite);
+  const beforeAppendOverflow = f.requests.length;
+  await p.send('/fixture-payload-mode append-overflow');
+  await p.prompt('Last-user append overflow must not send');
+  assert.equal(f.requests.length, beforeAppendOverflow);
   assert(f.log.some(e => e.type === 'admission' && e.data.outcome === 'reject' && e.data.payload));
+  assert(f.log.some(e => e.type === 'admission' && e.data.outcome === 'reject' && e.data.payload?.transform === 'last-user-text-append' && e.data.code === 'CAPACITY'));
   assert(!JSON.stringify(f.log.filter(e => e.type === 'admission')).includes('outside-selection'));
+  assert(!JSON.stringify(f.log).includes('nunc-synthetic-last-user-append'));
   await p.send('/fixture-payload-mode identity');
   await p.prompt('Seed for maintenance ' + 'a'.repeat(12000));
   await p.prompt('Kept for maintenance ' + 'b'.repeat(3000));
@@ -54,8 +75,8 @@ try {
   await p.quit();
   outcome = {
     status: 'PROVEN_CONTROLLED',
-    safeSends: 4,
-    zeroSend: ['overcap', 'nostream', 'grow', 'illegal-model'],
+    safeSends: 5,
+    zeroSend: ['overcap', 'nostream', 'grow', 'illegal-model', 'rewrite-user', 'append-overflow'],
     maintenanceIdentity: true,
     maintenanceOvercapZeroSend: true,
     memoryQuality: 'UNPROVEN: controlled service',

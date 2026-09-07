@@ -1,5 +1,7 @@
 import { appendFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
+import { applyLastUserTextAppend } from "../../src/pi/payload.js";
 
 /** Controlled-service observer plus explicit public-composition fault commands. Never generates memory. */
 export default function (pi: ExtensionAPI): void {
@@ -33,6 +35,26 @@ export default function (pi: ExtensionAPI): void {
       case "nostream": return { ...rec, stream: false };
       case "grow": return { ...rec, nunc_fixture: "n".repeat(200000) };
       case "illegal-model": return { ...rec, model: "outside-selection" };
+      case "append": {
+        const result = applyLastUserTextAppend(payload, SYNTHETIC_LAST_USER_APPEND);
+        return result.changed ? result.payload : undefined;
+      }
+      case "append-overflow": {
+        const result = applyLastUserTextAppend(payload, "x".repeat(200000));
+        return result.changed ? result.payload : undefined;
+      }
+      case "rewrite-user": {
+        const list = Array.isArray(rec.input) ? rec.input : Array.isArray(rec.messages) ? rec.messages : undefined;
+        if (!list) return rec;
+        for (let index = list.length - 1; index >= 0; index -= 1) {
+          const message = list[index];
+          if (!message || typeof message !== "object" || Array.isArray(message) || (message as { role?: unknown }).role !== "user") continue;
+          const current = (message as { content?: unknown }).content;
+          (message as { content: unknown }).content = typeof current === "string" ? `${current} rewritten` : "rewritten";
+          return rec;
+        }
+        return rec;
+      }
       default: return;
     }
   });

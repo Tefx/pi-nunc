@@ -5,8 +5,14 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { object, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
+import { object, payloadAppendEnabled, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
 export { toolPath } from "./tool-path.js";
+export function liveExtensionFlags(repository: string, input: RunInput): string[] {
+  const flags = ["-e", join(repository, "dist/src/live/observer.js")];
+  if (payloadAppendEnabled(input)) flags.push("-e", join(repository, "dist/src/live/append.js"));
+  flags.push("-e", join(repository, "dist/src/index.js"));
+  return flags;
+}
 export interface HostOptions {
   repository: string; input: RunInput; selection: Selection; caseRoot: string; modelTargets: Model<Api>[];
   deadline: number; signal: AbortSignal; sessionFile?: string;
@@ -85,7 +91,7 @@ export class NativeHost {
     const packageDir = join(o.repository, "node_modules/@earendil-works/pi-coding-agent");
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
     const cli = join(packageDir, manifest.bin.pi);
-    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", "-e", join(o.repository, "dist/src/live/observer.js"), "-e", join(o.repository, "dist/src/index.js"), "--nunc-config", config, "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
+    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...liveExtensionFlags(o.repository, o.input), "--nunc-config", config, "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
     this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
     this.child.stdin.on("error", () => this.abort());
