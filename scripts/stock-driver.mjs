@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { zstdDecompressSync } from 'node:zlib';
 import { oauthFixture } from '../dist/tests/pi/oauth-fixture.js';
+import { readSourceRecords } from '../dist/src/engine/request.js';
 import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -16,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 export const text = m => typeof m.content === 'string' ? m.content : (m.content ?? []).filter(b => ['text', 'input_text', 'output_text'].includes(b.type)).map(b => b.text).join('\n');
-export const records = payload => (payload.messages ?? payload.input ?? []).flatMap(m => text(m).split('\n').flatMap(s => { try { return [JSON.parse(s)]; } catch { return []; } }));
+export const records = payload => (payload.messages ?? payload.input ?? []).flatMap(m => readSourceRecords(text(m)));
 export class StockFixture {
   changes = new EventEmitter(); processes = []; requests = []; log = []; timeline = []; error; holds = new Map(); maintenanceCount = 0;
   async setup({ config = {}, compaction = {}, timeoutMs = 90000, artifactParent = join(root, '.scratch/stock'), api = 'openai-completions' } = {}) {
@@ -79,13 +80,17 @@ export class StockFixture {
     const reply = this.response?.(row, source) ?? (source ? JSON.stringify({ add: [{ key: `addition${++this.maintenanceCount}`, text: `Controlled protocol slot ${this.maintenanceCount}; no memory-quality assertion.` }], remove: source.M.map(s => s.id), priority: [`addition${this.maintenanceCount}`] }) : 'Controlled ordinary response.');
     if (reply.status) { res.writeHead(reply.status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: reply.message } })); return; }
     res.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' });
+    // Controlled usage follows the delivered payload's scale, so usage-backed
+    // admission tests cannot hide growing history behind a constant 100 tokens.
+    const observedInput = reply.input ?? Math.ceil(JSON.stringify(payload).length / 4);
+    const observedOutput = reply.outputTokens ?? 50;
     const frame = x => res.write(`data: ${JSON.stringify(x)}\n\n`);
     if (this.api === 'anthropic-messages') {
       const content = typeof reply === 'string' ? reply : reply.text;
       const events = [
-        { type: 'message_start', message: { id: `response-${row.number}`, type: 'message', role: 'assistant', model: payload.model, content: [], stop_reason: null, usage: { input_tokens: 100, output_tokens: 0 } } },
+        { type: 'message_start', message: { id: `response-${row.number}`, type: 'message', role: 'assistant', model: payload.model, content: [], stop_reason: null, usage: { input_tokens: observedInput, output_tokens: 0 } } },
         { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }, { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: content } },
-        { type: 'content_block_stop', index: 0 }, { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 50 } }, { type: 'message_stop' },
+        { type: 'content_block_stop', index: 0 }, { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: observedOutput } }, { type: 'message_stop' },
       ];
       for (const e of events) res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`); res.end(); return;
     }
@@ -100,14 +105,14 @@ export class StockFixture {
         frame({ type: 'response.output_text.delta', item_id: item.id, output_index: 0, content_index: 0, delta: content });
       }
       frame({ type: 'response.output_item.done', output_index: 0, item });
-      frame({ type: 'response.completed', response: { id: `response-${row.number}`, model: payload.model, status: 'completed', output: [item], usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } });
+      frame({ type: 'response.completed', response: { id: `response-${row.number}`, model: payload.model, status: 'completed', output: [item], usage: { input_tokens: observedInput, output_tokens: observedOutput, total_tokens: observedInput + observedOutput, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } });
       res.end(); return;
     }
     const chunk = (delta, finish_reason = null) => frame({ id: `response-${row.number}`, object: 'chat.completion.chunk', created: 1, model: payload.model, choices: [{ index: 0, delta, finish_reason }] });
     chunk({ role: 'assistant', content: '' });
     chunk(reply.tool ? { tool_calls: [{ index: 0, id: `tool-${row.number}`, type: 'function', function: { name: reply.tool.name, arguments: JSON.stringify(reply.tool.input) } }] } : { content: typeof reply === 'string' ? reply : reply.text });
     chunk({}, reply.finish ?? (reply.tool ? 'tool_calls' : 'stop'));
-    frame({ id: `response-${row.number}`, object: 'chat.completion.chunk', model: payload.model, choices: [], usage: { prompt_tokens: reply.input ?? 100, completion_tokens: 50, total_tokens: (reply.input ?? 100) + 50 } });
+    frame({ id: `response-${row.number}`, object: 'chat.completion.chunk', model: payload.model, choices: [], usage: { prompt_tokens: observedInput, completion_tokens: observedOutput, total_tokens: observedInput + observedOutput } });
     res.end('data: [DONE]\n\n');
   }
   wait(predicate, label, ms = 15000) {

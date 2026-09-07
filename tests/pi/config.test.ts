@@ -32,8 +32,8 @@ test("equal 500k context/output capabilities leave main input room without chang
   assert.equal(config.main.outputTokens, 500000);
   assert.equal(config.main.nativeOutputReserve, 16384);
   assert.equal(inputLimit(grok, config.main), 500000 - 16384 - 1024);
-  assert.equal(config.extraction.outputTokens, 4096);
-  assert.equal(inputLimit(grok, config.extraction), 500000 - 4096 - 1024);
+  assert.equal(config.extraction.outputTokens, 8192);
+  assert.equal(inputLimit(grok, config.extraction), 500000 - 8192 - 1024);
   const bounded = engineConfig({ budget: { inputLimit: 300000 } }, grok, { reserveTokens: 16384, keepRecentTokens: 20000 });
   assert.equal(inputLimit(grok, bounded.main), 300000 - 1024);
   const tinyReserve = engineConfig({}, grok, { reserveTokens: 1, keepRecentTokens: 1 });
@@ -41,8 +41,8 @@ test("equal 500k context/output capabilities leave main input room without chang
   assert.equal(inputLimit(grok, tinyReserve.main), 500000 - 16 - 1024);
   for (const uncapped of [{ ...grok, api: "openai-codex-responses" }, { ...grok, compat: { supportsMaxOutputTokens: false } }]) {
     const reserved = engineConfig({}, uncapped, { reserveTokens: 16384, keepRecentTokens: 20000 });
-    assert.equal(reserved.main.nativeOutputReserve, undefined);
-    assert.throws(() => inputLimit(uncapped, reserved.main), /leave no input capacity/);
+    assert.equal(reserved.main.nativeOutputReserve, 16384);
+    assert.equal(inputLimit(uncapped, reserved.main), 482592);
   }
 });
 

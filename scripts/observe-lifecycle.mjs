@@ -110,9 +110,9 @@ try {
   assert.equal(f.log.filter(e => e.type === 'compact').at(-1).data.reason, 'threshold'); f.response = undefined;
   // Disabled automatic compaction never enables itself on local capacity failure.
   await p.command('new_session'); await p.command('set_auto_compaction', { enabled: false });
-  await p.prompt('Old ' + 'a'.repeat(26500));
+  await p.prompt('Old ' + 'a'.repeat(92000));
   const disabled = count('compact'), beforeReject = f.requests.length;
-  await p.prompt('Large delivered ' + 'b'.repeat(13000));
+  await p.prompt('Large delivered ' + 'b'.repeat(68000));
   assert.equal(f.requests.length, beforeReject); assert.equal(count('compact'), disabled);
   // Extraction failure returns cancel:true; native default summary is never run.
   f.response = row => row.kind === 'maintenance' ? { text: '{"add":[],"remove":[],"priority":[]}', finish: 'length' } : undefined;
@@ -127,7 +127,7 @@ try {
   assert.deepEqual((await p.command('get_entries')).entries.filter(e => e.type === 'compaction'), old);
   // No legal retiring prefix / indivisible input are bounded native failures.
   await p.command('new_session'); await p.command('set_auto_compaction', { enabled: true });
-  const irreducible = f.requests.length; await p.prompt('Indivisible ' + 'I'.repeat(60000));
+  const irreducible = f.requests.length; await p.prompt('Indivisible ' + 'I'.repeat(240000));
   assert.equal(f.requests.length, irreducible); assert.equal((await p.command('get_entries')).entries.filter(e => e.type === 'compaction').length, 0);
   await p.quit();
   outcome = { status: 'PROVEN_CONTROLLED', checkpoints: 3, overlappingOlderCheckpoint: true, actualRestartReload: true, modelCloneForkNewTree: true, threshold: true, disabledAuto: true, irreducibleInput: true, extractionFailureAndCancellation: true, independentRawDelegated: true, providerReplacementAndComposition: true, payloadMutationAndSamplingRejected: true, requests: f.requests.length, memoryQuality: 'UNPROVEN: controlled protocol responses' };

@@ -61,7 +61,7 @@ test("equal 500k context/output reserves window-plus-output without requiring si
     assert.equal(record.reservedCostUsd, null);
     assert(record.inputEstimate + record.outputCeiling > grok.contextWindow);
     ledger.finish(record, fauxAssistantMessage("ok"));
-    const huge = { systemPrompt: "x".repeat(500000), messages: [{ role: "user" as const, content: "y".repeat(1000), timestamp: 1 }] };
+    const huge = { systemPrompt: "x".repeat(2000000), messages: [{ role: "user" as const, content: "y".repeat(1000), timestamp: 1 }] };
     const blocked = new BudgetLedger(join(input.target.stateRoot, "huge.jsonl"), limits, Date.now() + 10000, new AbortController().signal);
     assert.throws(() => blocked.reserve(grok, huge, 16), /input capacity|INPUT_LIMIT/);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }

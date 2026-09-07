@@ -4,7 +4,6 @@ import { lstat, readFile, realpath, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { omitsSerializedOutputCap } from "../engine/accounting.js";
 import { engineConfig, parseConfig, type NuncConfig } from "../pi/config.js";
 export type { NuncConfig } from "../pi/config.js";
 
@@ -144,7 +143,8 @@ export function selectedModels(input: RunInput): Model<Api>[] {
     if (input.limits.maxCostUsd !== null) requireValue([model.cost, ...(model.cost.tiers ?? [])].every(rate => [rate.input, rate.output, rate.cacheRead, rate.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && Math.max(model.cost.input, model.cost.output) > 0, "MODEL", "Known catalog pricing required for a USD reservation");
     for (const s of input.scenarios) {
       const config = engineConfig(s.config.nunc, model, s.config.compaction);
-      if (omitsSerializedOutputCap(model)) requireValue(config.extraction.outputTokens === model.maxTokens, "CONFIG", "Uncapped extraction requires the full native model output allowance");
+      // The model ceiling is authorized above; extraction.outputTokens only plans
+      // headroom on uncapped APIs and must not reduce that authorization.
       const h = model.contextWindow - s.config.compaction.reserveTokens;
       requireValue(h > 0 && s.config.compaction.keepRecentTokens < h, "CONFIG", "reserve/keepRecent cannot establish a usable hook threshold");
       requireValue(config.extraction.outputTokens <= input.limits.maxOutputTokens, "CONFIG", "Extraction output exceeds authorization");

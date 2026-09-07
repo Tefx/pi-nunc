@@ -1,3 +1,4 @@
+import { semanticEvidence } from "../../src/live/scenarios.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -36,7 +37,7 @@ test("real main tool loop and extraction retain complete bodies, arguments, asso
   await f.runtime.session.compact();
   const extraction = f.calls.at(-1)!;
   // JSON has no undefined member: optional tool usage=undefined is absent on the wire.
-  assert.deepEqual(sourceRecords(extraction).flatMap(s => s.messages), JSON.parse(JSON.stringify(expected)));
+  assert.deepEqual(sourceRecords(extraction).flatMap(s => s.messages), expected.map(semanticEvidence));
   assert.equal(executions, 1, "maintenance never dispatches business tools");
   assert.equal(extraction.tools?.length, 0);
   assert(!JSON.stringify(extraction).includes("INVISIBLE"));

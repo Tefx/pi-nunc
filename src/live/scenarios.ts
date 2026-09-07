@@ -2,7 +2,8 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, DEFAULT_MAX_BYTES, truncateHead, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
-import type { Context } from "@earendil-works/pi-ai";
+import { readSourceRecords } from "../engine/request.js";
+import type { Context, Message } from "@earendil-works/pi-ai";
 import type { MaintenanceResult } from "../engine/types.js";
 import { object, requireValue, within, type Selection } from "./contract.js";
 
@@ -171,18 +172,28 @@ export function maintenanceResult(event: unknown): MaintenanceResult | undefined
   if (!object(result) || typeof result.ok !== "boolean" || !object(result.observations)) return undefined;
   return result as unknown as MaintenanceResult;
 }
+/** Independent observer projection: compare task evidence, excluding native replay metadata. */
+export function semanticEvidence(message: Message): Record<string, unknown> {
+  const content = typeof message.content === "string" ? message.content : message.content.filter(b => b.type !== "thinking" || !b.redacted).map(block => {
+    if (block.type === "text") return { type: block.type, text: block.text };
+    if (block.type === "thinking") return { type: block.type, thinking: block.thinking };
+    if (block.type === "toolCall") return { type: block.type, id: block.id, name: block.name, arguments: block.arguments, ...(block.namespace === undefined ? {} : { namespace: block.namespace }) };
+    return block;
+  });
+  return { role: message.role, ...(message.role === "toolResult" ? { toolCallId: message.toolCallId, toolName: message.toolName, isError: message.isError } : {}), ...(message.role === "assistant" ? { stopReason: message.stopReason } : {}), content };
+}
 export function checkFullExtraction(beforeActive: SessionEntry[], context: Context | undefined): CheckResult {
   const expected = beforeActive.filter(e => e.type !== "compaction").map(e => ({ entryId: e.id, messages: convertToLlm(sessionEntryToContextMessages(e).filter(m => m.role !== "compactionSummary" && !(m.role === "assistant" && (m.stopReason === "error" || m.stopReason === "aborted")))) })).filter(e => e.messages.length > 0);
   const records: Record<string, unknown>[] = [];
   for (const message of context?.messages ?? []) if (Array.isArray(message.content)) for (const block of message.content) if (block.type === "text") {
-    try { const value: unknown = JSON.parse(block.text); if (object(value)) records.push(value); } catch { /* Non-record control text is not evidence. */ }
+    records.push(...readSourceRecords(block.text));
   }
   // JSON transport omits undefined host metadata (e.g. toolResult.details/usage); it carries no evidence bytes.
   const actual = records.filter(r => r.region === "B" || r.region === "K").map(r => ({ entryId: r.entryId, messages: r.messages }));
   const latest = beforeActive.find(e => e.type === "compaction");
   const slots: unknown = latest?.type === "compaction" && object(latest.details) && object(latest.details.nunc) ? latest.details.nunc.slots : [];
   const memory = records.find(r => r.source === "F/M");
-  return { check: "actual full extraction contains all Pi-visible source messages and saved M without loss", status: expected.length > 0 && isDeepStrictEqual(actual, JSON.parse(JSON.stringify(expected))) && isDeepStrictEqual(memory?.M, slots) ? "PROVEN" : "UNPROVEN" };
+  return { check: "actual full extraction contains all Pi-visible source messages and saved M without loss", status: expected.length > 0 && isDeepStrictEqual(actual, expected.map(e => ({ ...e, messages: e.messages.map(semanticEvidence) }))) && isDeepStrictEqual(memory?.M, slots) ? "PROVEN" : "UNPROVEN" };
 }
 export function checkRollover(before: SessionEntry[], after: SessionEntry[], persisted: SessionManager, result: MaintenanceResult | undefined, control: Control, turnEntries: Record<string, string[]>): CheckResult[] {
   const checks: CheckResult[] = [];

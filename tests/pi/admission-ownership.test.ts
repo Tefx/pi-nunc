@@ -30,7 +30,7 @@ async function env() {
   assert(held);
   const options = { signal, sessionId: "synthetic-session" };
   const context: Context = { messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] };
-  const huge: Context = { messages: [{ role: "user", content: "x".repeat(4000), timestamp: 1 }] };
+  const huge: Context = { messages: [{ role: "user", content: "x".repeat(16000), timestamp: 1 }] };
   const rewrap = () => {
     registry.registerProvider({
       ...held,
@@ -51,10 +51,10 @@ test("held older wrapper still applies capacity; inner wrap on the live chain st
   assert.equal(ok.stopReason, "stop", ok.errorMessage ?? "");
   const guarded = await latest.streamSimple(e.model, e.huge, e.options).result();
   assert.equal(guarded.stopReason, "error");
-  assert.match(guarded.errorMessage ?? "", /exceeds safe input/);
+  assert.match(guarded.errorMessage ?? "", /exceeds planned input/);
   const held = await e.held.streamSimple(e.model, e.huge, e.options).result();
   assert.equal(held.stopReason, "error");
-  assert.match(held.errorMessage ?? "", /Provider changed after request preparation|exceeds safe input/);
+  assert.match(held.errorMessage ?? "", /Provider changed after request preparation|exceeds planned input/);
   assert.equal(e.faux.state.callCount, 1);
 });
 
@@ -125,7 +125,7 @@ test("held older wrapper oversize from inside the native callback still runs mai
   const first = await latest.streamSimple(e.model, e.context, e.options).result();
   assert.equal(first.stopReason, "stop", first.errorMessage ?? "");
   assert.equal(nested, "error");
-  assert.match(nestedMessage ?? "", /exceeds safe input|Provider changed after request preparation/);
+  assert.match(nestedMessage ?? "", /exceeds planned input|Provider changed after request preparation/);
   assert.equal(e.faux.state.callCount, 1);
 });
 

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { semanticEvidence } from "../../src/live/scenarios.js";
 import assert from "node:assert/strict";
 import { legalCuts, mainContext, maintain } from "../../src/engine/index.js";
 import type { ActiveEntry } from "../../src/engine/index.js";
@@ -18,7 +19,7 @@ test("complete effective source includes pending latest user, custom messages, f
   assert.deepEqual(main.messages.slice(1), source.active.flatMap(e => e.messages));
   const result = await maintain(source, async request => {
     const records = sourceRecords(request.context);
-    assert.deepEqual(records.map(({ entryId, sourceRole, messages }) => ({ entryId, sourceRole, messages })), before);
+    assert.deepEqual(records.map(({ entryId, sourceRole, messages }) => ({ entryId, sourceRole, messages })), before.map(e => ({ ...e, messages: e.messages.map(semanticEvidence) })));
     assert.deepEqual(request.context.tools, []);
     return answer(noChange, request.model);
   });
@@ -71,7 +72,7 @@ for (const [i, active] of invalidSources.entries()) test(`unusable association/p
 
 test("actual oversized extraction can reduce tool text once with exact omission locations; K return stays full", async () => {
   const source = await input();
-  const giant = "FIRST" + "x".repeat(80000) + "LAST";
+  const giant = "FIRST" + "x".repeat(320000) + "LAST";
   source.active = [user("u", "original requirement"), assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: { required: "intact" } }]), tool("giant", "x", giant), user("latest", "newest correction, preserve me")];
   const original = structuredClone(source.active);
   const result = await maintain(source, async request => {
@@ -81,8 +82,8 @@ test("actual oversized extraction can reduce tool text once with exact omission 
     assert(message.role === "toolResult"); assert.equal(message.toolCallId, "x");
     const text = message.content[0]!; assert(text.type === "text");
     assert(text.text.startsWith("FIRST")); assert(text.text.endsWith("LAST")); assert(text.text.length < giant.length);
-    assert.deepEqual(records.find(r => r.entryId === "call")!.messages, original[1]!.messages);
-    assert.deepEqual(records.find(r => r.entryId === "latest")!.messages, original[3]!.messages);
+    assert.deepEqual(records.find(r => r.entryId === "call")!.messages, original[1]!.messages.map(semanticEvidence));
+    assert.deepEqual(records.find(r => r.entryId === "latest")!.messages, original[3]!.messages.map(semanticEvidence));
     return answer(noChange, request.model);
   });
   assert(result.ok, result.ok ? "" : result.message);
@@ -97,12 +98,12 @@ test("actual oversized extraction can reduce tool text once with exact omission 
 test("full mode refuses oversized tool source; auto cannot truncate user instructions or tool arguments", async () => {
   for (const mode of ["full", "auto"] as const) {
     const source = await input(); source.config.extraction.toolResults = mode;
-    source.active = [user("u", mode === "auto" ? "u".repeat(80000) : "u"), assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("r", "x", "x".repeat(mode === "full" ? 80000 : 10)), user("last", "recent")];
+    source.active = [user("u", mode === "auto" ? "u".repeat(320000) : "u"), assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("r", "x", "x".repeat(mode === "full" ? 320000 : 10)), user("last", "recent")];
     const result = await maintain(source, async () => { assert.fail("capacity failure must precede dispatch"); });
     assert(!result.ok); assert.equal(result.code, "CAPACITY"); assert.equal(result.observations.requests, 0); assert.deepEqual(result.observations.omissions, []);
   }
   const source = await input();
-  source.active = [user("u", "u"), assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: { exact: "a".repeat(80000) } }]), tool("r", "x", "small"), user("last", "recent")];
+  source.active = [user("u", "u"), assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: { exact: "a".repeat(320000) } }]), tool("r", "x", "small"), user("last", "recent")];
   const result = await maintain(source, responder()); assert(!result.ok); assert.equal(result.code, "CAPACITY");
 });
 
@@ -126,7 +127,7 @@ test("supported native images remain real blocks associated with their source; n
 
 test("reduction of extraction K never rewrites the original retained tool body", async () => {
   const source = await input();
-  source.active = [user("old", "old"), assistant("bc", [{ type: "toolCall", id: "b", name: "read", arguments: {} }]), tool("br", "b", "b".repeat(80000)),
+  source.active = [user("old", "old"), assistant("bc", [{ type: "toolCall", id: "b", name: "read", arguments: {} }]), tool("br", "b", "b".repeat(320000)),
     user("recent", "latest requirements"), assistant("kc", [{ type: "toolCall", id: "k", name: "read", arguments: {} }]), tool("kr", "k", "🦉".repeat(900)), user("latest", "correction")];
   const result = await maintain(source, async request => {
     const records = sourceRecords(request.context); const kr = records.find(r => r.entryId === "kr")!;

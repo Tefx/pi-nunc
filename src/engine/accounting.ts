@@ -1,11 +1,11 @@
-import { Buffer } from "node:buffer";
+import { estimateTextTokens, estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import type { Api, Context, Message, Model } from "@earendil-works/pi-ai";
 import type { ActiveEntry, EngineConfig, FixedContext, RequestBudget, Slot, UsageObservation } from "./types.js";
 import { memoryMessage } from "./memory.js";
 import { integer, record, requireThat } from "./validation.js";
 
-/** Deliberately conservative local estimate, NOT a provider tokenizer/usage receipt. */
-export function textTokens(text: string): number { return Buffer.byteLength(text, "utf8"); }
+/** Pi's planning heuristic, NOT a tokenizer or a hard upper bound. */
+export function textTokens(text: string): number { return estimateTextTokens(text); }
 export function messageTokens(message: Message, imageTokens?: number): number {
   let tokens = 32 + textTokens(message.role);
   if (message.role === "toolResult") tokens += textTokens(message.toolCallId) + textTokens(message.toolName) + 8;
@@ -13,9 +13,9 @@ export function messageTokens(message: Message, imageTokens?: number): number {
   for (const block of message.content) {
     tokens += 16;
     switch (block.type) {
-      case "text": tokens += textTokens(block.text) + textTokens(block.textSignature ?? ""); break;
-      case "thinking": tokens += textTokens(block.thinking) + textTokens(block.thinkingSignature ?? ""); break;
-      case "toolCall": tokens += textTokens(JSON.stringify(block)); break;
+      case "text": tokens += textTokens(block.text); break;
+      case "thinking": tokens += textTokens(block.thinking); break;
+      case "toolCall": tokens += textTokens(block.id) + textTokens(block.name) + textTokens(JSON.stringify(block.arguments)); break;
       case "image":
         requireThat(integer(imageTokens, 1), "UNSUPPORTED_INPUT", "Native image input needs a provider-specific imageTokens upper bound");
         tokens += imageTokens; break;
@@ -26,6 +26,22 @@ export function messageTokens(message: Message, imageTokens?: number): number {
 export function requestTokens(context: Context, imageTokens?: number): number {
   return 64 + textTokens(context.systemPrompt ?? "") + textTokens(JSON.stringify(context.tools ?? []))
     + context.messages.reduce((sum, m) => sum + messageTokens(m, imageTokens), 0);
+}
+/** Caller must establish unchanged model/prefix before allowing historical usage. */
+export function admissionEstimate(context: Context, model: Model<Api>, imageTokens?: number, allowUsage = false, minimumUsageIndex = 0): { tokens: number; estimator: "pi-heuristic" | "pi-usage-backed" } {
+  // Validate every native image even when a usage receipt covers its token cost.
+  const fresh = requestTokens(context, imageTokens);
+  if (allowUsage && context.messages.every(m => m.role !== "assistant" || record(m.usage) && [m.usage.input, m.usage.output, m.usage.cacheRead, m.usage.cacheWrite, m.usage.totalTokens].every(n => integer(n)))) {
+    const estimate = estimateContextTokens(context);
+    const anchor = estimate.lastUsageIndex === null ? undefined : context.messages[estimate.lastUsageIndex];
+    if (estimate.lastUsageIndex !== null && estimate.lastUsageIndex >= minimumUsageIndex && anchor?.role === "assistant" && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
+      const trailing = context.messages.slice(estimate.lastUsageIndex! + 1);
+      // Pi's usage includes F and earlier messages. Add our explicit framing/media
+      // estimate only for new messages, without charging the prefix twice.
+      return { tokens: estimate.usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
+    }
+  }
+  return { tokens: fresh, estimator: "pi-heuristic" };
 }
 export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEntry[]): Context {
   return { ...fixed, messages: [memoryMessage(slots), ...active.flatMap(e => e.messages)] };
@@ -40,12 +56,11 @@ export function omitsSerializedOutputCap(model: Model<Api>): boolean {
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   requireThat(integer(model.contextWindow, 1) && integer(model.maxTokens, 1), "CONFIG", "Invalid effective model capacity");
   requireThat(budget.outputTokens <= Math.min(model.maxTokens, budget.outputLimit ?? model.maxTokens), "CONFIG", "Configured total output (including thinking) exceeds model/provider output capacity");
-  // Pi 0.85 Codex omits max_output_tokens; some Responses endpoints opt out too.
-  // In those cases a requested small cap provides no safety: require the actual model ceiling.
-  requireThat(!omitsSerializedOutputCap(model) || budget.outputTokens === model.maxTokens, "CONFIG", "Selected Pi API does not send an output cap; explicitly reserve model.maxTokens for this request");
+  // Output planning and enforceable caps are distinct. Uncapped APIs can use a
+  // smaller planning reserve; provider overflow/length recovery remains native.
   requireThat(!["openai-responses", "azure-openai-responses"].includes(model.api) || budget.outputTokens >= 16, "CONFIG", "Pi Responses APIs floor max_output_tokens at 16; reserve at least 16");
   const reserve = budget.nativeOutputReserve ?? budget.outputTokens;
-  requireThat(budget.nativeOutputReserve === undefined || (!omitsSerializedOutputCap(model) && integer(reserve, 1) && reserve <= budget.outputTokens), "CONFIG", "Native output reserve requires a serialized cap and positive headroom within its ceiling");
+  requireThat(budget.nativeOutputReserve === undefined || (integer(reserve, 1) && reserve <= budget.outputTokens), "CONFIG", "Output planning reserve must be positive and within model output capability");
   requireThat(!["openai-responses", "azure-openai-responses"].includes(model.api) || reserve >= 16, "CONFIG", "Pi Responses input headroom must cover its minimum output of 16");
   // Main headroom follows host policy while Pi sizes output with its own estimate.
   // It is not a simultaneous reservation of the catalog output upper bound.

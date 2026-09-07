@@ -148,11 +148,11 @@ L = F + render(M_next) + 实际 K
 
 省略 M 的绝对上限时使用比例。A 必须为正；memory.fraction 在 [0, 1) 内，q 在 (0, 1) 内，绝对上限若提供则为正数。输出预算、thinking、多模态和 provider 的独立输入/输出限制按实际请求语义计算；最大输出能力不等于每次应该预留的输出量。
 
-已验证的 Pi 原生按剩余上下文裁输出路径，以 compaction reserve 与最大输出能力的较小值作为主请求输入准入余量，且覆盖序列化输出下限；保留 Pi 实际输出设置。该余量不代表原生输出上限，Nunc 与 Pi 的估算器不同，不能据此声称 Nunc 输入估算加实际输出上限同时小于窗口。未序列化输出 cap 的路径继续完整预留；具体适配范围见 [PI.md](PI.md)。
+主请求保留 Pi 实际 output/thinking 设置。已验证的原生按剩余上下文裁输出路径，以及不发送输出 cap 的 Codex/Responses 路径，以 compaction reserve 与最大输出能力的较小值作为输入规划余量，并覆盖序列化下限。维护默认独立预留 8192（包含 reasoning，且不超过模型能力）；API 支持时发送对应输出 cap，不支持时仅作为规划值。模型能力、规划余量、实际 cap 和费用授权分开。普通请求使用适用的 Pi usage 加新增输入估算，前缀或模型改变后重新估算；维护及候选 M/K 始终重新估算。无硬 tokenizer 上界保证，实际超窗仍交给原生有界恢复。具体接入见 [PI.md](PI.md)。
 
 还要单独检查完整 extraction，包括 M/B/K、控制消息、输出协议、提取输出和余量。原生前缀已经包含 F/M 时不重复计数。cached tokens 仍占上下文；未知 usage 不当成零。
 
-正常滚动应能容纳完整 extraction，H 必须留出相应空间。若不能容纳，应在配置上降低 H 或选择开销更小的完整请求形态。不要把每轮有损删减输入作为默认运转条件。
+正常滚动以完整 extraction 为目标。normalExtractionAtTrigger 只提供触发余量建议；不能否决当前能放下的手动维护或溢出恢复。当前完整请求先做预算检查，超出时按配置执行一次明确标记的有界工具正文缩减，仍无法容纳才取消。反复发生缩减时提示降低 Pi H，避免有损缩减悄悄成为常态。Nunc 不自动修改宿主 reserve，也不增加第二套维护调度器。
 
 q 要让 K 足以承接近期工作，同时释放足够空间。较大 q 增加连续原文，也提高平均输入长度和维护频率。参数可从 q 约 2/3、M 约占可用工作预算 1/10 起步；实施时允许调整，验收关注预算、连续性和增长空间，不固定这些数值。
 
@@ -263,7 +263,7 @@ TUI 的 `ctx.abort()` 会将排队输入取回编辑器，并清理底层队列�
 
 Nunc 和验证默认继承 Pi 当前有效 model/provider/options/config，包括启动参数和运行时选择。扩展使用公开 ctx/model registry/request options；独立进程只能解析自己的启动默认值，调用中的 runtime 必须通过公开上下文或普通非秘密参数转发未保存选择，不能假定另一进程能自动发现。不得重建平行模型目录或要求调用者逐项填回默认元数据。
 
-只有命名测试要求需要的差异才作为当前调用/新任务状态的 override，记录理由与实际差异。主请求 output/thinking 不为预算暗改；Codex 等未序列化输出 cap 的 API 预留完整原生输出能力，订阅费用未知保持 null/unknown。
+只有命名测试要求需要的差异才作为当前调用/新任务状态的 override，记录理由与实际差异。主请求 output/thinking 不为预算暗改。Codex 无输出 cap 时允许较小的输入规划余量；调用/消费授权仍覆盖完整原生输出能力。订阅费用未知保持 null/unknown。
 
 隔离新测试 session、task cwd/文件、输出及有界效果，复用 Pi 现有配置和原生认证 owner。Nunc/runner 不复制整套 profile，不交付 credential-copy、auth-handoff、OAuth store/refresh/login 子系统，不要求 API-key 账户替代 Codex OAuth。凭据值及来源位置不进 stdin/argv/报告。Pi 正常认证解析/刷新及必要持久化保持原生所有权，不承诺 auth bytes 冻结；保护既有 session、保存的 settings/defaults 和其他项目。生产者只用虚构 native profile 与受控服务；真实认证和模型观察由下游 runtime 执行。
 

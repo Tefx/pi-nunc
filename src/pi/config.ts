@@ -58,13 +58,15 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
   // These inspected Pi 0.85.1 streamSimple adapters clamp output to remaining
   // context (Anthropic reclamps after thinking adjustment). Keep their defaults;
   // input admission must not subtract the entire catalog output capability.
-  // Other adapters still delegate, retaining fixed-reserve accounting until verified.
-  const nativeContextOutput = !omitsSerializedOutputCap(model) &&
+  // Uncapped routes use planning headroom too, without claiming an output cap.
+  // Other adapters retain fixed-reserve accounting until context sizing is verified.
+  const nativeContextOutput = omitsSerializedOutputCap(model) ||
     ["openai-completions", "openai-responses", "azure-openai-responses", "anthropic-messages"].includes(model.api);
   const mainOutput = model.maxTokens;
   const outputFloor = ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
   const mainReserve = Math.min(mainOutput, Math.max(outputFloor, settings.reserveTokens));
-  const outputTokens = config.extraction?.outputTokens ?? (omitsSerializedOutputCap(model) ? model.maxTokens : Math.min(4096, model.maxTokens));
+  // Existing explicit values remain effective; /nunc explains legacy full-ceiling reserves.
+  const outputTokens = config.extraction?.outputTokens ?? Math.min(8192, model.maxTokens);
   const common = { safetyTokens: config.budget?.safetyTokens ?? 1024, ...(config.budget?.inputLimit === undefined ? {} : { inputLimit: config.budget.inputLimit }) };
   const result: EngineConfig = {
     triggerTokens,

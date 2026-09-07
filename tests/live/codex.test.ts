@@ -15,7 +15,7 @@ test("selected native Codex catalog/uncapped output and explicit unknown billing
     (v: typeof input) => { v.limits.maxCostUsd = 100; },
     (v: typeof input) => { v.limits.maxOutputTokens = 4096; },
     (v: typeof input) => { v.models[0]!.baseUrl = "https://example.invalid"; },
-    (v: typeof input) => { v.scenarios[0]!.config.nunc.extraction!.outputTokens = 4096; },
+    (v: typeof input) => { v.scenarios[0]!.config.nunc.extraction!.outputTokens = 128001; },
     (v: typeof input) => { v.models[0]!.id = "unbound-model"; },
   ]) { const changed = structuredClone(input); change(changed); assert.throws(() => selectedModels(changed)); }
   assert.throws(() => parseInput({ ...input, models: [{ ...input.models[0], provider: ["openai-codex"] }] }));

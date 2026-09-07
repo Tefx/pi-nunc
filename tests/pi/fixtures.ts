@@ -54,9 +54,9 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
     respond(fn: FauxResponseFactory) { responder = fn; },
     seed(label = "old") {
       const manager = runtime.session.sessionManager;
-      const first = manager.appendMessage({ role: "user", content: label + ":" + "a".repeat(12000), timestamp: 0 });
+      const first = manager.appendMessage({ role: "user", content: label + ":" + "a".repeat(48000), timestamp: 0 });
       manager.appendMessage(answer({}, faux.getModel()));
-      const kept = manager.appendMessage({ role: "user", content: "Recent work " + label + ":" + "b".repeat(2200), timestamp: 1 });
+      const kept = manager.appendMessage({ role: "user", content: "Recent work " + label + ":" + "b".repeat(8800), timestamp: 1 });
       const last = manager.appendMessage({ ...answer({}, faux.getModel()), timestamp: 1 });
       runtime.session.agent.state.messages = manager.buildSessionContext().messages;
       return { first, kept, last };

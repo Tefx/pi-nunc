@@ -4,6 +4,7 @@ import { fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-
 import { azureOpenAIResponsesProvider } from "@earendil-works/pi-ai/providers/azure-openai-responses";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { sourceRecords } from "../engine/fixtures.js";
+import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { Type } from "typebox";
 import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 
@@ -83,14 +84,35 @@ test("later context hooks may add or drop their own messages; independent raw ca
 
 test("later context that exceeds the actual main budget is rejected with zero provider calls", async t => {
   const f = await fixture({ extras: [{ name: "oversize", factory(pi) {
-    pi.on("context", event => ({ messages: [...event.messages, { role: "user", content: "n".repeat(80000), timestamp: 3 }] }));
+    pi.on("context", event => ({ messages: [...event.messages, { role: "user", content: "n".repeat(320000), timestamp: 3 }] }));
   } }] });
   t.after(() => f.close());
   await f.runtime.session.prompt("Stay within the current model");
   const last = f.runtime.session.messages.at(-1);
   assert.equal(f.faux.state.callCount, 0);
   assert(last?.role === "assistant"); assert.equal(last.stopReason, "error");
-  assert.match(last.errorMessage ?? "", /exceeds safe input/);
+  assert.match(last.errorMessage ?? "", /exceeds planned input/);
+});
+
+test("applicable usage anchors main admission, but changing the effective system prefix invalidates it", async t => {
+  const observations: AdmissionObservation[] = [];
+  let changed = false;
+  const f = await fixture({ extras: [{ name: "budget-observer", factory(pi) {
+    pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
+    pi.on("before_agent_start", event => changed ? { systemPrompt: event.systemPrompt + "\nChanged effective constraint." } : undefined);
+  } }] });
+  t.after(() => f.close());
+  f.respond(() => fauxAssistantMessage("Controlled response."));
+  await f.runtime.session.prompt("First request");
+  const first = f.runtime.session.messages.at(-1)!; assert(first.role === "assistant");
+  const reported = first.usage.totalTokens; assert(reported > 0);
+  await f.runtime.session.prompt("Same prefix");
+  const anchored = observations.filter(o => o.kind === "main" && o.outcome === "delegate").at(-1)!;
+  assert.equal(anchored.estimator, "pi-usage-backed"); assert(anchored.inputTokens! >= reported);
+  changed = true;
+  await f.runtime.session.prompt("Changed prefix");
+  const fresh = observations.filter(o => o.kind === "main" && o.outcome === "delegate").at(-1)!;
+  assert.equal(fresh.estimator, "pi-heuristic"); assert(fresh.inputTokens! < 2000);
 });
 
 test("later context that breaks tool association is rejected before dispatch", async t => {

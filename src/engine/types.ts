@@ -13,9 +13,10 @@ export interface FixedContext { systemPrompt: string; tools: Tool[] }
 export interface Binding { sessionId: string; leafId: string; generation: string }
 export interface PolicySnapshot { builtin: string; user: string }
 export interface RequestBudget {
-  /** Total output INCLUDING reasoning: fixed reserve, or upper bound with nativeOutputReserve. */
+  /** Requested extraction output (including reasoning), or native main capability.
+   * On uncapped APIs this is a planning value, never an enforceable cap. */
   outputTokens: number;
-  /** Main-only input headroom while the native adapter owns context-dependent output sizing. */
+  /** Main-only planning headroom; native transport owns output sizing/overflow. */
   nativeOutputReserve?: number;
   safetyTokens: number;
   /** Independent provider input/output ceilings, if narrower than model metadata. */
@@ -72,7 +73,13 @@ export interface UsageObservation {
   cost: number | null;
 }
 export interface Accounting {
-  estimator: "utf8-upper-estimate-v1";
+  estimator: "pi-heuristic";
+  outputReserveTokens: number;
+  outputCapTokens: number | null;
+  normalHeadroomSufficient: boolean;
+  suggestedReserveTokens: number;
+  inputExceededPlan: boolean;
+  outputExceededPlan: boolean;
   fixedTokens: number;
   mainBeforeTokens: number;
   mainInputLimit: number;

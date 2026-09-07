@@ -1,5 +1,6 @@
 import type { AssistantMessage, Context, Message, Model, Api } from "@earendil-works/pi-ai";
 import { emptyMemory, loadPolicy } from "../../src/engine/index.js";
+import { readSourceRecords } from "../../src/engine/request.js";
 import type { ActiveEntry, MaintenanceInput, ModelRequest } from "../../src/engine/index.js";
 
 export const model: Model<Api> = {
@@ -36,7 +37,7 @@ export async function input(): Promise<MaintenanceInput> {
 export function sourceRecords(context: Context): { region: "B" | "K"; entryId: string; sourceRole: string; messages: Message[] }[] {
   return context.messages.flatMap(m => typeof m.content === "string" ? [] : m.content.flatMap(b => {
     if (b.type !== "text") return [];
-    try { const parsed = JSON.parse(b.text); return parsed.region ? [parsed] : []; } catch { return []; }
+    return readSourceRecords(b.text).filter(r => r.region) as unknown as { region: "B" | "K"; entryId: string; sourceRole: string; messages: Message[] }[]; // Fixture reader: tests assert the semantic fields, not native metadata.
   }));
 }
 export function responder(patch: unknown = noChange): (request: ModelRequest) => Promise<AssistantMessage> {

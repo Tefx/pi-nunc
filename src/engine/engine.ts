@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import type { Complete, MaintenanceInput, MaintenanceResult, Observations } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
-import { chooseCut, inputLimit, mainContext, memoryTokens, observeUsage, requestTokens, unknownUsage } from "./accounting.js";
+import { chooseCut, inputLimit, mainContext, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies } from "./request.js";
 import { EngineError, freezeCopy, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
 
@@ -68,14 +68,18 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     const mainBeforeTokens = requestTokens(mainContext(frozen.fixed, frozen.memory.slots, frozen.active), config.imageTokens) + config.main.extraInputTokens;
     let context = extractionContext(frozen, cut, memoryLimit, frozen.active, []);
     const fullExtractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
-    // Reserve the measured full-request overhead at H, not merely space for a smaller M_next.
+    // Sustainable-trigger advice must never veto an executable current request.
     const normalExtractionAtTrigger = fullExtractionTokens - mainBeforeTokens + effectiveTrigger;
+    const outputCapTokens = omitsSerializedOutputCap(frozen.model) ? null : config.extraction.outputTokens;
     observations.accounting = {
-      estimator: "utf8-upper-estimate-v1", fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
+      estimator: "pi-heuristic", outputReserveTokens: config.extraction.outputTokens, outputCapTokens,
+      normalHeadroomSufficient: normalExtractionAtTrigger <= extractionInputLimit,
+      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens - mainBeforeTokens)),
+      inputExceededPlan: false, outputExceededPlan: false,
+      fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
       effectiveTrigger, memoryLimit, keepTarget, keptTokens, fullExtractionTokens, extractionTokens: fullExtractionTokens,
       normalExtractionAtTrigger, mainAfterTokens: null, memoryTokens: null, growthTokens: null,
     };
-    requireThat(normalExtractionAtTrigger <= extractionInputLimit, "CONFIG", "H leaves insufficient headroom for a normal full extraction including policy/protocol; lower Pi's trigger (increase reserveTokens)");
     if (fullExtractionTokens > extractionInputLimit && config.extraction.toolResults === "auto") {
       const reduced = reduceToolBodies(frozen.active, config.extraction.headTailChars);
       observations.omissions = reduced.omissions;
@@ -92,8 +96,13 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     requireThat(response.model === frozen.model.id && response.provider === frozen.model.provider && response.api === frozen.model.api && (!response.responseModel || response.responseModel === frozen.model.id), "RESPONSE", "Maintenance response changed model/provider/API");
     requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}`);
     const usage = observations.usage;
-    requireThat(usage.contextInput === null || usage.contextInput <= extractionInputLimit, "CAPACITY", "Reported extraction input (including cache) exceeded the safe capacity");
-    requireThat(usage.output === null || usage.output <= config.extraction.outputTokens, "CAPACITY", "Reported output including reasoning exceeded its reserve");
+    observations.accounting.inputExceededPlan = usage.contextInput !== null && usage.contextInput > extractionInputLimit;
+    observations.accounting.outputExceededPlan = usage.output !== null && usage.output > config.extraction.outputTokens;
+    const hardInputLimit = Math.min(frozen.model.contextWindow, config.extraction.inputLimit ?? Infinity);
+    const hardOutputLimit = Math.min(frozen.model.maxTokens, config.extraction.outputLimit ?? Infinity, outputCapTokens ?? Infinity);
+    requireThat(usage.contextInput === null || usage.contextInput <= hardInputLimit, "CAPACITY", "Reported extraction input exceeded the model/provider input limit");
+    requireThat(usage.output === null || usage.output <= hardOutputLimit, "CAPACITY", "Reported output including reasoning exceeded the model/provider output limit or serialized cap");
+    requireThat((usage.totalTokens === null || usage.totalTokens <= frozen.model.contextWindow) && (usage.contextInput === null || usage.output === null || usage.contextInput + usage.output <= frozen.model.contextWindow), "CAPACITY", "Reported extraction input and output exceeded the model window");
     requireThat(Array.isArray(response.content) && response.content.every(b => record(b) && ((b.type === "text" && typeof b.text === "string") || (b.type === "thinking" && typeof b.thinking === "string"))), "RESPONSE", "Unexpected maintenance content or tool call; tools are never executed");
     const text = response.content.filter(b => b.type === "text").map(b => b.text).join("");
     let patch: unknown;

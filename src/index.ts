@@ -1,8 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
 import { getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, MaintenanceResult } from "./engine/index.js";
+import type { Accounting, FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
+import { inputLimit, omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig } from "./pi/config.js";
 import { eligibleStarts, project } from "./pi/projection.js";
 import { Admission } from "./pi/admission.js";
@@ -16,7 +17,9 @@ export default function nunc(pi: ExtensionAPI): void {
   let generation = 0;
   let running: AbortController | undefined;
   let hostSettings: HostSettingsSource | undefined;
-  const invalidate = () => { generation++; running?.abort(); };
+  let lastAccounting: Accounting | null = null;
+  let headroomWarned = false;
+  const invalidate = () => { generation++; running?.abort(); admission.invalidateUsage(); lastAccounting = null; headroomWarned = false; };
   pi.events.on("nunc:host-settings", (value: unknown) => {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
     invalidate(); hostSettings = value as HostSettingsSource;
@@ -36,6 +39,7 @@ export default function nunc(pi: ExtensionAPI): void {
     project(ctx.sessionManager.buildContextEntries());
     return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction);
   });
+  pi.on("session_compact", () => admission.invalidateUsage());
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
     return { systemPrompt: ctx.getSystemPrompt(), tools: pi.getActiveTools().map(name => {
@@ -52,7 +56,13 @@ export default function nunc(pi: ExtensionAPI): void {
     invalidate();
     try {
       admission.ensure(ctx); supported(ctx);
-      if (ctx.model) engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, ctx.model, settings(ctx).compaction);
+      if (ctx.model) {
+        const selected = readConfig(pi.getFlag("nunc-config"), ctx.cwd).config;
+        engineConfig(selected, ctx.model, settings(ctx).compaction);
+        if (omitsSerializedOutputCap(ctx.model) && selected.extraction?.outputTokens === ctx.model.maxTokens) {
+          notify(ctx, `Explicit extraction.outputTokens=${ctx.model.maxTokens} still reserves the full output capability. This API has no output cap; remove the legacy override to use the 8192 planning default. Settings were not changed.`);
+        }
+      }
       project(ctx.sessionManager.buildContextEntries());
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid startup configuration"); }
   });
@@ -110,6 +120,11 @@ export default function nunc(pi: ExtensionAPI): void {
       // Native Codex OAuth's subscription zero is not an observed USD bill.
       if (model.api === "openai-codex-responses") result.observations.usage.cost = null;
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }
+      lastAccounting = result.observations.accounting;
+      if (lastAccounting && !lastAccounting.normalHeadroomSufficient && !headroomWarned) {
+        headroomWarned = true;
+        notify(ctx, `Normal-trigger extraction estimate ${lastAccounting.normalExtractionAtTrigger} exceeds planned input ${lastAccounting.extractionInputLimit}; consider Pi reserveTokens >= ${lastAccounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance is checked separately; settings were not changed.`);
+      }
       if (!result.ok) { notify(ctx, `${result.code}: ${result.message}`); return { cancel: true }; }
       if (controller.signal.aborted || event.signal.aborted || String(generation) !== binding.generation ||
           manager.getSessionId() !== binding.sessionId || manager.getSessionFile() !== file || manager.getLeafId() !== binding.leafId ||
@@ -132,7 +147,9 @@ export default function nunc(pi: ExtensionAPI): void {
       supported(ctx);
       const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd), memory = project(ctx.sessionManager.buildContextEntries()).memory;
       const config = ctx.model ? engineConfig(selection.config, ctx.model, settings(ctx).compaction) : undefined;
-      notify(ctx, `Pi ${VERSION}: ${memory.slots.length} slots; H=${config?.triggerTokens ?? "unknown"}. Pi owns compaction and persistence; native request admission preserves queues.`, "info");
+      const limits = config && ctx.model ? `main planned input=${inputLimit(ctx.model, config.main)}, output reserve=${config.main.nativeOutputReserve ?? config.main.outputTokens}; extraction planned input=${inputLimit(ctx.model, config.extraction)}, output reserve=${config.extraction.outputTokens}, cap=${omitsSerializedOutputCap(ctx.model) ? "none" : config.extraction.outputTokens}; safety=${config.extraction.safetyTokens}` : "model budget unknown";
+      const last = lastAccounting ? ` Last extraction: full=${lastAccounting.fullExtractionTokens}, selected=${lastAccounting.extractionTokens}, normal headroom=${lastAccounting.normalHeadroomSufficient}, suggested Pi reserve>=${lastAccounting.suggestedReserveTokens}, input/output exceeded plan=${lastAccounting.inputExceededPlan}/${lastAccounting.outputExceededPlan}.` : " No extraction observed in this context.";
+      notify(ctx, `Pi ${VERSION}: ${memory.slots.length} slots; H=${config?.triggerTokens ?? "unknown"}; ${limits}. Estimates use Pi heuristics or applicable usage, not hard token bounds.${last} Pi owns compaction and persistence; native request admission preserves queues.`, "info");
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid configuration"); }
   } });
 }

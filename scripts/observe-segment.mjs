@@ -27,7 +27,7 @@ if (late) input.scenarios[0].variant = 'late-d';
 const runtime = capacity ? await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), refreshOnCreate: false, allowModelNetwork: false }) : undefined;
 const gemini = capacity ? runtime.getModel('openrouter', 'google/gemini-3.8-flash') : undefined;
 if (capacity) assert(gemini && gemini.contextWindow === 1048576 && gemini.maxTokens === 65536);
-if (!codex) input.scenarios[0].config = capacity ? { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 4096 }, budget: { safetyTokens: 1024, growthTokens: 128, inputLimit: 128000 } }, compaction: { enabled: false, reserveTokens: gemini.contextWindow - 10000, keepRecentTokens: 1 } } : { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: full ? 100000 : 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
+if (!codex) input.scenarios[0].config = capacity ? { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 4096 }, budget: { safetyTokens: 1024, growthTokens: 128, inputLimit: 29000 } }, compaction: { enabled: false, reserveTokens: gemini.contextWindow - 10000, keepRecentTokens: 1 } } : { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: 'full', outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: full ? 100000 : 50000, keepRecentTokens: 1 }, retentionCalibration: which === 'outside' ? { minFraction: 0.8, maxFraction: 0.9 } : { minFraction: 0.0001, maxFraction: 0.95 } };
 const model = codex ? { ...openaiCodexProvider().getModels().find(m => m.id === 'gpt-6-astra'), baseUrl: f.endpoint } : { id: 'nunc-native', name: 'nunc-native', provider: 'groq', api: 'openai-completions', baseUrl: f.endpoint, reasoning: false, input: ['text', 'image'], contextWindow: capacity ? gemini.contextWindow : 60000, maxTokens: capacity ? gemini.maxTokens : 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 if (full || capacity) {
   if (full) model.contextWindow = 200000;
@@ -69,7 +69,7 @@ try {
   }
   const job = { input, scenarioIndex: 0, deadline: Date.now() + (timeout ? 5000 : full || late || capacity ? 70000 : 45000), resume: false };
   const report = await runSegment(job, overrides);
-  assert.equal(report.status, which === 'outside' || timeout || cancelLate || raceLate || capacity ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, prerequisites: report.prerequisites, commands: report.commands, preparationFailure: report.preparationFailure }));
+  assert.equal(report.status, which === 'outside' || timeout || cancelLate || raceLate || capacity ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic, prerequisites: report.prerequisites, commands: report.commands, preparationFailure: report.preparationFailure }));
   if (timeout) {
     assert.equal(f.requests.length, 1); assert(f.requests[0].closed);
     const ledger = readLedger(join(target, 'calls.jsonl')), usage = ledgerSummary(ledger);
@@ -84,12 +84,12 @@ try {
     assert.equal(result.observations.requests, 0);
     const accounting = result.observations.accounting;
     assert(accounting && accounting.fullExtractionTokens > accounting.extractionInputLimit, JSON.stringify(accounting));
-    assert(accounting.normalExtractionAtTrigger <= accounting.extractionInputLimit, 'normal-at-trigger headroom must remain CONFIG-safe');
+    assert(accounting.normalExtractionAtTrigger <= accounting.extractionInputLimit, 'fixture isolates actual extraction overshoot while trigger-headroom advice remains sufficient');
     assert.equal(accounting.extraInputTokens ?? input.scenarios[0].config.nunc.budget.extraExtractionInputTokens ?? 0, 0);
-    assert.equal(accounting.extractionInputLimit, 126976);
+    assert.equal(accounting.extractionInputLimit, 27976);
     assert.equal(accounting.effectiveTrigger, 10000);
     assert.equal(model.contextWindow, 1048576); assert.equal(model.maxTokens, 65536);
-    assert.equal(input.scenarios[0].config.nunc.budget.inputLimit, 128000);
+    assert.equal(input.scenarios[0].config.nunc.budget.inputLimit, 29000);
     assert.equal(f.requests.filter(r => r.kind === 'maintenance').length, 0);
     assert(report.prerequisites.some(p => p.check.includes('full extraction demonstrably exceeds') && p.status === 'PROVEN'));
     assert(report.prerequisites.some(p => p.check.includes('preserved prior saved memory') && p.status === 'PROVEN'));

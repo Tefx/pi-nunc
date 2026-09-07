@@ -27,8 +27,8 @@ test("maximum output capability is not automatically reserved; narrower main mod
   const source = await input(); const large = await maintain(source, responder()); assert(large.ok);
   source.model.contextWindow = 25000; source.config.triggerTokens = 24000;
   const small = await maintain(source, responder());
-  // Normal extraction may need a lower H after a large-to-small switch.
-  assert(!small.ok); assert.equal(small.code, "CONFIG");
+  // Current full extraction fits despite insufficient hypothetical trigger headroom.
+  assert(small.ok); assert.equal(small.observations.requests, 1);
   source.config.triggerTokens = 12000;
   const adjusted = await maintain(source, responder()); assert(adjusted.ok, adjusted.ok ? "" : adjusted.message);
   assert.equal(adjusted.observations.accounting!.mainInputLimit, 25000 - 4096 - 512);
@@ -37,7 +37,7 @@ test("maximum output capability is not automatically reserved; narrower main mod
 });
 
 test("lowering H synchronously recalculates memory and K and retains growth", async () => {
-  const source = await input(); source.active = Array.from({ length: 10 }, (_, i) => user(`u${i}`, "x".repeat(1500)));
+  const source = await input(); source.active = Array.from({ length: 10 }, (_, i) => user(`u${i}`, "x".repeat(6000)));
   const first = await maintain(source, responder()); assert(first.ok);
   source.config.triggerTokens = 9000;
   const next = await maintain(source, responder()); assert(next.ok, next.ok ? "" : next.message);
@@ -94,7 +94,7 @@ const invalidConfigs = [
   (s: Awaited<ReturnType<typeof input>>) => { s.config.extraction.safetyTokens = 0; },
   (s: Awaited<ReturnType<typeof input>>) => { s.model.samplingParams = { max_tokens: 999999 }; },
   (s: Awaited<ReturnType<typeof input>>) => { s.config.extraction.nativeOutputReserve = 1024; },
-  (s: Awaited<ReturnType<typeof input>>) => { s.model.api = "openai-codex-responses"; s.config.main.outputTokens = s.model.maxTokens; s.config.extraction.outputTokens = s.model.maxTokens; s.config.main.nativeOutputReserve = 1024; },
+  (s: Awaited<ReturnType<typeof input>>) => { s.model.api = "openai-codex-responses"; s.config.main.outputTokens = s.model.maxTokens; s.config.extraction.outputTokens = s.model.maxTokens; s.config.main.nativeOutputReserve = s.model.maxTokens + 1; },
 ];
 for (const [i, change] of invalidConfigs.entries()) test(`invalid budget configuration ${i} fails before dispatch`, async () => {
   const source = await input(); change(source);
@@ -103,10 +103,10 @@ for (const [i, change] of invalidConfigs.entries()) test(`invalid budget configu
 });
 
 test("negative A, indivisible source, no retained growth and impossible small-model extraction are explicit failures", async () => {
-  const fixed = await input(); fixed.fixed.systemPrompt = "f".repeat(30000);
+  const fixed = await input(); fixed.fixed.systemPrompt = "f".repeat(120000);
   const single = await input(); single.active = [user("one", "big".repeat(10000))];
   const growth = await input(); growth.config.growthTokens = 24900;
-  const giantK = await input(); giantK.active = [user("old", "old"), user("large", "x".repeat(80000))];
+  const giantK = await input(); giantK.active = [user("old", "old"), user("large", "x".repeat(320000))];
   for (const source of [fixed, single, growth, giantK]) {
     const result = await maintain(source, async () => { assert.fail("unusable work budget"); });
     assert(!result.ok); assert.equal(result.code, "CAPACITY"); assert.equal(result.observations.requests, 0);
@@ -115,20 +115,22 @@ test("negative A, indivisible source, no retained growth and impossible small-mo
 
 test("Pi uncapped Codex/Responses output and Responses' minimum are reflected in preflight", async () => {
   const source = await input(); source.model.api = "openai-codex-responses";
-  const tooSmall = await maintain(source, responder()); assert(!tooSmall.ok); assert.equal(tooSmall.code, "CONFIG");
+  const planned = await maintain(source, responder()); assert(planned.ok); assert.equal(planned.observations.accounting!.outputCapTokens, null);
   source.config.main.outputTokens = source.model.maxTokens; source.config.extraction.outputTokens = source.model.maxTokens;
   const reserved = await maintain(source, responder()); assert(reserved.ok, reserved.ok ? "" : reserved.message);
   assert.equal(reserved.observations.accounting!.extractionInputLimit, 60000 - 8192 - 512);
   source.model.api = "openai-responses"; Object.assign(source.model, { compat: { supportsMaxOutputTokens: false } });
   source.config.extraction.outputTokens = 4096;
-  const optedOut = await maintain(source, responder()); assert(!optedOut.ok); assert.equal(optedOut.code, "CONFIG");
+  const optedOut = await maintain(source, responder()); assert(optedOut.ok); assert.equal(optedOut.observations.accounting!.outputCapTokens, null);
   delete source.model.compat; source.config.extraction.outputTokens = 1;
   const floored = await maintain(source, responder()); assert(!floored.ok); assert.equal(floored.code, "CONFIG");
 });
 
-test("normal trigger without extraction headroom rejects configuration rather than relying on routine reduction", async () => {
+test("normal trigger advice never rejects an executable complete extraction", async () => {
   const source = await input(); source.config.triggerTokens = 55000;
   const result = await maintain(source, responder());
-  assert(!result.ok); assert.equal(result.code, "CONFIG"); assert.equal(result.observations.requests, 0);
+  assert(result.ok); assert.equal(result.observations.requests, 1);
   assert(result.observations.accounting!.normalExtractionAtTrigger > result.observations.accounting!.extractionInputLimit);
+  assert.equal(result.observations.accounting!.normalHeadroomSufficient, false);
+  assert.equal(result.observations.omissions.length, 0);
 });

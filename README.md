@@ -47,7 +47,7 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 ## Pi defaults and verification
 
-Nunc uses Pi's current effective model/provider/options and native authentication, including startup flags and runtime selection. It does not select another account, copy credentials or manage OAuth. Main output/thinking settings remain unchanged; APIs without a serialized output cap reserve their full native output allowance. Unknown subscription billing remains unknown.
+Nunc uses Pi's current effective model/provider/options and native authentication, including startup flags and runtime selection. It does not select another account, copy credentials or manage OAuth. Main output/thinking settings remain unchanged; APIs without a serialized output cap use planning headroom; consumption authorization remains separate. Unknown subscription billing remains unknown.
 
 Verification isolates new task sessions, cwd/files and artifacts while reusing native configuration/authentication ownership. Only named test requirements justify invocation-local overrides, recorded with their reason and differences. Standalone startup resolves Pi defaults; an invoking runtime must forward its nonsecret effective selection through public context/invocation facilities to preserve unsaved choices. A separate process cannot discover those choices implicitly. Saved defaults and daily sessions remain protected; Pi owns ordinary credential refresh and persistence.
 

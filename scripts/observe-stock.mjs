@@ -8,7 +8,7 @@ const mode = process.argv[2]; assert(['rpc', 'tui'].includes(mode), 'Select rpc 
 const IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aBMsAAAAASUVORK5CYII=';
 const f = await new StockFixture().setup({ config: { budget: { imageTokens: 1000 } }, ...(process.argv[3] ? { artifactParent: process.argv[3] } : {}) });
 let outcome = { status: 'FAIL', mode };
-const OLD = 'Old delivered work:' + 'a'.repeat(26500), A = 'Delivered steering A:' + 'b'.repeat(13000);
+const OLD = 'Old delivered work:' + 'a'.repeat(92000), A = 'Delivered steering A:' + 'b'.repeat(68000);
 const B = 'Follow-up B: preserve order', C = 'Queued extension evidence C', D = 'Late correction D: changed after freeze';
 try {
   f.hold('main'); f.hold('maintenance');

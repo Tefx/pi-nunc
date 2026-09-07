@@ -1,15 +1,16 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { createAssistantMessageEventStream, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Complete, EngineConfig } from "../engine/index.js";
-import { inputLimit, requestTokens, textTokens } from "../engine/accounting.js";
+import { admissionEstimate, inputLimit, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
 import { EngineError, legalCuts } from "../engine/validation.js";
-import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, payloadMode, type PayloadObservation } from "./payload.js";
+import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = { context: Context; model: Model<Api>; signal: AbortSignal | undefined; simple: boolean; seen: WeakSet<Provider> };
-export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; outputTokens?: number; code?: string; payload?: PayloadObservation }
+export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; code?: string; payload?: PayloadObservation }
 
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
 export class Admission {
@@ -18,6 +19,8 @@ export class Admission {
   private readonly call = new AsyncLocalStorage<CallRecord>();
   private readonly installed = new Map<string, Installation>();
   private cancelledRun = false;
+  private previousMain: { model: Model<Api>; systemPrompt: string | undefined; tools: unknown; messages: unknown; messageCount: number } | undefined;
+  invalidateUsage(): void { this.previousMain = undefined; }
   private readonly rejected = new Map<string, AbortSignal>();
   constructor(private readonly pi: ExtensionAPI, private readonly config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig) {}
 
@@ -50,7 +53,7 @@ export class Admission {
       else if (entry.legacy) { this.pi.unregisterProvider(id); this.pi.registerProvider(id, entry.legacy); }
       else this.pi.unregisterProvider(id);
     }
-    this.installed.clear(); this.rejected.clear(); this.cancelledRun = false;
+    this.installed.clear(); this.rejected.clear(); this.cancelledRun = false; this.invalidateUsage();
   }
   /** Only errors constructed here are candidates for cancellation precedence. */
   finalized(message: AssistantMessage): AssistantMessage | undefined {
@@ -100,6 +103,7 @@ export class Admission {
       : mainSession ? "main" : "unknown";
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
+    let budgetObservation: Pick<AdmissionObservation, "estimator" | "outputReserveTokens" | "outputCapTokens"> = {};
     try {
       if (kind === "unknown") {
         this.observe({ kind, outcome: "delegate" });
@@ -124,15 +128,24 @@ export class Admission {
         // Validate projected media/blocks/associations, without inventing source IDs.
         if (context.messages.length) legalCuts(context.messages.map((m, i) => ({ entryId: String(i), sourceRole: m.role, messages: [m] })));
         if (!model.input.includes("image") && context.messages.some(m => Array.isArray(m.content) && m.content.some(b => b.type === "image"))) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
-        inputTokens = requestTokens(context, config.imageTokens) + config.main.extraInputTokens + textTokens(JSON.stringify(options?.metadata ?? {}));
+        const previous = this.previousMain;
+        const usageApplies = previous !== undefined && isDeepStrictEqual(previous.model, model) &&
+          previous.systemPrompt === context.systemPrompt && isDeepStrictEqual(previous.tools, jsonView(context.tools ?? [])) &&
+          context.messages.length > previous.messageCount &&
+          isDeepStrictEqual(jsonView(context.messages.slice(0, previous.messageCount)), previous.messages);
+        const estimate = admissionEstimate(context, model, config.imageTokens, usageApplies, previous?.messageCount ?? 0);
+        inputTokens = estimate.tokens + config.main.extraInputTokens + textTokens(JSON.stringify(options?.metadata ?? {}));
+        budgetObservation = { estimator: estimate.estimator, outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens, ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}) };
         limit = inputLimit(model, config.main);
-        if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds safe input ${limit}; Pi may compact and retry once when automatic compaction is enabled. Otherwise compact explicitly, reduce input or select a larger model`);
+        if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds planned input ${limit} (${estimate.estimator}); Pi may compact and retry once when automatic compaction is enabled. Otherwise compact explicitly, reduce input or select a larger model`);
       }
       if (kind === "maintenance") {
         const config = this.config(ctx, model);
-        outputTokens = scope!.request.outputTokens;
+        outputTokens = omitsSerializedOutputCap(model) ? model.maxTokens : scope!.request.outputTokens;
+        budgetObservation = { estimator: "pi-heuristic", outputReserveTokens: scope!.request.outputTokens, outputCapTokens: omitsSerializedOutputCap(model) ? null : scope!.request.outputTokens };
         inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + textTokens(JSON.stringify(options?.metadata ?? {}));
         limit = inputLimit(model, config.extraction);
+        if (inputTokens > limit) throw new EngineError("CAPACITY", `Maintenance input estimate ${inputTokens} exceeds planned input ${limit}; no recursive recovery`);
       }
       const onPayload = options?.onPayload;
       // Pi composes before_provider_request in load order and returns the current
@@ -144,14 +157,17 @@ export class Admission {
         options?.signal?.throwIfAborted();
         const final = replacement === undefined ? payload : replacement;
         const after = jsonView(final);
+        const cap = outputCapState(after);
+        budgetObservation.outputCapTokens = cap.kind === "value" ? cap.value : null;
         const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload));
+        if (kind === "main" && delta.categories.some(c => c !== "output")) this.invalidateUsage();
         const append = lastUserTextAppend(before, after);
         const observation: PayloadObservation = append.ok
           ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
           : { mode: delta.mode, categories: delta.categories };
         try {
           authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context });
-          this.observe({ kind, outcome: "delegate", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
           return replacement;
         } catch (error) {
           const code = error instanceof EngineError ? error.code : "CONFIG";
@@ -159,11 +175,12 @@ export class Admission {
           const capacity = kind === "main" && code === "CAPACITY" && !aborted;
           const errorMessage = `${capacity ? "context_length_exceeded: " : ""}Nunc local ${code}; request=${randomUUID()}; ${error instanceof Error ? error.message : "Request rejected"}`;
           if (capacity && options?.signal) this.rejected.set(errorMessage, options.signal);
-          this.observe({ kind, outcome: "reject", code, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          this.observe({ kind, outcome: "reject", code, ...budgetObservation, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
           throw new EngineError(code, errorMessage);
         }
       } };
-      this.observe({ kind, outcome: "delegate", ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });
+      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });
+      if (kind === "main") this.previousMain = { model: structuredClone(model), systemPrompt: context.systemPrompt, tools: jsonView(context.tools ?? []), messages: jsonView(context.messages), messageCount: context.messages.length };
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
       return simple ? delegate.streamSimple(model, context, forwarded as SimpleStreamOptions) : delegate.stream(model, context, forwarded);
@@ -176,7 +193,7 @@ export class Admission {
       const message: AssistantMessage = { role: "assistant", content: [], api: model.api, provider: model.provider, model: model.id, timestamp: Date.now(), stopReason: aborted ? "aborted" : "error", errorMessage, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); stream.end();
-      this.observe({ kind, outcome: "reject", code, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });
+      this.observe({ kind, outcome: "reject", code, ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });
       return stream;
     }
   }

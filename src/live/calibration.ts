@@ -70,7 +70,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       const fullExtraction = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
       const mainBefore = requestTokens(mainContext(source.fixed, source.memory.slots, active), config.imageTokens) + config.main.extraInputTokens;
       const normalAtTrigger = fullExtraction - mainBefore + trigger;
-      requireValue(normalAtTrigger <= extractionInput, "CALIBRATION", "H cannot accommodate normal full extraction; fraction calibration cannot repair reserve configuration");
+      // Trigger headroom is advisory. Calibrate against the actual extraction below.
       let extraction = fullExtraction;
       if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
         const reduction = reduceToolBodies(active, config.extraction.headTailChars);

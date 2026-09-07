@@ -47,7 +47,7 @@ try {
   assert.equal(f.requests.length, 4);
   assert.equal((await p.command('get_entries')).entries.at(-1).message.stopReason, 'stop');
   const sent = f.requests.length;
-  await p.prompt('Actually oversized ' + 'z'.repeat(500000));
+  await p.prompt('Actually oversized ' + 'z'.repeat(2000000));
   assert.equal(f.requests.length, sent, 'actual oversized input still rejects without HTTP or disabled-auto recovery');
   assert(f.log.some(e => e.type === 'admission' && e.data.code === 'CAPACITY'));
   await p.quit();

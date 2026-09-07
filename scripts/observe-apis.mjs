@@ -8,7 +8,7 @@ const api = process.argv[2]; assert(['openai-responses', 'anthropic-messages', '
 const f = await new StockFixture().setup({ api }); let outcome = { status: 'FAIL', api };
 try {
   const p = f.start(); await p.command('get_state');
-  const old = 'Prior work:' + 'a'.repeat(26500), recent = 'Delivered recent:' + 'b'.repeat(13000);
+  const old = 'Prior work:' + 'a'.repeat(f.codex ? 106000 : 92000), recent = 'Delivered recent:' + 'b'.repeat(f.codex ? 52000 : 68000);
   await p.prompt(old); assert.equal(f.requests.length, 1);
   await p.prompt(recent);
   assert.equal(f.requests.length, 3, 'one main, one native maintenance, one Pi-owned retry; rejection itself sends nothing');

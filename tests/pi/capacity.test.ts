@@ -20,7 +20,7 @@ for (const mode of ["auto", "full"] as const) test(`giant source through real ho
   const f = await fixture({ config: { extraction: { toolResults: mode }, rolling: { keepRecentFraction: 0.25 } } }); t.after(() => f.close()); f.seed(); f.respond(memoryPatch);
   const manager = f.runtime.session.sessionManager;
   manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse", content: [{ type: "toolCall", id: "giant", name: "probe", arguments: { pattern: "full arguments stay intact" } }] });
-  manager.appendMessage({ role: "toolResult", toolCallId: "giant", toolName: "probe", content: [{ type: "text", text: "head" + "e".repeat(75000) + "tail" }], isError: false, timestamp: 10 });
+  manager.appendMessage({ role: "toolResult", toolCallId: "giant", toolName: "probe", content: [{ type: "text", text: "head" + "e".repeat(300000) + "tail" }], isError: false, timestamp: 10 });
   manager.appendMessage({ role: "user", content: "Keep latest exact correction", timestamp: 11 });
   manager.appendMessage(answer({}, f.faux.getModel()));
   const before = project(manager.buildContextEntries()).active;
