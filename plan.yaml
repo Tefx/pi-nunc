@@ -9,67 +9,59 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: "交付 README/DESIGN 定义的完整 Nunc 项目，唯一 phase 为 nunc-v1，ENGINE、PI、POLICY、DEVELOPMENT、LIVE\
-  \ 与跟踪场景承载接口、检查与观察。最新用户要求在原运行自然结束后修正有据过度防御并检查同类问题，再继续剩余运行及完整接受。已完成 policy、engine、pi、observation-support、discovery、simplification\
-  \ 的定义/状态/证据/历史不变。nunc.defensive-controls 交付一个有用安全诊断与有据限制修正的仓库能力，供原 nunc.runtime\
-  \ 消费，再由原 nunc.acceptance 作唯一完整项目决定。独立定向 intake 属新增实现步骤内的准备/完成程序，复用旧完整全仓覆盖和已处置根因，不新增\
-  \ read-only 阶段、逐发现节点、修后全仓 reviewer 或重复接受。\n\n保留公共产品边界：维护冻结有效 F、全部 M、活动路径已经交付的完整\
-  \ R_t=B|K、模型/选项/策略；未来 D 不预测/提前消费，交付后原样进入主请求及后续维护。普通请求自动包含全部 M 和已交付原文。K 原文/顺序/合法跨旧\
-  \ checkpoint 重叠保留，仅最新 M；M 有界、增量、整条预算、未改正文复用、纠正/替换/合并/退役且失效旧项不复活。Pi 独占 native 模型目录/选择、配置、认证、transport、compaction\
-  \ 调度、队列、单 CompactionEntry 发布、append/rebuild、usage 和活动路径恢复。Nunc 独立容量准入按真实输入/输出/thinking/defaults/媒体/unknown-cache\
-  \ 语义核算，正向识别本地容量失败进入原生有界恢复。无递归维护、输入重放、队列撤回/丢失/重排、未知来源旁路、失效 wrapper；取消优先，自动恢复不调用 TUI\
-  \ 用户停止；失败/取消不交付、不落默认摘要。完整来源、normal full extraction、可选有界显式缩减且不改 K/D 的 DESIGN 边界不变。\n\
-  \n默认与认证：产品用活动测试 session 的有效 model/provider/options/config，含启动选择和 runtime switch；新\
-  \ standalone 场景继承效果前最新普通保存 Pi defaults。只转发当前被测调用必要的非秘密未保存有效选择，旧父 capsule/Astra 不进新批次，不反向固定\
-  \ Gemini。必要 named override 只影响新任务并记录理由/差异，不重建 catalog、不重复填写 defaults/approval。隔离新\
-  \ session/cwd/文件/输出，保护既有 sessions/settings/defaults、dotfiles/控制面、宿主、其他项目和秘密。Pi 正常认证解析/刷新/保存保持既有\
-  \ owner；Nunc/runner 不复制 profile/凭据、不实现 auth-handoff/OAuth store/refresh/login、不改账户绕过\
-  \ native OAuth、不要求 auth bytes 冻结。凭据值及来源位置不进提示、Plan、stdin/argv 或报告。诊断只保留安全且有用的 native\
-  \ status/code/原因，禁止 raw auth/provider 日志或未筛选私密正文。不能从已抹除的错误推断 HTTP 原因、认证或可用性。\n\n\
-  无可执行输出 cap 时保留完整原生能力，不放宽估计、虚构小 output/window 或 provider framing 换取绿色。unknown usage/billing\
-  \ 保持未知，catalog/native 估算或零占位不证明账单、实付零或绝对 USD 保证。仅独立 persistent-session Pi 扩展；无 SDK\
-  \ host/替代启动器/CustomEntry 自有 M-K/双历史 mapper/core-private patch/自动跨 session/主动检索/记忆库/文档写入服务/额外维护调度或多\
-  \ provider 缓存框架。按合作型 actors/local processes 处理错误、无效输入、失败/竞态/泄漏/遗漏，不加入 hostile-local-agent\
-  \ 威胁或风格 blocker。推荐协议/算法/参数及可选路径允许等价方案，不要求 benchmark 胜出。\n\n完整实施、同目标可逆准备/锁定依赖安装、离线检查及有界真实验证已有预授权。仓库\
-  \ producer 只做新建受控 host/service 检查，真实模型效果留在 runtime。Orchestrator 在每个新效果批次绑定实际新任务\
-  \ target、native 非秘密 metadata、必要 named override、有限总 call/token/time/known-cost 和清理，不隐式沿用已结束配额/旧模型，不作付费\
-  \ quota probes。caller 的 per-case 过小分配在既有总授权内修正，按场景步骤和实际变动留余量，不把历史 call 数变成产品上限、保证或固定最小值。主请求/维护共用额度，全部成功/失败/unknown\
-  \ reservations 保留、不退款。失败停止受影响场景并核对；一个已终结且本地效果已核对的独立失败，不自动禁止其余隔离、无依赖且总预算成立的场景。缺终态、活动进程、损坏账本、可能越界或无法核对的关联效果仍停止相关执行；全局取消/总限额停止全部。unknown\
-  \ billing 与未知本地执行分开，local terminal/abort 不证明远端取消/账单。旧 single-use targets 不重放，新增诊断不授权盲目\
-  \ paid retry。缺现有绑定先做同权限准备；仅实际新目标、不可恢复损失、新费用/凭据/账户、产品含义矛盾、明确禁止或安全核对仍无法确定既有效果等人工边界才询问。禁止发布、全局安装扩展和\
-  \ push。\n\n证明：旧完整 discovery 的静态覆盖与根因处置留在适用原报告，新线索沿实际消费者作定向检查；报告/建议不创设额外义务。新增 producer\
-  \ 在同一事务交付有据完整相关批次、有效诊断/控制能力和必要行为检查，runtime 提供真实事实与有界要求判断，唯一 gate 判断完整覆盖/适用性/矛盾与质量。c4/full\
-  \ 必须有巨型完整工具暴露、中部例外、无省略 extraction、退役和产物；late-D 必须冻结排除、维护中接收、原样一次交付、真实约束行动，错误 exact\
-  \ oracle 与正向事实分开，改断言不等同语义 PASS。两者已成立观察按适用性保留，不为信心重跑。c4/capacity 须实际可达 CAPACITY、零\
-  \ extraction、saved M-K 不变/无默认摘要，CONFIG 不等同。c5 须真正严格更小 native 模型、两类预算/M-K 重算、维护和续做；已成立\
-  \ switch/thinking/主预算事实不替代剩余模型维护/产物。旧窗口/失败假设不能固定或豁免新场景，降低 H 不缩 frozen full source。\n\
-  \n报告绑定最终整合不可变候选；底层观察按 source/lock/config/命令/modality/authority/要求因果适用性独立判断。复用有效\
-  \ c1–c3、stock TUI/native、c4/full、late-D 和 c5 已观察事实；Plan-only/格式/报告绑定变化不重放。源码/依赖/整合变化補受影响证明及最终整合完整\
-  \ offline inventory。受控服务/固定 M 只证明机械行为，docs/prompt token、预期答案、自报 PASS 不证明真实续做。全部必要要求有当前正向证明、全部有据发现处置闭合、最终完整回归有效且无阻断缺陷才接受；只读消费者缺\
-  \ tracked runner/check 需兼容 writable producer，不重开 DONE。\n\n```yaml\ncheck_environment:\n\
-  \  node_version: 26.7.0\n  npm_version: 11.19.0\n  stock_pi_version: 0.85.1\n  development_dependencies:\n\
-  \    \"@earendil-works/pi-coding-agent\": 0.85.1\n    \"@earendil-works/pi-ai\"\
-  : 0.85.1\n    \"@types/node\": 26.4.1\n    typebox: 1.3.7\n    typescript: 5.9.3\n\
-  \  dependency_manifest: package.json\n  dependency_lock: package-lock.json\n  runtime_declaration:\
-  \ .node-version\n  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache,\
-  \ npm_config_ignore_scripts=true, npm_config_update_notifier=false, /opt/homebrew/bin/node,\
-  \ /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js, ci, --include=dev, --no-audit,\
-  \ --no-fund]\n  tui_python_argv: [/usr/bin/python3]\n  tui_prerequisites: [POSIX\
-  \ PTY, Python 3 standard library]\n```\n检查从获准干净 checkout/跟踪 lock 重现；准备与检查分开，无隐式安装/更新/全局\
-  \ Pi 导入或 native profile 复制。错误版本、缺依赖/入口/必要子集或空 inventory 明确失败；all 覆盖全部 engine/Pi/live\
-  \ 和跨组件行为，不固定历史测试数，不重标旧候选组件 PASS。"
-project_guidance: 先执行唯一新增 nunc.defensive-controls：Orchestrator 在本步骤内取得独立只读定向 intake，node-typescript-engineer
-  消费有据完整相关根因批次并交付 source/tests/docs、有效安全诊断、独立场景失败隔离和全量离线证明。复用旧完整 discovery 与 D1/D2、A1/A2/A3
-  处置，无重复全仓扫描/独立 read-only 节点/manual loop。六个 DONE 定义/状态/证据/历史不可变。原 nunc.runtime 后续补真实
-  capacity 与 c5 更小模型维护/续做，原 nunc.acceptance 是唯一完整项目接受。已成立 full、late-D 和适用 c1–c3/TUI/native
-  事实保留，不为信心或 Plan-only 重跑；因果相关变化补受影响证明及最终整合完整 all。caller 过小 per-case allocation 由
-  Orchestrator 在既有有限总 call/token/time/known-cost 内修正，不升格历史 call 数为产品限制/确定最小值；独立已终结且核对的失败不无条件停止无依赖场景，真正取消/总限额/未核对相关效果仍停止。所有
-  reservations 保留，usage/billing 未知不按零，旧 targets 不重放，无盲目 paid retry/quota probe。产品跟随活动
-  session 选择，新 standalone 使用最新普通保存 defaults，剔除旧父 capsule/Astra，不固定 Gemini/旧配额；仅必要命名
-  override。保留 native 目录/auth/transport/compaction/队列/persistence、实际目的地/输出、完整 R_t/D、bounded
-  M/verbatim K、取消和失败不提交。除 Vectl 管理 Plan 外不改 dotfiles/控制面、既有 sessions/settings、宿主、其他项目、秘密或未跟踪
-  dashboard；不复制凭据/建立 auth 子系统，不发布、全局安装或 push。缺报告先修报告、缺观察在原 owner 补齐、DONE 后可写缺口通过兼容
-  producer，不重开 DONE、不逐发现建节点。
+context: "当前用户结果：彻底修复重复出现的 Nunc 兼容故障，最新为 payload rewriting 被整体拒绝；完成完整原生管线检查并真实验证 xAI/Grok、openai-codex、OpenRouter/Gemini。native-compat\
+  \ 承接新增交付，nunc-v1 的完整项目和九个 DONE 结果/历史不重开。先纳入已接受的 ticketless 三分支准入、Grok 500k 主请求 headroom\
+  \ 与 raw extraction 修正及其有效测试；现有受控 PASS 只保留实际候选范围，不能充当新 payload 组合和三路线 live 证明。实际报错的扩展组合及改写内容尚未知；在获准读取的非秘密\
+  \ native metadata/公开接入上诊断，使用新隔离的无私密输入用例，禁止记录 payload body、原始 headers、凭据值或来源位置。生产者修正有据的\
+  \ blanket equality 及同一兼容结果的相关问题，支持范围须以实际最终请求容量、来源及 native 委托证明，保留确有消费者的不变量；不创建全\
+  \ provider 改写层或任意新框架。\n\n完整产品权威仍为最新用户要求及 README、DESIGN 的必要行为，ENGINE/PI/POLICY/DEVELOPMENT/LIVE\
+  \ 和跟踪场景提供接口与检查。F/全部 M/活动已交付完整 R_t=B|K 在维护时冻结；未来 D 不预测、不提前消费，之后原样一次交付；bounded incremental\
+  \ M、整条预算、稳定正文/顺序、纠正替换合并退役且失效项不复活；合法跨 checkpoint 原文 K、仅最新 M、完整来源/full extraction\
+  \ 与明确有界 extraction-only 缩减不变。主请求与 raw extraction 独立按真实输入/输出/thinking/defaults/媒体/缓存/unknown\
+  \ 核算，维护后有增长空间，模型/配置变化重算。主请求可恢复容量拒绝交 Pi 有界原生恢复；取消优先、失败/失效候选不提交、不落默认摘要。Pi 独占 model\
+  \ catalog/选择/config/auth/serialization/transport、compaction 时机、队列、单 CompactionEntry、append/rebuild、usage\
+  \ 和活动路径恢复；无请求重放、主请求截断、自有 M/K store、额外维护调度、host patch 或 SDK host。只有 persistent-session\
+  \ 扩展，保持旧 summary、resume/new/tree/fork/clone 与已证明组合；无需任意 provider/extension、额外媒体或\
+  \ benchmark 胜出承诺。\n\n用户最新授权：三条指定路线 Codex、xAI/Grok、OpenRouter/Gemini 真实验证无货币预算上限，明确覆盖旧\
+  \ no-paid-call/旧批次 USD 限制。无限货币额度不授权无限执行；Orchestrator 按真实场景步骤绑定有限总 maxCalls/maxTotalTokens/maxDurationMs/maxOutputTokens，主请求和维护共享\
+  \ reservations，成功/失败/unknown 均保留且不退款。使用 runner 已有 null 成本上限表示本批无 USD ceiling，准确区分无成本上限、catalog\
+  \ 估计和未知实付；若当前接口无法清晰表达，由同一 producer 修正并行为验证，不再索要预算。订阅账单与原生零占位保持 unknown，授权不构成 invoice\
+  \ 证据。每个独立案例新 session/cwd/files/output/single-use target；终结且核对的孤立失败只停止受影响案例，其余已绑定无依赖案例可在总限额内继续。取消/总限额/缺终态/活动进程/损坏账本/可能越界/无法核对的关联效果停止相关执行，local\
+  \ abort 不证明远端取消。禁止 quota probe、盲目重试、旧输入/target replay；新有据修正可在同授权内使用新独立选择。\n\n产品跟随活动测试\
+  \ session 的实际 native model/options/config；standalone 解析效果前最新普通保存 defaults。三条路线按当前明确用户要求作命名调用级选择，使用\
+  \ native model catalog，不使用旧父 capsule 或固定过时模型。仅转发真实当前调用的必要非秘密未保存差异。既有 host-managed\
+  \ credential access 与 Pi 原生解析/刷新/保存为唯一认证路径；无 credential-copy、profile 克隆、OAuth/login/store/refresh\
+  \ 子系统或新账户。保护既有 sessions/settings/defaults、.pi/、plan-dashboard.html、控制面、宿主、其他项目与秘密；UI\
+  \ 不在范围。允许本仓库可逆准备、锁定依赖安装和受控离线检查；真实效果仅下游绑定新测试状态及上述三路线。禁止全局安装/配置、发布、push、替代启动器、host\
+  \ patch 和队列撤回/删除/重排/重复提交。按合作型 actors/local processes 处理缺陷/竞态/失败，未授权 hostile-local\
+  \ 威胁和无消费者 hardening 不进入接受条件。\n\n证明与接受：生产者拥有 source/tests/docs/runner 一个可回退事务；缺下游观察能力必须在交付前跟踪并测试。完整适用\
+  \ scripts/check.mjs all 在最终整合候选上有效，覆盖全部 engine/Pi/live 与跨组件原生行为，不固定历史测试数。新增改写/预算行为必须走真实\
+  \ stock loader/callback/native serializer/transport seam，受控服务仅替代模型响应。真实三路线均须主请求、工具、完整当前模型维护、native\
+  \ checkpoint、原文窗口下约束续做和恢复事实；必要媒体/取消/容量/队列/lifecycle 证明不能删，采用能证明其断言的真实宿主或 live modality。复用\
+  \ nunc-v1 中仍适用的 c1-c5、giant full、late-D、真实 capacity、更小模型和 TUI/native 事实，新的 causal\
+  \ change 补受影响证明，当前三路线端到端 live 不能由历史或受控 PASS 替代。报告绑定最终不可变候选，底层观察按 source/lock/config/命令/modality/provider/要求判断适用性；Plan-only\
+  \ 或报告格式变化不重放。Orchestrator 消费两阶段结果及全部适用旧项目证据，在 nunc.compatibility-live 完成程序承担唯一最终质量判断：全部必要要求有正向证据，实际兼容故障有据关闭，完整\
+  \ all 有效且无阻断缺陷/跨结果矛盾才接受。observer 仅给事实，不自行决定完成；未知来源或必要观察未证明阻止最终接受。旧已完成接受只证明旧候选，不覆盖新修复。\n\
+  \n```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version: 11.19.0\n\
+  \  stock_pi_version: 0.85.1\n  development_dependencies:\n    \"@earendil-works/pi-coding-agent\"\
+  : 0.85.1\n    \"@earendil-works/pi-ai\": 0.85.1\n    \"@types/node\": 26.4.1\n \
+  \   typebox: 1.3.7\n    typescript: 5.9.3\n  dependency_manifest: package.json\n\
+  \  dependency_lock: package-lock.json\n  runtime_declaration: .node-version\n  dependency_setup_argv:\
+  \ [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+  \ npm_config_update_notifier=false, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+  \ ci, --include=dev, --no-audit, --no-fund]\n  tui_python_argv: [/usr/bin/python3]\n\
+  \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n```\n版本/lock/必要非空\
+  \ inventory 缺失明确失败。检查不隐式安装、导入全局 Pi、读取真实凭据或更新模型目录；完整回归从获准 clean checkout 和跟踪 lock\
+  \ 重现。"
+project_guidance: 当前仅执行 native-compat：nunc.compatibility 由 node-typescript-engineer
+  交付兼容修复、承接已接受 admission/budget 改动、完整离线证明和跟踪 live runner；nunc.compatibility-live 由
+  integration-verifier 在新隔离 session 使用实际 native xAI/Grok、Codex、OpenRouter/Gemini 取得端到端事实。Orchestrator
+  在后一节点的完成程序作本次唯一最终整合接受决定，不另建重复 gate/reviewer。nunc-v1 九个 DONE 的定义、状态、证据与历史全部不变。先核对并保留整合仓库现有已接受脏改动，再
+  claim/建 worktree；worker 候选不改 Plan，不处理受保护未跟踪 .pi/、plan-dashboard.html 或无关文件。UI 仍暂停。先安全定位实际
+  before_provider_request 组合与 payload delta；来源未知时明确未知，不按扩展名猜测，不记录 body/headers/凭据。用户最新授权允许三条指定路线真实调用且无货币预算上限，覆盖旧禁付费限制；仍由
+  Orchestrator 绑定有限有目的的总 call/token/time/output reservations、新任务选择和清理，不询问重复预算批准。授权不证明订阅免费或实付金额。禁止原始失败输入重放、旧
+  target 重跑、无限重试、daily-session 运行、全局安装/配置、宿主 patch、替代启动器、队列操作、发布或 push。缺可写 runner/check
+  留 producer；DONE 后新缺口保留历史，经 Planner 接入兼容修复，再继续同一未完成消费者。
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
@@ -936,3 +928,226 @@ phases:
       and c5switch/clamp/admission facts; old c5 cause remains unknown, smaller-model
       maintenance/continuation and actualcapacity remain original runtime obligations.
       No final acceptance.'
+- id: native-compat
+  name: Payload 兼容修复与三路线原生实测
+  status: pending
+  gate: Orchestrator 在 nunc.compatibility-live 的完成程序作本次唯一最终整合接受决定，消费 native-compat
+    两个结果及 nunc-v1 全部仍适用项目证据。实际 payload 兼容故障有据关闭；最终整合完整 all 有效；xAI/Grok、Codex、OpenRouter/Gemini
+    各有实际 native 主请求/工具/完整维护/单 checkpoint/续做恢复正向证据；全部必要来源、容量、媒体、取消、队列、持久化与状态保护要求满足，effects
+    已核对且无阻断缺陷才接受。未知来源/必要项 UNPROVEN 不接受。无独立重复 gate、UI、daily-session、全局安装/配置、宿主修改、发布或
+    push。
+  context: 新增范围由用户重复兼容报错与明确三路线 live 要求建立。一个 repo producer 保留已接受 admission/budget 改动并交付
+    payload 兼容及所有 writable runner/tests/docs；一个外部服务只读观察消费者提供真实独立证据，Orchestrator 在其完成程序判断最终整合结果。nunc-v1
+    九项 DONE/历史不变。无需逐报错、逐 provider、临时诊断/测试节点或额外门禁。实际 failing extension composition
+    未知，先做非秘密安全诊断并继续不依赖该信息的工作。
+  depends_on:
+  - nunc-v1
+  steps:
+  - id: nunc.compatibility
+    name: 修复原生 payload 兼容并交付完整检查与实测能力
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \"\
+      policies/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
+      , \"tsconfig.json\", \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \"\
+      .env.*\", \"**/auth.json\"]\n\nDeliver: 交付一个可独立检查、供 nunc.compatibility-live\
+      \ 使用的 Nunc 原生请求兼容结果：承接已接受 admission/budget 修正，安全诊断并修复真实支持组合的 payload 被误拒绝，连同有效行为回归、必要\
+      \ docs 和三路线 live 的跟踪检查能力。先由 Orchestrator 核对/保留整合仓库已有受意图约束的未提交改动，再创建本 owner 的隔离\
+      \ worktree；禁止丢弃、覆盖或漏纳入这些改动，worker 候选不得修改 Plan。\n\n已接受不变量：ticketless main/maintenance/independent\
+      \ 三分支；独立调用原样委托且不消耗维护绑定，主会话按当前非空 signal/session 与实际 Context 检查，维护 exact-context\
+      \ 一次性绑定不可逃逸。保留 Grok 500k 主请求 nativeOutputReserve=min(model.maxTokens,max(serializer\
+      \ minimum,compaction.reserveTokens)) 的 headroom 意义，原生实际 main 输出设置/ceiling 不被暗降；raw\
+      \ extraction 固定输出独立核算，未序列化 cap 的 API 完整预留。保留相应已有 source/tests/docs 和 Grok stock\
+      \ probe；旧 controlled PASS 不自动证明新组合。\n\n当前定位入口是 Admission.dispatch 包装 onPayload，对\
+      \ serialized payload 深比较后拒绝全部 replacement/in-place mutation；stock Pi 0.85.1\
+      \ createAgentSession 的 callback 交给 emitBeforeProviderRequest，handlers 按加载顺序组合。此机制可证实，用户实际扩展来源/顺序/delta\
+      \ 仍未知。先沿当前公开 native 接入和父方可提供的非秘密 metadata 确认实际组合，在新隔离无私密用例中取得足以区分 observe-only、replacement、in-place\
+      \ 及有意义容量/选项变化的结构性事实；不读取/重放原始失败正文、不在 daily session 发请求、不按扩展名猜 culprit。诊断只保留已筛选的类型/类别/顺序与必要非秘密差异，禁止\
+      \ payload body、headers、私密字符串、凭据或来源位置进入日志/报告；不得照搬 stock payload-logging 示例。\n\
+      \n根据实际支持证明替换无依据的 blanket equality。保持 Pi native handler 顺序、返回/原地修改语义、header/auth/serializer/transport\
+      \ 委托和取消；最终被发出的受支持输入、媒体、tools、输出/thinking/defaults 必须有成立预算，不能只删 guard 或改报错。支持安全变换与有依据的额外容量核算，真实无法支持时诊断具体缺口；不要把一般\
+      \ metadata 差异当成容量不成立，也不要未经核算放行增长/输出扩大/非法输入。无需承诺任意扩展重写、增加全 provider mapper/catalog、复制序列化或\
+      \ patch 宿主。实际组合无法取得时交付安全诊断能力和已证明范围，保留用户故障来源待观察，不声称已经精确解决。\n\n沿同一结果的实际消费者检查 product/runner\
+      \ 接口，确保本次三路线能进入真实 native 管线。已见 BudgetLedger.reserve 将原始 context estimate 与完整\
+      \ model.maxTokens 相加，Grok 500k/500k 主请求可能在 native clamp 前被 observer 拦住；用行为证据判断并修正该不相容，分别保持产品\
+      \ input headroom、native wire output 与观察 reservation 的真实责任。保留有限 calls/tokens/time/output、实际目的地/单次发送、未知/失败\
+      \ reservations、取消和效果核对。用户授权三路线无 USD ceiling；现有 maxCostUsd:null 可用于本批无成本上限，文档/报告区分授权、catalog\
+      \ 估计与 unknown invoice，不新增预算审批或用虚假小输出换取绿色。\n\n缺少真实组合选择、媒体/取消或端到端观察能力时，修订现有跟踪\
+      \ verify-live/stock runner 与受控 fixture，使下游只读 owner 可直接执行并产生证据；决定实际请求目标/payload/reservations/停止/清理或接受证明的逻辑必须跟踪并有行为测试，不能留给临时执行脚本。尽量保留现有\
+      \ CLI preflight/execute 入口与普通配置接口，不另造 launcher。正常路径、tool round trip、当前模型完整维护、单\
+      \ CompactionEntry、原文 K/最新 M 续做、同 session 恢复；实际组合、媒体、取消及容量边界均有合适观察入口。文档说明外部支持边界/诊断/验证流程，删除过时\
+      \ blanket payload 排除，不能靠修改文档将本次要求缩小。\n\nBoundary: exact owner node-typescript-engineer，本仓库隔离\
+      \ worktree 可 Git 回退事务。允许同目标锁定依赖准备及新建受控 native host/service 检查；禁止真实模型/凭据调用。保护既有\
+      \ sessions/settings/defaults、.pi/、dashboard、宿主/其他项目和秘密；UI 外部。无全局安装/配置、发布/push、host\
+      \ patch、SDK host、replacement launcher、队列撤回/重排/丢失/重放或额外维护调度。\n\nAdmit: 消费最新用户要求、README/DESIGN\
+      \ 必要要求、所选 stock 公开 docs/types/实现和父方核对后的 accepted candidate diff。保留完整 F/M/R_t\
+      \ 与未来 D 边界、bounded incremental M、verbatim K、single checkpoint、native cancellation/overflow/persistence、媒体/tool\
+      \ 关联和真实 output/auth。自身完成由 Orchestrator 检查兼容根因处置、实际 native seam 正/负向回归、完整 all\
+      \ 与下游 runner 可执行能力；受控服务不证明真实模型效果。本 producer 无需等待独立 live 才交付已完成的仓库能力。\n\nRecovery:\
+      \ 兼容源码/tests/docs/runner/环境缺口在此未完成 owner 修完整支持批次，不逐发现/retry 建节点，不弱化检查或 mock\
+      \ 被证明入口。可能开始的受控效果先核对再清理；缺实际扩展组合信息保留精确缺口并继续不依赖它的交付。跨 authority 边界报告最小缺项；不接管宿主或增加凭据子系统。"
+    verification: "```yaml\nchecks:\n  - id: compatibility-full-native-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers:\n      - 全部engine-pi-live非空库存与类型构建及跨组件行为\n      - stock-loader-before_provider_request-handler顺序及replacement-in-place-noop真实组合\n\
+      \      - 有据支持的最终payload预算与非法输入-输出扩大-容量超限零发送\n      - 非秘密诊断到消费者且无body-headers-credentials泄漏\n\
+      \      - ticketless三分支及独立调用不消费maintenance绑定\n      - Grok500k原生main-output-clamp与headroom及raw-extraction固定输出\n\
+      \      - Codex及其他uncapped路径完整输出预留\n      - verify-live-supervisor-worker到真实native-provider的受控可达性\n\
+      \      - 有限calls-tokens-time-output与无USD-ceiling及unknown-billing含义\n      -\
+      \ 单次效果-独立失败隔离-取消-未核对状态停止\n      - 完整来源与future-D-媒体-tool关联-原文K-增量M\n      - native-threshold-manual-overflow与TUI队列-editor-取消\n\
+      \      - native-checkpoint-resume-reload-new-tree-fork-clone-provider-model-config变化\n\
+      ```\n按 Plan check_environment 与 DEVELOPMENT，从 clean checkout/跟踪 lock 执行；需要安装时使用已声明\
+      \ setup argv 并与检查分开。all 当前存在，producer 将新行为纳入，缺版本/必要非空子集/入口或失败非零。至少包含 native\
+      \ 主请求经真正 extension loader/callback/serializer 到受控 HTTP 的正向支持与负向零发送反例；只调用 Admission\
+      \ 私有方法或仅改变旧拒绝断言不足。Grok 同时覆盖产品 stock probe 和实际 live runner 的 native 委托入口，防止只修产品却让\
+      \ observer 以全输出静态相加误拒绝。媒体、tool round trip、取消/compaction/persistence 检查继续执行，不以\
+      \ payload body 一律相等替代预算/来源证明。已有预算 tests 保留意义。\n\n最终整合候选必须有完整适用 all，源/lock/config/整合变化补受影响证明并完成有意义的全量回归。历史232受控测试只按未变输入复用其实际范围，不固定数量、不重标旧候选。跟踪\
+      \ live runner 在受控三路线所用真实 stock seam 上可调用，preflight 无真实模型/凭据/新session效果；真实验证留给下游。文档/提示\
+      \ token、预置语义答案或自报 PASS 无效。"
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/ENGINE.md
+    - docs/PI.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - docs/POLICY.md
+    - package.json
+    - package-lock.json
+    - .node-version
+    - tsconfig.json
+    - src/pi/admission.ts
+    - src/pi/config.ts
+    - src/engine/accounting.ts
+    - src/engine/validation.ts
+    - src/live/budget.ts
+    - src/live/contract.ts
+    - src/live/defaults.ts
+    - src/live/host.ts
+    - src/live/runner.ts
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - scripts/observe-lifecycle.mjs
+    - scripts/observe-grok-budget.mjs
+    - tests/pi/admission.test.ts
+    - tests/pi/native-lifecycle.test.ts
+    - tests/engine/budget.test.ts
+    - tests/live/budget.test.ts
+    - tests/live/native-delegation.test.ts
+    - tests/scenarios/inputs.json
+    - tests/scenarios/observer.json
+    agent: node-typescript-engineer
+  - id: nunc.compatibility-live
+    name: 真实验证三路线原生管线并完成整合接受
+    status: pending
+    description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
+      , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
+      , \"tsconfig.json\", \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \"\
+      .env.*\", \"**/auth.json\"]\n\nDeliver: 在最终整合不可变候选上，通过跟踪 runner 和真实 stock Pi\
+      \ 0.85.1，取得 xAI/Grok、openai-codex、OpenRouter/Gemini 三条实际 native provider 路线的独立隔离端到端证据；逐必要要求给\
+      \ PROVEN/DISPROVEN/UNPROVEN 和关闭条件。该真实效果边界独立于 producer 的 repository 事务；结果由 Orchestrator\
+      \ 消费。observer 不决定生命周期，Orchestrator 在本步骤完成程序承担本次唯一最终整合接受判断，无额外 gate/reviewer\
+      \ 栈。\n\n三路线各有有限有目的的新案例，不能用 native API 名称相同的受控服务、另一 provider、历史调用或一次文本 ping 替代：观察新\
+      \ native 主请求、真实工具调用/结果、同一当前模型完整 extraction、实际合法 native CompactionEntry 与 M/K、维护后约束依赖工具行动/产物、同\
+      \ session 持久化恢复后续做。保留原生输出/thinking/auth/serializer/transport；xAI 使用实际 Grok（含所修500k能力路径），Codex\
+      \ 使用 native Codex OAuth/uncapped 语义，Gemini 明确经 OpenRouter native 路线，不能用 direct\
+      \ Google 代替。按当前 native catalog 在这些用户指定 provider/model 家族中绑定具体可用模型；无需改保存 defaults\
+      \ 或消耗调用探测账户。\n\npayload 故障观察必须绑定实际 before_provider_request composition 的非秘密来源/顺序与受支持\
+      \ delta 类别，在独立无私密案例验证最终实际请求经过修复与原生委托，不把只跑无其他扩展的基线称为已验证用户组合。来源/原始变换未知时先消费 producer\
+      \ 安全诊断和父方允许的公开配置事实；禁止记录 body/headers/凭据、重放原始失败 prompt、运行 daily session 或猜测 culprit。若仍不能确认实际组合，保留必要项\
+      \ UNPROVEN 和最小缺失信息，其余独立已授权案例继续；不得用修改支持声明消除用户故障。\n\n保留媒体、tool、cancel 与容量/来源/native\
+      \ 生命周期检查。能由真实 stock 宿主配受控服务证明的媒体保留/预算、取消优先、TUI 队列/editor、pre-HTTP oversize 和\
+      \ overflow 有界恢复，可消费最终 all 的直接证据；依赖真实 provider 的新增序列化/支持组合和本次媒体能力声明需有限对应 live\
+      \ 观察。不得用文本占位证明媒体、用 RPC 替代 TUI、用固定 M/预期答案证明维护质量。既有 giant full/中部例外/退役产物、late-D\
+      \ 冻结排除/维护中接收/随后原样一次交付/纠正行动、真实 CAPACITY 零 extraction且M/K不变无默认摘要、更小模型两类预算/M-K重算及维护续做等完整要求按因果适用性复用\
+      \ nunc-v1 已成立事实，缺口只补受影响部分；本次三路线完整 native live 正向事实仍必须取得。\n\nAdmit: 消费 nunc.compatibility\
+      \ 的整合代码、跟踪 runner、根因/支持边界和最终完整 all；原 nunc-v1 的 policy、engine、pi、observation-support、discovery、simplification、defensive-controls、runtime、acceptance\
+      \ 结果仅在相关输入仍适用时复用。Orchestrator 提供 immutable candidate、完整必要要求与证据范围、native 非秘密有效\
+      \ metadata、当前实际 extension composition 或明确未知项、指定三路线命名 overrides、新 target/有限总\
+      \ calls-tokens-time-output 和清理绑定。报告重绑定与底层观察独立判断；源码/lock/config/命令/modality/provider\
+      \ 变化补相关证明，Plan-only/格式变化不重放。旧接受不能推出新整合接受。\n\nBoundary: exact owner integration-verifier；仓库\
+      \ source/tests/docs/配置/Plan 只读，不能安装、修源码、写仓库报告或临时替代 executable。仅在绑定的新 session/task\
+      \ cwd/files/私有输出执行跟踪 native runner。用户已授权三路线真实模型效果，无货币预算上限，覆盖旧禁付费；实际 call/token/time/output\
+      \ 仍有限，主请求和维护共享 reservations。maxCostUsd:null 用于本批无 USD ceiling，不把未知订阅账单、catalog\
+      \ 估计或原生零占位说成免费/实付。只有已有 host-managed credential access 与 Pi 原生 auth 解析/刷新/保存；凭据值和来源位置不进\
+      \ prompts/Plan/stdin/argv/报告，不复制 profile/token、不 login/换账户/建认证 subsystem。保护既有\
+      \ sessions/settings/defaults、.pi/、dashboard、宿主/其他项目/秘密；禁止 UI、daily-session runs、global\
+      \ install/config、publication/push、host patch、replacement launcher、queue manipulation\
+      \ 和原始失败输入重放。\n\nRecovery: 使用无模型 preflight，先发现绑定/可达性/runner缺口；同授权普通准备由原 owner\
+      \ 处理。每次效果保留调用/终态/reservations/usage/延迟/产物与本地 cleanup 事实。失败停止受影响案例，已终结且核对的独立失败不无条件阻止其余无依赖案例；真正取消、总限额、缺终态、活动进程、账本损坏或无法核对关联效果停止相关后续执行。保留所有失败/unknown\
+      \ reservations，旧 target 不重跑，local abort 不证明 remote cancel/invoice。禁止无限/盲目 retry\
+      \ 和 quota probes；新有据修正只能新独立选择。坏报告先从保留证据修复；缺观察在本 owner 补齐；缺 tracked runner/source\
+      \ 修复交兼容未完成 writable producer，producer DONE 后经 Planner 接入一批兼容修复并让本消费者依赖，不重开历史、不逐发现/重试建节点。\n\
+      \n终端接受由 Orchestrator 负责，覆盖 native-compat 全部结果及 nunc-v1 完整项目在新整合候选上的适用要求：完整 all\
+      \ 有效；实际 payload 故障有据关闭；三路线必要 live 正向；来源/容量/媒体/tool/cancel/队列/维护/persistence\
+      \ 与 protected state 不变量满足；所有支持 finding 有据处置且无阻断缺陷/跨结果矛盾；效果已核对。observer 的完成报告/OBSERVED/退出0不替代此判断，必要\
+      \ UNPROVEN/DISPROVEN 或未知实际故障未关闭时本步骤和本次最终接受均保持未完成。接受不授权安装到日常环境或发布。"
+    verification: "```yaml\nchecks:\n  - id: final-integrated-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    evidence_policy: reuse_if_applicable_to_final_integrated_candidate\n\
+      \  - id: native-three-route-no-effect-preflight\n    argv: [/usr/bin/env, -u,\
+      \ NODE_OPTIONS, -u, PI_CODING_AGENT_DIR, -u, PI_PROVIDER, -u, PI_MODEL, -u,\
+      \ PI_REASONING_LEVEL, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
+      \ /opt/homebrew/bin/node, scripts/verify-live.mjs, --preflight]\n    stdin:\n\
+      \      format: json\n      required: [target, limits, scenarios, overrides]\n\
+      \      source: fresh_nonsecret_selection_per_authorized_native_route\n     \
+      \ limits: {maxCostUsd: null}\n      finite_limits_required: [maxCalls, maxTotalTokens,\
+      \ maxDurationMs, maxOutputTokens]\n    exit_code: 0\n  - id: actual-native-three-route-pipeline\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, -u, PI_CODING_AGENT_DIR, -u, PI_PROVIDER,\
+      \ -u, PI_MODEL, -u, PI_REASONING_LEVEL, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    stdin:\n\
+      \      format: json\n      required: [target, limits, scenarios, overrides]\n\
+      \      source: preflighted_fresh_independent_cases_bound_by_orchestrator\n \
+      \     limits: {maxCostUsd: null}\n      finite_limits_required: [maxCalls, maxTotalTokens,\
+      \ maxDurationMs, maxOutputTokens]\n    native_routes: [xai/Grok, openai-codex/Codex,\
+      \ openrouter/Gemini]\n    observation_modalities: [stock_rpc, native_external_provider,\
+      \ real_model_maintenance_and_continuation, native_session_persistence]\n   \
+      \ exit_code: 0\n```\n这两条 live argv 是现有跟踪公共入口，每条 route 以独立新 target/session 选择有限案例；producer\
+      \ 在该入口交付缺失的必要组合/观察选择，参数以跟踪 public schema 为准，不临时发明未实现字段。当前 c2/c3 可供多次维护/恢复场景选择，具体最小组合依实际模型容量与完整要求决定，不把示例或历史\
+      \ call 数变成固定最少执行次数。Orchestrator 按实际模型窗口/原生输出/调用步骤给足有限 reservations，完成 preflight\
+      \ 后执行；PI_OFFLINE 只阻止启动网络，不能据此声称无模型效果。当前用户明确三路线选择优先于旧父环境，native credentials 仍经原生既有\
+      \ owner。\n\n观察 inventory：每条路线主请求→native tool round trip→完整当前模型 extraction→single\
+      \ native checkpoint/M-K→约束依赖续做产物→同 session 恢复；实际 payload composition/delta 支持与输出/thinking/cap/media\
+      \ 语义；所有调用与终态/usage/cache/reservations/时间/成本未知和cleanup。读取实际 native JSONL/事件与隔离产物，不能只看\
+      \ exit0或OBSERVED，不输出私密正文。取消/TUI队列/完整来源/D/真实capacity/模型切换及媒体机械边界消费 final all\
+      \ 与适用旧 native 事实；新增 provider-sensitive 或证据受影响部分补实际对应观察。既有完整 full、late-D、capacity、c5\
+      \ facts 按适用性复用，无为信心重跑。\n\nOrchestrator 的终端完成程序消费本报告与 producer 证明，逐完整必要要求判断覆盖、适用性、矛盾及未解决故障，并记录当前最终候选的接受结论；完整\
+      \ all 必须对最终整合有效，必要 unknown/failed check 阻止接受。observer 不写源码/检查或判定生命周期；不存在第二接受\
+      \ gate 或按 provider 拆开的 gate。"
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/ENGINE.md
+    - docs/PI.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - docs/POLICY.md
+    - package.json
+    - package-lock.json
+    - .node-version
+    - tsconfig.json
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - scripts/observe-stock.mjs
+    - scripts/observe-lifecycle.mjs
+    - scripts/observe-grok-budget.mjs
+    - src/pi/admission.ts
+    - src/pi/config.ts
+    - src/live/contract.ts
+    - src/live/budget.ts
+    - src/live/runner.ts
+    - src/live/host.ts
+    - src/live/observer.ts
+    - tests/scenarios/inputs.json
+    - tests/scenarios/observer.json
+    - tests/pi/queue.test.ts
+    - tests/pi/native-lifecycle.test.ts
+    - tests/live/native-delegation.test.ts
+    - examples/live-selection.json
+    depends_on:
+    - nunc.compatibility
+    agent: integration-verifier
