@@ -33,14 +33,15 @@ export default function (pi: ExtensionAPI): void {
       case "replace-meta": return { ...rec, temperature: 0 };
       case "overcap": return { ...rec, max_tokens: 999999, max_output_tokens: 999999, max_completion_tokens: 999999 };
       case "nostream": return { ...rec, stream: false };
-      case "grow": return { ...rec, metadata: { note: "n".repeat(200000) } };
+      // Exceed the fixture model's 60k window, not just its former soft reserve.
+      case "grow": return { ...rec, metadata: { note: "n".repeat(400000) } };
       case "illegal-model": return { ...rec, model: "outside-selection" };
       case "append": {
         const result = applyLastUserTextAppend(payload, SYNTHETIC_LAST_USER_APPEND);
         return result.changed ? result.payload : undefined;
       }
       case "append-overflow": {
-        const result = applyLastUserTextAppend(payload, "x".repeat(200000));
+        const result = applyLastUserTextAppend(payload, "x".repeat(400000));
         return result.changed ? result.payload : undefined;
       }
       case "rewrite-user": {

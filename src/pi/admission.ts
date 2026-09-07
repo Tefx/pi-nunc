@@ -4,13 +4,13 @@ import { isDeepStrictEqual } from "node:util";
 import { createAssistantMessageEventStream, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Complete, EngineConfig } from "../engine/index.js";
-import { admissionEstimate, inputLimit, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
+import { admissionEstimate, inputLimit, mainAdmissionLimit, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
 import { EngineError, legalCuts } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = { context: Context; model: Model<Api>; signal: AbortSignal | undefined; simple: boolean; seen: WeakSet<Provider> };
-export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; code?: string; payload?: PayloadObservation }
+export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; plannedInputLimit?: number; inputExceededPlan?: boolean; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; code?: string; payload?: PayloadObservation }
 
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
 export class Admission {
@@ -103,7 +103,7 @@ export class Admission {
       : mainSession ? "main" : "unknown";
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
-    let budgetObservation: Pick<AdmissionObservation, "estimator" | "outputReserveTokens" | "outputCapTokens"> = {};
+    let budgetObservation: Pick<AdmissionObservation, "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan"> = {};
     try {
       if (kind === "unknown") {
         this.observe({ kind, outcome: "delegate" });
@@ -135,9 +135,10 @@ export class Admission {
           isDeepStrictEqual(jsonView(context.messages.slice(0, previous.messageCount)), previous.messages);
         const estimate = admissionEstimate(context, model, config.imageTokens, usageApplies, previous?.messageCount ?? 0);
         inputTokens = estimate.tokens + config.main.extraInputTokens + textTokens(JSON.stringify(options?.metadata ?? {}));
-        budgetObservation = { estimator: estimate.estimator, outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens, ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}) };
-        limit = inputLimit(model, config.main);
-        if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds planned input ${limit} (${estimate.estimator}); Pi may compact and retry once when automatic compaction is enabled. Otherwise compact explicitly, reduce input or select a larger model`);
+        const plannedInputLimit = inputLimit(model, config.main);
+        budgetObservation = { estimator: estimate.estimator, plannedInputLimit, inputExceededPlan: inputTokens > plannedInputLimit, outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens, ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}) };
+        limit = mainAdmissionLimit(model, config.main);
+        if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimate.estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
       }
       if (kind === "maintenance") {
         const config = this.config(ctx, model);
@@ -165,9 +166,11 @@ export class Admission {
         const observation: PayloadObservation = append.ok
           ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
           : { mode: delta.mode, categories: delta.categories };
+        const finalInputTokens = inputTokens! + Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0);
+        if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
         try {
           authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context });
-          this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
           return replacement;
         } catch (error) {
           const code = error instanceof EngineError ? error.code : "CONFIG";
@@ -175,7 +178,7 @@ export class Admission {
           const capacity = kind === "main" && code === "CAPACITY" && !aborted;
           const errorMessage = `${capacity ? "context_length_exceeded: " : ""}Nunc local ${code}; request=${randomUUID()}; ${error instanceof Error ? error.message : "Request rejected"}`;
           if (capacity && options?.signal) this.rejected.set(errorMessage, options.signal);
-          this.observe({ kind, outcome: "reject", code, ...budgetObservation, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          this.observe({ kind, outcome: "reject", code, ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
           throw new EngineError(code, errorMessage);
         }
       } };

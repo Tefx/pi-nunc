@@ -80,6 +80,17 @@ export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   requireThat(limit > 0, "CAPACITY", "Output and safety reserves leave no input capacity");
   return limit;
 }
+/** Main transport guard, distinct from the memory/retention planning target.
+ * Native context-sized/uncapped output stays Pi-owned; do not turn its trigger
+ * reserve into an earlier local overflow. Explicit input limits still bind. */
+export function mainAdmissionLimit(model: Model<Api>, budget: RequestBudget): number {
+  const planned = inputLimit(model, budget); // Validate the shared budget contract.
+  if (budget.nativeOutputReserve === undefined) return planned;
+  const floor = !omitsSerializedOutputCap(model) && ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
+  const limit = Math.min(model.contextWindow - floor, budget.inputLimit ?? model.contextWindow);
+  requireThat(limit > 0, "CAPACITY", "Model output floor leaves no main input capacity");
+  return limit;
+}
 export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig): { cut: number; keptTokens: number } {
   const sizes = active.map(e => e.messages.reduce((sum, m) => sum + messageTokens(m, config.imageTokens), 0));
   const suffix: number[] = new Array(sizes.length + 1).fill(0);

@@ -78,7 +78,7 @@ test("registered /nunc renders a compact summary and opt-in budget details witho
   await f.runtime.session.prompt("/nunc details");
   assert.equal(messages.at(-1), [
     "记忆：0 条", "压缩触发：24,000 tokens", "", "输入预算（tokens）",
-    "  主请求：50,784", "  维护：50,784", "", "输出预留（tokens）",
+    "  主请求准入：59,999", "  记忆规划：50,784", "  维护：50,784", "", "输出预留（tokens）",
     "  主请求：8,192", "  维护：8,192", "  维护输出 cap：8,192", "安全余量：1,024 tokens",
     "", "本上下文暂无维护记录。", "", "Pi 0.85.1 · 预算为估算值",
   ].join("\n"));

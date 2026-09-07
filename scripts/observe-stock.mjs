@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { StockFixture, text, records } from './stock-driver.mjs';
 const mode = process.argv[2]; assert(['rpc', 'tui'].includes(mode), 'Select rpc or tui');
 const IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aBMsAAAAASUVORK5CYII=';
-const f = await new StockFixture().setup({ config: { budget: { imageTokens: 1000 } }, ...(process.argv[3] ? { artifactParent: process.argv[3] } : {}) });
+// Threshold runs after A's response, so retain the complete recent turn rather than only its assistant suffix.
+const f = await new StockFixture().setup({ config: { rolling: { keepRecentFraction: 0.9 }, budget: { imageTokens: 1000 } }, ...(process.argv[3] ? { artifactParent: process.argv[3] } : {}) });
 let outcome = { status: 'FAIL', mode };
 const OLD = 'Old delivered work:' + 'a'.repeat(92000), A = 'Delivered steering A:' + 'b'.repeat(68000);
 const B = 'Follow-up B: preserve order', C = 'Queued extension evidence C', D = 'Late correction D: changed after freeze';
@@ -28,12 +29,12 @@ try {
   assert(source.some(r => r.region === 'K' && r.messages.some(m => text(m) === A)));
   for (const value of [B, C, D, IMAGE]) assert(!JSON.stringify(extraction.payload).includes(value), 'future D must not enter frozen extraction');
   const rejected = f.log.filter(e => e.type === 'admission' && e.data.outcome === 'reject');
-  assert.equal(rejected.length, 1); assert.equal(rejected[0].data.code, 'CAPACITY');
-  assert.equal(f.requests.filter(r => r.kind === 'main').length, 1, 'capacity rejection precedes HTTP');
+  assert.equal(rejected.length, 0, 'normal planning pressure does not generate a local overflow');
+  assert.equal(f.requests.filter(r => r.kind === 'main').length, 2, 'both delivered inputs sent before native threshold maintenance');
   if (mode === 'rpc') await p.command('steer', { message: D }); else await p.send(D);
   f.release('maintenance');
   await f.wait(() => f.log.filter(e => e.type === 'snapshot').length >= 2, 'native recovery and queued continuation snapshot');
-  const compacts = f.log.filter(e => e.type === 'compact'); assert.equal(compacts.length, 1); assert.equal(compacts[0].data.reason, 'overflow');
+  const compacts = f.log.filter(e => e.type === 'compact'); assert.equal(compacts.length, 1); assert.equal(compacts[0].data.reason, 'threshold');
   const after = f.log.filter(e => e.type === 'snapshot').at(-1).data;
   assert.equal(after.editor, '', 'automatic recovery never withdraws input to editor'); assert.equal(after.pending, false);
   const entries = after.entries;
@@ -45,7 +46,7 @@ try {
     assert.equal(entries.find(e => e.type === 'message' && text(e.message) === B).message.content.filter(b => b.type === 'image' && b.data === IMAGE).length, 1);
     assert(JSON.stringify(f.requests.filter(r => r.kind === 'main').at(-1).payload).includes('data:image/png;base64,' + IMAGE), 'future image delivered to native transport unchanged');
   }
-  const retry = f.requests.filter(r => r.kind === 'main')[1];
+  const retry = f.requests.filter(r => r.kind === 'main')[2];
   assert(!JSON.stringify(retry.payload).includes(OLD)); assert(JSON.stringify(retry.payload).includes(A));
   assert(JSON.stringify(retry.payload).includes(C)); assert(!JSON.stringify(retry.payload).includes(B));
   const snapshot = entries.find(e => e.type === 'compaction'); assert(snapshot?.details.nunc.slots.length);
@@ -73,7 +74,7 @@ try {
   await f.wait(() => f.log.filter(e => e.type === 'start').length > started, 'new isolated session');
   await p.prompt(OLD); f.hold('maintenance');
   const beforeStopMaintenance = f.requests.length, savedBeforeStop = f.log.filter(e => e.type === 'compact').length;
-  await p.send(A); await f.wait(() => f.requests.length > beforeStopMaintenance, 'cancellable native extraction');
+  await p.send(A); await f.wait(() => f.requests.slice(beforeStopMaintenance).some(r => r.kind === 'maintenance'), 'cancellable native extraction');
   assert.equal(f.requests.at(-1).kind, 'maintenance');
   if (mode === 'rpc') await p.command('steer', { message: 'Queued during cancelled maintenance' }); else await p.send('Queued during cancelled maintenance');
   const beforeSettled = f.log.filter(e => e.type === 'settled').length;
@@ -81,9 +82,9 @@ try {
   await f.wait(() => f.log.filter(e => e.type === 'settled').length > beforeSettled, 'cancelled maintenance settles');
   f.release('maintenance');
   assert.equal(f.log.filter(e => e.type === 'compact').length, savedBeforeStop, 'cancelled extraction never commits');
-  assert.equal(f.requests.length, beforeStopMaintenance + 1, 'cancelled extraction never resumes a main request');
+  assert.equal(f.requests.length, beforeStopMaintenance + 2, 'one ordinary main then cancelled extraction; no resumed main');
   if (mode === 'tui') p.keys('\x03');
   await p.quit();
-  outcome = { status: 'PROVEN_CONTROLLED', mode, requirements: ['real stock loader and native transport', 'engine maintenance with one native CompactionEntry', 'local capacity rejection before HTTP and native bounded retry', 'delivered B/K and future D separation', 'steering/follow-up/custom delivery exactly once in order', 'empty editor after recovery', 'real user cancellation without restart'], requests: f.requests.length, compactions: 1, memoryQuality: 'UNPROVEN: controlled service responses' };
+  outcome = { status: 'PROVEN_CONTROLLED', mode, requirements: ['real stock loader and native transport', 'engine maintenance with one native CompactionEntry', 'native threshold maintenance without local soft-budget errors', 'delivered B/K and future D separation', 'steering/follow-up/custom delivery exactly once in order', 'empty editor after recovery', 'real user cancellation without restart'], requests: f.requests.length, compactions: 1, memoryQuality: 'UNPROVEN: controlled service responses' };
 } catch (error) { outcome.error = { message: error.message, stack: error.stack }; console.error(error); process.exitCode = 1; }
 finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }

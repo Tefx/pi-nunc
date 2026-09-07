@@ -39,7 +39,7 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 **Roll in batches.** A configurable working threshold and retained-history target control context size and maintenance frequency. Pi's lifecycle handles triggering and persistence; its default threshold is not a fixed product choice.
 
-**Check each request separately.** New input can exceed the space left by earlier maintenance. A queue-preserving admission check rejects requests exceeding the supported input budget and uses Pi's bounded native compaction/retry when recovery is possible. It does not replay user input, turn user cancellation into capacity recovery, or use the TUI stop action to withdraw queued instructions. Oversized indivisible input and unsupported accounting receive explicit diagnostics.
+**Check each request separately.** New input can exceed the space left by earlier maintenance. A queue-preserving admission check rejects requests exceeding supported main input capacity or an explicit input limit, while Pi owns native compaction/retry. Crossing Nunc's softer memory-planning target alone does not reject a main request. See [capacity ownership and host limitations](docs/CAPACITY.md). It does not replay user input, turn user cancellation into capacity recovery, or use the TUI stop action to withdraw queued instructions. Oversized indivisible input and unsupported accounting receive explicit diagnostics.
 
 **Let the model judge content.** The model proposes changes and retention choices. Code validates references, enforces token budgets and preserves complete slots. A stable policy can support mixed tasks without mandatory content categories or a weight language.
 

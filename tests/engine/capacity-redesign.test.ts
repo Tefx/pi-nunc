@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { engineConfig } from "../../src/pi/config.js";
-import { admissionEstimate, inputLimit, requestTokens, textTokens } from "../../src/engine/accounting.js";
+import { admissionEstimate, inputLimit, mainAdmissionLimit, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { maintain } from "../../src/engine/engine.js";
 import { extractionContext, readSourceRecords } from "../../src/engine/request.js";
 import { answer, input, user } from "./fixtures.js";
@@ -21,6 +21,22 @@ test("native Codex defaults separate output capability, planning reserve and abs
   assert.equal(result.observations.accounting!.outputCapTokens, null);
   const larger = { ...source.model, maxTokens: 192000 };
   assert.equal(inputLimit(larger, engineConfig({}, larger, { reserveTokens: 16384, keepRecentTokens: 20000 }).main), 254592);
+});
+
+test("native main admission is independent of the soft planning reserve; explicit limits and output floors bind", () => {
+  for (const reserveTokens of [16384, 32768, 65536]) {
+    const config = engineConfig({}, codex, { reserveTokens, keepRecentTokens: 20000 });
+    assert.equal(mainAdmissionLimit(codex, config.main), 271999);
+    assert.equal(inputLimit(codex, config.main), 272000 - reserveTokens - 1024);
+    assert(254598 < mainAdmissionLimit(codex, config.main));
+  }
+  const config = engineConfig({ budget: { inputLimit: 250000 } }, codex, { reserveTokens: 16384, keepRecentTokens: 20000 });
+  assert.equal(mainAdmissionLimit(codex, config.main), 250000);
+  const capped = { ...codex, api: "openai-responses" };
+  assert.equal(mainAdmissionLimit(capped, engineConfig({}, capped, { reserveTokens: 16384, keepRecentTokens: 20000 }).main), 271984);
+  const unknown = { ...codex, api: "fixture-unknown" };
+  const fixed = engineConfig({}, unknown, { reserveTokens: 16384, keepRecentTokens: 20000 }).main;
+  assert.equal(mainAdmissionLimit(unknown, fixed), inputLimit(unknown, fixed));
 });
 
 test("uncapped complete output above planning reserve is accepted; serialized caps and hard limits still bind", async () => {

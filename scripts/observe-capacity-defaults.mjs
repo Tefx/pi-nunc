@@ -15,7 +15,7 @@ try {
   assert.equal(f.requests.length, 2, 'ordinary input above the old byte budget remains usable');
   assert(!f.log.some(e => e.type === 'admission' && e.data.outcome === 'reject'));
   const mains = f.log.filter(e => e.type === 'admission' && e.data.kind === 'main');
-  assert(mains.every(e => e.data.inputLimit === 254592));
+  assert(mains.every(e => e.data.inputLimit === 271999 && e.data.plannedInputLimit === 254592));
   assert(mains.some(e => e.data.estimator === 'pi-usage-backed'));
   await p.command('compact');
   const maintenance = f.log.find(e => e.type === 'maintenance').data.result;
@@ -36,6 +36,6 @@ try {
   await p.prompt('Continue using retained work.');
   assert.equal(f.requests.at(-1).kind, 'main');
   await p.quit();
-  outcome = { status: 'PROVEN_CONTROLLED', mainInputLimit: 254592, extractionInputLimit: 262784, outputReserve: 8192, outputCap: null, observedExtractionOutput: 12000, persistedCompactions: 1, memoryQuality: 'UNPROVEN: controlled response' };
+  outcome = { status: 'PROVEN_CONTROLLED', mainInputLimit: 271999, plannedMainInputLimit: 254592, extractionInputLimit: 262784, outputReserve: 8192, outputCap: null, observedExtractionOutput: 12000, persistedCompactions: 1, memoryQuality: 'UNPROVEN: controlled response' };
 } catch (error) { outcome.error = { message: error.message, stack: error.stack }; console.error(error); process.exitCode = 1; }
 finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }

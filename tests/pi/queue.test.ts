@@ -5,7 +5,7 @@ import { fixture, publicSelection, repository } from "../live/fixtures.js";
 import { childEnvironment } from "../../src/live/host.js";
 import { rm, writeFile } from "node:fs/promises";
 
-for (const mode of ["rpc", "tui"] as const) test(`bounded downstream stdin -> actual stock ${mode}: freeze, overflow, queues/editor and cancellation`, { timeout: 115000 }, async () => {
+for (const mode of ["rpc", "tui"] as const) test(`bounded downstream stdin -> actual stock ${mode}: freeze, threshold, queues/editor and cancellation`, { timeout: 115000 }, async () => {
   const input = await fixture(); input.observations = [mode === "rpc" ? "stock_rpc" : "stock_tui"]; input.target.cleanup = "remove";
   const options = { cwd: repository, encoding: "utf8" as const, timeout: 105000, maxBuffer: 64_000_000, env: childEnvironment(repository + "/.scratch") };
   try {

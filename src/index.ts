@@ -3,7 +3,7 @@ import { getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type Extensio
 import type { Accounting, FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
-import { inputLimit, omitsSerializedOutputCap } from "./engine/accounting.js";
+import { inputLimit, mainAdmissionLimit, omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig } from "./pi/config.js";
 import { eligibleStarts, project, withEffectiveMemory } from "./pi/projection.js";
 import { createMemorySurface } from "./pi/manual.js";
@@ -164,7 +164,8 @@ export default function nunc(pi: ExtensionAPI): void {
       if (!mode) { notify(ctx, [...summary, "预算详情：/nunc details"].join("\n"), "info"); return; }
       const details = config && ctx.model ? [
         "", "输入预算（tokens）",
-        `  主请求：${count(inputLimit(ctx.model, config.main))}`,
+        `  主请求准入：${count(mainAdmissionLimit(ctx.model, config.main))}`,
+        `  记忆规划：${count(inputLimit(ctx.model, config.main))}`,
         `  维护：${count(inputLimit(ctx.model, config.extraction))}`,
         "", "输出预留（tokens）",
         `  主请求：${count(config.main.nativeOutputReserve ?? config.main.outputTokens)}`,

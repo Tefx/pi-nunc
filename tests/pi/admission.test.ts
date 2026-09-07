@@ -91,7 +91,7 @@ test("later context that exceeds the actual main budget is rejected with zero pr
   const last = f.runtime.session.messages.at(-1);
   assert.equal(f.faux.state.callCount, 0);
   assert(last?.role === "assistant"); assert.equal(last.stopReason, "error");
-  assert.match(last.errorMessage ?? "", /exceeds planned input/);
+  assert.match(last.errorMessage ?? "", /exceeds main input limit/);
 });
 
 test("applicable usage anchors main admission, but changing the effective system prefix invalidates it", async t => {

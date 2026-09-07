@@ -16,6 +16,7 @@ pid, fd = pty.fork()
 if pid == 0:
     os.execv(sys.argv[1], sys.argv[1:])
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 140, 0, 0))
+os.set_blocking(fd, False)
 
 def stop(signum, _frame):
     try:
@@ -27,11 +28,17 @@ signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
 try:
     inputs = [fd, sys.stdin.fileno()]
+    pending = bytearray()
     while fd in inputs:
-        ready, _, _ = select.select(inputs, [], [])
+        # A blocking PTY write can deadlock against Pi rendering the previous
+        # large message. Drain terminal output while forwarding queued input.
+        readers = [source for source in inputs if source == fd or len(pending) < 1048576]
+        ready, writable, _ = select.select(readers, [fd] if pending else [], [])
         for source in ready:
             try:
                 data = os.read(source, 65536)
+            except BlockingIOError:
+                continue
             except OSError as error:
                 if error.errno != errno.EIO:
                     raise
@@ -41,9 +48,21 @@ try:
                 if source != fd:
                     stop(signal.SIGTERM, None)
                 continue
-            target = sys.stdout.fileno() if source == fd else fd
+            if source != fd:
+                pending.extend(data)
+                continue
             while data:
-                data = data[os.write(target, data):]
+                data = data[os.write(sys.stdout.fileno(), data):]
+        if fd in inputs and fd in writable:
+            try:
+                written = os.write(fd, pending[:65536])
+                del pending[:written]
+            except BlockingIOError:
+                pass
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+                inputs.remove(fd)
 finally:
     os.close(fd)
     _, status = os.waitpid(pid, 0)

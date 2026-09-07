@@ -108,12 +108,12 @@ try {
   const threshold = count('compact'); await p.prompt('Threshold recent ' + 'z'.repeat(4000));
   await f.wait(() => count('compact') > threshold, 'native threshold');
   assert.equal(f.log.filter(e => e.type === 'compact').at(-1).data.reason, 'threshold'); f.response = undefined;
-  // Disabled automatic compaction never enables itself on local capacity failure.
+  // A soft planning overrun delegates and never enables disabled auto-compaction.
   await p.command('new_session'); await p.command('set_auto_compaction', { enabled: false });
   await p.prompt('Old ' + 'a'.repeat(92000));
   const disabled = count('compact'), beforeReject = f.requests.length;
   await p.prompt('Large delivered ' + 'b'.repeat(68000));
-  assert.equal(f.requests.length, beforeReject); assert.equal(count('compact'), disabled);
+  assert.equal(f.requests.length, beforeReject + 1); assert.equal(count('compact'), disabled);
   // Extraction failure returns cancel:true; native default summary is never run.
   f.response = row => row.kind === 'maintenance' ? { text: '{"add":[],"remove":[],"priority":[]}', finish: 'length' } : undefined;
   const old = (await p.command('get_entries')).entries.filter(e => e.type === 'compaction');
