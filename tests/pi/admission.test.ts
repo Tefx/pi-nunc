@@ -32,16 +32,94 @@ test("admission delegates a registered native Azure Responses provider outside t
   assert.notEqual(last?.code, "CONFIG");
 });
 
-test("async maintenance scope authorizes only its exact one-shot request, never a nested foreign request", async t => {
+test("nested independent complete during maintenance delegates without inheriting the extraction budget", async t => {
   const f = await fixture(); t.after(() => f.close()); f.seed();
   let foreign: AssistantMessage | undefined;
   f.respond(async (context, options) => {
-    if (!sourceRecords(context).length) return fauxAssistantMessage("Foreign request incorrectly reached service");
+    if (!sourceRecords(context).length) return fauxAssistantMessage("Independent nested complete");
     assert(options?.signal);
     foreign = await new ModelRegistry(f.modelRuntime).complete(f.faux.getModel(), { messages: [{ role: "user", content: "Separate nested source", timestamp: 1 }] }, { maxTokens: 512, signal: options.signal });
     return memoryPatch(context);
   });
   await f.runtime.session.compact();
-  assert.equal(f.faux.state.callCount, 1); assert.equal(foreign?.stopReason, "error"); assert.match(foreign?.errorMessage ?? "", /Unknown request source/);
+  assert.equal(f.faux.state.callCount, 2); assert.equal(foreign?.stopReason, "stop");
   assert(f.events[0]?.result.ok); assert.equal(f.runtime.session.sessionManager.getBranch().filter(e => e.type === "compaction").length, 1);
+});
+
+test("maintenance ALS rejects a second stream of the same context instead of escaping as foreign", async t => {
+  const f = await fixture(); t.after(() => f.close()); f.seed();
+  let replay: AssistantMessage | undefined;
+  f.respond(async (context, options) => {
+    if (!sourceRecords(context).length) return fauxAssistantMessage("Replay incorrectly reached service");
+    replay = await new ModelRegistry(f.modelRuntime).complete(f.faux.getModel(), context, { ...(options?.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }), ...(options?.signal ? { signal: options.signal } : {}) });
+    return memoryPatch(context);
+  });
+  await f.runtime.session.compact();
+  assert.equal(f.faux.state.callCount, 1); assert.equal(replay?.stopReason, "error");
+  assert.match(replay?.errorMessage ?? "", /already used or changed binding/);
+  assert(f.events[0]?.result.ok);
+});
+
+test("later context hooks may add or drop their own messages; independent raw calls do not block the main request", async t => {
+  const admissions: Array<{ kind?: string; outcome?: string; code?: string }> = [];
+  let foreign: AssistantMessage | undefined;
+  const f = await fixture({ extras: [{ name: "later-context", factory(pi) {
+    pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as { kind?: string; outcome?: string; code?: string }));
+    pi.on("context", async (event, ctx) => {
+      foreign = await ctx.modelRegistry.complete(ctx.model!, { messages: [{ role: "user", content: "Independent controlled side request", timestamp: 1 }] }, { maxTokens: 64 });
+      return { messages: [...event.messages.slice(0, -1), { role: "user", content: "Later-owned extra note", timestamp: 2 }, event.messages.at(-1)!] };
+    });
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("Controlled native main request");
+  const main = f.runtime.session.messages.at(-1);
+  assert.equal(foreign?.stopReason, "stop");
+  assert.equal(main?.role, "assistant"); assert.equal(main.stopReason, "stop");
+  assert.equal(f.faux.state.callCount, 2);
+  assert(f.calls.some(c => JSON.stringify(c.messages).includes("Later-owned extra note")));
+  assert(admissions.some(a => a.kind === "unknown" && a.outcome === "delegate"));
+  assert(admissions.some(a => a.kind === "main" && a.outcome === "delegate"));
+});
+
+test("later context that exceeds the actual main budget is rejected with zero provider calls", async t => {
+  const f = await fixture({ extras: [{ name: "oversize", factory(pi) {
+    pi.on("context", event => ({ messages: [...event.messages, { role: "user", content: "n".repeat(80000), timestamp: 3 }] }));
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("Stay within the current model");
+  const last = f.runtime.session.messages.at(-1);
+  assert.equal(f.faux.state.callCount, 0);
+  assert(last?.role === "assistant"); assert.equal(last.stopReason, "error");
+  assert.match(last.errorMessage ?? "", /exceeds safe input/);
+});
+
+test("later context that breaks tool association is rejected before dispatch", async t => {
+  const f = await fixture({ extras: [{ name: "orphan-tool", factory(pi) {
+    pi.on("context", event => ({ messages: [...event.messages, { role: "toolResult", toolCallId: "missing", toolName: "probe", content: [{ type: "text", text: "orphan" }], isError: false, timestamp: 4 }] }));
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("Continue with current tools");
+  const last = f.runtime.session.messages.at(-1);
+  assert.equal(f.faux.state.callCount, 0);
+  assert(last?.role === "assistant"); assert.equal(last.stopReason, "error");
+  assert.match(last.errorMessage ?? "", /Orphan|Nunc local INPUT/);
+});
+
+test("same-run streamSimple with a different model is rejected; the matching main request still sends", async t => {
+  let side: AssistantMessage | undefined;
+  const f = await fixture({ extras: [{ name: "model-mismatch", factory(pi) {
+    pi.on("context", async (_event, ctx) => {
+      const small = ctx.modelRegistry.find("nunc-pi-fixture", "small");
+      const provider = ctx.modelRegistry.getProvider("nunc-pi-fixture");
+      if (!small || !provider || !ctx.signal) return;
+      side = await provider.streamSimple(small, { messages: [{ role: "user", content: "Wrong model helper", timestamp: 1 }] }, { signal: ctx.signal, sessionId: ctx.sessionManager.getSessionId() }).result();
+    });
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("Matching session model");
+  const main = f.runtime.session.messages.at(-1);
+  assert.equal(side?.stopReason, "error");
+  assert.match(side?.errorMessage ?? "", /does not match the current session model/);
+  assert.equal(main?.role, "assistant"); assert.equal(main.stopReason, "stop");
+  assert.equal(f.faux.state.callCount, 1);
 });

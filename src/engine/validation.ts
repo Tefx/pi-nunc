@@ -37,7 +37,9 @@ export function validateConfig(c: EngineConfig): void {
     requireThat(integer(b.outputTokens, 1) && integer(b.safetyTokens, 1) && integer(b.extraInputTokens), "CONFIG", "Output/safety must be positive; extra input must be nonnegative");
     requireThat(b.inputLimit === undefined || integer(b.inputLimit, 1), "CONFIG", "inputLimit must be positive");
     requireThat(b.outputLimit === undefined || integer(b.outputLimit, 1), "CONFIG", "outputLimit must be positive");
+    requireThat(b.nativeOutputReserve === undefined || (integer(b.nativeOutputReserve, 1) && b.nativeOutputReserve <= b.outputTokens), "CONFIG", "Native output reserve must be positive and within the output ceiling");
   }
+  requireThat(c.extraction.nativeOutputReserve === undefined, "CONFIG", "Raw extraction requires a fixed output reserve");
   requireThat(["full", "auto"].includes(c.extraction.toolResults) && integer(c.extraction.headTailChars, 1), "CONFIG", "Invalid extraction reduction settings");
 }
 

@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseConfig, engineConfig, readConfig } from "../../src/pi/config.js";
 import { model } from "../engine/fixtures.js";
+import { inputLimit } from "../../src/engine/accounting.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 
 for (const config of [null, [], { unknown: 1 }, { policyFile: "" }, { memory: { fraction: 1 } }, { memory: { fraction: -1 } }, { memory: { maxTokens: 0 } }, { rolling: { keepRecentFraction: 0 } }, { rolling: { keepRecentFraction: 1 } }, { extraction: { toolResults: "never" } }, { extraction: { outputTokens: 1.5 } }, { budget: { inputLimit: -1 } }, { budget: { extraMainInputTokens: -1 } }]) {
@@ -23,6 +24,26 @@ test("actual host settings drive H, memory/keep configuration and stock output/t
   assert.throws(() => engineConfig({}, model, { reserveTokens: 60000, keepRecentTokens: 1 }));
   assert.throws(() => engineConfig({}, model, { reserveTokens: 59900, keepRecentTokens: 100 }));
   assert.deepEqual(readConfig(undefined, "/unused"), { config: {} });
+});
+
+test("equal 500k context/output capabilities leave main input room without changing fixed extraction", () => {
+  const grok = { ...model, api: "openai-responses", contextWindow: 500000, maxTokens: 500000 };
+  const config = engineConfig({}, grok, { reserveTokens: 16384, keepRecentTokens: 20000 });
+  assert.equal(config.main.outputTokens, 500000);
+  assert.equal(config.main.nativeOutputReserve, 16384);
+  assert.equal(inputLimit(grok, config.main), 500000 - 16384 - 1024);
+  assert.equal(config.extraction.outputTokens, 4096);
+  assert.equal(inputLimit(grok, config.extraction), 500000 - 4096 - 1024);
+  const bounded = engineConfig({ budget: { inputLimit: 300000 } }, grok, { reserveTokens: 16384, keepRecentTokens: 20000 });
+  assert.equal(inputLimit(grok, bounded.main), 300000 - 1024);
+  const tinyReserve = engineConfig({}, grok, { reserveTokens: 1, keepRecentTokens: 1 });
+  assert.equal(tinyReserve.main.nativeOutputReserve, 16);
+  assert.equal(inputLimit(grok, tinyReserve.main), 500000 - 16 - 1024);
+  for (const uncapped of [{ ...grok, api: "openai-codex-responses" }, { ...grok, compat: { supportsMaxOutputTokens: false } }]) {
+    const reserved = engineConfig({}, uncapped, { reserveTokens: 16384, keepRecentTokens: 20000 });
+    assert.equal(reserved.main.nativeOutputReserve, undefined);
+    assert.throws(() => inputLimit(uncapped, reserved.main), /leave no input capacity/);
+  }
 });
 
 test("registered /nunc command handles the public prompt path without a model or transcript mutation", async t => {

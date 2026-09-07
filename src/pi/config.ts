@@ -55,11 +55,15 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
       !Number.isSafeInteger(settings.keepRecentTokens) || settings.keepRecentTokens < 0 || settings.keepRecentTokens >= triggerTokens) {
     throw new EngineError("CONFIG", "Pi reserveTokens must leave a positive H, and 0 <= keepRecentTokens < H; lower keepRecentTokens with an earlier trigger");
   }
-  // Pi 0.85.1's stock streamSimple supplies no per-turn maxTokens. Its default
-  // uses model.maxTokens (thinking inside that ceiling), possibly clamped DOWN
-  // to available context. Reserve that actual host-default upper bound. A host
-  // overriding stream options/payload must provide a separately verified adapter.
+  // These inspected Pi 0.85.1 streamSimple adapters clamp output to remaining
+  // context (Anthropic reclamps after thinking adjustment). Keep their defaults;
+  // input admission must not subtract the entire catalog output capability.
+  // Other adapters still delegate, retaining fixed-reserve accounting until verified.
+  const nativeContextOutput = !omitsSerializedOutputCap(model) &&
+    ["openai-completions", "openai-responses", "azure-openai-responses", "anthropic-messages"].includes(model.api);
   const mainOutput = model.maxTokens;
+  const outputFloor = ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
+  const mainReserve = Math.min(mainOutput, Math.max(outputFloor, settings.reserveTokens));
   const outputTokens = config.extraction?.outputTokens ?? (omitsSerializedOutputCap(model) ? model.maxTokens : Math.min(4096, model.maxTokens));
   const common = { safetyTokens: config.budget?.safetyTokens ?? 1024, ...(config.budget?.inputLimit === undefined ? {} : { inputLimit: config.budget.inputLimit }) };
   const result: EngineConfig = {
@@ -67,7 +71,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
     memory: { fraction: config.memory?.fraction ?? 0.1, ...(config.memory?.maxTokens === undefined ? {} : { maxTokens: config.memory.maxTokens }) },
     keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.67,
     growthTokens: config.budget?.growthTokens ?? 1024,
-    main: { ...common, outputTokens: mainOutput, extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },
+    main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },
     extraction: { ...common, outputTokens, extraInputTokens: config.budget?.extraExtractionInputTokens ?? 0, toolResults: config.extraction?.toolResults ?? "auto", headTailChars: config.extraction?.headTailChars ?? 200 },
     ...(config.budget?.imageTokens === undefined ? {} : { imageTokens: config.budget.imageTokens }),
   };

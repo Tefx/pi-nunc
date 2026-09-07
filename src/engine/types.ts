@@ -13,8 +13,10 @@ export interface FixedContext { systemPrompt: string; tools: Tool[] }
 export interface Binding { sessionId: string; leafId: string; generation: string }
 export interface PolicySnapshot { builtin: string; user: string }
 export interface RequestBudget {
-  /** Total output ceiling, INCLUDING reasoning. Must match the actual request. */
+  /** Total output INCLUDING reasoning: fixed reserve, or upper bound with nativeOutputReserve. */
   outputTokens: number;
+  /** Main-only input headroom while the native adapter owns context-dependent output sizing. */
+  nativeOutputReserve?: number;
   safetyTokens: number;
   /** Independent provider input/output ceilings, if narrower than model metadata. */
   inputLimit?: number;

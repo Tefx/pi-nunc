@@ -93,6 +93,8 @@ const invalidConfigs = [
   (s: Awaited<ReturnType<typeof input>>) => { s.config.growthTokens = 0; },
   (s: Awaited<ReturnType<typeof input>>) => { s.config.extraction.safetyTokens = 0; },
   (s: Awaited<ReturnType<typeof input>>) => { s.model.samplingParams = { max_tokens: 999999 }; },
+  (s: Awaited<ReturnType<typeof input>>) => { s.config.extraction.nativeOutputReserve = 1024; },
+  (s: Awaited<ReturnType<typeof input>>) => { s.model.api = "openai-codex-responses"; s.config.main.outputTokens = s.model.maxTokens; s.config.extraction.outputTokens = s.model.maxTokens; s.config.main.nativeOutputReserve = 1024; },
 ];
 for (const [i, change] of invalidConfigs.entries()) test(`invalid budget configuration ${i} fails before dispatch`, async () => {
   const source = await input(); change(source);

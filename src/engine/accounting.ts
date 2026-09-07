@@ -44,7 +44,12 @@ export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   // In those cases a requested small cap provides no safety: require the actual model ceiling.
   requireThat(!omitsSerializedOutputCap(model) || budget.outputTokens === model.maxTokens, "CONFIG", "Selected Pi API does not send an output cap; explicitly reserve model.maxTokens for this request");
   requireThat(!["openai-responses", "azure-openai-responses"].includes(model.api) || budget.outputTokens >= 16, "CONFIG", "Pi Responses APIs floor max_output_tokens at 16; reserve at least 16");
-  const limit = Math.min(model.contextWindow - budget.outputTokens, budget.inputLimit ?? model.contextWindow) - budget.safetyTokens;
+  const reserve = budget.nativeOutputReserve ?? budget.outputTokens;
+  requireThat(budget.nativeOutputReserve === undefined || (!omitsSerializedOutputCap(model) && integer(reserve, 1) && reserve <= budget.outputTokens), "CONFIG", "Native output reserve requires a serialized cap and positive headroom within its ceiling");
+  requireThat(!["openai-responses", "azure-openai-responses"].includes(model.api) || reserve >= 16, "CONFIG", "Pi Responses input headroom must cover its minimum output of 16");
+  // Main headroom follows host policy while Pi sizes output with its own estimate.
+  // It is not a simultaneous reservation of the catalog output upper bound.
+  const limit = Math.min(model.contextWindow - reserve, budget.inputLimit ?? model.contextWindow) - budget.safetyTokens;
   requireThat(limit > 0, "CAPACITY", "Output and safety reserves leave no input capacity");
   return limit;
 }

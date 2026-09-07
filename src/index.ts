@@ -16,7 +16,7 @@ export default function nunc(pi: ExtensionAPI): void {
   let generation = 0;
   let running: AbortController | undefined;
   let hostSettings: HostSettingsSource | undefined;
-  const invalidate = () => { generation++; running?.abort(); admission.invalidate(); };
+  const invalidate = () => { generation++; running?.abort(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
     invalidate(); hostSettings = value as HostSettingsSource;
@@ -33,6 +33,7 @@ export default function nunc(pi: ExtensionAPI): void {
   };
   const admission = new Admission(pi, (ctx, model) => {
     supported(ctx);
+    project(ctx.sessionManager.buildContextEntries());
     return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction);
   });
   const fixed = (ctx: ExtensionContext): FixedContext => {
@@ -79,10 +80,7 @@ export default function nunc(pi: ExtensionAPI): void {
       if (seen) return false;
       seen = true; return true;
     });
-    let failure: Error | undefined;
-    try { supported(ctx); project(ctx.sessionManager.buildContextEntries()); }
-    catch (error) { failure = error instanceof Error ? error : new Error("Invalid current snapshot"); }
-    admission.prepare(ctx, messages, failure);
+    admission.ensure(ctx);
     return { messages };
   });
   pi.on("session_before_compact", async (event, ctx) => {

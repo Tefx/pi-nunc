@@ -46,8 +46,8 @@ try {
   await p.command('set_model', { provider: 'groq', modelId: 'nunc-small' }); await p.prompt('After model selection');
   assert.equal(f.requests.at(-1).payload.model, 'nunc-small');
   const requests = f.requests.length; await p.send('/fixture-unknown');
-  await f.wait(() => count('unknown_result') === 1, 'unknown source rejected');
-  assert.equal(f.requests.length, requests); assert.equal(f.log.find(e => e.type === 'unknown_result').data.stopReason, 'error');
+  await f.wait(() => count('unknown_result') === 1, 'independent raw call delegated');
+  assert.equal(f.requests.length, requests + 1); assert.equal(f.log.find(e => e.type === 'unknown_result').data.stopReason, 'stop');
   // Native clone/fork/new/tree each choose their own public selected path.
   await p.command('clone'); const cloned = await p.command('get_state'); assert.notEqual(cloned.sessionId, state.sessionId);
   await p.prompt('Cloned continuation'); assert(f.requests.at(-1).payload.messages.map(text).join('\n').includes(previous.summary));
@@ -62,7 +62,8 @@ try {
   assert.equal(f.requests.length, beforeLegacy); assert.equal(f.log.filter(e => e.type === 'admission').at(-1).data.code, 'CONFIG');
   await p.send('/fixture-native-reset'); await p.prompt('After removing legacy stream');
   const beforeContext = f.requests.length; await p.send('/fixture-context-rewrite on'); await p.prompt('Unknown late request mutation');
-  assert.equal(f.requests.length, beforeContext); assert.equal(f.log.filter(e => e.type === 'admission').at(-1).data.code, 'INPUT');
+  assert.ok(f.requests.length > beforeContext); assert.equal(f.log.filter(e => e.type === 'admission').at(-1).data.outcome, 'delegate');
+  assert(text(f.requests.at(-1).payload.messages.at(-1)).includes('Unowned late context mutation'));
   await p.send('/fixture-context-rewrite off');
   const beforePayload = f.requests.length; await p.send('/fixture-payload-rewrite on'); await p.prompt('Payload must not change');
   assert.equal(f.requests.length, beforePayload); await p.send('/fixture-payload-rewrite off'); await p.prompt('Observer-only payload hook restored');
@@ -107,6 +108,6 @@ try {
   const irreducible = f.requests.length; await p.prompt('Indivisible ' + 'I'.repeat(60000));
   assert.equal(f.requests.length, irreducible); assert.equal((await p.command('get_entries')).entries.filter(e => e.type === 'compaction').length, 0);
   await p.quit();
-  outcome = { status: 'PROVEN_CONTROLLED', checkpoints: 3, overlappingOlderCheckpoint: true, actualRestartReload: true, modelCloneForkNewTree: true, threshold: true, disabledAuto: true, irreducibleInput: true, extractionFailureAndCancellation: true, unknownSource: true, providerReplacementAndComposition: true, payloadMutationAndSamplingRejected: true, requests: f.requests.length, memoryQuality: 'UNPROVEN: controlled protocol responses' };
+  outcome = { status: 'PROVEN_CONTROLLED', checkpoints: 3, overlappingOlderCheckpoint: true, actualRestartReload: true, modelCloneForkNewTree: true, threshold: true, disabledAuto: true, irreducibleInput: true, extractionFailureAndCancellation: true, independentRawDelegated: true, providerReplacementAndComposition: true, payloadMutationAndSamplingRejected: true, requests: f.requests.length, memoryQuality: 'UNPROVEN: controlled protocol responses' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
 finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }

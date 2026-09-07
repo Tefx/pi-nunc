@@ -66,7 +66,9 @@ export class StockFixture {
     assert(this.codex ? req.headers.authorization === `Bearer ${this.oauth.access}` : req.headers.authorization === 'Bearer isolated-nunc-fixture' || req.headers['x-api-key'] === 'isolated-nunc-fixture');
     const payload = JSON.parse(body), source = records(payload).find(r => r.source === 'F/M');
     const kind = source ? 'maintenance' : 'main';
-    if (kind === 'main' && this.processes.length) assert.equal(req.headers['x-nunc-fixture'], 'preserved', 'public header composition preserved');
+    const messages = payload.messages ?? payload.input ?? [];
+    const independent = kind === 'main' && messages.length === 1 && text(messages[0]) === 'Unclassified nested request';
+    if (kind === 'main' && this.processes.length && !independent) assert.equal(req.headers['x-nunc-fixture'], 'preserved', 'public header composition preserved');
     assert(this.requests.length < this.limits.maxCalls && (this.requests.length + 1) * this.reservation <= this.limits.maxTotalTokens, 'bounded native HTTP/token inventory');
     const row = { kind, payload, encoding: req.headers['content-encoding'] ?? 'identity', closed: false, number: this.requests.length + 1 }; this.requests.push(row);
     res.on('close', () => { row.closed = true; this.changes.emit('change'); });
