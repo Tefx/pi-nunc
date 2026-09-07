@@ -4,7 +4,7 @@ import type { FixedContext, Memory, Slot } from "../engine/index.js";
 import { memoryPlan, memoryTokens } from "../engine/index.js";
 import { EngineError, nonempty, validateMemory } from "../engine/validation.js";
 import { engineConfig, readConfig, type HostCompactionSettings } from "./config.js";
-import { MANUAL_MEMORY_TYPE, memoryRevision, project } from "./projection.js";
+import { MANUAL_MEMORY_TYPE, memoryRevision, project, revisionApplies } from "./projection.js";
 
 export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed";
 
@@ -17,7 +17,7 @@ export interface MemoryBudgetView {
 export interface MemoryView {
   revision: string;
   memory: Memory;
-  status: { occupied: boolean };
+  status: { occupied: boolean; unconfirmed: boolean };
   budget: MemoryBudgetView;
   contextLayout: { slotCount: number; activeEntries: number; latestCompactionId?: string };
 }
@@ -34,6 +34,7 @@ export interface MemoryFreeze extends MemorySurface {
   beginFreeze(): boolean;
   endFreeze(): void;
   noteForeignFailure(): boolean;
+  clearUnconfirmed(): void;
 }
 
 export function createMemorySurface(options: {
@@ -42,15 +43,15 @@ export function createMemorySurface(options: {
   settings: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
   onCommitted: () => void;
 }): MemoryFreeze {
-  const state = { occupied: false, ignoreFailed: 0 };
+  const state = { occupied: false, ignoreFailed: 0, unconfirmed: false };
   const viewOf = (ctx: ExtensionContext): MemoryView => {
     const entries = ctx.sessionManager.buildContextEntries();
     const projected = project(entries);
     const budget = measureBudget(ctx, options, projected.memory.slots);
     return {
-      revision: memoryRevision(ctx.sessionManager.getSessionId(), entries),
+      revision: memoryRevision(ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), entries),
       memory: projected.memory,
-      status: { occupied: state.occupied },
+      status: { occupied: state.occupied, unconfirmed: state.unconfirmed },
       budget,
       contextLayout: {
         slotCount: projected.memory.slots.length,
@@ -61,9 +62,12 @@ export function createMemorySurface(options: {
   };
   const commit = (ctx: ExtensionContext, revision: string, next: Memory | ManualSaveResult): ManualSaveResult => {
     if ("ok" in next) return next;
+    if (state.unconfirmed) return fail("unconfirmed", "Previous native save is unconfirmed; reload the session before writing", viewOf(ctx));
     if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
     const current = viewOf(ctx);
-    if (revision !== current.revision) return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
+    if (!revisionApplies(revision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
+      return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
+    }
     try { validateMemory(next); } catch (error) {
       return fail("invalid", error instanceof Error ? error.message : "Invalid memory", current);
     }
@@ -74,9 +78,11 @@ export function createMemorySurface(options: {
       return fail("overbudget", `Growing edit estimate ${budget.tokens} exceeds M budget ${budget.limit}`, { ...current, budget });
     }
     if (isDeepStrictEqual(next, current.memory)) return { ok: true, revision: current.revision, memory: current.memory };
+    const leaf = ctx.sessionManager.getLeafId();
     try {
       options.pi.appendEntry(MANUAL_MEMORY_TYPE, { nunc: next });
     } catch (error) {
+      if (ctx.sessionManager.getLeafId() !== leaf) state.unconfirmed = true;
       return fail("unconfirmed", `Save unconfirmed: ${error instanceof Error ? error.message : "native append failed"}`, viewOf(ctx));
     }
     options.onCommitted();
@@ -88,21 +94,22 @@ export function createMemorySurface(options: {
       if (state.occupied) { state.ignoreFailed++; return false; }
       state.occupied = true; return true;
     },
-    endFreeze() { state.occupied = false; },
+    endFreeze() { state.occupied = false; state.ignoreFailed = 0; },
     noteForeignFailure() {
       if (state.ignoreFailed > 0) { state.ignoreFailed--; return true; }
       return false;
     },
+    clearUnconfirmed() { state.unconfirmed = false; },
     read: viewOf,
     replace(ctx, revision, slotId, text) {
-      return commit(ctx, revision, prepareEdit(ctx, revision, state.occupied, viewOf, memory => {
+      return commit(ctx, revision, prepareEdit(ctx, revision, state, viewOf, memory => {
         if (!nonempty(text)) throw new EngineError("INPUT", "Empty text is not a valid slot");
         if (!memory.slots.some(slot => slot.id === slotId)) throw new EngineError("INPUT", `Unknown slot ${slotId}`);
         return { version: 1, nextId: memory.nextId, slots: memory.slots.map(slot => slot.id === slotId ? { id: slot.id, text } : slot) };
       }));
     },
     delete(ctx, revision, slotId) {
-      return commit(ctx, revision, prepareEdit(ctx, revision, state.occupied, viewOf, memory => {
+      return commit(ctx, revision, prepareEdit(ctx, revision, state, viewOf, memory => {
         if (!memory.slots.some(slot => slot.id === slotId)) throw new EngineError("INPUT", `Unknown slot ${slotId}`);
         return { version: 1, nextId: memory.nextId, slots: memory.slots.filter(slot => slot.id !== slotId) };
       }));
@@ -126,10 +133,13 @@ function fail(code: ManualSaveCode, message: string, view: MemoryView): ManualSa
   return { ok: false, code, message, view };
 }
 
-function prepareEdit(ctx: ExtensionContext, revision: string, occupied: boolean, viewOf: (ctx: ExtensionContext) => MemoryView, edit: (memory: Memory) => Memory): Memory | ManualSaveResult {
-  if (occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
+function prepareEdit(ctx: ExtensionContext, revision: string, state: { occupied: boolean; unconfirmed: boolean }, viewOf: (ctx: ExtensionContext) => MemoryView, edit: (memory: Memory) => Memory): Memory | ManualSaveResult {
+  if (state.unconfirmed) return fail("unconfirmed", "Previous native save is unconfirmed; reload the session before writing", viewOf(ctx));
+  if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
   const current = viewOf(ctx);
-  if (revision !== current.revision) return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
+  if (!revisionApplies(revision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
+    return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
+  }
   try { return edit(current.memory); }
   catch (error) { return fail("invalid", error instanceof Error ? error.message : "Invalid memory", current); }
 }

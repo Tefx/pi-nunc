@@ -1,7 +1,7 @@
 import type { EventBus, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { HostSettingsSource } from "../index.js";
 export { parseConfig, readConfig, engineConfig, type NuncConfig } from "./config.js";
-export { project, eligibleStarts, withEffectiveMemory, MANUAL_MEMORY_TYPE, memoryRevision } from "./projection.js";
+export { project, eligibleStarts, withEffectiveMemory, MANUAL_MEMORY_TYPE, memoryRevision, revisionApplies } from "./projection.js";
 export { createMemorySurface, memorySurface, type MemorySurface, type MemoryView, type ManualSaveResult, type MemoryBudgetView, type MemoryFreeze } from "./manual.js";
 export type { HostSettingsSource, MaintenanceEvent } from "../index.js";
 

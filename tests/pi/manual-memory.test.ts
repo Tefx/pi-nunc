@@ -195,6 +195,22 @@ test("revision conflicts on memory changes; unrelated custom entries do not", as
   assert.equal(stale.ok ? "" : stale.code, "conflict");
 });
 
+test("tree switch between branches sharing a checkpoint rejects a stale path draft", async t => {
+  const { f, surface, ctx } = await prepared(t);
+  const checkpoint = f.runtime.session.sessionManager.getLeafId()!;
+  f.seed("branch-a");
+  const draft = surface().read(ctx());
+  await f.runtime.session.navigateTree(checkpoint, { summarize: false });
+  f.seed("branch-b");
+  assert.notEqual(f.runtime.session.sessionManager.getLeafId(), checkpoint);
+  const result = surface().replace(ctx(), draft.revision, draft.memory.slots[0]!.id, "from-other-branch");
+  assert.equal(result.ok, false);
+  assert.equal(result.ok ? "" : result.code, "conflict");
+  const current = surface().read(ctx());
+  const ok = surface().replace(ctx(), current.revision, current.memory.slots[0]!.id, "on-selected-branch");
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+});
+
 test("growing edits obey M budget; delete/shorten may reduce over-budget M without moving K", async t => {
   const { f, surface, ctx } = await prepared(t);
   const beforeActive = project(f.runtime.session.sessionManager.buildContextEntries()).active.map(e => e.entryId);
@@ -231,16 +247,55 @@ test("empty text, unknown budget, and skipped save do not append", async t => {
 test("native append I/O failure is unconfirmed and does not claim unchanged memory", async t => {
   const { f, surface, ctx } = await prepared(t);
   const file = f.runtime.session.sessionFile!;
+  const beforeText = surface().read(ctx()).memory.slots[0]!.text;
   await rename(file, file + ".saved"); await mkdir(file);
-  try {
-    const view = surface().read(ctx());
-    const result = surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, "Unconfirmed write");
-    assert.equal(result.ok, false);
-    assert.equal(result.ok ? "" : result.code, "unconfirmed");
-    assert.notEqual(JSON.stringify(result.ok ? undefined : result.view.memory), JSON.stringify(view.memory));
-  } finally {
-    await rm(file, { recursive: true }); await rename(file + ".saved", file);
-  }
+  const view = surface().read(ctx());
+  const result = surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, "Unconfirmed write");
+  assert.equal(result.ok, false);
+  assert.equal(result.ok ? "" : result.code, "unconfirmed");
+  assert.equal(result.ok ? false : result.view.status.unconfirmed, true);
+  assert.notEqual(JSON.stringify(result.ok ? undefined : result.view.memory), JSON.stringify(view.memory));
+  await rm(file, { recursive: true }); await rename(file + ".saved", file);
+  const reread = surface().read(ctx());
+  assert.equal(reread.status.unconfirmed, true);
+  const again = surface().replace(ctx(), reread.revision, reread.memory.slots[0]!.id, "Follow-up without reconcile");
+  assert.equal(again.ok, false);
+  assert.equal(again.ok ? "" : again.code, "unconfirmed");
+  await f.runtime.switchSession(file);
+  const restored = surface().read(ctx());
+  assert.equal(restored.status.unconfirmed, false);
+  assert.equal(restored.memory.slots[0]?.text, beforeText);
+  const reopened = SessionManager.open(file, f.sessionDir);
+  assert.equal(project(reopened.buildContextEntries()).memory.slots[0]?.text, beforeText);
+  const saved = surface().replace(ctx(), restored.revision, restored.memory.slots[0]!.id, "After native reload");
+  assert.equal(saved.ok, true, JSON.stringify(saved));
+  assert.equal(project(SessionManager.open(file, f.sessionDir).buildContextEntries()).memory.slots[0]?.text, "After native reload");
+});
+
+test("abortCompaction failed terminal unlocks save; overlapping compact does not stick occupied", async t => {
+  const { f, surface, ctx } = await prepared(t);
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  f.respond(async context => {
+    started.resolve();
+    await release.promise;
+    return memoryPatch(context);
+  });
+  f.seed("freeze");
+  const compacting = f.runtime.session.compact();
+  await started.promise;
+  const during = surface().read(ctx());
+  const blocked = surface().replace(ctx(), during.revision, during.memory.slots[0]!.id, "during freeze");
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.ok ? "" : blocked.code, "occupied");
+  const second = f.runtime.session.compact();
+  f.runtime.session.abortCompaction();
+  release.resolve();
+  await Promise.allSettled([compacting, second]);
+  const after = surface().read(ctx());
+  assert.equal(after.status.occupied, false);
+  const saved = surface().replace(ctx(), after.revision, after.memory.slots[0]!.id, "after failed terminal");
+  assert.equal(saved.ok, true, JSON.stringify(saved));
 });
 
 test("legacy summary plus later manual revision is effective M", async t => {

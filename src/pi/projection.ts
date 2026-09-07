@@ -49,10 +49,19 @@ export function entriesAfterLatestCheckpoint(entries: readonly SessionEntry[], l
   return current ? after.reverse() : [];
 }
 
-export function memoryRevision(sessionId: string, entries: readonly SessionEntry[]): string {
+export function memoryRevision(sessionId: string, leafId: string | null, entries: readonly SessionEntry[]): string {
   const latest = entries.find(entry => entry.type === "compaction");
   const head = entriesAfterLatestCheckpoint(entries, latest?.id).findLast(isManualMemoryEntry)?.id ?? "";
-  return `${sessionId}\n${latest?.id ?? ""}\n${head}`;
+  return `${sessionId}\n${latest?.id ?? ""}\n${head}\n${leafId ?? ""}`;
+}
+
+/** Same session/checkpoint/manual head, and the read leaf is still the selected leaf or an ancestor of it. */
+export function revisionApplies(revision: string, sessionId: string, leafId: string | null, entries: readonly SessionEntry[], branch: readonly { id: string }[]): boolean {
+  const current = memoryRevision(sessionId, leafId, entries);
+  const read = revision.split("\n");
+  const now = current.split("\n");
+  if (read.length !== 4 || now.length !== 4 || read[0] !== now[0] || read[1] !== now[1] || read[2] !== now[2]) return false;
+  return read[3] === now[3] || Boolean(read[3] && branch.some(entry => entry.id === read[3]));
 }
 
 /** Input MUST be buildContextEntries() for the selected leaf, never getEntries(). */
