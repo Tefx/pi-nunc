@@ -945,7 +945,7 @@ phases:
   steps:
   - id: nunc.compatibility
     name: 修复原生 payload 兼容并交付完整检查与实测能力
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \"\
       policies/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -1040,6 +1040,31 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-07T08:20:33.184430Z'
+    done_at: '2026-09-07T09:22:18.519586+00:00'
+    evidence: 'Artifact: FF-integrated candidate de39770097502fb13ad224460ea6258a4a9ad7a0;
+      retained refs/retained/nunc-native-compat. Range631141f..de39770 preserves prior
+      b2eb1b5 accepted ticketless/native-headroom source. Payload callbacks now compare
+      JSON semantics, allow identity/noop and bounded metadata, reject unvalidated
+      input/tools/media/thinking; preserve native cap path/value and stream/model
+      controls. Parent found and required closure of netting/tool/media/native-cap
+      omissions and async capacity recovery; reviewed subsequent deltas. Live observer
+      reservation split from capacity (GrokW=O works), tracked native observer composes
+      observe+identity. Exact user extension/delta remains UNKNOWN, explicitly carried
+      into mandatory live requirement rather than claimed resolved. No real provider
+      or credential effects by producer. Verification: exact final candidate full
+      scripts/check.mjs all producer exit0 241/241 27files; FF preserves identical
+      check inputs. Earlier root full2a6576c240/241 exposed real fixture reload/catalog
+      synchronization race, not ignored: de39770 polls public get_available_models
+      for expected effective model before selecting; assertion unchanged. Final root
+      affected lifecycle check exit0 PROVEN_CONTROLLED29requests3checkpoints at .scratch/native-compat-integrated-lifecycle.log,
+      evidence .scratch/stock/run-OWgoWV. Earlier root full remaining240 applicable
+      unchanged plus final producer full; no rerun for proof-of-proof. Actual stock
+      loader/callback/serializer controlledHTTP cases include JSONcopy/inplace/metadata/later
+      handler, overcap/alias cap/dropstream/dropmodel/growth zeroHTTP, uncapped/raw/media/tool/cancel/TUI
+      native lifecycle. No UI/global install/push/defaults changes; protected .pi/dashboard
+      remain untouched. Downstream verify-live existing c2/c3 supports actual native
+      Luna/Flash/Grok low with maxCostUsd:null and finite ceilings; live independently
+      required next, no model-quality claim.'
   - id: nunc.compatibility-live
     name: 真实验证三路线原生管线并完成整合接受
     status: pending
