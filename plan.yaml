@@ -1549,7 +1549,7 @@ phases:
       inputs.'
 - id: nunc-ui
   name: Nunc 状态、Slots 管理与 Context 布局界面
-  status: pending
+  status: in_progress
   gate: 最终整合接受放在 nunc.ui-panel 完成程序，由 Orchestrator 判断；不新增 gate step。范围包含 nunc-ui 的人工记忆状态、Context
     观察、完整双 tab/compact footer，以及 nunc-v1/native-compat/cooperative-root-cause 全部适用核心结果和当前预算/命令合同。最终不可变整合候选的完整原生
     offline inventory 通过，docs/UI.md 全部必要行为有实际 native TUI/保存/恢复/竞态/观察边界证据，K/队列/在途请求及原生
@@ -1559,7 +1559,7 @@ phases:
   steps:
   - id: nunc.ui-memory
     name: 原生人工记忆提交、唯一有效 M 与恢复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"tests/pi/**\"\
       , \"tests/engine/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
@@ -1616,6 +1616,8 @@ phases:
     - package-lock.json
     - .node-version
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-07T17:44:49.529922Z'
   - id: nunc.ui-context
     name: 有范围的 Context 布局与请求/维护观察
     status: pending
