@@ -62,6 +62,33 @@ project_guidance: 当前仅执行 native-compat：nunc.compatibility 由 node-ty
   Orchestrator 绑定有限有目的的总 call/token/time/output reservations、新任务选择和清理，不询问重复预算批准。授权不证明订阅免费或实付金额。禁止原始失败输入重放、旧
   target 重跑、无限重试、daily-session 运行、全局安装/配置、宿主 patch、替代启动器、队列操作、发布或 push。缺可写 runner/check
   留 producer；DONE 后新缺口保留历史，经 Planner 接入兼容修复，再继续同一未完成消费者。
+clipboard:
+  author: vectl-orchestrator
+  summary: Three native routes proven; original extension composition still unknown
+  content: 'native-compat: producer nunc.compatibility DONE, live nunc.compatibility-live
+    remains CLAIMED integration-verifier and NOT accepted. Integrated immutable HEAD1e281b80cbf3f250a8dfa9b6ec7c768d49633ff2/productde39770097502fb13ad224460ea6258a4a9ad7a0,
+    source clean except protected untracked.pi/dashboard. Full producer241/24127files
+    applicable unchanged + final root lifecycle29requests3checkpoints verified. Final
+    live bound report /private/tmp/nunc-native-compat-live-bIKTsA/verifier-report-maintenance.json
+    validated with review-binding.json: valid MISSING_OBSERVATION,11PROVEN1UNPROVEN
+    original-failing-composition. Result-maintenance.md independent evidence: Luna/Flash/Grok
+    low each complete c2three rollover checkpoints plus c3checkpoint/process-resume/constraint
+    artifacts;12 full extractions zero omissions;85 cumulativecalls69,993,984reserved147,915reportedtokens337.645s,
+    all terminals/no running boundhosts, billingunknown. Original first22call batch
+    no maintenance due keepRecent20k; preserved, not replayed; new63call batch named
+    keepRecent1/H60000/full/calibration config passed all routes. Old/new targets
+    single-use retained, no automatic further spending. Only material gap: actual
+    user failing extension names/versions/order/delta unknown, do NOT infer original
+    cause solved from identity test. Need user nonsecret combination info then decide
+    matching supported observation; no source/payload/header/credentials needed. Report/effects
+    paths result-maintenance.md,effects-reconciliation-maintenance.json. No running
+    subagents. Latest child integration-verifier task /Users/tefx/.pi/larva/child-sessions/2026-09-07T09-25-34-868Z_01a07b2f-f214-7586-b2d7-19dbcef25142.jsonl
+    terminal success meaning task evidence,reportBLOCKED. Do not complete live or
+    phase while necessaryUNPROVEN. Reusable helpers: /tmp/nunc-native-compat-live-bIKTsA/helpers
+
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
+  written_at: '2026-09-07T09:55:23.463248Z'
+  expires_at: '2026-09-08T09:55:23.463248Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
