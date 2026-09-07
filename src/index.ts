@@ -142,14 +142,36 @@ export default function nunc(pi: ExtensionAPI): void {
       event.signal.removeEventListener("abort", abort); running = undefined;
     }
   });
-  pi.registerCommand("nunc", { description: "Show Nunc configuration and current memory count (no request)", handler: async (_args, ctx) => {
+  pi.registerCommand("nunc", { description: "Show memory status; /nunc details for budget details (no request)",
+    getArgumentCompletions: prefix => "details".startsWith(prefix.trimStart())
+      ? [{ value: "details", label: "details", description: "查看预算与最近维护详情" }] : null,
+    handler: async (args, ctx) => {
     try {
+      const mode = args.trim();
+      if (mode && mode !== "details") { notify(ctx, "用法：/nunc [details]"); return; }
       supported(ctx);
       const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd), memory = project(ctx.sessionManager.buildContextEntries()).memory;
       const config = ctx.model ? engineConfig(selection.config, ctx.model, settings(ctx).compaction) : undefined;
-      const limits = config && ctx.model ? `main planned input=${inputLimit(ctx.model, config.main)}, output reserve=${config.main.nativeOutputReserve ?? config.main.outputTokens}; extraction planned input=${inputLimit(ctx.model, config.extraction)}, output reserve=${config.extraction.outputTokens}, cap=${omitsSerializedOutputCap(ctx.model) ? "none" : config.extraction.outputTokens}; safety=${config.extraction.safetyTokens}` : "model budget unknown";
-      const last = lastAccounting ? ` Last extraction: full=${lastAccounting.fullExtractionTokens}, selected=${lastAccounting.extractionTokens}, normal headroom=${lastAccounting.normalHeadroomSufficient}, suggested Pi reserve>=${lastAccounting.suggestedReserveTokens}, input/output exceeded plan=${lastAccounting.inputExceededPlan}/${lastAccounting.outputExceededPlan}.` : " No extraction observed in this context.";
-      notify(ctx, `Pi ${VERSION}: ${memory.slots.length} slots; H=${config?.triggerTokens ?? "unknown"}; ${limits}. Estimates use Pi heuristics or applicable usage, not hard token bounds.${last} Pi owns compaction and persistence; native request admission preserves queues.`, "info");
+      const count = (n: number) => n.toLocaleString("en-US");
+      const summary = [`记忆：${memory.slots.length} 条`, `压缩触发：${config ? count(config.triggerTokens) + " tokens" : "未选择模型"}`];
+      if (!mode) { notify(ctx, [...summary, "预算详情：/nunc details"].join("\n"), "info"); return; }
+      const details = config && ctx.model ? [
+        "", "输入预算（tokens）",
+        `  主请求：${count(inputLimit(ctx.model, config.main))}`,
+        `  维护：${count(inputLimit(ctx.model, config.extraction))}`,
+        "", "输出预留（tokens）",
+        `  主请求：${count(config.main.nativeOutputReserve ?? config.main.outputTokens)}`,
+        `  维护：${count(config.extraction.outputTokens)}`,
+        `  维护输出 cap：${omitsSerializedOutputCap(ctx.model) ? "无" : count(config.extraction.outputTokens)}`,
+        `安全余量：${count(config.extraction.safetyTokens)} tokens`,
+      ] : [];
+      const last = lastAccounting ? [
+        "", "最近维护（本上下文）",
+        `  输入估算：完整 ${count(lastAccounting.fullExtractionTokens)} → 选用 ${count(lastAccounting.extractionTokens)}`,
+        `  正常触发余量：${lastAccounting.normalHeadroomSufficient ? "充足" : "不足；建议 reserveTokens ≥ " + count(lastAccounting.suggestedReserveTokens)}`,
+        `  超出规划记录：输入${lastAccounting.inputExceededPlan ? "有" : "无"} / 输出${lastAccounting.outputExceededPlan ? "有" : "无"}`,
+      ] : ["", "本上下文暂无维护记录。"];
+      notify(ctx, [...summary, ...details, ...last, "", `Pi ${VERSION} · 预算为估算值`].join("\n"), "info");
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid configuration"); }
   } });
 }

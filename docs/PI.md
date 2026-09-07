@@ -11,7 +11,7 @@ Build with the locked local tools (`npm run build`), then choose the extension e
   -e /absolute/pi-nunc/dist/src/index.js --nunc-config /absolute/nunc.json
 ```
 
-`package.json` also declares `pi.extensions`. Omit the flag for Nunc defaults. Relative configuration paths resolve from Pi's cwd; `policyFile` resolves from the configuration file's directory. Nunc reads these files without writing them. `/nunc` shows the current slot count, threshold and support diagnostics without making a request. Remove the extension resource and use stock `/reload`, or start without it, to unload. Existing summaries remain readable by stock Pi.
+`package.json` also declares `pi.extensions`. Omit the flag for Nunc defaults. Relative configuration paths resolve from Pi's cwd; `policyFile` resolves from the configuration file's directory. Nunc reads these files without writing them. `/nunc` shows a three-line memory count and compaction-trigger summary without making a request. `/nunc details` adds grouped input/output budgets, the maintenance cap and latest maintenance observations; numeric budgets use thousands separators. Both commands leave the transcript unchanged. The native argument completion menu suggests `details` after `/nunc ` or a matching prefix such as `/nunc d`. Remove the extension resource and use stock `/reload`, or start without it, to unload. Existing summaries remain readable by stock Pi.
 
 ```json
 {

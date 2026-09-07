@@ -46,12 +46,57 @@ test("equal 500k context/output capabilities leave main input room without chang
   }
 });
 
-test("registered /nunc command handles the public prompt path without a model or transcript mutation", async t => {
+test("loaded /nunc command completes details by argument prefix without side effects", async t => {
   const f = await fixture(); t.after(() => f.close());
+  const command = f.runtime.services.resourceLoader.getExtensions().extensions
+    .flatMap(extension => [...extension.commands.values()]).find(command => command.name === "nunc");
+  assert(command?.getArgumentCompletions);
   const entries = f.runtime.session.sessionManager.getEntries();
-  await f.runtime.session.prompt("/nunc");
+  for (const prefix of ["", "d", "det", "details", " d"]) {
+    assert.deepEqual(await command.getArgumentCompletions(prefix), [
+      { value: "details", label: "details", description: "查看预算与最近维护详情" },
+    ]);
+  }
+  for (const prefix of ["unknown", "details ", "details x"]) {
+    assert.equal(await command.getArgumentCompletions(prefix), null);
+  }
   assert.equal(f.faux.state.callCount, 0);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
+});
+
+test("registered /nunc renders a compact summary and opt-in budget details without model calls or transcript changes", async t => {
+  const messages: string[] = [];
+  const f = await fixture({ extras: [{ name: "capture-nunc-status", factory(pi) {
+    pi.events.on("nunc:diagnostic", value => {
+      if (value && typeof value === "object" && "message" in value && typeof value.message === "string") messages.push(value.message);
+    });
+  } }] });
+  t.after(() => f.close());
+  const entries = f.runtime.session.sessionManager.getEntries();
+  await f.runtime.session.prompt("/nunc");
+  assert.equal(messages.at(-1), "记忆：0 条\n压缩触发：24,000 tokens\n预算详情：/nunc details");
+  await f.runtime.session.prompt("/nunc details");
+  assert.equal(messages.at(-1), [
+    "记忆：0 条", "压缩触发：24,000 tokens", "", "输入预算（tokens）",
+    "  主请求：50,784", "  维护：50,784", "", "输出预留（tokens）",
+    "  主请求：8,192", "  维护：8,192", "  维护输出 cap：8,192", "安全余量：1,024 tokens",
+    "", "本上下文暂无维护记录。", "", "Pi 0.85.1 · 预算为估算值",
+  ].join("\n"));
+  await f.runtime.session.prompt("/nunc unknown");
+  assert.equal(messages.at(-1), "用法：/nunc [details]");
+  assert.equal(f.faux.state.callCount, 0);
+  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const saved = f.runtime.session.sessionManager.getEntries();
+  const calls = f.faux.state.callCount;
+  await f.runtime.session.prompt("/nunc");
+  assert.equal(messages.at(-1), "记忆：1 条\n压缩触发：24,000 tokens\n预算详情：/nunc details");
+  await f.runtime.session.prompt("/nunc details");
+  const accounting = f.events.at(-1)!.result.observations.accounting!;
+  assert(messages.at(-1)!.includes(`最近维护（本上下文）\n  输入估算：完整 ${accounting.fullExtractionTokens.toLocaleString("en-US")} → 选用 ${accounting.extractionTokens.toLocaleString("en-US")}`));
+  assert.equal(f.faux.state.callCount, calls);
+  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), saved);
 });
 
 test("stock CLI-style public settings files work without an SDK callback and remain read-only", async t => {
