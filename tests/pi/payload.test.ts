@@ -64,9 +64,33 @@ test("payloadOutputCeiling reads Completions, Responses and Gemini generationCon
   assert.equal(payloadOutputCeiling({ max_output_tokens: 9 }), 9);
   assert.equal(payloadOutputCeiling({ max_completion_tokens: 10 }), 10);
   assert.equal(payloadOutputCeiling({ generationConfig: { maxOutputTokens: 11 } }), 11);
+  assert.equal(payloadOutputCeiling({ config: { maxOutputTokens: 12 } }), 12);
   assert.equal(payloadOutputCeiling({ stream: true }), undefined);
   assert.equal(outputCapState({ max_tokens: "16" }).kind, "invalid");
   assert.equal(outputCapState({ max_tokens: 16, max_output_tokens: 32 }).kind, "conflict");
+});
+
+test("Google nested config and Completions n are control, not metadata", () => {
+  const google = { model: model.id, contents: [{ role: "user", parts: [{ text: "a" }] }], config: { maxOutputTokens: 128 } };
+  const expanded = { ...google, config: { ...google.config, maxOutputTokens: 256 } };
+  const output = classifyPayloadChange(google, expanded, "replacement");
+  assert.deepEqual(output.categories, ["output"]);
+  assert.equal(output.outputBefore, 128);
+  assert.equal(output.outputAfter, 256);
+  assert.throws(() => authPayload({ model, delta: output, before: google, after: expanded, inputTokens: 100, inputLimit: 1000, authorizedOutput: 128 }), /native serialized ceiling|exceeds authorization/);
+  const system = { ...google, config: { ...google.config, systemInstruction: "rewrite" } };
+  assert.throws(() => authPayload({ model, delta: classifyPayloadChange(google, system, "replacement"), before: google, after: system, inputTokens: 100, inputLimit: 1000, authorizedOutput: 128 }), /unvalidated payload input/);
+  const tools = { ...google, config: { ...google.config, tools: [{ functionDeclarations: [{ name: "x" }] }] } };
+  assert.throws(() => authPayload({ model, delta: classifyPayloadChange(google, tools, "replacement"), before: google, after: tools, inputTokens: 100, inputLimit: 1000, authorizedOutput: 128 }), /unvalidated payload tools/);
+  const thinking = { ...google, config: { ...google.config, thinkingConfig: { thinkingBudget: 8 } } };
+  assert.throws(() => authPayload({ model, delta: classifyPayloadChange(google, thinking, "replacement"), before: google, after: thinking, inputTokens: 100, inputLimit: 1000, authorizedOutput: 128 }), /unvalidated payload thinking/);
+  const completions = { model: model.id, stream: true, max_tokens: 16, messages: [{ role: "user", content: "a" }] };
+  const multi = { ...completions, n: 2 };
+  const nDelta = classifyPayloadChange(completions, multi, "replacement");
+  assert.deepEqual(nDelta.categories, ["control"]);
+  assert.throws(() => authPayload({ model, delta: nDelta, before: completions, after: multi, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /unvalidated payload control/);
+  const unknown = { prompt: "a" };
+  authPayload({ model, delta: classifyPayloadChange(unknown, unknown, "identity"), before: unknown, after: unknown, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
 });
 
 test("same-length input mutation, netted growth, extra image, audio, cap expansion and omitted cap fail", () => {
@@ -140,6 +164,7 @@ function payloadExtra(mode: () => string, second?: (payload: Record<string, unkn
         case "grow": return { ...rec, nunc_fixture: "n".repeat(50000) };
         case "orphan-input": return { ...rec, ...(Array.isArray(rec.input) ? { input: [...rec.input, { role: "tool", call_id: "missing", type: "function_call_output", output: "x" }] } : { messages: [...(Array.isArray(rec.messages) ? rec.messages : []), { role: "tool", tool_call_id: "missing", content: "x" }] }) };
         case "illegal-model": return { ...rec, model: "outside-selection" };
+        case "multi-choice": return { ...rec, n: 2 };
         case "alias-cap": {
           const cap = rec.max_output_tokens;
           if (typeof cap !== "number") return rec;
@@ -219,7 +244,7 @@ test("later before_provider_request replacement wins; overcap, non-stream, growt
   assert.equal(order.sends(), 1);
   assert.equal(order.bodies[0]?.nunc_fixture, "meta");
   assert.equal(order.bodies[0]?.nunc_later, true);
-  for (const mode of ["overcap", "expand-cap", "alias-cap", "nostream", "drop-stream", "drop-model", "grow", "orphan-input", "illegal-model"] as const) {
+  for (const mode of ["overcap", "expand-cap", "alias-cap", "nostream", "drop-stream", "drop-model", "grow", "orphan-input", "illegal-model", "multi-choice"] as const) {
     const run = await nativeMain(t, () => mode);
     assert.equal(run.sends(), 0, mode);
     const last = run.f.runtime.session.messages.at(-1);

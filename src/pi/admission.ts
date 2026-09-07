@@ -64,6 +64,10 @@ export class Admission {
     try { this.pi.events.emit("nunc:admission", value); } catch { /* Notification-only consumers. */ }
   }
   private dispatch(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
+    const entry = this.installed.get(model.provider);
+    if (!entry || entry.wrapper !== wrapper) {
+      return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
+    }
     const scope = this.maintenance.getStore();
     const ownedMaintenance = !simple && scope && !scope.used && scope.request.context === context &&
       scope.request.signal === options?.signal && scope.request.outputTokens === options.maxTokens &&

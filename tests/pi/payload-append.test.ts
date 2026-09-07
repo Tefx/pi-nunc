@@ -1,7 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 import type { Api, Context, Model, Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
@@ -10,21 +8,15 @@ import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { EngineError } from "../../src/engine/validation.js";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
+import { SYNTHETIC_LAST_USER_APPEND_B } from "../../src/live/append-b.js";
 import {
-  applyLastUserTextAppend, authorizePayload, canonicalJson, classifyPayloadChange, jsonView, lastUserTextAppend, payloadMode,
+  applyLastUserTextAppend, authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, payloadMode,
 } from "../../src/pi/payload.js";
 import { model } from "../engine/fixtures.js";
 import { fixture } from "./fixtures.js";
 
-const DASEIN_INJECTOR = "/Users/tefx/Projects/dasein-pi-extension/src/core/provider-payload-injector.ts";
 const SYNTHETIC = SYNTHETIC_LAST_USER_APPEND;
-
-type DaseinInjector = { injectAmbientProviderPayload: (input: { payload: unknown; content: string }) => { changed: boolean; payload: unknown } };
-
-async function loadDaseinInjector(): Promise<DaseinInjector> {
-  assert.equal(existsSync(DASEIN_INJECTOR), true, `readonly Dasein injector required: ${DASEIN_INJECTOR}`);
-  return await import(pathToFileURL(DASEIN_INJECTOR).href) as DaseinInjector;
-}
+const SYNTHETIC_B = SYNTHETIC_LAST_USER_APPEND_B;
 
 function authorize(before: unknown, after: unknown, extra: Partial<Parameters<typeof authorizePayload>[0]> = {}) {
   const beforeView = jsonView(before);
@@ -92,7 +84,7 @@ async function nativeCatalogAppend(t: { after: (fn: () => Promise<void> | void) 
   return { f, catalog: args.catalog, sends: () => sends, bodies, admissions };
 }
 
-async function nativeAppend(t: { after: (fn: () => Promise<void> | void) => void }, inject: (payload: unknown) => unknown) {
+async function nativeAppend(t: { after: (fn: () => Promise<void> | void) => void }, inject: (payload: unknown) => unknown, second?: (payload: unknown) => unknown) {
   let sends = 0;
   const bodies: Record<string, unknown>[] = [];
   const admissions: Array<{ outcome?: string; code?: string; payload?: { mode?: string; categories?: string[]; transform?: string } }> = [];
@@ -114,6 +106,7 @@ async function nativeAppend(t: { after: (fn: () => Promise<void> | void) => void
     { name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as typeof admissions[number])); } },
     { name: "append", factory(pi) { pi.on("before_provider_request", event => inject(event.payload)); } },
   ];
+  if (second) extras.push({ name: "append-b", factory(pi) { pi.on("before_provider_request", event => second(event.payload)); } });
   const f = await fixture({ config: { budget: { inputLimit: 8000 } }, extras });
   t.after(() => f.close());
   new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
@@ -156,6 +149,14 @@ test("last-user append wraps Completions string content and Responses array pref
   const delta = authorize(responses, added.payload);
   assert(delta.categories.includes("input"));
   assert.equal(delta.imagesAdded, 0);
+
+  const twice = applyLastUserTextAppend(wrapped.payload, SYNTHETIC_B);
+  assert.equal(twice.changed, true);
+  assert.equal(lastUserTextAppend(jsonView(completions), jsonView(twice.payload)).ok, true);
+  authorize(completions, twice.payload);
+  const twiceContent = (twice.payload as { messages: { content: Array<{ text?: string }> }[] }).messages[1]?.content;
+  assert.equal(twiceContent?.at(-2)?.text, SYNTHETIC);
+  assert.equal(twiceContent?.at(-1)?.text, SYNTHETIC_B);
 });
 
 test("unvalidated last-user rewrite, reorder, netting, media replace and tool change stay rejected", () => {
@@ -224,24 +225,6 @@ test("append charges Nunc input headroom separately from Pi estimateContextToken
   assert.throws(() => authorize(orBefore, orHuge.payload, { model: orGrok, context, inputTokens: 90000, inputLimit: 450000, authorizedOutput: orGrok.maxTokens }), /after native output clamp/);
 });
 
-test("tracked last-user append matches the read-only Dasein injector on synthetic payloads", async () => {
-  const dasein = await loadDaseinInjector();
-  const cases: unknown[] = [
-    { model: "m", stream: true, messages: [{ role: "user", content: "ask" }] },
-    { model: "m", stream: true, messages: [{ role: "user", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] },
-    { model: "m", stream: true, input: [{ role: "user", content: "ask" }] },
-    { model: "m", stream: true, input: [{ role: "assistant", content: "no" }] },
-    { model: "m", stream: true, input: [{ role: "user", content: "" }] },
-    { model: "m", stream: true },
-  ];
-  for (const payload of cases) {
-    const ours = applyLastUserTextAppend(payload, SYNTHETIC);
-    const theirs = dasein.injectAmbientProviderPayload({ payload, content: SYNTHETIC });
-    assert.equal(ours.changed, theirs.changed, canonicalJson(payload));
-    assert.equal(canonicalJson(ours.payload), canonicalJson(theirs.payload), canonicalJson(payload));
-  }
-});
-
 test("stock loader last-user append reaches Responses HTTP; original text and tools stay", { timeout: 90000 }, async t => {
   const run = await nativeAppend(t, payload => {
     const result = applyLastUserTextAppend(payload, SYNTHETIC);
@@ -260,18 +243,20 @@ test("stock loader last-user append reaches Responses HTTP; original text and to
   assert.doesNotMatch(JSON.stringify(run.admissions), new RegExp(SYNTHETIC));
 });
 
-test("real Dasein injector last-user append reaches Responses HTTP", { timeout: 90000 }, async t => {
-  const dasein = await loadDaseinInjector();
-  const run = await nativeAppend(t, payload => {
-    const result = dasein.injectAmbientProviderPayload({ payload, content: SYNTHETIC });
-    return result.changed ? result.payload : undefined;
-  });
+test("two last-user append hooks reach Responses HTTP with both suffix parts", { timeout: 90000 }, async t => {
+  const run = await nativeAppend(
+    t,
+    payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC); return result.changed ? result.payload : undefined; },
+    payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC_B); return result.changed ? result.payload : undefined; },
+  );
   assert.equal(run.sends(), 1);
   const input = run.bodies[0]?.input;
   assert(Array.isArray(input));
   const lastUser = [...input].reverse().find((item): item is { content: Array<{ text?: string }> } =>
     !!item && typeof item === "object" && (item as { role?: unknown }).role === "user");
-  assert.equal(lastUser?.content.at(-1)?.text, SYNTHETIC);
+  assert.equal(lastUser?.content.at(-2)?.text, SYNTHETIC);
+  assert.equal(lastUser?.content.at(-1)?.text, SYNTHETIC_B);
+  assert(run.admissions.some(a => a.outcome === "delegate" && a.payload?.transform === "last-user-text-append"));
 });
 
 test("xai grok-4.6 80k last-user append reaches Responses HTTP; overlarge append is zero-send", { timeout: 90000 }, async t => {

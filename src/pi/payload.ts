@@ -4,7 +4,7 @@ import { omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
-export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "metadata";
+export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "control" | "metadata";
 export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[]; transform?: "last-user-text-append" }
 export interface PayloadDelta {
   mode: PayloadMode;
@@ -24,13 +24,14 @@ export type OutputCapState =
 
 const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens", "generationConfig"]);
 const INPUT_KEYS = new Set(["messages", "input", "contents", "system", "instructions", "prompt", "system_instruction", "systemInstruction"]);
-const TOOL_KEYS = new Set(["tools", "functions", "tool_choice", "toolChoice"]);
+const TOOL_KEYS = new Set(["tools", "functions", "tool_choice", "toolChoice", "toolConfig"]);
 const STREAM_KEYS = new Set(["stream", "background"]);
 const MODEL_KEYS = new Set(["model"]);
 const THINKING_KEYS = new Set(["thinking", "reasoning", "thinkingConfig", "reasoning_effort", "reasoningEffort", "reasoning_details"]);
+const CONTROL_KEYS = new Set(["n"]);
 const IMAGE_TYPES = new Set(["image", "input_image", "image_url"]);
 const UNSUPPORTED_TYPES = new Set(["audio", "input_audio", "pdf", "document", "video", "file", "input_file"]);
-const UNVALIDATED = new Set<PayloadCategory>(["input", "tools", "media", "thinking"]);
+const UNVALIDATED = new Set<PayloadCategory>(["input", "tools", "media", "thinking", "control"]);
 const CAP_KEYS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
 
 /** JSON-enumerable view. Drops prototypes, undefined, functions; matches HTTP JSON bytes. */
@@ -57,11 +58,18 @@ function subtreeSize(view: unknown, keys: Set<string>): number {
   return size;
 }
 
+function takeOutputCap(body: Record<string, unknown>, take: (value: unknown) => void): void {
+  for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) take(body[key]);
+  if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) take(body.generationConfig.maxOutputTokens);
+  if (record(body.config) && Object.hasOwn(body.config, "maxOutputTokens")) take(body.config.maxOutputTokens);
+}
+
 export function outputCapPaths(body: unknown): string[] {
   if (!record(body)) return [];
   const paths: string[] = [];
   for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) paths.push(key);
   if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) paths.push("generationConfig.maxOutputTokens");
+  if (record(body.config) && Object.hasOwn(body.config, "maxOutputTokens")) paths.push("config.maxOutputTokens");
   return paths.sort();
 }
 
@@ -73,8 +81,7 @@ export function outputCapState(body: unknown): OutputCapState {
     if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) invalid = true;
     else found.push(value);
   };
-  for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) take(body[key]);
-  if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) take(body.generationConfig.maxOutputTokens);
+  takeOutputCap(body, take);
   if (invalid) return { kind: "invalid" };
   if (found.length === 0) return { kind: "missing" };
   if (found.some(n => n !== found[0])) return { kind: "conflict" };
@@ -93,7 +100,24 @@ function categorize(key: string): PayloadCategory {
   if (STREAM_KEYS.has(key)) return "stream";
   if (MODEL_KEYS.has(key)) return "model";
   if (THINKING_KEYS.has(key)) return "thinking";
+  if (CONTROL_KEYS.has(key)) return "control";
   return "metadata";
+}
+
+function classifyGoogleConfig(beforeVal: unknown, afterVal: unknown, categories: Set<PayloadCategory>): void {
+  if (!record(beforeVal) && !record(afterVal)) {
+    if (canonical(beforeVal) !== canonical(afterVal)) categories.add("metadata");
+    return;
+  }
+  const beforeRec = record(beforeVal) ? beforeVal : {};
+  const afterRec = record(afterVal) ? afterVal : {};
+  let nested = false;
+  for (const key of new Set([...Object.keys(beforeRec), ...Object.keys(afterRec)])) {
+    if (canonical(beforeRec[key]) === canonical(afterRec[key])) continue;
+    nested = true;
+    categories.add(key === "maxOutputTokens" ? "output" : categorize(key));
+  }
+  if (!nested && canonical(beforeVal) !== canonical(afterVal)) categories.add("metadata");
 }
 
 interface BlockCensus { images: number; unsupported: string[] }
@@ -122,7 +146,8 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
   const afterRec = record(afterView) ? afterView : {};
   for (const key of new Set([...Object.keys(beforeRec), ...Object.keys(afterRec)])) {
     if (canonical(beforeRec[key]) === canonical(afterRec[key])) continue;
-    categories.add(categorize(key));
+    if (key === "config") classifyGoogleConfig(beforeRec[key], afterRec[key], categories);
+    else categories.add(categorize(key));
   }
   if (!record(beforeView) || !record(afterView)) {
     if (canonical(beforeView) !== canonical(afterView)) categories.add("metadata");
@@ -173,7 +198,7 @@ function appendTextPart(message: Record<string, unknown>, content: string, textP
   return null;
 }
 
-/** Last-user text append: clone input[]/messages[], keep prefix, wrap a nonempty string, add one text part. */
+/** Last-user text append: clone input[]/messages[], keep prefix, wrap a nonempty string, add one text part. Authorization accepts a nonempty pure-text suffix of one or more such parts. */
 export function applyLastUserTextAppend(payload: unknown, content: string): LastUserTextAppendResult {
   if (content.trim().length === 0) return { changed: false, payload, reason: "empty-content" };
   if (!record(payload)) return { changed: false, payload, reason: "unsupported-payload-shape" };
@@ -198,19 +223,23 @@ function addedLastUserText(beforeContent: unknown, afterContent: unknown, partTy
     if (!record(value) || value.type !== partType || typeof value.text !== "string" || value.text.trim().length === 0) return false;
     return Object.keys(value).filter(k => value[k] !== undefined).sort().join("\0") === "text\0type";
   };
+  const suffix = (prefixLength: number, afterParts: unknown[], prefixEqual: (index: number) => boolean): string | undefined => {
+    if (!Array.isArray(afterParts) || afterParts.length <= prefixLength) return;
+    for (let i = 0; i < prefixLength; i++) if (!prefixEqual(i)) return;
+    const added: string[] = [];
+    for (let i = prefixLength; i < afterParts.length; i++) {
+      const part = afterParts[i];
+      if (!isPart(part)) return;
+      added.push(part.text);
+    }
+    return added.length ? added.join("") : undefined;
+  };
   if (typeof beforeContent === "string") {
-    if (beforeContent.trim().length === 0 || !Array.isArray(afterContent) || afterContent.length !== 2) return;
-    if (canonical(afterContent[0]) !== canonical(textPart(partType, beforeContent))) return;
-    if (!isPart(afterContent[1])) return;
-    return afterContent[1].text;
+    if (beforeContent.trim().length === 0 || !Array.isArray(afterContent)) return;
+    return suffix(1, afterContent, index => index === 0 && canonical(afterContent[0]) === canonical(textPart(partType, beforeContent)));
   }
-  if (!Array.isArray(beforeContent) || !Array.isArray(afterContent) || afterContent.length !== beforeContent.length + 1) return;
-  for (let i = 0; i < beforeContent.length; i++) {
-    if (canonical(beforeContent[i]) !== canonical(afterContent[i])) return;
-  }
-  const last = afterContent[afterContent.length - 1];
-  if (!isPart(last)) return;
-  return last.text;
+  if (!Array.isArray(beforeContent) || !Array.isArray(afterContent)) return;
+  return suffix(beforeContent.length, afterContent, index => canonical(beforeContent[index]) === canonical(afterContent[index]));
 }
 
 export function lastUserTextAppend(before: unknown, after: unknown): { ok: true; addedTokens: number; addedText: string } | { ok: false } {

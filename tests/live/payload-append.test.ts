@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import append, { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
-import { payloadAppendEnabled } from "../../src/live/contract.js";
+import appendB, { SYNTHETIC_LAST_USER_APPEND_B } from "../../src/live/append-b.js";
+import { payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled } from "../../src/live/contract.js";
 import { liveExtensionFlags } from "../../src/live/host.js";
 import observer from "../../src/live/observer.js";
 import { fixture } from "./fixtures.js";
@@ -13,11 +14,23 @@ import { fixture } from "./fixtures.js";
 test("payload-append override selects the tracked synthetic append extension", async () => {
   const input = await fixture();
   assert.equal(payloadAppendEnabled(input), false);
+  assert.equal(payloadAppendBEnabled(input), false);
+  assert.equal(providerWrapEnabled(input), false);
   assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js", "-e", "/repo/dist/src/index.js"]);
   input.overrides = [{ requirement: "payload-append", reason: "Exercise last-user text append on the selected native route" }];
   assert.equal(payloadAppendEnabled(input), true);
   assert.deepEqual(liveExtensionFlags("/repo", input), [
     "-e", "/repo/dist/src/live/observer.js", "-e", "/repo/dist/src/live/append.js", "-e", "/repo/dist/src/index.js",
+  ]);
+  input.overrides.push(
+    { requirement: "payload-append-b", reason: "Second synthetic last-user suffix" },
+    { requirement: "provider-wrap", reason: "Transparent Provider wrap after first settled turn" },
+  );
+  assert.equal(payloadAppendBEnabled(input), true);
+  assert.equal(providerWrapEnabled(input), true);
+  assert.deepEqual(liveExtensionFlags("/repo", input), [
+    "-e", "/repo/dist/src/live/observer.js", "-e", "/repo/dist/src/live/append.js", "-e", "/repo/dist/src/live/append-b.js",
+    "-e", "/repo/dist/src/live/wrap.js", "-e", "/repo/dist/src/index.js",
   ]);
 });
 
@@ -48,13 +61,14 @@ test("live observer plus append callback injects synthetic last-user text withou
     };
     observer(pi as unknown as ExtensionAPI);
     append(pi as unknown as ExtensionAPI);
+    appendB(pi as unknown as ExtensionAPI);
     let payload: unknown = { model: "engine-test", stream: true, messages: [{ role: "user", content: "hello" }] };
     for (const handler of handlers.get("before_provider_request") ?? []) {
       const next = handler({ payload });
       if (next !== undefined) payload = next;
     }
     assert.deepEqual((payload as { messages: Array<{ content: unknown }> }).messages[0]?.content, [
-      { type: "text", text: "hello" }, { type: "text", text: SYNTHETIC_LAST_USER_APPEND },
+      { type: "text", text: "hello" }, { type: "text", text: SYNTHETIC_LAST_USER_APPEND }, { type: "text", text: SYNTHETIC_LAST_USER_APPEND_B },
     ]);
     const log = await readFile(events, "utf8");
     assert.doesNotMatch(log, /nunc-synthetic-last-user-append/);

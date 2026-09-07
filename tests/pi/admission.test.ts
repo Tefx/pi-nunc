@@ -105,6 +105,29 @@ test("later context that breaks tool association is rejected before dispatch", a
   assert.match(last.errorMessage ?? "", /Orphan|Nunc local INPUT/);
 });
 
+test("wrapping the current Provider between settled calls still sends the next main request", async t => {
+  const f = await fixture();
+  t.after(() => f.close());
+  await f.runtime.session.prompt("First settled request");
+  assert.equal(f.faux.state.callCount, 1);
+  const id = f.faux.getModel().provider;
+  const registry = new ModelRegistry(f.modelRuntime);
+  const previous = registry.getProvider(id);
+  assert(previous);
+  let outerCalls = 0;
+  registry.registerProvider({
+    ...previous,
+    streamSimple: (model, context, options) => { outerCalls++; return previous.streamSimple(model, context, options); },
+    stream: (model, context, options) => { outerCalls++; return previous.stream(model, context, options); },
+  });
+  await f.runtime.session.prompt("Second settled request");
+  const last = f.runtime.session.messages.at(-1);
+  assert.equal(last?.role, "assistant");
+  assert.equal(last.stopReason, "stop", last.errorMessage ?? "");
+  assert.equal(f.faux.state.callCount, 2);
+  assert.equal(outerCalls, 1);
+});
+
 test("same-run streamSimple with a different model is rejected; the matching main request still sends", async t => {
   let side: AssistantMessage | undefined;
   const f = await fixture({ extras: [{ name: "model-mismatch", factory(pi) {

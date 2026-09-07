@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { object, payloadAppendEnabled, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
+import { object, payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
 export { toolPath } from "./tool-path.js";
 export function liveExtensionFlags(repository: string, input: RunInput): string[] {
   const flags = ["-e", join(repository, "dist/src/live/observer.js")];
   if (payloadAppendEnabled(input)) flags.push("-e", join(repository, "dist/src/live/append.js"));
+  if (payloadAppendBEnabled(input)) flags.push("-e", join(repository, "dist/src/live/append-b.js"));
+  if (providerWrapEnabled(input)) flags.push("-e", join(repository, "dist/src/live/wrap.js"));
   flags.push("-e", join(repository, "dist/src/index.js"));
   return flags;
 }

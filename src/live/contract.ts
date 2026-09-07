@@ -17,9 +17,20 @@ export function requireValue(value: unknown, code: string, message: string): ass
 export function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+function namedRequirement(input: { overrides?: Record<string, unknown>[] }, requirement: string): boolean {
+  return (input.overrides ?? []).some(o => object(o) && o.requirement === requirement);
+}
 /** Named live override: load the tracked synthetic last-user append callback. */
 export function payloadAppendEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
-  return (input.overrides ?? []).some(o => object(o) && o.requirement === "payload-append");
+  return namedRequirement(input, "payload-append");
+}
+/** Second tracked last-user append; compose with `payload-append` for two suffix parts. */
+export function payloadAppendBEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
+  return namedRequirement(input, "payload-append-b");
+}
+/** Transparent Provider wrap after the first settled turn so Nunc re-captures the chain. */
+export function providerWrapEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
+  return namedRequirement(input, "provider-wrap");
 }
 function keys(value: unknown, allowed: string[], label: string): asserts value is Record<string, unknown> {
   requireValue(object(value), "INPUT", `${label} must be an object`);
