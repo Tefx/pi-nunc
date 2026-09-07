@@ -56,7 +56,6 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_compact", () => { admission.invalidateUsage(); memory.endFreeze(); });
   pi.on("session_compact_failed", () => { if (!memory.noteForeignFailure()) memory.endFreeze(); });
   pi.on("session_start", (_event, ctx) => {
-    memory.clearUnconfirmed();
     invalidate();
     try {
       admission.ensure(ctx); supported(ctx);
@@ -74,7 +73,7 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_before_fork", invalidate);
   pi.on("session_before_tree", invalidate);
   pi.on("session_tree", invalidate);
-  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); memory.clearUnconfirmed(); invalidate(); admission.close(ctx); });
+  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); admission.close(ctx); });
   pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); });
   pi.on("thinking_level_select", invalidate);
   pi.on("agent_settled", () => admission.settled());

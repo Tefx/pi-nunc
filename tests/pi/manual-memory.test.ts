@@ -1,15 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, rename, mkdir, rm, writeFile } from "node:fs/promises";
-import { SessionManager, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { MANUAL_MEMORY_TYPE, memorySurface, type MemorySurface } from "pi-nunc/pi";
+import { bindHostSettings, MANUAL_MEMORY_TYPE, memorySurface, type MemorySurface } from "pi-nunc/pi";
 import { isManualMemoryEntry, project } from "../../src/pi/projection.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 
-function port(admissions?: AdmissionObservation[]): { extras: InlineExtension[]; surface: () => MemorySurface; ctx: () => ExtensionContext } {
-  let api: { events: { emit: (channel: string, data: unknown) => void } } | undefined;
+function port(admissions?: AdmissionObservation[]): {
+  extras: InlineExtension[];
+  surface: () => MemorySurface;
+  ctx: () => ExtensionContext;
+  pi: () => ExtensionAPI;
+} {
+  let api: ExtensionAPI | undefined;
   let ctx: ExtensionContext | undefined;
   return {
     extras: [{ name: "nunc-memory-port", factory(pi) {
@@ -19,6 +24,7 @@ function port(admissions?: AdmissionObservation[]): { extras: InlineExtension[];
     } }],
     surface() { const value = memorySurface(api!); assert(value); return value; },
     ctx() { assert(ctx); return ctx; },
+    pi() { assert(api); return api; },
   };
 }
 
@@ -267,9 +273,55 @@ test("native append I/O failure is unconfirmed and does not claim unchanged memo
   assert.equal(restored.memory.slots[0]?.text, beforeText);
   const reopened = SessionManager.open(file, f.sessionDir);
   assert.equal(project(reopened.buildContextEntries()).memory.slots[0]?.text, beforeText);
-  const saved = surface().replace(ctx(), restored.revision, restored.memory.slots[0]!.id, "After native reload");
+  const saved = surface().replace(ctx(), restored.revision, restored.memory.slots[0]!.id, "After session file resume");
   assert.equal(saved.ok, true, JSON.stringify(saved));
-  assert.equal(project(SessionManager.open(file, f.sessionDir).buildContextEntries()).memory.slots[0]?.text, "After native reload");
+  assert.equal(project(SessionManager.open(file, f.sessionDir).buildContextEntries()).memory.slots[0]?.text, "After session file resume");
+});
+
+test("resource /reload does not clear unconfirmed or persist a follow-up save", async t => {
+  const captured = port();
+  const f = await fixture({ extras: captured.extras });
+  t.after(() => f.close());
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const file = f.runtime.session.sessionFile!;
+  const beforeText = captured.surface().read(captured.ctx()).memory.slots[0]!.text;
+  await rename(file, file + ".saved"); await mkdir(file);
+  const failed = captured.surface().replace(captured.ctx(), captured.surface().read(captured.ctx()).revision, captured.surface().read(captured.ctx()).memory.slots[0]!.id, "Unconfirmed write");
+  assert.equal(failed.ok, false);
+  assert.equal(failed.ok ? "" : failed.code, "unconfirmed");
+  await rm(file, { recursive: true }); await rename(file + ".saved", file);
+  await f.runtime.session.reload({
+    beforeSessionStart: () => { bindHostSettings(captured.pi().events, f.settings); },
+  });
+  const fresh = memorySurface(captured.pi());
+  assert(fresh);
+  const view = fresh.read(captured.ctx());
+  assert.equal(view.status.unconfirmed, true);
+  const again = fresh.replace(captured.ctx(), view.revision, view.memory.slots[0]!.id, "Follow-up after resource reload");
+  assert.equal(again.ok, false);
+  assert.equal(again.ok ? "" : again.code, "unconfirmed");
+  assert.equal(project(SessionManager.open(file, f.sessionDir).buildContextEntries()).memory.slots[0]?.text, beforeText);
+});
+
+test("successful save stays confirmed after resource /reload", async t => {
+  const captured = port();
+  const f = await fixture({ extras: captured.extras });
+  t.after(() => f.close());
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const file = f.runtime.session.sessionFile!;
+  const view = captured.surface().read(captured.ctx());
+  assert.equal(captured.surface().replace(captured.ctx(), view.revision, view.memory.slots[0]!.id, "Confirmed before reload").ok, true);
+  await f.runtime.session.reload({
+    beforeSessionStart: () => { bindHostSettings(captured.pi().events, f.settings); },
+  });
+  const fresh = memorySurface(captured.pi());
+  assert(fresh);
+  const after = fresh.read(captured.ctx());
+  assert.equal(after.status.unconfirmed, false);
+  assert.equal(after.memory.slots[0]?.text, "Confirmed before reload");
+  assert.equal(project(SessionManager.open(file, f.sessionDir).buildContextEntries()).memory.slots[0]?.text, "Confirmed before reload");
 });
 
 test("abortCompaction failed terminal unlocks save; overlapping compact does not stick occupied", async t => {

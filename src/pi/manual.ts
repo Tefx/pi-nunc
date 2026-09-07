@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, Memory, Slot } from "../engine/index.js";
@@ -34,7 +35,6 @@ export interface MemoryFreeze extends MemorySurface {
   beginFreeze(): boolean;
   endFreeze(): void;
   noteForeignFailure(): boolean;
-  clearUnconfirmed(): void;
 }
 
 export function createMemorySurface(options: {
@@ -43,7 +43,7 @@ export function createMemorySurface(options: {
   settings: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
   onCommitted: () => void;
 }): MemoryFreeze {
-  const state = { occupied: false, ignoreFailed: 0, unconfirmed: false };
+  const state = { occupied: false, ignoreFailed: 0 };
   const viewOf = (ctx: ExtensionContext): MemoryView => {
     const entries = ctx.sessionManager.buildContextEntries();
     const projected = project(entries);
@@ -51,7 +51,7 @@ export function createMemorySurface(options: {
     return {
       revision: memoryRevision(ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), entries),
       memory: projected.memory,
-      status: { occupied: state.occupied, unconfirmed: state.unconfirmed },
+      status: { occupied: state.occupied, unconfirmed: sessionUnconfirmed(ctx.sessionManager) },
       budget,
       contextLayout: {
         slotCount: projected.memory.slots.length,
@@ -62,7 +62,7 @@ export function createMemorySurface(options: {
   };
   const commit = (ctx: ExtensionContext, revision: string, next: Memory | ManualSaveResult): ManualSaveResult => {
     if ("ok" in next) return next;
-    if (state.unconfirmed) return fail("unconfirmed", "Previous native save is unconfirmed; reload the session before writing", viewOf(ctx));
+    if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
     if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
     const current = viewOf(ctx);
     if (!revisionApplies(revision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
@@ -82,8 +82,9 @@ export function createMemorySurface(options: {
     try {
       options.pi.appendEntry(MANUAL_MEMORY_TYPE, { nunc: next });
     } catch (error) {
-      if (ctx.sessionManager.getLeafId() !== leaf) state.unconfirmed = true;
-      return fail("unconfirmed", `Save unconfirmed: ${error instanceof Error ? error.message : "native append failed"}`, viewOf(ctx));
+      const advanced = ctx.sessionManager.getLeafId();
+      if (advanced && advanced !== leaf) markUnconfirmed(ctx.sessionManager, advanced);
+      return fail("unconfirmed", `Save unconfirmed: ${error instanceof Error ? error.message : "native append failed"}. ${UNCONFIRMED_MESSAGE}`, viewOf(ctx));
     }
     options.onCommitted();
     const saved = viewOf(ctx);
@@ -99,7 +100,6 @@ export function createMemorySurface(options: {
       if (state.ignoreFailed > 0) { state.ignoreFailed--; return true; }
       return false;
     },
-    clearUnconfirmed() { state.unconfirmed = false; },
     read: viewOf,
     replace(ctx, revision, slotId, text) {
       return commit(ctx, revision, prepareEdit(ctx, revision, state, viewOf, memory => {
@@ -133,8 +133,38 @@ function fail(code: ManualSaveCode, message: string, view: MemoryView): ManualSa
   return { ok: false, code, message, view };
 }
 
-function prepareEdit(ctx: ExtensionContext, revision: string, state: { occupied: boolean; unconfirmed: boolean }, viewOf: (ctx: ExtensionContext) => MemoryView, edit: (memory: Memory) => Memory): Memory | ManualSaveResult {
-  if (state.unconfirmed) return fail("unconfirmed", "Previous native save is unconfirmed; reload the session before writing", viewOf(ctx));
+const UNCONFIRMED_MESSAGE = "Resource /reload does not reread the session file; resume or switchSession this file before writing";
+const UNCONFIRMED = Symbol.for("nunc.memory.unconfirmed");
+function unconfirmedMarks(): WeakMap<object, string> {
+  const g = globalThis as typeof globalThis & { [UNCONFIRMED]?: WeakMap<object, string> };
+  return g[UNCONFIRMED] ??= new WeakMap();
+}
+type SessionHandle = ExtensionContext["sessionManager"];
+function markUnconfirmed(manager: SessionHandle, leaf: string): void {
+  unconfirmedMarks().set(manager, leaf);
+}
+function entryOnDisk(file: string | undefined, id: string): boolean {
+  if (!file) return false;
+  try {
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      if (!line) continue;
+      try { if ((JSON.parse(line) as { id?: string }).id === id) return true; } catch { /* skip malformed */ }
+    }
+  } catch { return false; }
+  return false;
+}
+function sessionUnconfirmed(manager: SessionHandle): boolean {
+  const marked = unconfirmedMarks().get(manager);
+  if (!marked) return false;
+  if (!manager.getEntry(marked) || entryOnDisk(manager.getSessionFile(), marked)) {
+    unconfirmedMarks().delete(manager);
+    return false;
+  }
+  return true;
+}
+
+function prepareEdit(ctx: ExtensionContext, revision: string, state: { occupied: boolean }, viewOf: (ctx: ExtensionContext) => MemoryView, edit: (memory: Memory) => Memory): Memory | ManualSaveResult {
+  if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
   if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
   const current = viewOf(ctx);
   if (!revisionApplies(revision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
