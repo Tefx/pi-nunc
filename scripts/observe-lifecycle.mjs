@@ -70,11 +70,31 @@ try {
   const beforePayload = f.requests.length; await p.send('/fixture-payload-rewrite on'); await p.prompt('Payload must not change');
   assert.equal(f.requests.length, beforePayload); await p.send('/fixture-payload-rewrite off'); await p.prompt('Observer-only payload hook restored');
   const modelFile = f.state + '/agent/models.json', models = JSON.parse(await readFile(modelFile, 'utf8'));
+  const groqNative = list => list.find(m => m.provider === 'groq' && m.id === 'nunc-native');
+  const hasSampling = m => Boolean(m?.samplingParams && Object.keys(m.samplingParams).length);
+  const waitCatalog = async (pred, label) => {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const { models: catalog } = await p.command('get_available_models');
+      const current = groqNative(catalog);
+      if (current && pred(current)) return current;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    throw new Error(label);
+  };
+  const applyGroq = async (pred, label) => {
+    await writeFile(modelFile, JSON.stringify(models));
+    await p.send('/fixture-reload');
+    // ctx.reload does not await ModelRuntime.refresh; set_model reads the last snapshot.
+    await waitCatalog(pred, label);
+    await p.command('set_model', { provider: 'groq', modelId: 'nunc-native' });
+  };
   models.providers.groq.models[0].samplingParams = { max_completion_tokens: 999 };
-  await writeFile(modelFile, JSON.stringify(models)); await p.send('/fixture-reload'); await p.command('set_model', { provider: 'groq', modelId: 'nunc-native' });
+  await applyGroq(hasSampling, 'models.json sampling overlay never reached the catalog');
   const beforeSampling = f.requests.length; await p.prompt('Raw sampling override unsupported'); assert.equal(f.requests.length, beforeSampling);
   delete models.providers.groq.models[0].samplingParams;
-  models.providers.groq.models[0].api = 'fixture-unsupported-api'; await writeFile(modelFile, JSON.stringify(models)); await p.send('/fixture-reload'); await p.command('set_model', { provider: 'groq', modelId: 'nunc-native' });
+  models.providers.groq.models[0].api = 'fixture-unsupported-api';
+  await applyGroq(m => m.api === 'fixture-unsupported-api' && !hasSampling(m), 'models.json unknown-api overlay never replaced the sampled catalog model');
   const beforeApi = f.requests.length, beforeAdmissions = f.log.filter(e => e.type === 'admission').length;
   await p.prompt('Captured native provider still owns an unknown API label');
   const apiAdmissions = f.log.filter(e => e.type === 'admission').slice(beforeAdmissions);
