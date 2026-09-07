@@ -475,7 +475,7 @@ phases:
       final projectacceptance still delegatedtooriginalsolegate.'
   - id: nunc.acceptance
     name: 最终整合 Nunc 完整项目验收
-    status: pending
+    status: claimed
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\", \"README.md\"\
       , \"docs/**\", \"examples/**\", \"package.json\", \"package-lock.json\", \"\
@@ -547,6 +547,8 @@ phases:
     depends_on:
     - nunc.runtime
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-09-07T01:45:19.273186Z'
   - id: nunc.observation-support
     name: 巨型完整来源与维护中纠正的跟踪观察能力
     status: done
