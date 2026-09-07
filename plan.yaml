@@ -356,7 +356,7 @@ phases:
       reviewer: integration-verifier
   - id: nunc.runtime
     name: 补齐并复用原生宿主与真实模型观察
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"README.md\", \"docs/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
@@ -457,6 +457,22 @@ phases:
     agent: integration-verifier
     claimed_by: integration-verifier
     claimed_at: '2026-09-07T01:06:04.914486Z'
+    done_at: '2026-09-07T01:45:09.515573+00:00'
+    evidence: 'Validated verifier.report.v2 at /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-runtime-luna-zy1jicia/verifier-report.json
+      against caller binding: valid:true,binding_checked:true,POSITIVE_EVIDENCE; all18requirements
+      PROVEN on immutable integrateddde732cc0bd514d6fdb249e1823b50837efa3b37. Parent
+      read actual semantic/effects evidence. User-selected c5 native Gemini1M -> openai-codex/gpt-5.6-luna272000
+      succeeded: Luna main and extraction allowance128000 preserved(no wirecap), input142976;
+      actual Luna full maintenance56089fits, normalAtH122557fits,H112000,M618,K2658,mainAfter6037,growth105963;
+      second nativeCompactionEntry preserved special4C memoryslot and finaldispatch.json
+      regionnorth/maxTemperatureC4 despite ordinary8C source. No restatement. One
+      newc5 execution21requests (15Gemini/6Luna),2maintenance,155387actualreportedtokens,19050240reserved,allterminal/no
+      workersleft; prior pre-effect child WebSocket/fetch failure made no tool/model
+      operation and unused target preserved. Reused223/26finalall and applicable c1-c3/TUI/native/c4full/lateD/realcapacity
+      facts; no paid repeats ofsuccessfulcases. Total124requests/105196224reserved;852576known
+      tokens plus historical unknownNemo+Haiku usages, actualbillunknown. Earlier
+      failures retained, not relabeledsuccess. Full report contains exactscope/metadata/config/reuse/proofrefs;
+      final projectacceptance still delegatedtooriginalsolegate.'
   - id: nunc.acceptance
     name: 最终整合 Nunc 完整项目验收
     status: pending
