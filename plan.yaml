@@ -73,7 +73,7 @@ project_guidance: 先执行唯一新增 nunc.defensive-controls：Orchestrator �
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
-  status: in_progress
+  status: done
   gate: 唯一 nunc.acceptance 覆盖 nunc-v1 的 policy、engine、pi、observation-support、discovery、simplification、defensive-controls、runtime
     全部结果；消费旧完整发现/处置、新定向修正证明、最终整合完整离线 inventory 和逐必要要求的适用运行事实，判断覆盖/适用性/跨结果矛盾。真实 full、维护中
     corrective D、capacity 取消、严格更小模型重算/维护/续做与 native 默认/auth/输出/取消/队列/persistence、秘密和有限总效果界限均满足且无阻断缺陷才接受。有效
@@ -475,7 +475,7 @@ phases:
       final projectacceptance still delegatedtooriginalsolegate.'
   - id: nunc.acceptance
     name: 最终整合 Nunc 完整项目验收
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\", \"README.md\"\
       , \"docs/**\", \"examples/**\", \"package.json\", \"package-lock.json\", \"\
@@ -549,6 +549,24 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-09-07T01:45:19.273186Z'
+    done_at: '2026-09-07T01:57:13.411587+00:00'
+    evidence: 'FULL PHASE_GATE PASS for sole complete Nunc phase on immutable integratedgit:dde732cc0bd514d6fdb249e1823b50837efa3b37.
+      Parent saved gate''s unmodified inline JSON to mode0600 /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-final-acceptance-sua3p2et/gate-report.json
+      (reviewer intentionally returned inline under readonly role). Validator against
+      caller review-binding.json: valid:true,binding_checked:true,evidence_disposition:POSITIVE_GATE_EVIDENCE.
+      All24 bound requirements PROVEN; findingsempty. Parent inspected requirementrefs/warnings
+      and matching underlying current/historical evidence through accepted applicability
+      chain; no source changes since223/26 all andfinalLuna verification, mainadvancedonlyPlan.
+      Complete policy/engine/nativeownership/discovery D1-D2 andA1-A3 disposition/defensive
+      R1-R4 contracts covered; current223tests26files passed; all18runtime requirements
+      proven incl giantfullsource,lateDonce-only correction,actualCAPACITY0extraction
+      unchangedMK and Luna smaller-model maintenance/rebudget/4Cartifact. No gate
+      paidcall or unnecessaryrerun. Preserve warnings: old failedNemo/Haiku usageandinvoice
+      totalsunknown; historicalobservations notrelabeledfresh; stockPi0.85.1scope
+      andexplicit observercapabilitylimits; some historical progresswording remainsdocs-only
+      advisory. All local effects terminal, protecteddailydefaults/sessions and existinguntracked.pi/dashboardpreserved,
+      no publish/globalinstall/push. Retained candidate ref andprivateevidence. This
+      completes sole projectacceptance; no added gate.'
   - id: nunc.observation-support
     name: 巨型完整来源与维护中纠正的跟踪观察能力
     status: done
