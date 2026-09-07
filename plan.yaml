@@ -1327,7 +1327,7 @@ phases:
   steps:
   - id: nunc.cooperative-repair
     name: 先定根因策略，再最小修复原生组合并系统扫描测试
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"policies/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
@@ -1417,6 +1417,28 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-07T12:05:53.203144Z'
+    done_at: '2026-09-07T13:06:52.583744+00:00'
+    evidence: Integrated FF candidate 6552c41 (base75ec521; intermediate bf9c162,0e134f1)
+      and root built. Root-cause notes written before each edit round in .scratch/nunc-ticket-debug/helpers/rootcause-cooperative-repair{,-round2,-round3}.md.
+      Independent architect found original candidate's global-retirement bypass and
+      unknown=>metadata control leaks using native prepareRequest await timing + Google
+      loopback multi-candidate actual serializer; fixed as same-call context/model/provider/signal/mode
+      record with once-per-wrapper visits, new entries guarded even inside descendant
+      callbacks, and closed supported mutation boundary preserving unchanged bodies/known
+      metadata/sampling. Multiple text suffix blocks allowed with cumulative structure/input/native
+      reserve checks. Header public Provider/auth vs SDK-only hook boundary and single
+      writer semantics documented/tested; external Dasein no longer required for ordinary
+      synthetic composition tests. Engine/pi/live/fixtures/runners/docs scan retained
+      justified cancellation/media/tool/raw-extraction/memory/ledger invariants, no
+      external profile or host edits. Parent final integrated full command /usr/bin/env
+      -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /opt/homebrew/bin/node
+      scripts/check.mjs all exit0:264pass0fail0skip33files, actual stock CLI/RPC/TUI/native
+      auth/controlled transport; log /Users/tefx/Projects/pi-nunc/.scratch/cooperative-integrated-all.log.
+      Root build succeeded, setup npm-ci restoration reconciled by this integrated
+      full check; protected untracked .pi/dashboard preserved. No real-provider calls
+      this producer. New tracked provider-wrap + payload-append-b compose existing
+      live runner; real affected consumer observations remain nunc.cooperative-live,
+      not project acceptance.
   - id: nunc.cooperative-live
     name: 补齐受影响原生消费观察并供父方最终整合接受
     status: pending
