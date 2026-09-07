@@ -1,8 +1,10 @@
 # Nunc：让有限上下文支持持续工作
 
-状态：**IMPLEMENTATION_IN_PROGRESS — 原生维护与独立容量检查方案**。更新于 2026-09-06。
+状态：**核心与兼容修复已完成；UI 设计已接受，待实施**。更新于 2026-09-08。
 
-本文定义 Nunc 完整项目的交付要求与当前推荐方案。策略资产、维护引擎和 stock Pi 适配器已在仓库中；真实模型续做及最终验收未完成。本次修订采用已交付历史的维护边界，保留 Pi 原生提交和恢复，独立检查新增输入造成的容量突增。交付目标覆盖本文全部必要行为、失败与恢复、兼容和验证要求，最终按 §8 对整合后的项目验收。设计选择来自项目动机、机制推理、公开 Pi 接口及有限的受控运行观察；不以 benchmark 胜出作为交付条件。
+本文定义 Nunc 的核心合同。原始完整交付及后续 native/cooperative 兼容修复已有完成的运行与接受记录，见 managed Plan 历史；此后的预算、命令修订已在代码中，历史接受不等于对每个后来 HEAD 重新完成验收。本次将用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览纳入 [UI.md](UI.md)，并明确人工记忆保存对 §6 的扩展。当前授权为更新文档并创建实施计划，UI 尚未实现。
+
+交付继续保留已交付历史的维护边界、Pi 原生提交和恢复、独立容量检查及 §8 的适用要求。新增功能验证受影响行为并复用适用证据，不重写 DONE 历史或为文档更新重跑真实模型。设计不以 benchmark 胜出作为交付条件。
 
 产品约束包括 session 范围、原文保留、记忆有界、增量维护和宿主持久化。明确标为推荐、示例或可选的内容保留设计空间：字段示例、比例起点、预算选择算法、容量恢复方法和模块划分允许按目标 Pi/API 采用等价实现，多个备选路径无需同时支持。选择替代实现仍须满足同一必要行为和边界。
 
@@ -219,13 +221,15 @@ H = 当前 Pi 模型 contextWindow − compaction.reserveTokens
 
 显式 `/compact` 和宿主溢出恢复也进入同一维护语义。关闭 Pi 自动 compaction 后，需要显式触发。当前 `ctx.compact()` 走先 abort 的手动路径，不从每次 context 回调直接调用它并承诺无中断滚动。
 
-接口依据：[Pi 配置说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)、[Pi compaction 与扩展接管说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md)。本次接入调查对照 stock Pi 0.85.1；已整合引擎的锁定检查环境仍为 0.85.0。Pi 生产者须统一选定目标、依赖和回归证据；调查版本不等于已通过产品验收，也不构成未经验证的版本兼容承诺。
+接口依据：[Pi 配置说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)、[Pi compaction 与扩展接管说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md)。当前 package/lock 统一使用 Pi/pi-ai 0.85.1。早期 0.85.0 组件观察仅为历史证据；公开文档和组件检查均不能单独建立任意版本兼容承诺。
 
 ### 6.2 一份快照，一次提交
 
-推荐在一个 CompactionEntry 的 `details.nunc` 保存 slots 和最少格式信息，summary 由同一候选渲染。Pi 是唯一持久化所有者；不另建数据库、双写账本、hash/CAS 协议或历史审计副本。
+正常维护在一个 CompactionEntry 的 `details.nunc` 保存 slots 和最少格式信息，summary 由同一候选渲染。Pi 是唯一持久化所有者；不另建数据库、双写账本、hash/CAS 协议或历史审计副本。
 
-同 session 恢复使用当前选中路径最新的 Nunc snapshot。外部/旧式 summary 可作为一个文本 slot 接入后按正常规则维护，不自动导入其他 session。
+[UI.md §5](UI.md#5-人工记忆提交与兼容) 增加已接受、尚未实现的人工保存例外：通过 Pi 原生 entry 保存 M-only 修订，adapter 投影当前路径最新 checkpoint 与其后适用修订，主请求仍只有一份有效 M，K/边界不变。正常维护吸收有效 M 后交付下一份原生 checkpoint，旧修订不重复应用。保存后新构造请求生效；已构造请求不改，维护冻结到原生提交终态与人工保存互斥。尚未吸收的修订需要新版 Nunc 解读，卸载或退回旧版仍读取上次原生摘要。
+
+同 session 恢复使用当前选中路径的有效记忆和原文。外部/旧式 summary 可作为一个文本 slot 接入后按正常规则维护，不自动导入其他 session。
 
 完整响应终态、合法引用和预算检查都通过后才返回 snapshot。截断响应即使包含可解析 JSON 也不能提交。结构失败可做带校验反馈的有界修复，建议最多一次；仍使用冻结来源并重新检查请求容量。取消、修复失败或模型/path/session 改变时，不提交过期候选。
 
@@ -239,25 +243,25 @@ firstKeptEntryId 指向上下文可见的合法边界。主模型和后续维护
 
 ### 6.3 独立请求检查与接入职责
 
-记忆保存/重建的所有者与请求检查位置独立。正式方案保留原生 CompactionEntry，不采用 CustomEntry 自有 M/K 投影、原始历史双重映射或 SDK host。推荐通过公开 `getProvider`/`registerProvider` 包装当前 native Provider 的主请求入口，保留并委托其原有 transport；包装只负责容量准入和明确错误，不生成记忆、不保存快照、不复制 provider 序列化或认证。
+记忆保存/重建的所有者与请求检查位置独立。正式维护保留原生 CompactionEntry，不采用 CustomEntry 自有 M/K 调度和历史边界、原始历史双重映射或 SDK host。UI 的人工 M-only 修订是 §6.2 的明确例外，不接管 K、维护调度或宿主写入。推荐通过公开 `getProvider`/`registerProvider` 包装当前 native Provider 的主请求入口，保留并委托其原有 transport；包装只负责容量准入和明确错误，不生成记忆、不保存快照、不复制 provider 序列化或认证。
 
 职责边界：
 
 - Pi adapter 提供冻结的活动来源、模型/策略/预算及合法边界，调用现有 engine，校验返回候选与当前 session/path/model/options 仍匹配。
 - Engine 返回完整候选或明确失败，不负责队列、请求准入、Pi 提交或恢复。请求检查复用同一容量口径，不另维护一份 M。
-- 请求入口检查已经交付的实际 Context 和已解析选项。当前主会话范围内的请求（stock `streamSimple`、当前 session 与非空运行 signal）在预算成立时委托原 Provider。不可容纳的本地主请求返回明确标注 Nunc 来源、可被 Pi 识别的容量错误，由 Pi 原生 overflow 处理进行有界恢复。其他扩展的独立调用原样委托，不套用主会话 payload 限制。主会话/维护的 `onPayload` 以 JSON 字节与输出上限/输入增长/非法字段做有据检查，不以对象原型或全量深相等拒绝观察型回调。末条 user 仅追加一个文本块（必要时先把非空 string 规范成原文块）且其余消息/块/tools/media/control 保持时，按新增输入计入 Nunc 剩余 input。原生 clamp 后的窗口核对使用 Pi 的 `estimateContextTokens` 与追加开销，不把 Nunc 字节估计与已 clamp 的 output 直接相加；不得因此把 Grok 等 W=O 的正常小追加误判为溢出，也不下调原生 cap。
+- 请求入口检查已经交付的实际 Context 和已解析选项。当前主会话范围内的请求（stock `streamSimple`、当前 session 与非空运行 signal）在预算成立时委托原 Provider。不可容纳的本地主请求返回明确标注 Nunc 来源、可被 Pi 识别的容量错误，由 Pi 原生 overflow 处理进行有界恢复。其他扩展的独立调用原样委托，不套用主会话 payload 限制。主会话/维护的 `onPayload` 以 JSON 字节与输出上限/输入增长/非法字段做有据检查，不以对象原型或全量深相等拒绝观察型回调。末条 user 追加一个或多个纯文本后缀块（必要时先把非空 string 规范成原文块）且其余消息/块/tools/media/control 保持时，按累计新增输入计入 Nunc 剩余 input。原生 clamp 后的窗口核对使用 Pi 的 `estimateContextTokens` 与追加开销，不把不同归因的 Nunc 输入估计与已 clamp 的 output 直接相加；不得因此把 Grok 等 W=O 的正常小追加误判为溢出，也不下调原生 cap。
 - 维护请求与主请求必须有可验证的来源区分；同模型、同 provider 不足以判断。维护使用一次性 ALS 绑定，不得递归进入主请求准入或启动另一轮维护；同一 context 的重复或绑定改变不得作为独立调用发出。session/signal 只表示会话作用域，不证明唯一调用来源。
 - Provider 组合、legacy stream override 和输出默认值按选定版本及声明支持的配置验证。主会话/维护 payload 允许已核算的观察、返回值、原地修改，以及有据的末条 user 文本追加；输出扩大、原文删改/重排、净值抵消、媒体替换、控制变更、非法输入和未核算增长在 HTTP 前失败并给出字段类别诊断，不记录正文。不引入 provider/扩展名 allowlist 或通用 mapper。其他扩展可以增删自身 context 消息；不要求 Nunc 最后加载。不承诺任意改写 Nunc 记忆载体或任意扩展/provider 组合均可覆盖。未经支持的组合明确诊断，不假装已检查完整请求。
 
 TUI 的 `ctx.abort()` 会将排队输入取回编辑器，并清理底层队列。因此不能用这条用户停止操作驱动自动容量恢复；也不在活动请求中等待先 abort 的 `ctx.compact()`。真正的用户取消仍遵循 Pi 的停止语义。等价公开接法必须证明不改变队列、尊重取消、保持单一原生提交和请求前拒绝，不能仅凭 RPC 成功就替代 TUI 证据。
 
-### 6.4 已有证据与未完成项
+### 6.4 证据的时间与范围
 
-未修改的 stock Pi 0.85.1 CLI/RPC 上，受控 loopback Provider 探针验证了公开 Provider 包装的请求前拒绝，以及自有快照路径的两次滚动、重启/reload 恢复。另一探针验证了本地容量拒绝经原生 overflow 后的一次 native compaction 和自动续跑：输入只提交一次，拒绝阶段无 HTTP；真实 RPC 取消及维护取消没有被自动续跑。
+早期 stock Pi 0.85.1 CLI/RPC 探针证明了公开 Provider 包装的请求前拒绝、自有快照实验的两次滚动/恢复，以及本地容量拒绝通过原生 overflow 进入 compaction/续跑。自有 M/K 调度实验未成为正式方案；它不能证明本次人工 M-only 修订。直接取消探针曾期望 aborted 却观察到 error，该历史失败保留，不能只按 stopReason 判断用户是否被尊重。
 
-这些实验分别证明接口机制，不代表推荐组合已交付。自有快照不被本方案采用；RPC 取消接法依赖当前 setup-error 形状，并具有前述 TUI 队列问题。直接取消探针的三个 aborted 终态预期失败仍有效：实际为 error，不能只按 stopReason 判断用户是否被尊重。
+后续原生维护集成、实际 TUI/队列/取消、连续重叠滚动、恢复、真实模型续做和完整项目接受已完成；native/cooperative 扩展组合修复也已有独立完成记录。结果、目标与适用边界以 Plan 对应 DONE evidence 为准，早期固定 M 探针不能替代这些证据。
 
-实验使用固定 M、受控响应及实验专用预算，没有真实维护模型或记忆质量结论。队列安全的 Provider 准入与原生维护组合、实际 TUI、真实预算/多模态、并发取消、连续重叠滚动和活动路径恢复，仍由接入生产者与后续运行验收完成。
+当前 UI 尚无实现或运行证据。人工提交、双 tab 与布局观察按 [UI.md §7](UI.md#7-验证与证据边界) 验证；最新预算/命令合同按当前代码与受影响检查保留。不得以完成历史推导新界面已验收，也不因新文档使未改变的底层观察自动失效。
 
 ## 7. 策略与配置
 

@@ -13,9 +13,11 @@ Memory maintenance asks: **If only the retained history K and normal working too
 
 ## Status
 
-**IMPLEMENTATION_IN_PROGRESS** · Updated 2026-09-06.
+**Core delivered; UI design accepted, implementation pending** · Updated 2026-09-08.
 
-Policy assets, the maintenance engine, and the stock Pi adapter are in the checked tree. Real-model continuation and final project acceptance remain incomplete. The selected integration keeps Pi's native compaction, persistence, model catalog, and transport, with an independent request-capacity check. Controlled stock Pi 0.85.1 CLI/RPC probes establish bounded interface feasibility, not a finished extension or memory-quality result.
+The original core delivery and subsequent native/cooperative compatibility work have completed acceptance recorded in the managed plan. Later capacity-planning and command improvements are also in the tree; those historical acceptance records do not claim a fresh full acceptance of every later revision. Pi retains native compaction, persistence, model selection and transport, with Nunc request-capacity checks.
+
+The next feature is a compact footer plus a Slots/Context overlay with native session-backed manual memory edits. Its [accepted design](docs/UI.md) is documented but not implemented. The current request authorizes documentation and an implementation plan only.
 
 ## Scope
 
@@ -43,7 +45,7 @@ Long-term work belongs in normal code, documents and other external artifacts. F
 
 **Keep tool evidence.** Ordinary requests retain active tool-result bodies. Maintenance uses the complete source available at its frozen delivered-history boundary, with explicit extraction-only reduction when capacity requires it. Cache reuse depends on the actual request prefix and provider behavior.
 
-**Submit one snapshot.** Nunc validates a complete memory snapshot and retained boundary before handing them to Pi. Failure or cancellation before handoff leaves the saved state unchanged. Once handed over, persistence, context rebuilding and their error handling belong to Pi.
+**Submit one maintenance snapshot.** Nunc validates a complete memory snapshot and retained boundary before handing them to Pi. Failure or cancellation before handoff leaves the saved state unchanged. Once handed over, persistence, context rebuilding and their error handling belong to Pi. The planned UI adds manual M-only revisions through native session entries, without changing K; revisions not yet folded into a compaction require the new Nunc extension to take effect.
 
 ## Pi defaults and verification
 
@@ -51,7 +53,7 @@ Nunc uses Pi's current effective model/provider/options and native authenticatio
 
 Verification isolates new task sessions, cwd/files and artifacts while reusing native configuration/authentication ownership. Only named test requirements justify invocation-local overrides, recorded with their reason and differences. Standalone startup resolves Pi defaults; an invoking runtime must forward its nonsecret effective selection through public context/invocation facilities to preserve unsaved choices. A separate process cannot discover those choices implicitly. Saved defaults and daily sessions remain protected; Pi owns ordinary credential refresh and persistence.
 
-See [extension usage](docs/PI.md), [bounded observations](docs/LIVE.md) and [development checks](docs/DEVELOPMENT.md). Producer tests use fictional native profiles and controlled services. Real authentication/model calls and final acceptance belong to downstream verification.
+See [extension usage](docs/PI.md), [bounded observations](docs/LIVE.md) and [development checks](docs/DEVELOPMENT.md). Producer tests use fictional native profiles and controlled services. Reuse applicable completed evidence; new UI mechanics require their own native-host checks, without automatically repeating paid model observations.
 
 ## Delivery and acceptance
 
@@ -64,5 +66,7 @@ Comparisons may guide design improvements; benchmark superiority is not a delive
 ## Documentation
 
 - [Complete design and final acceptance requirements](docs/DESIGN.md)
+- [Accepted UI design: compact status, Slots management, Context layout](docs/UI.md)
+- [Current extension commands and planned UI compatibility](docs/PI.md)
 
 Configuration names, protocol examples, numeric starting points and module layout remain implementation choices. Equivalent implementations may satisfy the same behavior and boundaries; optional alternatives need not all be implemented.

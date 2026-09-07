@@ -2,6 +2,8 @@
 
 Target: **Pi/pi-ai 0.85.1**, persistent sessions. Nunc is an independent public extension. Stock Pi owns its CLI/TUI/RPC, compaction lifecycle, scheduling, retry, JSONL writes and context rebuilding. The extension requires no SDK host, replacement launcher, private patch, another extension or global installation.
 
+The original core and subsequent native/cooperative compatibility acceptance are complete in the managed plan. The UI in [UI.md](UI.md) is accepted design, not current functionality; later capacity/command changes and this document do not retroactively extend historical evidence.
+
 ## Load and configure
 
 Build with the locked local tools (`npm run build`), then choose the extension explicitly for one Pi invocation:
@@ -12,6 +14,8 @@ Build with the locked local tools (`npm run build`), then choose the extension e
 ```
 
 `package.json` also declares `pi.extensions`. Omit the flag for Nunc defaults. Relative configuration paths resolve from Pi's cwd; `policyFile` resolves from the configuration file's directory. Nunc reads these files without writing them. `/nunc` shows a three-line memory count and compaction-trigger summary without making a request. `/nunc details` adds grouped input/output budgets, the maintenance cap and latest maintenance observations; numeric budgets use thousands separators. Both commands leave the transcript unchanged. The native argument completion menu suggests `details` after `/nunc ` or a matching prefix such as `/nunc d`. Remove the extension resource and use stock `/reload`, or start without it, to unload. Existing summaries remain readable by stock Pi.
+
+**Planned command compatibility:** the UI feature will make bare `/nunc` open the Slots/Context overlay only in TUI. Other modes retain the text summary. New `/nunc status` explicitly selects the text summary; `/nunc details`, its existing grouped observations, thousands separators and argument completion remain available. `status` joins the completion menu. No read-only command starts a model request, compaction or session write. These changes are not implemented yet.
 
 ```json
 {
@@ -43,7 +47,15 @@ Legal real K entries may precede earlier checkpoint entries. Nunc retains those 
 
 The engine produces one complete candidate. Nunc checks cancellation, session/file/leaf/generation, selected model/thinking, effective F, settings and configuration before handoff. Model/session/path changes abort in-flight extraction. Policy text freezes for one transaction; edits apply on the next. Preparation, policy, extraction and validation failures return `{cancel:true}` and cannot fall through to the default summarizer.
 
-Pi receives one native `CompactionEntry` result: `summary`, `firstKeptEntryId`, `tokensBefore`, and `details.nunc = {version:1,slots,nextId}`. Nunc writes no session entries or second memory store. Pi owns later append/rebuild failures; its in-memory state may advance before a failed file append. Reconcile native session/file state before retrying a failed write. Nunc supplies no rollback or replay.
+Pi receives one native `CompactionEntry` result: `summary`, `firstKeptEntryId`, `tokensBefore`, and `details.nunc = {version:1,slots,nextId}`. The current maintenance implementation writes no entries itself and has no second memory store. The accepted UI design adds M-only manual revisions via public `pi.appendEntry()` (see below); the native maintenance checkpoint remains the sole owner of the retained-history boundary. Pi owns later append/rebuild failures; its in-memory state may advance before a failed file append. Reconcile native session/file state before retrying a failed write. Nunc supplies no rollback or replay.
+
+## Planned manual memory revisions
+
+[UI.md §5](UI.md#5-人工记忆提交与兼容) defines the accepted extension to persistence. The adapter will project effective M from the selected path's latest native checkpoint and applicable subsequent manual revisions. A public native CustomEntry is the recommended carrier; no second K store, old JSONL edits, replay or host patch is introduced. The main context carries effective M once; real K stays unchanged. Subsequent maintenance freezes effective M and absorbs the result into the next native CompactionEntry, without reapplying older revisions.
+
+Manual saving affects requests constructed after successful save, not already constructed/in-flight requests. Saving and the maintenance freeze-through-native-terminal window exclude one another, without locking an entire agent run. Revision conflicts and validation failures retain drafts; a native append error is an unconfirmed save, not proof of unchanged in-memory state or permission to retry automatically. The inspector uses current accounting semantics and reports observation limits; it does not change Provider or payload delegation.
+
+**Unload/downgrade limitation:** manual changes not yet folded into a native compaction require the new Nunc implementation. Stock Pi or an older Nunc reads the last native summary. Existing sessions need no rewrite. `ctx.compact()` is unsuitable as an every-edit save operation: in Pi 0.85.1 it first aborts and may reject preparation before the extension hook.
 
 ## Main-request admission
 
@@ -67,4 +79,4 @@ Public `before_provider_request` handlers run in extension load order. Returning
 
 `nunc:admission` reports classification, delegation/rejection, estimates and optional payload mode/categories without bodies, headers, credentials or extension paths. `nunc:maintenance` reports a detached attempt result; it is **not a persistence receipt**. Observe native `session_compact` and JSONL for persistence. `nunc:diagnostic` reports configuration/preparation failures. Notification consumers cannot change a candidate.
 
-The [complete check](DEVELOPMENT.md) executes stock CLI/RPC and a real PTY/TUI, native transports against loopback SSE, repeated overlapping rollovers, queues/future images, cancellation, lifecycle and public composition. Public-SDK component fixtures supplement these tests. Codex coverage uses fictional native stored OAuth, the actual Codex serializer/zstd/SSE parser and real stock tool/compaction calls. Pi's existing credential owner performs normal lookup/refresh/persistence; Nunc and its runner never copy, export or manage credentials. Producer tests never read real authentication. All service responses are controlled; [separately authorized continuation observations](LIVE.md) and final integrated acceptance remain outstanding.
+The [complete check](DEVELOPMENT.md) executes stock CLI/RPC and a real PTY/TUI, native transports against loopback SSE, repeated overlapping rollovers, queues/future images, cancellation, lifecycle and public composition. Public-SDK component fixtures supplement these tests. Codex coverage uses fictional native stored OAuth, the actual Codex serializer/zstd/SSE parser and real stock tool/compaction calls. Pi's existing credential owner performs normal lookup/refresh/persistence; Nunc and its runner never copy, export or manage credentials. Producer tests never read real authentication. All service responses in these mechanical checks are controlled. [Separately authorized continuation observations](LIVE.md) and acceptance of the original core and subsequent compatibility work are recorded in the completed plan history. That evidence does not prove the unimplemented UI. Its native TUI, manual-save and context-observation checks are specified in [UI.md](UI.md); reuse unaffected observations and verify changed behavior on the integrated candidate.
