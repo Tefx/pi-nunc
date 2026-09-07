@@ -56,6 +56,14 @@ function subtreeSize(view: unknown, keys: Set<string>): number {
   return size;
 }
 
+export function outputCapPaths(body: unknown): string[] {
+  if (!record(body)) return [];
+  const paths: string[] = [];
+  for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) paths.push(key);
+  if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) paths.push("generationConfig.maxOutputTokens");
+  return paths.sort();
+}
+
 export function outputCapState(body: unknown): OutputCapState {
   if (!record(body)) return { kind: "missing" };
   const found: number[] = [];
@@ -140,16 +148,25 @@ function outputFloor(model: Model<Api>): number {
 export function authorizePayload(args: {
   model: Model<Api>;
   delta: PayloadDelta;
+  before: unknown;
   after: unknown;
   inputTokens: number;
   inputLimit: number;
   authorizedOutput: number;
 }): void {
+  const prior = jsonView(args.before);
   const body = jsonView(args.after);
   if (!record(body)) throw new EngineError("CONFIG", "Nunc: native payload is not a JSON object; request was not sent");
-  if (body.stream === false) throw new EngineError("CONFIG", "Nunc: non-streaming payload is unsupported; request was not sent");
+  const priorRec = record(prior) ? prior : {};
+  if (Object.hasOwn(priorRec, "stream")) {
+    if (!Object.hasOwn(body, "stream") || body.stream !== true) throw new EngineError("CONFIG", "Nunc: payload removed or changed its native stream field; request was not sent");
+  } else if (body.stream === false) throw new EngineError("CONFIG", "Nunc: non-streaming payload is unsupported; request was not sent");
   if (body.background === true) throw new EngineError("CONFIG", "Nunc: background payload is unsupported; request was not sent");
-  if (Object.hasOwn(body, "model") && body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload model differs from the selected model; request was not sent");
+  if (Object.hasOwn(priorRec, "model")) {
+    if (!Object.hasOwn(body, "model") || body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload removed or changed its native model field; request was not sent");
+  } else if (Object.hasOwn(body, "model") && body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload model differs from the selected model; request was not sent");
+  const beforePaths = outputCapPaths(prior), afterPaths = outputCapPaths(body);
+  if (beforePaths.length > 0 && beforePaths.join("\0") !== afterPaths.join("\0")) throw new EngineError("CONFIG", "Nunc: payload output cap field was replaced or removed; request was not sent");
   const caps = outputCapState(body);
   if (caps.kind === "invalid") throw new EngineError("CONFIG", "Nunc: payload output cap is not a positive integer; request was not sent");
   if (caps.kind === "conflict") throw new EngineError("CONFIG", "Nunc: payload output cap fields disagree; request was not sent");

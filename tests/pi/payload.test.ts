@@ -41,19 +41,19 @@ test("classify payload categories without reading bodies; metadata is not capaci
 test("authorize allows metadata and identity; rejects overcap, non-stream, model change and input growth", () => {
   const base = { model: model.id, stream: true, max_tokens: 16, messages: [{ role: "user", content: "a" }] };
   const identity = classifyPayloadChange(base, jsonView(base), "identity");
-  authorizePayload({ model, delta: identity, after: base, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
+  authorizePayload({ model, delta: identity, before: base, after: base, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
   const meta = classifyPayloadChange(base, { ...base, temperature: 0 }, "replacement");
-  authorizePayload({ model, delta: meta, after: { ...base, temperature: 0 }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
+  authorizePayload({ model, delta: meta, before: base, after: { ...base, temperature: 0 }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
   const over = classifyPayloadChange(base, { ...base, max_tokens: model.maxTokens + 1 }, "replacement");
-  assert.throws(() => authorizePayload({ model, delta: over, after: { ...base, max_tokens: model.maxTokens + 1 }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /native serialized ceiling|exceeds authorization/);
+  assert.throws(() => authorizePayload({ model, delta: over, before: base, after: { ...base, max_tokens: model.maxTokens + 1 }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /native serialized ceiling|exceeds authorization/);
   const stream = classifyPayloadChange(base, { ...base, stream: false }, "replacement");
-  assert.throws(() => authorizePayload({ model, delta: stream, after: { ...base, stream: false }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /non-streaming/);
+  assert.throws(() => authorizePayload({ model, delta: stream, before: base, after: { ...base, stream: false }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /stream field|non-streaming/);
   const renamed = classifyPayloadChange(base, { ...base, model: "outside-selection" }, "replacement");
-  assert.throws(() => authorizePayload({ model, delta: renamed, after: { ...base, model: "outside-selection" }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /payload model differs/);
+  assert.throws(() => authorizePayload({ model, delta: renamed, before: base, after: { ...base, model: "outside-selection" }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /model field|payload model differs/);
   const grown = { ...base, extra: "n".repeat(2000) };
   const growth = classifyPayloadChange(base, grown, "replacement");
   assert(growth.grewTokens > 0);
-  assert.throws(() => authorizePayload({ model, delta: growth, after: grown, inputTokens: 900, inputLimit: 1000, authorizedOutput: model.maxTokens }), /input growth/);
+  assert.throws(() => authorizePayload({ model, delta: growth, before: base, after: grown, inputTokens: 900, inputLimit: 1000, authorizedOutput: model.maxTokens }), /input growth/);
 });
 
 test("payloadOutputCeiling reads Completions, Responses and Gemini generationConfig fields", () => {
@@ -71,29 +71,38 @@ test("same-length input mutation, netted growth, extra image, audio, cap expansi
   const orphan = { ...base, messages: [{ role: "toolResult", toolCallId: "missing", toolName: "read", content: [{ type: "text", text: "ok" }] }] };
   const orphanDelta = classifyPayloadChange(base, orphan, "replacement");
   assert(orphanDelta.categories.includes("input"));
-  assert.throws(() => authorizePayload({ model, delta: orphanDelta, after: orphan, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unvalidated payload input/);
+  assert.throws(() => authorizePayload({ model, delta: orphanDelta, before: base, after: orphan, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unvalidated payload input/);
   const netted = { ...base, extra: "x", messages: [{ role: "user", content: "a".repeat(4000) }] };
   const netDelta = classifyPayloadChange(base, netted, "replacement");
   assert(netDelta.inputGrewTokens > 0);
   assert(netDelta.grewTokens < netDelta.inputGrewTokens);
-  assert.throws(() => authorizePayload({ model, delta: netDelta, after: netted, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unvalidated payload input/);
+  assert.throws(() => authorizePayload({ model, delta: netDelta, before: base, after: netted, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unvalidated payload input/);
   const imaged = { model: model.id, stream: true, max_tokens: 16, messages: [{ role: "user", content: [{ type: "image", data: "aa", mimeType: "image/png" }, { type: "image", data: "bb", mimeType: "image/png" }] }] };
   const oneImage = { ...imaged, messages: [{ role: "user", content: [{ type: "image", data: "aa", mimeType: "image/png" }] }] };
   const extraImage = classifyPayloadChange(oneImage, imaged, "replacement");
   assert.equal(extraImage.imagesAdded, 1);
   assert(extraImage.categories.includes("media"));
-  assert.throws(() => authorizePayload({ model, delta: extraImage, after: imaged, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unvalidated payload/);
+  assert.throws(() => authorizePayload({ model, delta: extraImage, before: oneImage, after: imaged, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unvalidated payload/);
   const audio = { ...base, messages: [{ role: "user", content: [{ type: "audio", data: "zz" }] }] };
   const audioDelta = classifyPayloadChange(base, audio, "replacement");
-  assert.throws(() => authorizePayload({ model, delta: audioDelta, after: audio, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unsupported media/);
+  assert.throws(() => authorizePayload({ model, delta: audioDelta, before: base, after: audio, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unsupported media/);
   const from = { model: model.id, stream: true, max_tokens: 16, messages: [{ role: "user", content: "a" }] };
   const raised = { ...from, max_tokens: 32 };
   const expand = classifyPayloadChange(from, raised, "in-place");
-  assert.throws(() => authorizePayload({ model, delta: expand, after: raised, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /native serialized ceiling/);
+  assert.throws(() => authorizePayload({ model, delta: expand, before: from, after: raised, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /native serialized ceiling/);
   const omitted = { model: model.id, stream: true, messages: [{ role: "user", content: "a" }] };
-  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(from, omitted, "replacement"), after: omitted, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /omitted its output cap/);
-  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(from, { ...from, max_tokens: "16" }, "replacement"), after: { ...from, max_tokens: "16" }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /not a positive integer/);
-  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(from, { ...from, max_output_tokens: 99 }, "replacement"), after: { ...from, max_output_tokens: 99 }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /disagree|native serialized ceiling/);
+  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(from, omitted, "replacement"), before: from, after: omitted, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /omitted its output cap|cap field was replaced/);
+  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(from, { ...from, max_tokens: "16" }, "replacement"), before: from, after: { ...from, max_tokens: "16" }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /not a positive integer/);
+  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(from, { ...from, max_output_tokens: 99 }, "replacement"), before: from, after: { ...from, max_output_tokens: 99 }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /disagree|cap field was replaced|native serialized ceiling/);
+  const responses = { model: model.id, stream: true, max_output_tokens: 16, input: [] };
+  const aliased = { model: model.id, stream: true, max_tokens: 16, input: [] };
+  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(responses, aliased, "replacement"), before: responses, after: aliased, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /cap field was replaced/);
+  const { stream: _s, ...noStream } = responses;
+  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(responses, noStream, "replacement"), before: responses, after: noStream, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /stream field/);
+  const { model: _m, ...noModel } = responses;
+  assert.throws(() => authorizePayload({ model, delta: classifyPayloadChange(responses, noModel, "replacement"), before: responses, after: noModel, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /model field/);
+  const unstreamed = { model: model.id, max_tokens: 16, messages: [{ role: "user", content: "a" }] };
+  authorizePayload({ model, delta: classifyPayloadChange(unstreamed, { ...unstreamed, temperature: 0 }, "replacement"), before: unstreamed, after: { ...unstreamed, temperature: 0 }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
 });
 
 function responsesSSE(modelId: string, text: string): Response {
@@ -128,6 +137,20 @@ function payloadExtra(mode: () => string, second?: (payload: Record<string, unkn
         case "grow": return { ...rec, nunc_fixture: "n".repeat(50000) };
         case "orphan-input": return { ...rec, ...(Array.isArray(rec.input) ? { input: [...rec.input, { role: "tool", call_id: "missing", type: "function_call_output", output: "x" }] } : { messages: [...(Array.isArray(rec.messages) ? rec.messages : []), { role: "tool", tool_call_id: "missing", content: "x" }] }) };
         case "illegal-model": return { ...rec, model: "outside-selection" };
+        case "alias-cap": {
+          const cap = rec.max_output_tokens;
+          if (typeof cap !== "number") return rec;
+          const { max_output_tokens: _dropped, ...rest } = rec;
+          return { ...rest, max_tokens: cap };
+        }
+        case "drop-stream": {
+          const { stream: _stream, ...rest } = rec;
+          return rest;
+        }
+        case "drop-model": {
+          const { model: _model, ...rest } = rec;
+          return rest;
+        }
         default: return;
       }
     });
@@ -193,14 +216,14 @@ test("later before_provider_request replacement wins; overcap, non-stream, growt
   assert.equal(order.sends(), 1);
   assert.equal(order.bodies[0]?.nunc_fixture, "meta");
   assert.equal(order.bodies[0]?.nunc_later, true);
-  for (const mode of ["overcap", "expand-cap", "nostream", "grow", "orphan-input", "illegal-model"] as const) {
+  for (const mode of ["overcap", "expand-cap", "alias-cap", "nostream", "drop-stream", "drop-model", "grow", "orphan-input", "illegal-model"] as const) {
     const run = await nativeMain(t, () => mode);
     assert.equal(run.sends(), 0, mode);
     const last = run.f.runtime.session.messages.at(-1);
     assert.equal(last?.role, "assistant");
     assert.equal(last.stopReason, "error");
     if (mode === "grow") assert.match(last.errorMessage ?? "", /context_length_exceeded: Nunc local CAPACITY/);
-    else assert.match(last.errorMessage ?? "", /Nunc local CONFIG|unvalidated payload|non-streaming|output cap|model differs|native serialized/);
+    else assert.match(last.errorMessage ?? "", /Nunc local CONFIG|unvalidated payload|non-streaming|stream field|model field|cap field|output cap|model differs|native serialized/);
     assert.equal(run.admissions.some(a => a.outcome === "reject" && a.payload), true, mode);
     assert.doesNotMatch(JSON.stringify(run.admissions), /nunc_fixture|outside-selection|n{20}/);
   }

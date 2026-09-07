@@ -124,7 +124,7 @@ export class Admission {
         const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload));
         const observation: PayloadObservation = { mode: delta.mode, categories: delta.categories };
         try {
-          authorizePayload({ model: selected, delta, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens! });
+          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens! });
           this.observe({ kind, outcome: "delegate", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
           return replacement;
         } catch (error) {
