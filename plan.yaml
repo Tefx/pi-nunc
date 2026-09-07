@@ -9,53 +9,60 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: "用户当前授权：先分析根因、提出策略，再修复原因并移除有据过度设计/防御，系统扫描完整 Nunc 的 engine/Pi/live、测试/fixtures/runners/docs\
-  \ 与消费者边界。cooperative-root-cause 是在两个已接受阶段之后的一次新修复；nunc-v1 九个 DONE 与 native-compat\
-  \ 三个 DONE 全部定义/证据/历史不变。一个 Node/TS producer 交付同一 Nunc 原生组合合同及其 source/tests/docs/runner，真实\
-  \ provider 效果观察独立，无新的架构/扫描/review/gate 堆叠。\n\n完整 review 是诊断输入，不独自创造新产品要求。已见根因包括普通\
-  \ Provider 包装形成新 Nunc→合作包装→旧 Nunc→native 时准入 ownership 误拒；实际 Google serializer 的\
-  \ config 控制字段和 Completions n 被误归 metadata；多个合法末条 user 纯文本追加受任意数量限制。main SDK hooks\
-  \ 与 raw maintenance 路由不同，以及多个 compaction owner 的最后结果覆盖/取消短路，须按公共 Pi 能力与必要消费边界处理。没有检查用户实际\
-  \ Larva 配置，不能声称已双重生成；wrapper 中 Larva/Dasein/Vernier 名称不构成归罪或禁用依据。不可用扩展名/provider\
-  \ allowlist、越来越大的黑名单/通用 mapper、私有 runner、凭据复制或新协议掩盖职责错误。允许有据正常组合，保留真实容量、输出、媒体/tool、取消、并发与单次效果约束。\n\
-  \n继续满足 README 与 docs/DESIGN 的全部必要行为，并保留 docs/ENGINE、PI、POLICY、DEVELOPMENT、LIVE 的适用公共合同：冻结有效\
-  \ F/全部 M/完整已交付 R=B|K，未来 D 不提前进入且原文一次交付，临时 payload 注入不回填来源；M 有界增量、完整 slot/引用/原文稳定与纠正退役，K\
-  \ 合法跨 checkpoint 且只保留最新 M；main/maintenance 分别按实际 native 默认、输入/输出/thinking/媒体/未知\
-  \ usage 核算并留增长空间。保持 Grok 500k main headroom 与 native clamp、raw extraction 固定输出、uncapped\
-  \ 完整 allowance，full 不省略且可选缩减仅 extraction 内显式有界。Pi 独占模型/config/auth/serializer/transport/compaction\
-  \ 调度、队列、单 CompactionEntry、append/rebuild/usage/活动路径；失败/取消/失效候选不提交、不落默认摘要，不递归维护或重放输入。persistent\
-  \ session、旧 summary、resume/new/tree/fork/clone、TUI queue/editor、media/tool 与可恢复容量拒绝保持。不缩为\
-  \ MVP、不增加跨 session store/检索/任意 provider 兼容或多 owner 合并承诺。\n\n外部 Larva/Dasein/Vernier/wrapper\
-  \ 仅只读 Reference；产品、测试、观察能力仅改 Nunc。保护未跟踪 .pi/、plan-dashboard.html、既有 sessions/settings/defaults、秘密与无关文件。无私人\
-  \ ambient sensors、原始失败输入/旧 session 重放，禁止 context/payload/header/credential logging、安装/global\
-  \ config、host patch、替代启动器、队列操作、发布/push；UI 暂停。合成 fixtures 可在受控服务内断言消息/头语义，报告只给非秘密结果而不保存正文/headers。所有决定实际目标/payload/预算/停止/cleanup/接受证明的\
-  \ executable 必须在 Nunc 跟踪并测试；不让只读 observer 写临时执行器。\n\n以前的完整离线与三路线维护/continuation/resume、giant\
-  \ full/late-D/真实 capacity/更小模型/TUI/media/tool/cancel 证据保留。重新绑定最终不可变候选时按具体 source/lock/config/命令/modality/provider/需求判断底层观察适用性；只补受影响要求和直接前提，不自动完整重跑\
-  \ c1–c5。父方为必要 live 绑定新的隔离 target、合成任务、有限 calls/tokens/time/output 总 reservations、cleanup\
-  \ 与核对，main/maintenance 共用，失败/unknown 不退款；旧 110 次已终结且核对，旧 target 不重放、旧余额不授权。已有 Codex/Luna、OpenRouter/Gemini\
-  \ Flash、xAI/Grok 原生 host-managed access 与无 USD ceiling 授权不变，优先 Luna/Flash low，Grok\
-  \ 按受影响要求需要使用；不新增账户/凭据或再问预算，maxCostUsd:null 不证明免费。正常原生 credential 生命周期归 Pi，任何值/位置不进\
-  \ prompts/Plan/reports。取消、共享限额或未核对效果停止相关执行，local abort 不证明远端取消或账单；已核对独立失败不无端停止其他已授权案例。\n\
-  \nOrchestrator 在 nunc.cooperative-live 完成程序承担本次唯一最终整合接受：包括 cooperative-root-cause\
-  \ 两个结果、native-compat 全部适用交付、nunc-v1 完整项目必要要求。最终整合后完整适用项目原生 offline inventory 必须通过，必要实际观察有正向适用证明，根因/修复/删减和系统扫描的有据义务均闭合，无阻断缺陷或跨结果矛盾，效果已核对；observer\
-  \ 完成或自报 PASS 不代替接受。既有充分证据可以复用，必要 UNPROVEN/DISPROVEN 则接受保持 pending。未完成 writable producer\
-  \ 修复完整兼容批次；其 DONE 后出现仓库缺口则保留历史、quiesce 同一消费者，由 Planner 接入一个兼容 writable repair，再继续该消费者的受影响范围，不新建接受节点。\n\
+context: "当前授权为用户『更新文档，然后创建实施计划』：已接受 docs/UI.md 的完整状态栏、Slots 管理和 Context 布局方案，文档已先提交；本次只创建待执行计划，不\
+  \ claim、dispatch、开始 UI 实现、安装或调用真实模型。未来明确执行请求生效后，按下述仓库与受控本地效果边界执行。nunc-v1、native-compat、cooperative-root-cause\
+  \ 的全部 DONE 定义、状态、证据和历史保持不变；旧阶段的尝试细节、旧 UI 暂停文字及旧预算规则不是新阶段的当前合同。\n\nnunc-ui 的新增权威输入是\
+  \ docs/UI.md 全文，继续满足 README、docs/DESIGN.md、docs/PI.md、docs/ENGINE.md 的适用核心合同。完整\
+  \ UI 包括紧凑 footer、Slots 单条搜索/编辑/删除、Context 当前 F/M/R 与逐消息/内容块布局、最近主请求和真实维护 B/K 观察、原生\
+  \ M-only 人工保存、下一新构造请求生效、恢复与后续 checkpoint 吸收、维护终态竞争与明确失败，以及所有命令/模式、预算和兼容边界。示例文案、90%\
+  \ 尺寸、私有快照格式和类/文件划分可等价实现；不把示例变成固定 schema 或文本 token 测试。无批量修改、回收站、pin、AI 自动修订、跨 session\
+  \ store、额外模型工具或非 TUI 人工写入命令。\n\n当前代码的估算与预算修订须保留：pi-heuristic 使用 Pi estimateTextTokens（UTF-16\
+  \ 字符/4）加 framing；仅相同模型、F 和有效 delivered prefix 的主请求可使用 pi-usage-backed。前缀/模型/生命周期/payload\
+  \ 变化后失效归因，维护与候选始终 fresh。分项估计和 usage-backed 总量不假装逐块实测。main input headroom 采用当前 nativeOutputReserve；extraction\
+  \ 默认 min(8192, model.maxTokens)。uncapped Codex/Responses 的小 reserve 是规划值，实际 cap\
+  \ 为 null；模型能力、预留、cap、消费授权独立，消费授权仍覆盖完整 native allowance。normalExtractionAtTrigger\
+  \ 是 advisory，不能拒绝当前能容纳的 manual/overflow；先检查 actual full，再在配置允许时一次 reduction，selected\
+  \ input 仍不能 fit 才 CAPACITY。保持 nunc-transcript-v2 的实际语义来源与 verbatim K；不恢复 UTF-8 字节硬上界、main-request\
+  \ tickets、任意单追加限制或 blanket payload rewrite ban。\n\nPi 仍独占模型/config/auth/serializer/transport、compaction\
+  \ 调度、队列、JSONL append/rebuild 和活动路径。新增人工修改是 docs/UI.md §5 的 M-only 原生 entry 例外，不是第二套\
+  \ M/K 调度或存储，不改旧 JSONL；最新 native checkpoint 与其后适用人工修订形成唯一 effective M，KR 不变、未来 D\
+  \ 不提前消费。尚未折入下一 native compaction 的人工修改需要新版 Nunc，卸载/旧版只能读上次 native 摘要；该已接受兼容代价无需重新询问。保护合作\
+  \ Provider 链/独立透明委托/一次性 maintenance、多 hooks 多块纯文本追加以及原有媒体/tool/容量/取消语义。普通 observer\
+  \ 故障或未知数据不能变成合法调用的新拒绝条件。\n\n只有 Nunc 可写。外部 Larva、Dasein、Vernier、dotfiles extensions\
+  \ 和 wrapper 仅只读设计参考，不是必需构建依赖。保护 .pi/、plan-dashboard.html、.agents/、秘密、既有 sessions/settings/defaults、其他项目。禁止\
+  \ host patch、替代 launcher、队列重建/清空、失败输入重放、全局安装/配置、发布/push、凭据读取/复制及持久化私人 context/payload/header\
+  \ 日志。受控测试使用新隔离合成 session/profile 与 loopback 服务，不读真实 credentials。已有真实 provider 授权/历史效果保留其原有范围，但这次计划请求不启动新调用；旧\
+  \ target、调用余额或历史 PASS 不构成重放理由。\n\n结果边界：nunc.ui-memory 交付可独立验证的人工记忆保存/有效状态/恢复，供维护和\
+  \ UI 消费；nunc.ui-context 消费其 effective-M/revision/原生终态语义，交付供 Context tab、footer/文字详情使用的只读布局与有范围观察；nunc.ui-panel\
+  \ 消费两者交付完整交互面。三个步骤均由 node-typescript-engineer 持有各自 source/tests/runner/docs；serial\
+  \ 依赖来自真实状态/view 消费，不按文件、命令或测试分节点。受控运行证明随 producer；必要独立观察/审查作为完成程序，不另建同一接受节点。\n\n\
+  Orchestrator 在 nunc.ui-panel 的完成程序承担本次唯一最终整合接受：命名 scope 为 nunc-ui 全部三个结果，以及 nunc-v1、native-compat、cooperative-root-cause\
+  \ 的全部适用既有结果与当前预算/命令修订。绑定最终整合不可变候选，要求完整项目原生离线 inventory、UI.md 全部必要行为的 native TUI/状态证据及核心保护的适用证据；检查跨结果一致性、观察范围、兼容限制与未证明项。有效完整检查/底层模型观察可以按\
+  \ source/lock/config/命令/modality/相关输入复用，组件 PASS 不代替最终整合全量库存，旧模型质量证明不等于新 UI 证明。无阻断缺陷、必要检查失败或必要\
+  \ UNPROVEN 才能宣布该扩展成果完成；不接受只完成 producers 或界面 happy path。IME 等只能在实际 host 判断的部分取得真实观察，缺接口时如实保留未证明并报告具体所需操作；不得用教给\
+  \ agent 的答案、prompt/doc 字词或伪截图替代。\n\n未完成的兼容 writable owner 吸收完整问题/缺 runner 批次；completed\
+  \ producer 历史不可改写。只读消费者需要写修复时，保持其 incomplete，由 Planner 复用或添加一个真正适合的 writable repair\
+  \ 依赖，再在同一消费者上作受影响 Delta。报告格式修复与缺观察不直接证明产品缺陷，不按 finding/retry 追加节点。无源/输入变化且证据适用时不重复付费调用、全仓复查或证明的证明。\n\
   \n```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version: 11.19.0\n\
-  \  stock_pi_version: 0.85.1\n  development_dependencies:\n    \"@earendil-works/pi-coding-agent\"\
-  : 0.85.1\n    \"@earendil-works/pi-ai\": 0.85.1\n    \"@types/node\": 26.4.1\n \
-  \   typebox: 1.3.7\n    typescript: 5.9.3\n  dependency_manifest: package.json\n\
-  \  dependency_lock: package-lock.json\n  runtime_declaration: .node-version\n  tui_python_argv:\
-  \ [/usr/bin/python3]\n  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n\
-  ```\n使用现有锁定环境；缺环境先诊断，不隐式安装或全局导入。所有新增机械检查纳入当前 tracked check runner，clean checkout\
-  \ 加声明的已安装 lock 环境可复现，不依赖外部项目绝对路径才可运行。完整 inventory 以当前文件和必要行为为准，不固定历史测试数。"
-project_guidance: 当前执行新 cooperative-root-cause：nunc.cooperative-repair 由 node-typescript-engineer
-  先输出根因/最小策略，再在同一事务完成 Nunc 系统性扫描、有据修复/删减、真实原生受控接缝测试与文档；不得先改产品再补理由。nunc.cooperative-live
-  由 integration-verifier 消费整合候选，按真实 provider/consumer 受影响面复用或补充观察；它不修仓库、不作接受决定。Orchestrator
-  在该消费者完成程序作本次唯一最终整合接受，并持有 claim/worktree/integration/effects/lifecycle 权限。所有 nunc-v1/native-compat
-  DONE 定义、证据和历史不变，不重开、不加逐发现/扫描/架构/验收节点。仅 Nunc 可写；外部项目/wrapper 只读，.pi/dashboard/日常状态/秘密受保护，UI
-  暂停。完整 review 为必读输入，不能仅消费摘要；合作型缺陷/重入/竞态是威胁范围，保留真不变量，删减无依据的防御与抽象。无安装、全局配置、host patch、replacement
-  launcher、queue manipulation、发布或 push；producer 无 live 权限。必要实际观察由父方绑定新有限有目的总 envelope，旧已终结
-  110 次调用及余量不构成重放许可，unknown invoice 保持未知。
+  \  stock_pi_version: 0.85.1\n  development_dependencies:\n    '@earendil-works/pi-coding-agent':\
+  \ 0.85.1\n    '@earendil-works/pi-ai': 0.85.1\n    '@types/node': 26.4.1\n    typebox:\
+  \ 1.3.7\n    typescript: 5.9.3\n  dependency_manifest: package.json\n  dependency_lock:\
+  \ package-lock.json\n  runtime_declaration: .node-version\n  tui_python_argv: [/usr/bin/python3]\n\
+  \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n  dependency_setup_argv:\
+  \ [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+  \ /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js, ci,\
+  \ --include=dev, --no-audit, --no-fund]\n```\n受授权实施时，在所 claim worktree 为 cwd 使用已锁定环境；缺依赖时按\
+  \ docs/DEVELOPMENT.md 的已见同目标准备方式进行，禁止全局导入、自动工具链升级或把安装藏进检查。这次规划不执行 setup。新检查纳入跟踪\
+  \ scripts/check.mjs all，可从 clean checkout 加声明的锁定开发依赖重现；all 使用构造的 offline HOME/agent\
+  \ 环境，原生 TUI 依赖显式存在。完整库存随代码演化，不固定历史测试数。"
+project_guidance: 当前阶段 nunc-ui 仅计划已就绪，等待用户明确执行请求；不得借此 claim/dispatch/实施。执行时原样使用记录的
+  node-typescript-engineer：先 nunc.ui-memory，再 nunc.ui-context，最后 nunc.ui-panel。完整读取
+  docs/UI.md 与各 step refs，保留最新估算/预算、/nunc details 与合作 Provider/多追加合同。每个 owner 同时交付实际行为测试、必要跟踪
+  native runner 与文档；不生成无消费者的私有 schema、抽象或 proof 节点。source/tests/docs 为本仓库可回退事务，受控
+  fixture session 由 Pi 原生 API 操作，保护日常与外部状态，producer 无 real-model/credential/global-install/push
+  权限。Orchestrator 持有 claim/worktree/integration/lifecycle 权限，在 nunc.ui-panel 完成程序作本次唯一最终整合接受，消费三个交付、最终
+  full inventory 和必要 native TUI/状态/适用历史证据；候选或测试回调本身不等于接受。完成历史不可重开，失败同 owner 修完整兼容批次，额外
+  topology 仅在真实消费者/authority/效果边界变化时由 Planner 处理。
 clipboard:
   author: vectl-orchestrator
   summary: 'Native compatibility accepted: real Dasein append and three live routes'
@@ -1540,3 +1547,192 @@ phases:
       limits retained. No additionalcalls needed. No installation/publication/UI/externalproject/profile
       changes. Final source remains6552c41; laterPlanonlycommits do not change evidence
       inputs.'
+- id: nunc-ui
+  name: Nunc 状态、Slots 管理与 Context 布局界面
+  status: pending
+  gate: 最终整合接受放在 nunc.ui-panel 完成程序，由 Orchestrator 判断；不新增 gate step。范围包含 nunc-ui 的人工记忆状态、Context
+    观察、完整双 tab/compact footer，以及 nunc-v1/native-compat/cooperative-root-cause 全部适用核心结果和当前预算/命令合同。最终不可变整合候选的完整原生
+    offline inventory 通过，docs/UI.md 全部必要行为有实际 native TUI/保存/恢复/竞态/观察边界证据，K/队列/在途请求及原生
+    Provider 保护不回归，兼容代价明确且无阻断缺陷/失败必要检查/必要未证明项，才接受。适用旧证据复用，不因本阶段自动重跑付费案例或重写 DONE。
+  depends_on:
+  - cooperative-root-cause
+  steps:
+  - id: nunc.ui-memory
+    name: 原生人工记忆提交、唯一有效 M 与恢复
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"tests/pi/**\"\
+      , \"tests/engine/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
+      , \"package-lock.json\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\"\
+      , \".env.*\", \"**/auth.json\"]\n\nDeliver: docs/UI.md §5–§6 的完整人工 M 状态能力：Pi\
+      \ 原生 entry 承载人工编辑/删除，adapter/projection 对当前所选路径提供唯一 effective M、相关 revision、可用预算和明确提交结果。实际消费者是现有主\
+      \ context/maintenance，以及后续 Context view 和 Slots UI；此状态/恢复结果可在无面板的公开 host fixture\
+      \ 中独立验证与修复。实现者选择兼容私有类型/编码，不需新增公共 SDK。UI 尚未执行或实现时不得暴露临时写命令代替最终交互。\n\n保持 latest\
+      \ native checkpoint 加其后适用 manual revision 的恢复语义，原生 checkpoint summary/details\
+      \ 校验保留；主请求只带一份有效 M，人工 entry 不成为 R，K/原文/retained boundary 不改。后续维护冻结 effective\
+      \ M、以新 CompactionEntry 吸收结果，旧人工记录不重放；resume/reload/new/tree/fork/clone、legacy\
+      \ summary 和显式回到历史点按 UI §5.1/5.3。未吸收修订依赖新版 Nunc、卸载/旧版读取最后 native 摘要的限制在接口文档中明确，不以\
+      \ host patch/JSONL rewrite/每次 ctx.compact 绕过。\n\n人工保存从成功后新构造请求起生效；已构造/发送的合法调用不因保存而失效或被\
+      \ abort/replay。人工保存与维护冻结至 Pi 提交成功/失败的全窗口互斥，engine 返回 candidate 不能提前解锁；普通 agent\
+      \ run 不整段锁写，无后台待保存队列。相关 session/path/memory revision 冲突明确反馈，不对无关扩展 entry 一律拒绝；模型/tools/config\
+      \ 变化重新核算。增长型修改遵守 M 预算，不截断/淘汰其他 slots；删除/缩短允许逐步减少已超额 M，不要求先让全部 main fit 或移动 K。空文本、未知预算、取消与校验失败明确且不提交。Pi\
+      \ append 错误是 save-unconfirmed，不声称内存未变、不自动重试；继续保存前核对实际原生状态。修改后的新前缀失效旧 usage attribution，保留现有实际请求\
+      \ admission。\n\nBoundary: exact owner node-typescript-engineer，Nunc 仓库 source/tests/跟踪\
+      \ runner/docs 一次可 Git 回退结果；未来执行仅在 claim worktree 和新隔离合成 host/session 中操作。Pi\
+      \ 拥有 append/rebuild/队列/auth/transport；不读取真实 credentials/daily sessions、不安装日常扩展、不改外部仓库、Plan\
+      \ 或全局状态，无 live-model 效果。删除不擦历史、不永久语义禁存，人工编辑非 pin。纯观察故障不能新阻止合法委托。\n\nAdmit: 完整\
+      \ UI.md §5–§7、当前 projection/index/accounting/native tests 和锁定 Pi 0.85.1 公共 API。公开\
+      \ loader/事件/真实 Pi session append 与恢复是证明入口；直接调用私有 handler 或替换 persistence seam\
+      \ 的 mock 只能补定位。交付给下游的 read/replace/delete 消费合同必须足够清晰，无需 UI 猜测源/版本/保存状态。相应 runner/test\
+      \ 进入现有 all；无 UI 布局或真实模型质量结论。\n\nRecovery: 未完成 owner 修复本状态结果的完整兼容问题和缺检查批次，失败先核对隔离本地效果。候选/原生写入状态未知时不重放，不借缺\
+      \ UI 或后续 consumer 预先完成未证明的本状态义务。用户尚未授权执行时停在 pending；遇需改变已接受兼容含义或外部权限则报告具体边界。"
+    verification: "```yaml\nchecks:\n  - id: ui-memory-full-offline\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers:\n      - native-loader人工M-only提交与真实session持久化-重启-reload-new-tree-fork-clone-legacy\n\
+      \      - 唯一effective-M-真实K与boundary保持-人工record不进R-后续checkpoint吸收不重放\n      -\
+      \ 新构造请求生效-在途合法调用不失效-usage归因失效-队列不改\n      - freeze到native-terminal互斥含candidate-handoff间隙-revision相关冲突与无关entry不误拒\n\
+      \      - 增长预算-逐步删除缩短超额M-空正文-未知预算-取消-真实隔离写入失败与未确认结果\n      - 全部现有engine-Pi-live原生回归与构建\n\
+      ```\n遵循 Plan check_environment 与 docs/DEVELOPMENT.md 锁定 setup/检查。新增验证执行真实行为或机械合同；保存恢复必须穿过原生\
+      \ loader/append seam，允许在合成 fixture 中注入真实文件写失败，不 mock 掉被验证 seam。原生维护 candidate-ready\
+      \ 与 native terminal 的时序缺口须由可控实际事件证明，而非函数名/文档内容断言。说明该 producer 已证明的独立状态结果与仍由面板完成的交互范围；提供实际\
+      \ stdout/exit 和适用候选，不手写 PASS 摘要代替日志。"
+    refs:
+    - docs/UI.md
+    - docs/DESIGN.md
+    - docs/PI.md
+    - docs/ENGINE.md
+    - docs/DEVELOPMENT.md
+    - src/index.ts
+    - src/pi/projection.ts
+    - src/pi/admission.ts
+    - src/engine/memory.ts
+    - src/engine/accounting.ts
+    - tests/pi/persistence.test.ts
+    - tests/pi/projection.test.ts
+    - tests/pi/native-lifecycle.test.ts
+    - scripts/check.mjs
+    - package.json
+    - package-lock.json
+    - .node-version
+    agent: node-typescript-engineer
+  - id: nunc.ui-context
+    name: 有范围的 Context 布局与请求/维护观察
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"tests/pi/**\"\
+      , \"tests/engine/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
+      , \"package-lock.json\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\"\
+      , \".env.*\", \"**/auth.json\"]\n\nDeliver: docs/UI.md §4 和 §6 的只读布局/观察能力，消费\
+      \ nunc.ui-memory 的 canonical effective-M/revision/维护终态，向最终 Context tab、footer\
+      \ 和相关文字详情提供一致 view。它独立回答当前实际带什么、消息/内容块分别多少、哪些大小和请求阶段被观察到；可在无 TUI 的公开 native\
+      \ fixture 中独立验收，不把数据收集藏在渲染函数。观察能力与人工持久化可独立修复，UI 无需另写一份 memory projector 或预算器。\n\
+      \nF 的 system/tools 分项、M 与 slots 关联、已交付 R、逐消息顺序/角色/估算/短预览、实际内容块层级和 tool-call/result\
+      \ 关联都可按需消费。区分当前投影、最近主请求 Nunc 观察点（模型/时点/范围/已观察状态）和最近实际维护的 B/K/前后/结果；本地拒绝不冒充发送或成功，engine\
+      \ candidate 不冒充 Pi saved。B/K 不预测、D 不提前消费；只读观察不打开退役正文或外部日志。维护前布局在冻结时观察。session/path/reload\
+      \ 后无适用记录显示无记录，历史模型必须标明，不串分支。\n\n保留真实多 extension context/payload append：仅展示实际可见差异，不能映射的追加单列、无法观察部分\
+      \ unknown；不把临时注入作为 maintenance source 或 M，不新增通用 mapper。内存中保留所需最近观察，不持久化完整 context/payload/header\
+      \ 日志，不向 diagnostics/通知发正文、秘密或私人环境。观察失败留未知，不能改变原有返回值、payload、分类或 Provider 委托，不能让独立调用消耗\
+      \ Nunc 主/维护预算。\n\n复用当前 accounting：分项 pi-heuristic 与可适用主请求 pi-usage-backed 总量分开，避免包装重复及伪造逐块实际\
+      \ token。未知媒体不计零，总量不完整明确标注；模型窗口、H、input planning、M预算、output reserve/cap、overrun/headroom\
+      \ advice分别提供。保留 min(8192,model.maxTokens)、uncapped cap=null、nativeOutputReserve\
+      \ 和 advisory正常H语义，无新 scheduler/settings修改。保留现有 /nunc details 全部预算与 observation\
+      \ 消费，不删千位分隔或补全；最终交互入口由下一 producer 接线。\n\nBoundary: exact owner node-typescript-engineer，Nunc\
+      \ 仓库事务与隔离受控 native fixture；产品观察只读，不追加 session entry，不触发模型或 compaction。不改前一步的持久化所有权/兼容规则。真实\
+      \ source 仅在本地当前 UI view 必要范围使用，不读取 daily credentials 或私有 profile，不改其他扩展，不 install/push/live。\n\
+      \nAdmit: nunc.ui-memory 提供的实际 read/revision/terminal 接口，UI.md §4/6/7、当前 request/accounting/admission/payload\
+      \ 及原生公共事件。实际 loader→当前 wrapper→native serializer→受控 transport 对照证明观察界限与不干扰调用；不使用合成\
+      \ self-report 代替现场。消息/block/估算有能被改变输入推翻的断言。交付可消费的 typed view、数据意义/未知/清理合同、行为测试和必要\
+      \ tracked runner，最终 UI 能直接消费。\n\nRecovery: 同一未完成 owner 修复完整观察/计数/归因批次，保留有效前一步状态证明；所需\
+      \ native hook 不提供某信息则诚实 unknown，不构造新强制调用限制。若缺失的是本文必要可见能力而非允许未知的外部部分，不能直接缩窄完成声明，交付前补足或报告具体能力缺口。受控进程必须结束并核对。"
+    verification: "```yaml\nchecks:\n  - id: ui-context-full-offline\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers:\n      - current-F-M-R消息与contentblock计数-tool关联-包装分摊不重复-长内容原文不改\n\
+      \      - effective-memory-revision一致-人工变更与model变化的usage归因\n      - fresh分项与usage-backed总量分开-unknown图片与缺usage-规划reserve和cap-advisory\n\
+      \      - current-vs-lastmain-vs-maintenance模型时点边界-拒绝非发送-candidate非保存\n     \
+      \ - 多hooks多纯文本block追加-未知映射-独立Provider委托不干扰-临时注入不回填source\n      - 无未交付D-真实B-K而非预测-失败取消无伪造after-session-path-reload清理\n\
+      \      - 只读观察无模型-compaction-session-write及完整现有回归\n```\n使用同一锁定 all entrypoint，producer\
+      \ 将新机械检查纳入该库存；不要只比输出标签。合成模型/usage 必须标为受控机制事实，不证明真实 token 准确性。实际原生受控 serializer/请求与\
+      \ session 观察用于判断视图来自哪个 seam，不保存私人 payload。完整检查在最终该 producer 候选上有效即可，不重复未改变的前一步观察来制作新证明形式。"
+    refs:
+    - docs/UI.md
+    - docs/PI.md
+    - docs/ENGINE.md
+    - docs/DEVELOPMENT.md
+    - src/index.ts
+    - src/pi/projection.ts
+    - src/pi/admission.ts
+    - src/pi/payload.ts
+    - src/engine/accounting.ts
+    - src/engine/types.ts
+    - src/engine/request.ts
+    - tests/pi/admission-ownership.test.ts
+    - tests/pi/payload-append.test.ts
+    - tests/pi/queue.test.ts
+    - tests/engine/capacity-redesign.test.ts
+    - scripts/check.mjs
+    - scripts/observe-payload.mjs
+    - package.json
+    - package-lock.json
+    - .node-version
+    depends_on:
+    - nunc.ui-memory
+    agent: node-typescript-engineer
+  - id: nunc.ui-panel
+    name: 紧凑状态栏、Slots/Context 双 tab 与整合交付
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"src/ui/**\", \"src/pi/**\", \"src/engine/**\"\
+      , \"tests/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
+      , \"package-lock.json\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\"\
+      , \".env.*\", \"**/auth.json\"]\n\nDeliver: docs/UI.md §1–§3 的完整用户交互，实际消费已交付的\
+      \ §4 Context view 与 §5 manual read/replace/delete，共同形成可用 Nunc footer 和一个 Slots/Context\
+      \ overlay。setStatus compact段通常8–12列、无需NerdFont，不替换footer或加widget，不轮询/动画/额外调用；显示已保存slots/M比例、维护含原生提交、当前诊断/不可用，未知和零预算诚实、超額不钳成100%，恢复清除当前警告。第三方footer截断/不消费statuses的限制保留，不接管它。\n\
+      \nTUI bare /nunc 默认 Slots；/nunc status显式文字；/nunc details保留现有三类预算/最新accounting/headroom/overruns、千位分隔，原生补全details+status及unknown用法。RPC/print/JSON不得误用custom组件，hasUI不等于TUI。只读操作零model/compaction/session-write，人工保存仅有预期native\
+      \ entry。不开临时非TUI写命令或新模型tool。\n\n实际overlay采用Larva等已参考扩展的居中rounded/padding1/shadow、上搜索列表下详情风格，theme继承和native\
+      \ Input/SelectList/Editor；90%尺寸为起点，窄短终端可等价调整但不丢关键操作/退出。Slots按真实ID/text搜索全文预览、Enter编辑、原生Enter保存/ShiftEnter换行/Esc取消、CtrlD仅列表确认一次删除；编辑器内删除仍删文本，空正文明确。成功维持合理选择，失败/冲突/超预算/save-unconfirmed保留draft并展示实际原因，维护全窗口期间只暂禁保存不锁普通agent。明确未fold人工变更需新版Nunc解读的卸载/旧版限制。\n\
+      \n浏览Tab切tabs、编辑Tab原生补全，hint遵从injected keybindings；Esc最内层优先，关闭不abort背景agent，主editor草稿/队列不变。CJK/IME焦点传递、paste/native光标、theme\
+      \ invalidation、ANSI可见宽度、长正文/resize/shortscreen、空记忆/no-match/无记录/错误与closing/teardown资源清理完整可用。Context呈现F/M/R大小辅助条与数值、分层消息和contentblocks、M跳slot、三个观察范围、预算与未知边界；preview截断只影响显示，两个tab与footer使用一致revision，不造另一份M或预算器。\n\
+      \nBoundary: exact owner node-typescript-engineer；这是原生 Node/Pi TUI，不是browser\
+      \ frontend。source/tests/必要runner/docs是一份Nunc可Git回退事务，环境和nativehost运行仅隔离受控目标。Larva/dotfiles风格参考只读、不得成为常规测试依赖；不全局安装、不写dailyconfig/auth、无push/live模型、无新provider适配层或hostpatch。完成文档需准确把已交付UI与未证明项分开。\n\
+      \nAdmit: UI.md全文、两个已集成前置的公开消费语义、锁定Pi0.85.1实际loader/TUI和现有all/PTY runner。组件render/input测试与RPC辅助不能代替实际启动TUI中的键盘、焦点、native保存与请求观察。把新增交互和时序观测纳入跟踪代码/测试供完成程序复用，不要求只读观察者编临时执行器。独立host观察或范围审查若为完成必要证明，作为本步骤完成程序执行，不新建同一接受节点。\n\
+      \nFinal acceptance: Orchestrator负责本次唯一完整整合判断，scope明确包含nunc-ui的memory/context/panel三个成果，以及nunc-v1、native-compat、cooperative-root-cause全部适用结果和当前预算/命令修订。在最终整合不可变candidate上取得完整applicable\
+      \ all inventory和UI.md全部必要行为的真实native TUI/状态/恢复/竞态/边界证据，核对跨结果一致与核心保护、效果清理和已接受兼容代价；相同最终输入的完整证明可复用，不以component\
+      \ PASS或callback代替。IME候选窗口等自动化不充分的能力需要实际host观察；缺少必要界面能力时明确待补，不用CJK字符串断言冒充。无阻断缺陷/必要失败检查/必要未证明才完成本step并宣布此阶段交付；本接受不授权发布/安装或新付费调用。\n\
+      \nRecovery: 最后producer未完成时由当前兼容owner修完整受影响实现/测试/docs批次；已完成历史保持。只缺报告修报告，只缺事实补观察，已证明底层不因报告目标变化自动重跑。出现不可吸收的已完成producer缺口或不同效果边界时由Planner处理真实依赖，不加每finding/retry/第二接受节点。用户当前只要求计划，本步骤保持待执行。"
+    verification: "```yaml\nchecks:\n  - id: ui-panel-final-integrated-offline\n \
+      \   argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers:\n      - compact-setStatus与其它扩展共存-状态转换-空未知零超额-不接管footer\n \
+      \     - 实际stock-TUI的Slots-Context-tabs-search-preview-edit-confirm-save及M跳slot\n\
+      \      - 原生命令补全-details兼容-status-未知参数-非TUI模式降级\n      - native-editor-keybindings-paste-CJK焦点-ANSIwidth-theme-resize-窄短终端\n\
+      \      - Esc内层-背景agent不abort-主draft和queue保持-关闭与reload清理\n      - 两tab与footer同revision-保存下一新请求唯一M-K与inflight保持-恢复与checkpoint吸收\n\
+      \      - current-lastrequest-maintenance-BK-计数-framing-fresh-usage-unknown-multiappend-D边界\n\
+      \      - 维护candidate到native终态-冲突-预算-取消-保存未确认与draft不丢\n      - 最终完整engine-Pi-live-新增UI及跨组件原生回归和类型构建\n\
+      ```\nproducer提供实际native PTY/TUI运行证据，证明键入/关闭/保存穿过stock loader及公开接口，配合组件渲染/输入及真实session/transport行为断言。原生IME候选窗口等不能由PTY或自动断言充分证明的部分记录实际人工host观察；如果环境不可得，明确具体未证明行为而不伪造PASS。私有正文仅必要本地view显示；验证用合成数据，报告不暴露真实credentials/ambient/context/header。\n\
+      \nOrchestrator完成时消费最终candidate的完整适用库存及三个producer的因果适用证明，按UI.md全部必要范围判定覆盖、冲突、限制和未解决事项。原始真实模型续做、Provider组合与TUI核心观察按具体输入适用性复用，不默认重跑c1–c5；必要新缺口不能凭历史接受抹去。源码/lock/config/integration变化需受影响新检查和最终完整回归；仅Plan/报告改动不强制已适用模型或设备效果重放。测试数量/标题/规定短语不构成完成条件。"
+    refs:
+    - docs/UI.md
+    - README.md
+    - docs/DESIGN.md
+    - docs/PI.md
+    - docs/ENGINE.md
+    - docs/DEVELOPMENT.md
+    - src/index.ts
+    - src/pi/projection.ts
+    - src/pi/admission.ts
+    - tests/pi/config.test.ts
+    - tests/pi/persistence.test.ts
+    - tests/pi/queue.test.ts
+    - scripts/check.mjs
+    - scripts/pty-driver.py
+    - scripts/observe-stock.mjs
+    - scripts/stock-driver.mjs
+    - package.json
+    - package-lock.json
+    - .node-version
+    depends_on:
+    - nunc.ui-context
+    agent: node-typescript-engineer
