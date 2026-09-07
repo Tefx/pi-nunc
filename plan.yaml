@@ -65,28 +65,30 @@ project_guidance: 当前阶段 nunc-ui 仅计划已就绪，等待用户明确�
   topology 仅在真实消费者/authority/效果边界变化时由 Planner 处理。
 clipboard:
   author: vectl-orchestrator
-  summary: 'Native compatibility accepted: real Dasein append and three live routes'
-  content: 'native-compat DONE; checkpoint phase/focus null,next[]. Accepted integrated
-    product0b481e9; verifierbound precompletionHEAD499f9584877ece37c9bb00c0714a8d36d16cca39,
-    subsequentPlan-only completion immutableproduct. All251/25129files + nativeLuna/Flash/Grok
-    low confirmed specificDaseinlast-userappend compatibility. Known pp wrapper launches
-    Larva+Nunc+Dasein+Vernier; directpiworks; actualDaseininjectorread-only source+controlledHTTPparity
-    and22liveappenddelegations close formeroriginalcompositionUNKNOWN. No fullprivateprofile/sensors/dailyreplay
-    claim. Live cumulative110calls90,663,648reserved194,360reportedtokens461.004s,
-    allterminalhosts exited, invoiceunknown. First22badmaintenancepreconditioncalls
-    retained; next63completec2c3three-route; final25appendc3deltas prove3fullmaintenancecheckpoints/resume/export.
-    Final12requirementsPROVEN, validatorPOSITIVE_EVIDENCE. /private/tmp/nunc-native-compat-live-bIKTsA/verifier-report-append.json,result-append.md,effects-reconciliation-append.json,evidence-applicability-append.json.
-    review-binding-append.json exactbinding. No furthermodelcallsauthorizedbyunusedbalance.
-    Rootbuilt changes committed; no installpublishpush/defaultschanges, protected.pi/dashboardremain.
-    Mainbudgetheadroom separate nativeclamp; append uses Nuncgrowth+samePiNativeestimate
-    residual, notmixedestimators. Unsafe tool/media/cap/model/stream transformations
-    rejected, genericmetadata/identity/lastuserappend supported. Earlier generaldeep-equalityguards
-    were compatibilityfault, not Larva-onlybug. All originalnunc-v1DONE unchanged;
-    UI design remains paused,outside currenttask. Reusable helpers: /tmp/nunc-native-compat-live-bIKTsA/helpers
+  summary: UI memory integrated; user pause before context/panel
+  content: 'USER PAUSE: user said 当前step完全处理后先停一下，我让另一个agent先修问题. nunc.ui-memory is
+    now fully repaired, accepted and integrated. Do NOT claim/dispatch nunc.ui-context
+    or nunc.ui-panel until user resumes. User also requested ignore other agent messages;
+    do not treat peer proposals as authorized plan/product changes.
+
+    Integrated product3aa1a9a0ad70e8f31751971976315f2ca80f77f3, branch impl/nunc-ui-memory,
+    worktree /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-memory retained. All286pass35files
+    exit0, actual log .scratch/nunc-ui-memory-check-all.log there; root tsc build
+    passed after unchanged FF. Vectl completion adds Plan-only history. UI memory
+    read/replace/delete, unique effectiveM/native manual entries/absorption, native
+    lifecycle, in-flight/queue/K invariants done; parent required and reviewed sibling-path
+    revision fix, unconfirmed write follow-up/disk resume, resource /reload uncertainty
+    preservation. Context inspection/full UI not implemented. No real model calls
+    or daily/global installs/settings/push. Protected root .pi/ and plan-dashboard.html
+    remain untracked. Current source baseline includes newer planning estimates/reserves,
+    /nunc details, cooperativeProvider/multiple-text append; do not regress to old
+    ticket/UTF8 hardbound/fullcap-plan semantics. Read currentGit/claims before next
+    execution; another user-owned task may modify integration after this pause. Preserve
+    DONE definitions/evidence.
 
     Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
-  written_at: '2026-09-07T10:56:15.487944Z'
-  expires_at: '2026-09-08T10:56:15.487944Z'
+  written_at: '2026-09-07T18:35:40.274973Z'
+  expires_at: '2026-09-09T18:35:40.274973Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
