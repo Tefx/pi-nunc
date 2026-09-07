@@ -127,7 +127,7 @@ export class Admission {
           ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
           : { mode: delta.mode, categories: delta.categories };
         try {
-          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens! });
+          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context });
           this.observe({ kind, outcome: "delegate", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
           return replacement;
         } catch (error) {

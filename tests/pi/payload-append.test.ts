@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import type { Model, Provider } from "@earendil-works/pi-ai";
+import type { Api, Context, Model, Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
+import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
+import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { EngineError } from "../../src/engine/validation.js";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
@@ -18,8 +21,8 @@ const SYNTHETIC = SYNTHETIC_LAST_USER_APPEND;
 
 type DaseinInjector = { injectAmbientProviderPayload: (input: { payload: unknown; content: string }) => { changed: boolean; payload: unknown } };
 
-async function loadDaseinInjector(): Promise<DaseinInjector | undefined> {
-  if (!existsSync(DASEIN_INJECTOR)) return undefined;
+async function loadDaseinInjector(): Promise<DaseinInjector> {
+  assert.equal(existsSync(DASEIN_INJECTOR), true, `readonly Dasein injector required: ${DASEIN_INJECTOR}`);
   return await import(pathToFileURL(DASEIN_INJECTOR).href) as DaseinInjector;
 }
 
@@ -28,7 +31,8 @@ function authorize(before: unknown, after: unknown, extra: Partial<Parameters<ty
   const afterView = jsonView(after);
   const delta = classifyPayloadChange(beforeView, afterView, payloadMode(beforeView, afterView, after, before));
   authorizePayload({
-    model, delta, before, after, inputTokens: 10, inputLimit: 8000, authorizedOutput: 8192, ...extra,
+    model, delta, before, after, inputTokens: 10, inputLimit: 8000, authorizedOutput: 8192,
+    context: extra.context ?? { messages: [] }, ...extra,
   });
   return delta;
 }
@@ -44,6 +48,48 @@ function responsesSSE(modelId: string, text: string) {
     { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
   ];
   return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+}
+
+function completionsSSE(modelId: string, text: string) {
+  const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
+  const chunk = (delta: unknown, finish_reason: string | null = null) => frame({ id: "response-1", object: "chat.completion.chunk", created: 1, model: modelId, choices: [{ index: 0, delta, finish_reason }] });
+  return new Response(
+    chunk({ role: "assistant", content: "" }) + chunk({ content: text }) + chunk({}, "stop") +
+    frame({ id: "response-1", object: "chat.completion.chunk", model: modelId, choices: [], usage: { prompt_tokens: 100, completion_tokens: 4, total_tokens: 104 } }) +
+    "data: [DONE]\n\n",
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+async function nativeCatalogAppend(t: { after: (fn: () => Promise<void> | void) => void }, args: {
+  provider: Provider; catalog: Model<Api>; sse: (id: string, text: string) => Response; prompt: string;
+  inject: (payload: unknown) => unknown; inputLimit?: number;
+}) {
+  let sends = 0;
+  const bodies: Record<string, unknown>[] = [];
+  const admissions: Array<{ outcome?: string; code?: string; payload?: { mode?: string; categories?: string[]; transform?: string } }> = [];
+  const transport: typeof fetch = async (resource, init) => {
+    sends++;
+    bodies.push(await new Request(resource, init).json() as Record<string, unknown>);
+    return args.sse(args.catalog.id, "Controlled native response.");
+  };
+  const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const };
+  const wrapped: Provider = {
+    ...args.provider,
+    streamSimple: (m, context, options) => args.provider.streamSimple(m as never, context, { ...options, ...bound } as never),
+    stream: (m, context, options) => args.provider.stream(m as never, context, { ...options, ...bound } as never),
+  };
+  const extras: InlineExtension[] = [
+    { name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as typeof admissions[number])); } },
+    { name: "append", factory(pi) { pi.on("before_provider_request", event => args.inject(event.payload)); } },
+  ];
+  const f = await fixture({ config: args.inputLimit === undefined ? {} : { budget: { inputLimit: args.inputLimit } }, extras });
+  t.after(() => f.close());
+  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+  await f.modelRuntime.setRuntimeApiKey(args.catalog.provider, "offline-fixture-key");
+  await f.runtime.session.setModel(args.catalog);
+  await f.runtime.session.prompt(args.prompt);
+  return { f, catalog: args.catalog, sends: () => sends, bodies, admissions };
 }
 
 async function nativeAppend(t: { after: (fn: () => Promise<void> | void) => void }, inject: (payload: unknown) => unknown) {
@@ -144,19 +190,42 @@ test("unvalidated last-user rewrite, reorder, netting, media replace and tool ch
   assert.throws(() => authorize(before, changedTools), /unvalidated payload input,tools/);
 });
 
-test("append charges remaining input and post-native-clamp window occupancy", () => {
+test("append charges Nunc input headroom separately from Pi estimateContextTokens occupancy", () => {
   const before = { model: "engine-test", stream: true, max_tokens: 800, messages: [{ role: "user", content: "hi" }] };
   const after = applyLastUserTextAppend(before, "x".repeat(400));
   assert.equal(after.changed, true);
-  assert.throws(() => authorize(before, after.payload, { inputTokens: 7900, inputLimit: 8000 }), /CAPACITY|remaining safe input/);
-  const tight = { ...model, contextWindow: 1000, maxTokens: 900 };
-  assert.throws(() => authorize(before, after.payload, { model: tight, inputTokens: 200, inputLimit: 800, authorizedOutput: 900 }), /after native output clamp/);
-  authorize(before, applyLastUserTextAppend(before, SYNTHETIC).payload);
+  assert.throws(() => authorize(before, after.payload, { inputTokens: 7900, inputLimit: 8000 }), /remaining safe input/);
+
+  const grok = { ...model, id: "grok-4.6", api: "openai-responses" as const, contextWindow: 500000, maxTokens: 500000 };
+  const smallPrompt = "a".repeat(4000);
+  const pContext: Context = { messages: [{ role: "user", content: smallPrompt, timestamp: 1 }] };
+  assert.equal(estimateContextTokens(pContext).tokens, 1000);
+  const pBefore = { model: grok.id, stream: true, max_output_tokens: 494904, input: [{ role: "user", content: smallPrompt }] };
+  const pSmall = applyLastUserTextAppend(pBefore, "x".repeat(20));
+  assert.equal(pSmall.changed, true);
+  authorize(pBefore, pSmall.payload, { model: grok, context: pContext, inputTokens: 10000, inputLimit: 450000, authorizedOutput: grok.maxTokens });
+
+  const prompt = `First task ${"a".repeat(80000)}`;
+  const context: Context = { systemPrompt: "Perform the current task.", messages: [{ role: "user", content: prompt, timestamp: 1 }] };
+  const occupied = estimateContextTokens(context).tokens;
+  const cap = 475870;
+  assert(occupied + cap < grok.contextWindow);
+  const grokBefore = { model: grok.id, stream: true, max_output_tokens: cap, input: [{ role: "user", content: prompt }] };
+  const grokSmall = applyLastUserTextAppend(grokBefore, SYNTHETIC);
+  authorize(grokBefore, grokSmall.payload, { model: grok, context, inputTokens: 90000, inputLimit: 450000, authorizedOutput: grok.maxTokens });
+  const grokHuge = applyLastUserTextAppend(grokBefore, "x".repeat(200000));
+  assert.throws(() => authorize(grokBefore, grokHuge.payload, { model: grok, context, inputTokens: 90000, inputLimit: 450000, authorizedOutput: grok.maxTokens }), /after native output clamp/);
+
+  const orGrok = { ...model, id: "x-ai/grok-4.6", api: "openai-completions" as const, contextWindow: 500000, maxTokens: 450000 };
+  const orBefore = { model: orGrok.id, stream: true, max_tokens: 450000, messages: [{ role: "user", content: prompt }] };
+  const orSmall = applyLastUserTextAppend(orBefore, SYNTHETIC);
+  authorize(orBefore, orSmall.payload, { model: orGrok, context, inputTokens: 90000, inputLimit: 450000, authorizedOutput: orGrok.maxTokens });
+  const orHuge = applyLastUserTextAppend(orBefore, "x".repeat(200000));
+  assert.throws(() => authorize(orBefore, orHuge.payload, { model: orGrok, context, inputTokens: 90000, inputLimit: 450000, authorizedOutput: orGrok.maxTokens }), /after native output clamp/);
 });
 
-test("tracked last-user append matches the read-only Dasein injector on synthetic payloads", async t => {
+test("tracked last-user append matches the read-only Dasein injector on synthetic payloads", async () => {
   const dasein = await loadDaseinInjector();
-  if (!dasein) { t.skip("Dasein injector source is not present"); return; }
   const cases: unknown[] = [
     { model: "m", stream: true, messages: [{ role: "user", content: "ask" }] },
     { model: "m", stream: true, messages: [{ role: "user", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] },
@@ -193,7 +262,6 @@ test("stock loader last-user append reaches Responses HTTP; original text and to
 
 test("real Dasein injector last-user append reaches Responses HTTP", { timeout: 90000 }, async t => {
   const dasein = await loadDaseinInjector();
-  if (!dasein) { t.skip("Dasein injector source is not present"); return; }
   const run = await nativeAppend(t, payload => {
     const result = dasein.injectAmbientProviderPayload({ payload, content: SYNTHETIC });
     return result.changed ? result.payload : undefined;
@@ -204,4 +272,65 @@ test("real Dasein injector last-user append reaches Responses HTTP", { timeout: 
   const lastUser = [...input].reverse().find((item): item is { content: Array<{ text?: string }> } =>
     !!item && typeof item === "object" && (item as { role?: unknown }).role === "user");
   assert.equal(lastUser?.content.at(-1)?.text, SYNTHETIC);
+});
+
+test("xai grok-4.6 80k last-user append reaches Responses HTTP; overlarge append is zero-send", { timeout: 90000 }, async t => {
+  const xai = xaiProvider();
+  const catalog = xai.getModels().find(m => m.id === "grok-4.6");
+  assert(catalog && catalog.contextWindow === 500000 && catalog.maxTokens === 500000 && catalog.api === "openai-responses");
+  const prompt = `First task ${"a".repeat(80000)}`;
+  const small = await nativeCatalogAppend(t, {
+    provider: xai, catalog, sse: responsesSSE, prompt,
+    inject: payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC); return result.changed ? result.payload : undefined; },
+  });
+  assert.equal(small.sends(), 1);
+  const cap = small.bodies[0]?.max_output_tokens;
+  assert.equal(typeof cap, "number");
+  assert(Number(cap) > 400000 && Number(cap) < catalog.maxTokens);
+  const input = small.bodies[0]?.input;
+  assert(Array.isArray(input));
+  const lastUser = [...input].reverse().find((item): item is { content: Array<{ text?: string }> } =>
+    !!item && typeof item === "object" && (item as { role?: unknown }).role === "user");
+  assert.equal(lastUser?.content.at(-1)?.text, SYNTHETIC);
+  assert(small.admissions.some(a => a.outcome === "delegate" && a.payload?.transform === "last-user-text-append"));
+
+  const huge = await nativeCatalogAppend(t, {
+    provider: xai, catalog, sse: responsesSSE, prompt,
+    inject: payload => { const result = applyLastUserTextAppend(payload, "x".repeat(200000)); return result.changed ? result.payload : undefined; },
+  });
+  assert.equal(huge.sends(), 0);
+  assert(huge.admissions.some(a => a.outcome === "reject" && a.code === "CAPACITY" && a.payload?.transform === "last-user-text-append"));
+  const last = huge.f.runtime.session.messages.at(-1);
+  assert.equal(last?.role, "assistant");
+  assert.match(last.role === "assistant" ? last.errorMessage ?? "" : "", /context_length_exceeded: Nunc local CAPACITY/);
+  assert.doesNotMatch(JSON.stringify(huge.admissions), /x{20}/);
+});
+
+test("openrouter grok-4.6 80k last-user append reaches Completions HTTP; overlarge append is zero-send", { timeout: 90000 }, async t => {
+  const openrouter = openrouterProvider();
+  const catalog = openrouter.getModels().find(m => m.id === "x-ai/grok-4.6");
+  assert(catalog && catalog.contextWindow === 500000 && catalog.maxTokens === 450000 && catalog.api === "openai-completions");
+  const prompt = `First task ${"a".repeat(80000)}`;
+  const small = await nativeCatalogAppend(t, {
+    provider: openrouter, catalog, sse: completionsSSE, prompt,
+    inject: payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC); return result.changed ? result.payload : undefined; },
+  });
+  assert.equal(small.sends(), 1);
+  const cap = small.bodies[0]?.max_tokens ?? small.bodies[0]?.max_completion_tokens;
+  assert.equal(typeof cap, "number");
+  assert(Number(cap) > 400000);
+  const messages = small.bodies[0]?.messages;
+  assert(Array.isArray(messages));
+  const lastUser = [...messages].reverse().find((item): item is { content: unknown } =>
+    !!item && typeof item === "object" && (item as { role?: unknown }).role === "user");
+  const content = lastUser?.content;
+  assert(Array.isArray(content));
+  assert.equal((content.at(-1) as { text?: string }).text, SYNTHETIC);
+
+  const huge = await nativeCatalogAppend(t, {
+    provider: openrouter, catalog, sse: completionsSSE, prompt,
+    inject: payload => { const result = applyLastUserTextAppend(payload, "x".repeat(200000)); return result.changed ? result.payload : undefined; },
+  });
+  assert.equal(huge.sends(), 0);
+  assert(huge.admissions.some(a => a.outcome === "reject" && a.code === "CAPACITY"));
 });

@@ -1,4 +1,5 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Context, Model } from "@earendil-works/pi-ai";
+import { estimateContextTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { EngineError, record } from "../engine/validation.js";
 
@@ -212,7 +213,7 @@ function addedLastUserText(beforeContent: unknown, afterContent: unknown, partTy
   return last.text;
 }
 
-export function lastUserTextAppend(before: unknown, after: unknown): { ok: true; addedTokens: number } | { ok: false } {
+export function lastUserTextAppend(before: unknown, after: unknown): { ok: true; addedTokens: number; addedText: string } | { ok: false } {
   if (!record(before) || !record(after)) return { ok: false };
   const key: "input" | "messages" | undefined = Array.isArray(before.input) && Array.isArray(after.input) ? "input"
     : !Array.isArray(before.input) && !Array.isArray(after.input) && Array.isArray(before.messages) && Array.isArray(after.messages) ? "messages"
@@ -239,7 +240,7 @@ export function lastUserTextAppend(before: unknown, after: unknown): { ok: true;
   for (const field of priorKeys) if (canonical(prior[field]) !== canonical(next[field])) return { ok: false };
   const added = addedLastUserText(prior.content, next.content, LAST_USER_TEXT_PART[key]);
   if (added === undefined) return { ok: false };
-  return { ok: true, addedTokens: textTokens(added) };
+  return { ok: true, addedTokens: textTokens(added), addedText: added };
 }
 
 function outputFloor(model: Model<Api>): number {
@@ -254,6 +255,7 @@ export function authorizePayload(args: {
   inputTokens: number;
   inputLimit: number;
   authorizedOutput: number;
+  context: Context;
 }): void {
   const prior = jsonView(args.before);
   const body = jsonView(args.after);
@@ -294,8 +296,12 @@ export function authorizePayload(args: {
       throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining safe input; request was not sent`);
     }
     const serializedOutput = args.delta.outputAfter ?? args.delta.outputBefore;
-    if (serializedOutput !== undefined && args.inputTokens + added + serializedOutput > args.model.contextWindow) {
-      throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining safe input after native output clamp; request was not sent`);
+    if (serializedOutput !== undefined) {
+      const nativeOccupied = estimateContextTokens(args.context).tokens;
+      const nativeAdded = Math.max(estimateTextTokens(append.addedText), Math.ceil(added / 4));
+      if (nativeOccupied + nativeAdded + serializedOutput > args.model.contextWindow) {
+        throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining context after native output clamp; request was not sent`);
+      }
     }
     return;
   }
