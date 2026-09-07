@@ -13,6 +13,8 @@ export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
 export class Admission {
   private readonly maintenance = new AsyncLocalStorage<{ request: Parameters<Complete>[0]; used: boolean }>();
+  /** Set for one delegated call so inner Nunc wrappers pass through; held old wrappers start a new entry. */
+  private readonly call = new AsyncLocalStorage<true>();
   private readonly installed = new Map<string, Installation>();
   private cancelledRun = false;
   private readonly rejected = new Map<string, AbortSignal>();
@@ -65,9 +67,15 @@ export class Admission {
   }
   private dispatch(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
     const entry = this.installed.get(model.provider);
-    if (!entry || entry.wrapper !== wrapper) {
+    if (!entry) {
       return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
     }
+    if (this.call.getStore() && entry.wrapper !== wrapper) {
+      return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
+    }
+    return this.call.run(true, () => this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream));
+  }
+  private enter(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
     const scope = this.maintenance.getStore();
     const ownedMaintenance = !simple && scope && !scope.used && scope.request.context === context &&
       scope.request.signal === options?.signal && scope.request.outputTokens === options.maxTokens &&

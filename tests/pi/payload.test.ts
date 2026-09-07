@@ -53,8 +53,11 @@ test("authorize allows metadata and identity; rejects overcap, non-stream, model
   assert.throws(() => authPayload({ model, delta: stream, before: base, after: { ...base, stream: false }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /stream field|non-streaming/);
   const renamed = classifyPayloadChange(base, { ...base, model: "outside-selection" }, "replacement");
   assert.throws(() => authPayload({ model, delta: renamed, before: base, after: { ...base, model: "outside-selection" }, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /model field|payload model differs/);
-  const grown = { ...base, extra: "n".repeat(2000) };
+  const extra = { ...base, extra: "n".repeat(2000) };
+  assert.throws(() => authPayload({ model, delta: classifyPayloadChange(base, extra, "replacement"), before: base, after: extra, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /unrecognized payload field/);
+  const grown = { ...base, metadata: { note: "n".repeat(2000) } };
   const growth = classifyPayloadChange(base, grown, "replacement");
+  assert.deepEqual(growth.categories, ["metadata"]);
   assert(growth.grewTokens > 0);
   assert.throws(() => authPayload({ model, delta: growth, before: base, after: grown, inputTokens: 900, inputLimit: 1000, authorizedOutput: model.maxTokens }), /input growth/);
 });
@@ -91,15 +94,26 @@ test("Google nested config and Completions n are control, not metadata", () => {
   assert.throws(() => authPayload({ model, delta: nDelta, before: completions, after: multi, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /unvalidated payload control/);
   const unknown = { prompt: "a" };
   authPayload({ model, delta: classifyPayloadChange(unknown, unknown, "identity"), before: unknown, after: unknown, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
+  const candidate = { ...google, config: { ...google.config, candidateCount: 2 } };
+  assert.throws(() => authPayload({ model, delta: classifyPayloadChange(google, candidate, "replacement"), before: google, after: candidate, inputTokens: 100, inputLimit: 1000, authorizedOutput: 128 }), /unrecognized payload field/);
+  const cached = { ...google, config: { ...google.config, cachedContent: "cachedContents/synthetic" } };
+  assert.throws(() => authPayload({ model, delta: classifyPayloadChange(google, cached, "replacement"), before: google, after: cached, inputTokens: 100, inputLimit: 1000, authorizedOutput: 128 }), /unrecognized payload field/);
+  const audioOut = { ...google, config: { ...google.config, responseModalities: ["AUDIO"] } };
+  assert.throws(() => authPayload({ model, delta: classifyPayloadChange(google, audioOut, "replacement"), before: google, after: audioOut, inputTokens: 100, inputLimit: 1000, authorizedOutput: 128 }), /unrecognized payload field/);
+  const responsesHidden = { model: model.id, stream: true, max_output_tokens: 16, input: [{ role: "user", content: "a" }] };
+  for (const patch of [{ previous_response_id: "resp_synthetic" }, { conversation: "conv_synthetic" }, { truncation: "auto" }]) {
+    const after = { ...responsesHidden, ...patch };
+    assert.throws(() => authPayload({ model, delta: classifyPayloadChange(responsesHidden, after, "replacement"), before: responsesHidden, after, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /unrecognized payload field/);
+  }
 });
 
 test("same-length input mutation, netted growth, extra image, audio, cap expansion and omitted cap fail", () => {
-  const base = { model: model.id, stream: true, max_tokens: 16, extra: "n".repeat(4000), messages: [{ role: "assistant", content: [{ type: "toolCall", id: "c1", name: "read", arguments: {} }] }, { role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: "ok" }] }] };
+  const base = { model: model.id, stream: true, max_tokens: 16, metadata: { note: "n".repeat(4000) }, messages: [{ role: "assistant", content: [{ type: "toolCall", id: "c1", name: "read", arguments: {} }] }, { role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: "ok" }] }] };
   const orphan = { ...base, messages: [{ role: "toolResult", toolCallId: "missing", toolName: "read", content: [{ type: "text", text: "ok" }] }] };
   const orphanDelta = classifyPayloadChange(base, orphan, "replacement");
   assert(orphanDelta.categories.includes("input"));
   assert.throws(() => authPayload({ model, delta: orphanDelta, before: base, after: orphan, inputTokens: 100, inputLimit: 100000, authorizedOutput: model.maxTokens }), /unvalidated payload input/);
-  const netted = { ...base, extra: "x", messages: [{ role: "user", content: "a".repeat(4000) }] };
+  const netted = { ...base, metadata: { note: "x" }, messages: [{ role: "user", content: "a".repeat(4000) }] };
   const netDelta = classifyPayloadChange(base, netted, "replacement");
   assert(netDelta.inputGrewTokens > 0);
   assert(netDelta.grewTokens < netDelta.inputGrewTokens);
@@ -153,15 +167,15 @@ function payloadExtra(mode: () => string, second?: (payload: Record<string, unkn
       const rec = payload as Record<string, unknown>;
       switch (mode()) {
         case "identity": return payload;
-        case "inplace-meta": rec.nunc_fixture = "meta"; return;
-        case "replace-meta": return { ...rec, nunc_fixture: "meta" };
+        case "inplace-meta": rec.temperature = 0; return;
+        case "replace-meta": return { ...rec, temperature: 0 };
         case "overcap": return { ...rec, max_output_tokens: 99_999_999 };
         case "expand-cap": {
           const current = rec.max_output_tokens ?? rec.max_tokens ?? rec.max_completion_tokens;
           return { ...rec, max_output_tokens: typeof current === "number" ? current + 1 : 32 };
         }
         case "nostream": return { ...rec, stream: false };
-        case "grow": return { ...rec, nunc_fixture: "n".repeat(50000) };
+        case "grow": return { ...rec, metadata: { note: "n".repeat(50000) } };
         case "orphan-input": return { ...rec, ...(Array.isArray(rec.input) ? { input: [...rec.input, { role: "tool", call_id: "missing", type: "function_call_output", output: "x" }] } : { messages: [...(Array.isArray(rec.messages) ? rec.messages : []), { role: "tool", tool_call_id: "missing", content: "x" }] }) };
         case "illegal-model": return { ...rec, model: "outside-selection" };
         case "multi-choice": return { ...rec, n: 2 };
@@ -233,17 +247,16 @@ test("stock loader noop, identity, in-place and replacement metadata reach contr
     const last = run.f.runtime.session.messages.at(-1);
     assert.equal(last?.role, "assistant");
     if (mode === "inplace-meta" || mode === "replace-meta") {
-      assert.equal(run.bodies[0]?.nunc_fixture, "meta");
+      assert.equal(run.bodies[0]?.temperature, 0);
       assert(run.admissions.some(a => a.payload?.categories?.includes("metadata")));
     }
   }
 });
 
 test("later before_provider_request replacement wins; overcap, non-stream, growth and model change send zero HTTP", { timeout: 90000 }, async t => {
-  const order = await nativeMain(t, () => "replace-meta", payload => ({ ...payload, nunc_later: true }));
+  const order = await nativeMain(t, () => "replace-meta", payload => ({ ...payload, temperature: 1 }));
   assert.equal(order.sends(), 1);
-  assert.equal(order.bodies[0]?.nunc_fixture, "meta");
-  assert.equal(order.bodies[0]?.nunc_later, true);
+  assert.equal(order.bodies[0]?.temperature, 1);
   for (const mode of ["overcap", "expand-cap", "alias-cap", "nostream", "drop-stream", "drop-model", "grow", "orphan-input", "illegal-model", "multi-choice"] as const) {
     const run = await nativeMain(t, () => mode);
     assert.equal(run.sends(), 0, mode);
@@ -253,6 +266,6 @@ test("later before_provider_request replacement wins; overcap, non-stream, growt
     if (mode === "grow") assert.match(last.errorMessage ?? "", /context_length_exceeded: Nunc local CAPACITY/);
     else assert.match(last.errorMessage ?? "", /Nunc local CONFIG|unvalidated payload|non-streaming|stream field|model field|cap field|output cap|model differs|native serialized/);
     assert.equal(run.admissions.some(a => a.outcome === "reject" && a.payload), true, mode);
-    assert.doesNotMatch(JSON.stringify(run.admissions), /nunc_fixture|outside-selection|n{20}/);
+    assert.doesNotMatch(JSON.stringify(run.admissions), /outside-selection|n{20}/);
   }
 });

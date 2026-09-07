@@ -17,11 +17,11 @@ try {
   await p.send('/fixture-payload-mode inplace-meta');
   await p.prompt('In-place metadata');
   assert.equal(f.requests.length, 3);
-  assert.equal(f.requests.at(-1).payload.nunc_fixture, 'meta');
+  assert.equal(f.requests.at(-1).payload.temperature, 0);
   await p.send('/fixture-payload-mode replace-meta');
   await p.prompt('Replacement metadata');
   assert.equal(f.requests.length, 4);
-  assert.equal(f.requests.at(-1).payload.nunc_fixture, 'meta');
+  assert.equal(f.requests.at(-1).payload.temperature, 0);
   await p.send('/fixture-payload-mode append');
   await p.prompt('Last-user text append must send');
   assert.equal(f.requests.length, 5);

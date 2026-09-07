@@ -157,6 +157,8 @@ test("last-user append wraps Completions string content and Responses array pref
   const twiceContent = (twice.payload as { messages: { content: Array<{ text?: string }> }[] }).messages[1]?.content;
   assert.equal(twiceContent?.at(-2)?.text, SYNTHETIC);
   assert.equal(twiceContent?.at(-1)?.text, SYNTHETIC_B);
+  const framed = { ...(twice.payload as Record<string, unknown>), metadata: { note: "y".repeat(50) } };
+  authorize(completions, framed);
 });
 
 test("unvalidated last-user rewrite, reorder, netting, media replace and tool change stay rejected", () => {

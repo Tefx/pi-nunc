@@ -29,11 +29,11 @@ export default function (pi: ExtensionAPI): void {
     const rec = payload as Record<string, unknown>;
     switch (payloadMode) {
       case "identity": return payload;
-      case "inplace-meta": rec.nunc_fixture = "meta"; return;
-      case "replace-meta": return { ...rec, nunc_fixture: "meta" };
+      case "inplace-meta": rec.temperature = 0; return;
+      case "replace-meta": return { ...rec, temperature: 0 };
       case "overcap": return { ...rec, max_tokens: 999999, max_output_tokens: 999999, max_completion_tokens: 999999 };
       case "nostream": return { ...rec, stream: false };
-      case "grow": return { ...rec, nunc_fixture: "n".repeat(200000) };
+      case "grow": return { ...rec, metadata: { note: "n".repeat(200000) } };
       case "illegal-model": return { ...rec, model: "outside-selection" };
       case "append": {
         const result = applyLastUserTextAppend(payload, SYNTHETIC_LAST_USER_APPEND);

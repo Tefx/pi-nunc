@@ -46,7 +46,11 @@ test("native Google serializer config control fields reject before HTTP", { time
   assert.throws(() => auth({ ...rec, config: { ...rec.config, systemInstruction: "Synthetic new instructions" } }), /unvalidated payload input/);
   assert.throws(() => auth({ ...rec, config: { ...rec.config, tools: [{ functionDeclarations: [{ name: "synthetic_tool" }] }] } }), /unvalidated payload tools/);
   assert.throws(() => auth({ ...rec, config: { ...rec.config, thinkingConfig: { thinkingBudget: 256 } } }), /unvalidated payload thinking/);
+  assert.throws(() => auth({ ...rec, config: { ...rec.config, candidateCount: 2 } }), /unrecognized payload field/);
+  assert.throws(() => auth({ ...rec, config: { ...rec.config, cachedContent: "cachedContents/synthetic" } }), /unrecognized payload field/);
+  assert.throws(() => auth({ ...rec, config: { ...rec.config, responseModalities: ["AUDIO"] } }), /unrecognized payload field/);
   auth(before);
+  auth({ ...rec, config: { ...rec.config, temperature: 0 } });
 });
 
 test("native Google serializer hits baseUrl loopback; nested control rewrite is zero-send", { timeout: 90000 }, async t => {

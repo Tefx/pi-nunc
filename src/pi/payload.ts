@@ -4,7 +4,7 @@ import { omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
-export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "control" | "metadata";
+export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "control" | "metadata" | "unsupported";
 export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[]; transform?: "last-user-text-append" }
 export interface PayloadDelta {
   mode: PayloadMode;
@@ -29,9 +29,10 @@ const STREAM_KEYS = new Set(["stream", "background"]);
 const MODEL_KEYS = new Set(["model"]);
 const THINKING_KEYS = new Set(["thinking", "reasoning", "thinkingConfig", "reasoning_effort", "reasoningEffort", "reasoning_details"]);
 const CONTROL_KEYS = new Set(["n"]);
+const METADATA_KEYS = new Set(["temperature", "top_p", "topP", "top_k", "topK", "presence_penalty", "frequency_penalty", "seed", "user", "metadata"]);
 const IMAGE_TYPES = new Set(["image", "input_image", "image_url"]);
 const UNSUPPORTED_TYPES = new Set(["audio", "input_audio", "pdf", "document", "video", "file", "input_file"]);
-const UNVALIDATED = new Set<PayloadCategory>(["input", "tools", "media", "thinking", "control"]);
+const UNVALIDATED = new Set<PayloadCategory>(["input", "tools", "media", "thinking", "control", "unsupported"]);
 const CAP_KEYS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
 
 /** JSON-enumerable view. Drops prototypes, undefined, functions; matches HTTP JSON bytes. */
@@ -101,7 +102,8 @@ function categorize(key: string): PayloadCategory {
   if (MODEL_KEYS.has(key)) return "model";
   if (THINKING_KEYS.has(key)) return "thinking";
   if (CONTROL_KEYS.has(key)) return "control";
-  return "metadata";
+  if (METADATA_KEYS.has(key)) return "metadata";
+  return "unsupported";
 }
 
 function classifyGoogleConfig(beforeVal: unknown, afterVal: unknown, categories: Set<PayloadCategory>): void {
@@ -316,6 +318,7 @@ export function authorizePayload(args: {
   }
   if (args.delta.unsupportedAdded.length) throw new EngineError("UNSUPPORTED_INPUT", "Nunc: payload contains unsupported media; request was not sent");
   if (args.delta.imagesAdded > 0 && !args.model.input.includes("image")) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
+  if (args.delta.categories.includes("unsupported")) throw new EngineError("CONFIG", "Nunc: unrecognized payload field change; request was not sent");
   const append = lastUserTextAppend(prior, body);
   const structural = args.delta.categories.filter(c => UNVALIDATED.has(c));
   if (append.ok) {
