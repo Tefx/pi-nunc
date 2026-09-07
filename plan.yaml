@@ -1196,7 +1196,7 @@ phases:
     agent: integration-verifier
   - id: nunc.payload-append
     name: 支持有界末尾文本追加并交付原生组合观察能力
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -1278,3 +1278,23 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-07T10:08:05.309473Z'
+    done_at: '2026-09-07T10:40:30.754980+00:00'
+    evidence: FF-integrated0b481e9 from postclaimbaseae8d807 (980f45f then0b481e9).
+      Implements generic bounded last-user text append exact prefix/stringnormalization
+      semantics exercised against actual Dasein source injector using synthetic content.
+      pp wrapper readonly reveals Larva+Nunc+Dasein+Vernier; no claim Larva itselffault.
+      No sourceallowlist/privateambientcontent/externalsourcechanges. Main appends
+      check Nunc inputgrowth separately and same public Pi estimateContextTokens/estimateTextTokens
+      for native residual output room, cap unchanged; parent caught initial mixed-estimator
+      false rejection and required actual catalogxaiGrok500k80k+appendHTTP and oversizedappendzeroHTTP.
+      Controlled same highmax Completions OpenRouterGrok path also proven; original
+      tools/media/content/model/stream/cap/thinking preserved and unsafechangeszeroHTTP.
+      Actual Dasein parity+ResponsesHTTP ran with knownreadonlysource; missing reference
+      fails rather than silentlyskip. Clean exact candidate all251/25129files exit0
+      child evidence; FF keeps checkinputs identical, root buildtsc exit0. Existing
+      tracked live runner named payload-append override adds synthetic real callback
+      resource, no private sensors; prepares affected live proof. Prior85livecalls
+      remain terminal/retained and unchanged pipeline facts reused by downstream scope.
+      No realcalls/credentialeffects by producer, no Plan/externalrepos/globalsettingswrites,
+      protecteduntracked.pi/dashboard preserved. Integration-verifier must now execute
+      affected callback live on new targets, not repeat unchanged c2/c3 or originalfailedinputs.
