@@ -9,9 +9,28 @@ export interface PayloadDelta {
   mode: PayloadMode;
   categories: PayloadCategory[];
   grewTokens: number;
+  inputGrewTokens: number;
+  imagesAdded: number;
+  unsupportedAdded: string[];
   outputBefore: number | undefined;
   outputAfter: number | undefined;
 }
+export type OutputCapState =
+  | { kind: "missing" }
+  | { kind: "invalid" }
+  | { kind: "conflict" }
+  | { kind: "value"; value: number };
+
+const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens", "generationConfig"]);
+const INPUT_KEYS = new Set(["messages", "input", "contents", "system", "instructions", "prompt", "system_instruction", "systemInstruction"]);
+const TOOL_KEYS = new Set(["tools", "functions", "tool_choice", "toolChoice"]);
+const STREAM_KEYS = new Set(["stream", "background"]);
+const MODEL_KEYS = new Set(["model"]);
+const THINKING_KEYS = new Set(["thinking", "reasoning", "thinkingConfig", "reasoning_effort", "reasoningEffort", "reasoning_details"]);
+const IMAGE_TYPES = new Set(["image", "input_image", "image_url"]);
+const UNSUPPORTED_TYPES = new Set(["audio", "input_audio", "pdf", "document", "video", "file", "input_file"]);
+const UNVALIDATED = new Set<PayloadCategory>(["input", "tools", "media", "thinking"]);
+const CAP_KEYS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
 
 /** JSON-enumerable view. Drops prototypes, undefined, functions; matches HTTP JSON bytes. */
 export function jsonView(value: unknown): unknown {
@@ -27,27 +46,35 @@ function canonical(value: unknown): string {
 
 export function canonicalJson(value: unknown): string { return canonical(jsonView(value)); }
 
-export function payloadOutputCeiling(body: unknown): number | undefined {
-  if (!record(body)) return undefined;
-  const direct = body.max_tokens ?? body.max_output_tokens ?? body.max_completion_tokens;
-  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
-  if (record(body.generationConfig) && typeof body.generationConfig.maxOutputTokens === "number" && Number.isFinite(body.generationConfig.maxOutputTokens)) {
-    return body.generationConfig.maxOutputTokens;
+function subtreeSize(view: unknown, keys: Set<string>): number {
+  if (!record(view)) return 0;
+  let size = 0;
+  for (const key of keys) {
+    if (!Object.hasOwn(view, key)) continue;
+    size += textTokens(canonical(view[key]));
   }
+  return size;
 }
 
-const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens", "generationConfig"]);
-const INPUT_KEYS = new Set(["messages", "input", "contents", "system", "instructions", "prompt", "system_instruction", "systemInstruction"]);
-const TOOL_KEYS = new Set(["tools", "functions", "tool_choice", "toolChoice"]);
-const STREAM_KEYS = new Set(["stream", "background"]);
-const MODEL_KEYS = new Set(["model"]);
-const THINKING_KEYS = new Set(["thinking", "reasoning", "thinkingConfig", "reasoning_effort", "reasoningEffort", "reasoning_details"]);
+export function outputCapState(body: unknown): OutputCapState {
+  if (!record(body)) return { kind: "missing" };
+  const found: number[] = [];
+  let invalid = false;
+  const take = (value: unknown): void => {
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) invalid = true;
+    else found.push(value);
+  };
+  for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) take(body[key]);
+  if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) take(body.generationConfig.maxOutputTokens);
+  if (invalid) return { kind: "invalid" };
+  if (found.length === 0) return { kind: "missing" };
+  if (found.some(n => n !== found[0])) return { kind: "conflict" };
+  return { kind: "value", value: found[0]! };
+}
 
-function hasImage(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(hasImage);
-  if (!record(value)) return false;
-  if (value.type === "image" || value.type === "input_image" || value.type === "image_url") return true;
-  return Object.values(value).some(hasImage);
+export function payloadOutputCeiling(body: unknown): number | undefined {
+  const state = outputCapState(body);
+  return state.kind === "value" ? state.value : undefined;
 }
 
 function categorize(key: string): PayloadCategory {
@@ -58,6 +85,19 @@ function categorize(key: string): PayloadCategory {
   if (MODEL_KEYS.has(key)) return "model";
   if (THINKING_KEYS.has(key)) return "thinking";
   return "metadata";
+}
+
+interface BlockCensus { images: number; unsupported: string[] }
+
+function census(value: unknown, acc: { images: number; unsupported: Set<string> } = { images: 0, unsupported: new Set() }): BlockCensus {
+  if (Array.isArray(value)) { for (const child of value) census(child, acc); return { images: acc.images, unsupported: [...acc.unsupported] }; }
+  if (!record(value)) return { images: acc.images, unsupported: [...acc.unsupported] };
+  if (typeof value.type === "string") {
+    if (IMAGE_TYPES.has(value.type)) acc.images++;
+    if (UNSUPPORTED_TYPES.has(value.type)) acc.unsupported.add(value.type);
+  }
+  for (const child of Object.values(value)) census(child, acc);
+  return { images: acc.images, unsupported: [...acc.unsupported] };
 }
 
 export function payloadMode(beforeView: unknown, afterView: unknown, replacement: unknown, original: unknown): PayloadMode {
@@ -78,14 +118,23 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
   if (!record(beforeView) || !record(afterView)) {
     if (canonical(beforeView) !== canonical(afterView)) categories.add("metadata");
   }
-  if (hasImage(afterView) && !hasImage(beforeView)) categories.add("media");
+  const beforeBlocks = census(beforeView), afterBlocks = census(afterView);
+  if (beforeBlocks.images !== afterBlocks.images || afterBlocks.unsupported.some(t => !beforeBlocks.unsupported.includes(t))) categories.add("media");
+  const outputState = outputCapState(afterView);
   return {
     mode,
     categories: [...categories],
     grewTokens: Math.max(0, textTokens(canonical(afterView)) - textTokens(canonical(beforeView))),
+    inputGrewTokens: Math.max(0, subtreeSize(afterView, INPUT_KEYS) - subtreeSize(beforeView, INPUT_KEYS)),
+    imagesAdded: Math.max(0, afterBlocks.images - beforeBlocks.images),
+    unsupportedAdded: afterBlocks.unsupported.filter(t => !beforeBlocks.unsupported.includes(t)),
     outputBefore: payloadOutputCeiling(beforeView),
-    outputAfter: payloadOutputCeiling(afterView),
+    outputAfter: outputState.kind === "value" ? outputState.value : undefined,
   };
+}
+
+function outputFloor(model: Model<Api>): number {
+  return ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
 }
 
 export function authorizePayload(args: {
@@ -101,18 +150,26 @@ export function authorizePayload(args: {
   if (body.stream === false) throw new EngineError("CONFIG", "Nunc: non-streaming payload is unsupported; request was not sent");
   if (body.background === true) throw new EngineError("CONFIG", "Nunc: background payload is unsupported; request was not sent");
   if (Object.hasOwn(body, "model") && body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload model differs from the selected model; request was not sent");
-  const ceiling = payloadOutputCeiling(body);
-  if (ceiling === undefined) {
-    if (args.delta.outputBefore !== undefined && args.authorizedOutput !== args.model.maxTokens && !omitsSerializedOutputCap(args.model)) {
-      throw new EngineError("CONFIG", "Nunc: payload omitted its output cap; request was not sent");
-    }
-  } else if (!(Number.isSafeInteger(ceiling) && ceiling > 0 && ceiling <= args.authorizedOutput)) {
-    throw new EngineError("CONFIG", "Nunc: payload output cap exceeds authorization; request was not sent");
+  const caps = outputCapState(body);
+  if (caps.kind === "invalid") throw new EngineError("CONFIG", "Nunc: payload output cap is not a positive integer; request was not sent");
+  if (caps.kind === "conflict") throw new EngineError("CONFIG", "Nunc: payload output cap fields disagree; request was not sent");
+  const uncapped = omitsSerializedOutputCap(args.model);
+  const floor = outputFloor(args.model);
+  if (uncapped) {
+    if (caps.kind === "value") throw new EngineError("CONFIG", "Nunc: payload invented an output cap on an uncapped API; request was not sent");
+  } else if (args.delta.outputBefore !== undefined) {
+    if (caps.kind !== "value") throw new EngineError("CONFIG", "Nunc: payload omitted its output cap; request was not sent");
+    if (caps.value > args.delta.outputBefore) throw new EngineError("CONFIG", "Nunc: payload output cap exceeds the native serialized ceiling; request was not sent");
+    if (caps.value < floor) throw new EngineError("CONFIG", "Nunc: payload output cap is below the serializer floor; request was not sent");
+    if (caps.value > args.authorizedOutput) throw new EngineError("CONFIG", "Nunc: payload output cap exceeds authorization; request was not sent");
+  } else if (caps.kind === "value") {
+    if (caps.value < floor || caps.value > args.authorizedOutput) throw new EngineError("CONFIG", "Nunc: payload output cap exceeds authorization; request was not sent");
   }
+  if (args.delta.unsupportedAdded.length) throw new EngineError("UNSUPPORTED_INPUT", "Nunc: payload contains unsupported media; request was not sent");
+  if (args.delta.imagesAdded > 0 && !args.model.input.includes("image")) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
+  const structural = args.delta.categories.filter(c => UNVALIDATED.has(c));
+  if (structural.length) throw new EngineError("CONFIG", `Nunc: unvalidated payload ${structural.join(",")} rewrite; request was not sent`);
   if (args.delta.grewTokens > 0 && args.inputTokens + args.delta.grewTokens > args.inputLimit) {
     throw new EngineError("CAPACITY", `Payload input growth ${args.delta.grewTokens} exceeds remaining safe input; request was not sent`);
-  }
-  if (args.delta.categories.includes("media") && !args.model.input.includes("image")) {
-    throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
   }
 }

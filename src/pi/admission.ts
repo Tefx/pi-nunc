@@ -52,8 +52,9 @@ export class Admission {
   /** Only errors constructed here are candidates for cancellation precedence. */
   finalized(message: AssistantMessage): AssistantMessage | undefined {
     const key = message.errorMessage;
-    const signal = key ? this.rejected.get(key) : undefined;
-    if (!signal || !key) return;
+    if (!key) return;
+    const signal = this.rejected.get(key) ?? [...this.rejected.entries()].find(([stored]) => key.includes(stored))?.[1];
+    if (!signal) return;
     if (signal.aborted) return { ...message, stopReason: "aborted", errorMessage: "Nunc: request cancelled before capacity recovery" };
   }
   recoveryCancelled(): boolean { return [...this.rejected.values()].some(signal => signal.aborted); }
@@ -127,8 +128,13 @@ export class Admission {
           this.observe({ kind, outcome: "delegate", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
           return replacement;
         } catch (error) {
-          this.observe({ kind, outcome: "reject", code: error instanceof EngineError ? error.code : "CONFIG", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
-          throw error;
+          const code = error instanceof EngineError ? error.code : "CONFIG";
+          const aborted = options?.signal?.aborted === true || code === "CANCELLED";
+          const capacity = kind === "main" && code === "CAPACITY" && !aborted;
+          const errorMessage = `${capacity ? "context_length_exceeded: " : ""}Nunc local ${code}; request=${randomUUID()}; ${error instanceof Error ? error.message : "Request rejected"}`;
+          if (capacity && options?.signal) this.rejected.set(errorMessage, options.signal);
+          this.observe({ kind, outcome: "reject", code, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          throw new EngineError(code, errorMessage);
         }
       } };
       this.observe({ kind, outcome: "delegate", ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });

@@ -33,6 +33,11 @@ export default function observer(pi: ExtensionAPI): void {
   });
   pi.events.on("nunc:maintenance", event => log("maintenance", event));
   pi.events.on("nunc:admission", event => log("admission", event));
+  pi.on("before_provider_request", event => {
+    const payload = event.payload;
+    log("payload", { mode: "observe", keys: payload && typeof payload === "object" && !Array.isArray(payload) ? Object.keys(payload) : [] });
+  });
+  pi.on("before_provider_request", event => event.payload);
   pi.on("session_before_compact", event => log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry }));
   pi.on("session_compact", event => log("lifecycle", { phase: "maintenance-end", reason: event.reason, willRetry: event.willRetry }));
   pi.on("session_compact_failed", event => log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry }));

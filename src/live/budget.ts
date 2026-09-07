@@ -3,7 +3,7 @@ import type { Api, ApiStreamOptions, AssistantMessage, Context, Model, Provider,
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
 import type { UsageObservation } from "../engine/types.js";
-import { payloadOutputCeiling } from "../pi/payload.js";
+import { outputCapState } from "../pi/payload.js";
 import { canonical, object, requireValue, RunnerError, type Limits } from "./contract.js";
 
 export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string }
@@ -138,9 +138,10 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
             requireValue(object(body), "PAYLOAD", "Native payload is not a JSON object");
             requireValue(body.stream === true && body.background !== true, "PAYLOAD", "Native payload is not a single SSE request");
             if (Object.hasOwn(body, "model")) requireValue(body.model === model.id, "PAYLOAD", "Native payload model differs from authorization");
-            const ceiling = payloadOutputCeiling(body);
-            if (ceiling === undefined) requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
-            else requireValue(Number.isSafeInteger(ceiling) && ceiling > 0 && ceiling <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
+            const caps = outputCapState(body);
+            requireValue(caps.kind !== "invalid" && caps.kind !== "conflict", "PAYLOAD", "Native serialized output cap is invalid");
+            if (caps.kind === "missing") requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
+            else requireValue(caps.value > 0 && caps.value <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
             payloadChecked = true; return replacement;
           } catch (error) { if (error instanceof RunnerError) localCode = error.code; throw error; }
         };
