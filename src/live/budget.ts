@@ -3,6 +3,7 @@ import type { Api, ApiStreamOptions, AssistantMessage, Context, Model, Provider,
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
 import type { UsageObservation } from "../engine/types.js";
+import { payloadOutputCeiling } from "../pi/payload.js";
 import { canonical, object, requireValue, RunnerError, type Limits } from "./contract.js";
 
 export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string }
@@ -52,8 +53,10 @@ export class BudgetLedger {
     requireValue(!this.active, "CONCURRENCY", "Concurrent model calls are unsupported");
     requireValue(outputCeiling >= 16 && outputCeiling <= this.limits.maxOutputTokens && outputCeiling <= model.maxTokens && (!omitsSerializedOutputCap(model) || outputCeiling === model.maxTokens), "OUTPUT_LIMIT", "Request exceeds its output authorization");
     const inputEstimate = requestTokens(context);
-    requireValue(inputEstimate + outputCeiling <= model.contextWindow, "INPUT_LIMIT", "Request estimate plus output exceeds model capacity");
-    // Full-window reservation tolerates estimator error, cached tokens, and unavailable usage.
+    // Product admission owns input headroom; native serializers clamp wire output.
+    // Reservation charge is window+authorized output, not simultaneous occupancy.
+    const outputFloor = omitsSerializedOutputCap(model) ? 1 : ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
+    requireValue(inputEstimate + outputFloor <= model.contextWindow, "INPUT_LIMIT", "Request estimate exceeds model input capacity");
     const reservedTokens = model.contextWindow + outputCeiling;
     const rates = [model.cost, ...(model.cost.tiers ?? [])];
     const knownRates = rates.every(r => [r.input, r.output, r.cacheRead, r.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && (this.limits.maxCostUsd !== null || rates.some(r => Math.max(r.input, r.output, r.cacheRead, r.cacheWrite) > 0));
@@ -91,10 +94,6 @@ export function ledgerSummary(records: LedgerRecord[]) {
 }
 function errorMessage(model: Model<Api>, reason: string): AssistantMessage {
   return { role: "assistant", api: model.api, provider: model.provider, model: model.id, content: [], usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "error", errorMessage: reason, timestamp: Date.now() };
-}
-function payloadOutputCeiling(body: Record<string, unknown>): unknown {
-  if (typeof body.max_tokens === "number" || typeof body.max_output_tokens === "number" || typeof body.max_completion_tokens === "number") return body.max_tokens ?? body.max_output_tokens ?? body.max_completion_tokens;
-  return object(body.generationConfig) ? body.generationConfig.maxOutputTokens : undefined;
 }
 function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void {
   requireValue(typeof baseUrl === "string" && baseUrl.trim().length > 0, "ENDPOINT", "Authorized model baseUrl is missing");
@@ -141,7 +140,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
             if (Object.hasOwn(body, "model")) requireValue(body.model === model.id, "PAYLOAD", "Native payload model differs from authorization");
             const ceiling = payloadOutputCeiling(body);
             if (ceiling === undefined) requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
-            else requireValue(typeof ceiling === "number" && Number.isFinite(ceiling) && ceiling > 0 && ceiling <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
+            else requireValue(Number.isSafeInteger(ceiling) && ceiling > 0 && ceiling <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
             payloadChecked = true; return replacement;
           } catch (error) { if (error instanceof RunnerError) localCode = error.code; throw error; }
         };

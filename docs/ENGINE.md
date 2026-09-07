@@ -53,7 +53,7 @@ Extraction does not inherit a main-turn reasoning-effort setting. It uses the se
 
 Inspected public docs: Pi README, `docs/extensions.md`, `docs/compaction.md`, `docs/settings.md`, `docs/sdk.md`, `docs/session-format.md`, pi-ai README, and `examples/extensions/custom-compaction.ts`. Checked the corresponding installed public types and implementations for `ModelRegistry`, `ModelRuntime`, `convertToLlm`, and API output limits. The installed session-format prose mentions `retainedTail`; the selected types/implementation still use `firstKeptEntryId`. Do not infer a persistence seam from that prose. The default example's `serializeConversation()` truncates tool bodies; Nunc never uses it. Its fall-through error handling and different-model selection also do not implement Nunc's contract.
 
-`ctx.getSystemPrompt()` does not reflect payload rewrites by other extensions. The adapter must supply the effective projection it claims to support and account for extra request overhead. Compatibility with competing context/payload rewriting or custom-compaction extensions requires explicit integration evidence; this component does not establish it.
+`ctx.getSystemPrompt()` does not reflect payload rewrites by other extensions. The adapter must supply the effective projection it claims to support and account for extra request overhead. JSON-byte payload growth on the composed `onPayload` path is charged against the same conservative input estimate; unaccounted growth, output expansion and illegal fields fail before HTTP. Compatibility with competing custom-compaction owners still requires explicit integration evidence.
 
 ## Protocol and window
 

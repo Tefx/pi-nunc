@@ -47,6 +47,25 @@ test("call/token/cost/time/output and unresolved-request ceilings reject before 
     } finally { await rm(input.target.stateRoot, { recursive: true }); }
   }
 });
+test("equal 500k context/output reserves window-plus-output without requiring simultaneous occupancy", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "grok-like", contextWindow: 500000, maxTokens: 500000 }] });
+    const grok = faux.getModel();
+    grok.cost = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+    const limits = { maxCalls: 2, maxTotalTokens: 2_000_000, maxCostUsd: null, maxDurationMs: 10000, maxOutputTokens: 500000 };
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "calls.jsonl"), limits, Date.now() + 10000, new AbortController().signal);
+    const record = ledger.reserve(grok, context, grok.maxTokens);
+    assert.equal(record.outputCeiling, 500000);
+    assert.equal(record.reservedTokens, 1_000_000);
+    assert.equal(record.reservedCostUsd, null);
+    assert(record.inputEstimate + record.outputCeiling > grok.contextWindow);
+    ledger.finish(record, fauxAssistantMessage("ok"));
+    const huge = { systemPrompt: "x".repeat(500000), messages: [{ role: "user" as const, content: "y".repeat(1000), timestamp: 1 }] };
+    const blocked = new BudgetLedger(join(input.target.stateRoot, "huge.jsonl"), limits, Date.now() + 10000, new AbortController().signal);
+    assert.throws(() => blocked.reserve(grok, huge, 16), /input capacity|INPUT_LIMIT/);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
 test("unknown usage remains null while full reservations survive restart; cached tokens count", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {

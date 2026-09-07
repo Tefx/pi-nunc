@@ -1,14 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { isDeepStrictEqual } from "node:util";
 import { createAssistantMessageEventStream, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Complete, EngineConfig } from "../engine/index.js";
 import { inputLimit, requestTokens, textTokens } from "../engine/accounting.js";
 import { EngineError, legalCuts } from "../engine/validation.js";
+import { authorizePayload, classifyPayloadChange, jsonView, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
-export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; outputTokens?: number; code?: string }
+export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; outputTokens?: number; code?: string; payload?: PayloadObservation }
 
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
 export class Admission {
@@ -104,15 +104,32 @@ export class Admission {
         limit = inputLimit(model, config.main);
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds safe input ${limit}; Pi may compact and retry once when automatic compaction is enabled. Otherwise compact explicitly, reduce input or select a larger model`);
       }
+      if (kind === "maintenance") {
+        const config = this.config(ctx, model);
+        outputTokens = scope!.request.outputTokens;
+        inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + textTokens(JSON.stringify(options?.metadata ?? {}));
+        limit = inputLimit(model, config.extraction);
+      }
       const onPayload = options?.onPayload;
-      // Pi's public callback chain completes inside this wrapper. Observe-only
-      // callbacks and header hooks remain supported; payload edits fail pre-HTTP.
+      // Pi composes before_provider_request in load order and returns the current
+      // payload object when handlers return undefined. Compare JSON bytes, not
+      // prototypes; re-check only capacity-relevant growth/output/illegal fields.
       const forwarded = { ...options, onPayload: async (payload: unknown, selected: Model<Api>) => {
-        const before = structuredClone(payload);
+        const before = jsonView(payload);
         const replacement = await onPayload?.(payload, selected);
-        if (!isDeepStrictEqual(before, replacement === undefined ? payload : replacement)) throw new EngineError("CONFIG", "Nunc: payload rewriting is unsupported; request was not sent");
         options?.signal?.throwIfAborted();
-        return replacement;
+        const final = replacement === undefined ? payload : replacement;
+        const after = jsonView(final);
+        const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload));
+        const observation: PayloadObservation = { mode: delta.mode, categories: delta.categories };
+        try {
+          authorizePayload({ model: selected, delta, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens! });
+          this.observe({ kind, outcome: "delegate", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          return replacement;
+        } catch (error) {
+          this.observe({ kind, outcome: "reject", code: error instanceof EngineError ? error.code : "CONFIG", inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          throw error;
+        }
       } };
       this.observe({ kind, outcome: "delegate", ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;

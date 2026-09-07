@@ -245,9 +245,9 @@ firstKeptEntryId 指向上下文可见的合法边界。主模型和后续维护
 
 - Pi adapter 提供冻结的活动来源、模型/策略/预算及合法边界，调用现有 engine，校验返回候选与当前 session/path/model/options 仍匹配。
 - Engine 返回完整候选或明确失败，不负责队列、请求准入、Pi 提交或恢复。请求检查复用同一容量口径，不另维护一份 M。
-- 请求入口检查已经交付的实际 Context 和已解析选项。当前主会话范围内的请求（stock `streamSimple`、当前 session 与非空运行 signal）在预算成立时委托原 Provider。不可容纳的本地主请求返回明确标注 Nunc 来源、可被 Pi 识别的容量错误，由 Pi 原生 overflow 处理进行有界恢复。其他扩展的独立调用原样委托，不套用主会话 payload 限制。
+- 请求入口检查已经交付的实际 Context 和已解析选项。当前主会话范围内的请求（stock `streamSimple`、当前 session 与非空运行 signal）在预算成立时委托原 Provider。不可容纳的本地主请求返回明确标注 Nunc 来源、可被 Pi 识别的容量错误，由 Pi 原生 overflow 处理进行有界恢复。其他扩展的独立调用原样委托，不套用主会话 payload 限制。主会话/维护的 `onPayload` 以 JSON 字节与输出上限/输入增长/非法字段做有据检查，不以对象原型或全量深相等拒绝观察型回调。
 - 维护请求与主请求必须有可验证的来源区分；同模型、同 provider 不足以判断。维护使用一次性 ALS 绑定，不得递归进入主请求准入或启动另一轮维护；同一 context 的重复或绑定改变不得作为独立调用发出。session/signal 只表示会话作用域，不证明唯一调用来源。
-- Provider 组合、legacy stream override、主会话/维护的 payload 改写和输出默认值按选定版本及声明支持的配置验证。其他扩展可以增删自身 context 消息；不要求 Nunc 最后加载。不承诺任意改写 Nunc 记忆载体或任意扩展/provider 组合均可覆盖。未经支持的组合明确诊断，不假装已检查完整请求。
+- Provider 组合、legacy stream override 和输出默认值按选定版本及声明支持的配置验证。主会话/维护 payload 允许已核算的观察、返回值和原地修改；输出扩大、非法输入和未核算增长在 HTTP 前失败并给出字段类别诊断，不记录正文。其他扩展可以增删自身 context 消息；不要求 Nunc 最后加载。不承诺任意改写 Nunc 记忆载体或任意扩展/provider 组合均可覆盖。未经支持的组合明确诊断，不假装已检查完整请求。
 
 TUI 的 `ctx.abort()` 会将排队输入取回编辑器，并清理底层队列。因此不能用这条用户停止操作驱动自动容量恢复；也不在活动请求中等待先 abort 的 `ctx.compact()`。真正的用户取消仍遵循 Pi 的停止语义。等价公开接法必须证明不改变队列、尊重取消、保持单一原生提交和请求前拒绝，不能仅凭 RPC 成功就替代 TUI 证据。
 

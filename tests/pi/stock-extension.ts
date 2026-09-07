@@ -17,14 +17,27 @@ export default function (pi: ExtensionAPI): void {
   pi.on("input", event => { log("input", event); return { action: "continue" }; });
   pi.on("message_end", event => log("message", event.message));
   pi.on("before_provider_headers", event => { event.headers["x-nunc-fixture"] = "preserved"; });
-  let rewritePayload = false, rewriteContext = false;
+  let payloadMode = "observe", rewriteContext = false;
   pi.on("context", event => rewriteContext ? { messages: [...event.messages, { role: "user", content: "Unowned late context mutation", timestamp: 1 }] } : undefined);
   pi.registerCommand("fixture-context-rewrite", { handler: async args => { rewriteContext = args === "on"; } });
   pi.on("before_provider_request", event => {
-    log("payload", event.payload);
-    if (rewritePayload && event.payload && typeof event.payload === "object") return { ...event.payload, model: "outside-selection" };
+    const payload = event.payload;
+    log("payload", { mode: payloadMode, keys: payload && typeof payload === "object" && !Array.isArray(payload) ? Object.keys(payload) : [] });
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+    const rec = payload as Record<string, unknown>;
+    switch (payloadMode) {
+      case "identity": return payload;
+      case "inplace-meta": rec.nunc_fixture = "meta"; return;
+      case "replace-meta": return { ...rec, nunc_fixture: "meta" };
+      case "overcap": return { ...rec, max_tokens: 999999, max_output_tokens: 999999, max_completion_tokens: 999999 };
+      case "nostream": return { ...rec, stream: false };
+      case "grow": return { ...rec, nunc_fixture: "n".repeat(200000) };
+      case "illegal-model": return { ...rec, model: "outside-selection" };
+      default: return;
+    }
   });
-  pi.registerCommand("fixture-payload-rewrite", { handler: async args => { rewritePayload = args === "on"; } });
+  pi.registerCommand("fixture-payload-rewrite", { handler: async args => { payloadMode = args === "on" ? "illegal-model" : "observe"; } });
+  pi.registerCommand("fixture-payload-mode", { handler: async args => { payloadMode = args.trim() || "observe"; } });
   pi.registerCommand("fixture-native-reset", { handler: async (_args, ctx) => { if (ctx.model) pi.unregisterProvider(ctx.model.provider); } });
   pi.registerCommand("fixture-legacy-stream", { handler: async (_args, ctx) => {
     if (!ctx.model) throw new Error("No model");

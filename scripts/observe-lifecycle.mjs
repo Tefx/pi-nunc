@@ -41,7 +41,9 @@ try {
   assert.deepEqual((await p.command('get_entries')).entries, beforeRestart);
   await p.prompt('After real process restart');
   const beforeReload = count('admission'); await p.send('/fixture-reload'); await p.prompt('After reload');
-  assert.equal(count('admission'), beforeReload + 1, 'no layered stale wrapper on reload');
+  const added = f.log.filter(e => e.type === 'admission').slice(beforeReload);
+  assert.equal(added.filter(e => !e.data.payload).length, 1, 'no layered stale wrapper on reload');
+  assert.equal(added.filter(e => e.data.payload).length, 1, 'composed onPayload observed once');
   assert(f.requests.at(-1).payload.messages.map(text).join('\n').includes(previous.summary));
   await p.command('set_model', { provider: 'groq', modelId: 'nunc-small' }); await p.prompt('After model selection');
   assert.equal(f.requests.at(-1).payload.model, 'nunc-small');
