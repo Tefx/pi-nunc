@@ -9,63 +9,53 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: "当前目标仍为完整 Nunc 兼容修复及 xAI/Grok、Codex、OpenRouter/Gemini 原生管线验证。新增具体依据：用户 pp\
-  \ -e ./ 失败而 pi -e ./ 可用；只读 wrapper/launcher 源码表明 pp 通过 Larva 加载 Nunc，并追加 Dasein、Vernier。Dasein\
-  \ beforeProviderRequest 的 providerPayload 路径调用纯 injector，clone input[] 或 messages[]，仅向最后一条\
-  \ user content 追加文本块；非空 string content 规范化为原文块再追加。原文、其他消息/tools/media/输出控制保留。Nunc\
-  \ payload 的 UNVALIDATED input 整体拒绝是本次需要修复的实际兼容缺口；identity-only 证明不能关闭它。无需个人 ambient\
-  \ 内容或再次询问扩展名，禁止按 wrapper 名归罪 Larva。外部 Larva/Dasein/Vernier 源码与 shell 定义仅作为只读 Reference，不取得修改那些仓库、配置或全局状态的权限。\n\
-  \nnative-compat 新增一个 writable producer nunc.payload-append，供同一 nunc.compatibility-live\
-  \ 消费。保留 nunc.compatibility 与 nunc-v1 九个 DONE 的定义、状态、证据、历史；不重开、不逐发现/retry 建节点、不新增\
-  \ gate。全部有效已接受 ticketless 三分支、Grok 500k native main headroom、raw extraction 固定输出、uncapped\
-  \ 完整 allowance 及原生职责不变。支持有界文本追加并核算新增输入，尤其 callback 在 native output clamp 之后的影响；保持旧\
-  \ input/tool/media/control 语义，真正 overflow 或不支持变换零发送，不能一删 guard、虚构小 window/output\
-  \ 或新增 universal mapper/allowlist/marks/source-auth 协议换取通过。\n\n完整产品权威为当前用户要求及 README/DESIGN\
-  \ 必要行为，ENGINE/PI/POLICY/DEVELOPMENT/LIVE 与跟踪场景提供接口/检查。冻结有效 F/全部 M/完整已交付 R_t=B|K；未来\
-  \ D 不提前进入且之后原样一次交付，临时 payload 注入不回填冻结来源。M 有界增量、整条预算、稳定正文/顺序、纠正替换合并退役且旧失效项不复活；K 合法跨\
-  \ checkpoint 原文保留、仅最新 M。两类请求按实际输入/输出/thinking/defaults/媒体/cache/unknown 独立核算并留增长空间；full\
-  \ 完整来源、可选有界显式 extraction-only 缩减、模型/配置重算成立。Pi 独占 model/config/auth/serializer/transport/compaction\
-  \ 调度/queue、单 CompactionEntry、append/rebuild/usage/活动路径恢复；取消优先、无递归维护/输入重放、失败/失效候选不提交且无默认摘要。保留\
-  \ persistent-session、旧 summary、resume/new/tree/fork/clone、TUI 队列/editor 与可恢复容量拒绝的有界原生恢复，不扩展跨\
-  \ session/检索/自有 store/SDK host/宿主 patch/任意 provider 支持。\n\n三路线既有独立 live 维护、无省略 extraction、checkpoint、c2\
-  \ 约束产物和 c3 同 session 恢复证据已成立，历史失败及所有 targets/reservations 保留，effects 已核对。报告绑定新最终候选，底层事实按\
-  \ source/lock/config/命令/modality/provider/要求判断适用性；只补实际 append callback、直接依赖和被修改不变量，不为\
-  \ Plan/报告重绑定或信心重跑完整三路线。仍适用的 nunc-v1 giant full/late-D/真实 capacity/更小模型/TUI/media/tool/cancel\
-  \ 事实复用。新增 source/tests/docs/runner 同一可回退事务，所有决定 live 目标/payload/预算/停止/清理/接受证明的 executable\
-  \ 必须跟踪并测试。真实 native loader/callback/serializer 到受控服务证明机械行为；真实 provider 观察只由原 live\
-  \ owner 执行。常规 all 从 clean checkout/跟踪 lock 可重现，不依赖其他 repo 的绝对路径；跨项目纯函数可作只读参照或采用有据、行为测试的\
-  \ tracked reproduction。\n\nOrchestrator 在原 nunc.compatibility-live 完成程序作本次唯一最终整合接受决定，覆盖\
-  \ native-compat 的原 producer、新 append producer、真实观察及 nunc-v1 全部适用完整项目要求。最终完整 all\
-  \ 有效、实际 callback 兼容缺口关闭、三路线必要事实全部有正向适用证明、所有有据义务解决且无阻断缺陷/矛盾、effects 已核对才接受。observer\
-  \ 只报告事实，必要 UNPROVEN/DISPROVEN 不完成；受控 noop/identity、exit0/OBSERVED、自报 PASS、prompt/doc\
-  \ token 或预置答案不能代替要求证明。DONE 后可写缺口经 Planner 接入兼容 producer 并继续原消费者，不修历史。\n\n执行权限：producer\
-  \ 仅 Nunc repository source/tests/docs/runner 和受控离线检查；本次不安装、不做真实模型或凭据读取。live 仅父方绑定的新隔离\
-  \ session/task cwd/files/private output，使用已有 host-managed access 与 Pi 原生认证解析/刷新/保存，不复制\
-  \ profile/token、不 login/改账户/建认证系统。用户三路线无货币预算上限，maxCostUsd:null 代表无 USD ceiling；Luna/Flash/low\
-  \ 偏好按 native 能力使用。父方绑定有限有目的的 calls/tokens/time/output 总 reservations，主请求与维护共用，成功/失败/unknown\
-  \ 不退款；旧余额单独不产生额外效果许可。保留 unknown invoice 与 catalog 估计/原生零占位的区别，不再问预算。独立已终结且核对的失败只停止该案例；真正取消/总限额/缺终态/活动进程/损坏账本/无法核对的关联效果停止相关执行，local\
-  \ abort 不证明 remote cancel/billing。禁止无限或盲目 retries、quota probes、原始失败输入/旧target重放。\n\
-  \n保护 .pi/、plan-dashboard.html、既有 sessions/settings/defaults、宿主、外部项目、秘密及无关文件；UI 暂停。禁止个人\
-  \ ambient sensors、context/payload/header/credential logging、全局安装/配置、宿主 patch、replacement\
-  \ launcher、queue manipulation、发布、push。Plan 只由 Vectl 修改，worker 候选无 Plan 改动。按合作型 actors/local\
-  \ processes 处理缺陷/竞态/遗漏，未授权 hostile-local 威胁不增加接受义务。\n\n```yaml\ncheck_environment:\n\
-  \  node_version: 26.7.0\n  npm_version: 11.19.0\n  stock_pi_version: 0.85.1\n  development_dependencies:\n\
-  \    \"@earendil-works/pi-coding-agent\": 0.85.1\n    \"@earendil-works/pi-ai\"\
-  : 0.85.1\n    \"@types/node\": 26.4.1\n    typebox: 1.3.7\n    typescript: 5.9.3\n\
-  \  dependency_manifest: package.json\n  dependency_lock: package-lock.json\n  runtime_declaration:\
-  \ .node-version\n  tui_python_argv: [/usr/bin/python3]\n  tui_prerequisites: [POSIX\
-  \ PTY, Python 3 standard library]\n```\n使用现有锁定安装；缺环境先安全诊断并报告，不隐式安装或导入全局 Pi。完整 all\
-  \ 非空且覆盖 engine/Pi/live 与跨组件 native 行为，缺版本/lock/子集/入口或检查失败非零；最终整合变化补有意义全量回归，不固定历史测试数。"
-project_guidance: 当前执行 nunc.payload-append（node-typescript-engineer）：Nunc 仓库内支持有界末尾
-  user 文本追加，交付 source/tests/docs 和真实组合观察能力；原 nunc.compatibility-live（integration-verifier）随后只补受影响实际
-  callback 的 live 证据并判断旧三路线完整证据适用性。nunc.compatibility 与 nunc-v1 全部 DONE 定义/证据/历史不变。用户已说明
-  pp 与 pi 差异：pp 经 Larva 加载 Nunc、Dasein、Vernier；Dasein 的 providerPayload 路径在最后一条 user
-  content 追加文本，Nunc 当前 input 整体拒绝构成已定位缺口。不得继续要求用户重新提供扩展名，或将 Larva 本身判为 culprit。外部项目源码和
-  shell wrapper 仅只读 Reference，测试仅合成文本、不运行私人 ambient sensors、不记录正文/headers/凭据。完整 all
-  对最终整合有效；保留已成立 Luna/Flash/Grok low 的维护、checkpoint、约束续做与恢复事实，只补本次 causal delta，不重跑
-  unchanged c2/c3。Orchestrator 保持唯一最终接受/claim/整合/effects/lifecycle 责任；无新 gate、逐发现节点、UI、安装、全局配置、宿主
-  patch、替代启动器、队列操作、发布或 push。真实路线授权及无 USD ceiling 不变，父方绑定有限新独立案例/总 reservations，旧 targets
-  不重放、未知 invoice 保持未知。
+context: "用户当前授权：先分析根因、提出策略，再修复原因并移除有据过度设计/防御，系统扫描完整 Nunc 的 engine/Pi/live、测试/fixtures/runners/docs\
+  \ 与消费者边界。cooperative-root-cause 是在两个已接受阶段之后的一次新修复；nunc-v1 九个 DONE 与 native-compat\
+  \ 三个 DONE 全部定义/证据/历史不变。一个 Node/TS producer 交付同一 Nunc 原生组合合同及其 source/tests/docs/runner，真实\
+  \ provider 效果观察独立，无新的架构/扫描/review/gate 堆叠。\n\n完整 review 是诊断输入，不独自创造新产品要求。已见根因包括普通\
+  \ Provider 包装形成新 Nunc→合作包装→旧 Nunc→native 时准入 ownership 误拒；实际 Google serializer 的\
+  \ config 控制字段和 Completions n 被误归 metadata；多个合法末条 user 纯文本追加受任意数量限制。main SDK hooks\
+  \ 与 raw maintenance 路由不同，以及多个 compaction owner 的最后结果覆盖/取消短路，须按公共 Pi 能力与必要消费边界处理。没有检查用户实际\
+  \ Larva 配置，不能声称已双重生成；wrapper 中 Larva/Dasein/Vernier 名称不构成归罪或禁用依据。不可用扩展名/provider\
+  \ allowlist、越来越大的黑名单/通用 mapper、私有 runner、凭据复制或新协议掩盖职责错误。允许有据正常组合，保留真实容量、输出、媒体/tool、取消、并发与单次效果约束。\n\
+  \n继续满足 README 与 docs/DESIGN 的全部必要行为，并保留 docs/ENGINE、PI、POLICY、DEVELOPMENT、LIVE 的适用公共合同：冻结有效\
+  \ F/全部 M/完整已交付 R=B|K，未来 D 不提前进入且原文一次交付，临时 payload 注入不回填来源；M 有界增量、完整 slot/引用/原文稳定与纠正退役，K\
+  \ 合法跨 checkpoint 且只保留最新 M；main/maintenance 分别按实际 native 默认、输入/输出/thinking/媒体/未知\
+  \ usage 核算并留增长空间。保持 Grok 500k main headroom 与 native clamp、raw extraction 固定输出、uncapped\
+  \ 完整 allowance，full 不省略且可选缩减仅 extraction 内显式有界。Pi 独占模型/config/auth/serializer/transport/compaction\
+  \ 调度、队列、单 CompactionEntry、append/rebuild/usage/活动路径；失败/取消/失效候选不提交、不落默认摘要，不递归维护或重放输入。persistent\
+  \ session、旧 summary、resume/new/tree/fork/clone、TUI queue/editor、media/tool 与可恢复容量拒绝保持。不缩为\
+  \ MVP、不增加跨 session store/检索/任意 provider 兼容或多 owner 合并承诺。\n\n外部 Larva/Dasein/Vernier/wrapper\
+  \ 仅只读 Reference；产品、测试、观察能力仅改 Nunc。保护未跟踪 .pi/、plan-dashboard.html、既有 sessions/settings/defaults、秘密与无关文件。无私人\
+  \ ambient sensors、原始失败输入/旧 session 重放，禁止 context/payload/header/credential logging、安装/global\
+  \ config、host patch、替代启动器、队列操作、发布/push；UI 暂停。合成 fixtures 可在受控服务内断言消息/头语义，报告只给非秘密结果而不保存正文/headers。所有决定实际目标/payload/预算/停止/cleanup/接受证明的\
+  \ executable 必须在 Nunc 跟踪并测试；不让只读 observer 写临时执行器。\n\n以前的完整离线与三路线维护/continuation/resume、giant\
+  \ full/late-D/真实 capacity/更小模型/TUI/media/tool/cancel 证据保留。重新绑定最终不可变候选时按具体 source/lock/config/命令/modality/provider/需求判断底层观察适用性；只补受影响要求和直接前提，不自动完整重跑\
+  \ c1–c5。父方为必要 live 绑定新的隔离 target、合成任务、有限 calls/tokens/time/output 总 reservations、cleanup\
+  \ 与核对，main/maintenance 共用，失败/unknown 不退款；旧 110 次已终结且核对，旧 target 不重放、旧余额不授权。已有 Codex/Luna、OpenRouter/Gemini\
+  \ Flash、xAI/Grok 原生 host-managed access 与无 USD ceiling 授权不变，优先 Luna/Flash low，Grok\
+  \ 按受影响要求需要使用；不新增账户/凭据或再问预算，maxCostUsd:null 不证明免费。正常原生 credential 生命周期归 Pi，任何值/位置不进\
+  \ prompts/Plan/reports。取消、共享限额或未核对效果停止相关执行，local abort 不证明远端取消或账单；已核对独立失败不无端停止其他已授权案例。\n\
+  \nOrchestrator 在 nunc.cooperative-live 完成程序承担本次唯一最终整合接受：包括 cooperative-root-cause\
+  \ 两个结果、native-compat 全部适用交付、nunc-v1 完整项目必要要求。最终整合后完整适用项目原生 offline inventory 必须通过，必要实际观察有正向适用证明，根因/修复/删减和系统扫描的有据义务均闭合，无阻断缺陷或跨结果矛盾，效果已核对；observer\
+  \ 完成或自报 PASS 不代替接受。既有充分证据可以复用，必要 UNPROVEN/DISPROVEN 则接受保持 pending。未完成 writable producer\
+  \ 修复完整兼容批次；其 DONE 后出现仓库缺口则保留历史、quiesce 同一消费者，由 Planner 接入一个兼容 writable repair，再继续该消费者的受影响范围，不新建接受节点。\n\
+  \n```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version: 11.19.0\n\
+  \  stock_pi_version: 0.85.1\n  development_dependencies:\n    \"@earendil-works/pi-coding-agent\"\
+  : 0.85.1\n    \"@earendil-works/pi-ai\": 0.85.1\n    \"@types/node\": 26.4.1\n \
+  \   typebox: 1.3.7\n    typescript: 5.9.3\n  dependency_manifest: package.json\n\
+  \  dependency_lock: package-lock.json\n  runtime_declaration: .node-version\n  tui_python_argv:\
+  \ [/usr/bin/python3]\n  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n\
+  ```\n使用现有锁定环境；缺环境先诊断，不隐式安装或全局导入。所有新增机械检查纳入当前 tracked check runner，clean checkout\
+  \ 加声明的已安装 lock 环境可复现，不依赖外部项目绝对路径才可运行。完整 inventory 以当前文件和必要行为为准，不固定历史测试数。"
+project_guidance: 当前执行新 cooperative-root-cause：nunc.cooperative-repair 由 node-typescript-engineer
+  先输出根因/最小策略，再在同一事务完成 Nunc 系统性扫描、有据修复/删减、真实原生受控接缝测试与文档；不得先改产品再补理由。nunc.cooperative-live
+  由 integration-verifier 消费整合候选，按真实 provider/consumer 受影响面复用或补充观察；它不修仓库、不作接受决定。Orchestrator
+  在该消费者完成程序作本次唯一最终整合接受，并持有 claim/worktree/integration/effects/lifecycle 权限。所有 nunc-v1/native-compat
+  DONE 定义、证据和历史不变，不重开、不加逐发现/扫描/架构/验收节点。仅 Nunc 可写；外部项目/wrapper 只读，.pi/dashboard/日常状态/秘密受保护，UI
+  暂停。完整 review 为必读输入，不能仅消费摘要；合作型缺陷/重入/竞态是威胁范围，保留真不变量，删减无依据的防御与抽象。无安装、全局配置、host patch、replacement
+  launcher、queue manipulation、发布或 push；producer 无 live 权限。必要实际观察由父方绑定新有限有目的总 envelope，旧已终结
+  110 次调用及余量不构成重放许可，unknown invoice 保持未知。
 clipboard:
   author: vectl-orchestrator
   summary: 'Native compatibility accepted: real Dasein append and three live routes'
@@ -1322,3 +1312,180 @@ phases:
       No realcalls/credentialeffects by producer, no Plan/externalrepos/globalsettingswrites,
       protecteduntracked.pi/dashboard preserved. Integration-verifier must now execute
       affected callback live on new targets, not repeat unchanged c2/c3 or originalfailedinputs.
+- id: cooperative-root-cause
+  name: 合作扩展根因修复与系统性验证
+  status: pending
+  gate: 不新增 gate 节点。Orchestrator 在 nunc.cooperative-live 完成程序作唯一最终整合接受，消费本阶段 producer
+    与受影响实际观察、native-compat 和 nunc-v1 的全部适用项目要求/证据。要求最终整合完整 all 有效、已知根因和扫描发现的有据义务解决、必要实际
+    provider/consumer 观察正向成立或有明确适用旧证据，保护不变量成立、无阻断缺陷/矛盾且效果核对完成。受控 seam 不能冒充 live，observer
+    不决定完成；缺必要证据则保持待接受，无额外发布/安装权限。
+  context: 一个 cohesive Node/TS producer：完整 review intake→首次产品编辑前根因与最小策略→Nunc 全系统有界扫描/有据修复删减→原生受控接缝和完整检查；这些是同一交付内部顺序，无独立扫描或架构产物消费者。另一个只读
+    observer 只为受影响的真实 provider/auth/transport/maintenance 消费边界及其有限外部效果，与仓库事务分离；先判断旧事实适用性，补必要
+    delta，不强制未变路线/场景重复。所有旧 DONE 不变。
+  depends_on:
+  - native-compat
+  steps:
+  - id: nunc.cooperative-repair
+    name: 先定根因策略，再最小修复原生组合并系统扫描测试
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      README.md\", \"policies/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
+      , \"tsconfig.json\", \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \"\
+      .env.*\", \"**/auth.json\", \"/Users/tefx/.zshrc\", \"/Users/tefx/Projects/larva/**\"\
+      , \"/Users/tefx/Projects/dasein-pi-extension/**\", \"/Users/tefx/Projects/pi-vernier/**\"\
+      ]\n\nDeliver: 一份可回退的 Nunc 原生合作组合修复，包含必要 source/tests/fixtures/runners/docs、已支持边界的简化和供下游实际观察的跟踪能力。首次产品编辑前完整读取所给\
+      \ review（含覆盖和限制，不只摘要），对当前实现核对其全部发现，并输出短根因/策略：ownership/委托、语义分类/能力、SDK hook 与\
+      \ raw maintenance 路由、compaction 单写入者各归谁；哪些根因应修、哪些真不变量须保留、哪些抽象/限制可删，最小可证伪行为锚点和停止条件。随后同一步执行，不增加计划/审批关卡。\n\
+      \n[REQUIRES_SKILL: ponytail-refactor] 仅将该 skill 用于本次有依据的行为保持删减：先说明 smell、行为锚点、最小动作和停止条件。当前用户已另行授权正常合作组合的行为修复与多追加支持；不能用\
+      \ behavior-preserving 默认拒绝这些授权，也不能借扫描做无关美化/重架构。扫描覆盖整个 Nunc engine、Pi、live、现有测试/fixtures/runners/docs/policy\
+      \ 及消费者边界，寻找相同职责重叠、无依据防御、错误拒绝或漏检；检查反向调用、保留数据与恢复后再删减。报告完整有据批次的处置与未解决点，避免逐 finding\
+      \ 建节点或以测试数量代替覆盖。\n\n必须解决已见原因：普通 settled 请求之间包装现有 native Provider 不能因链内旧 Nunc\
+      \ 不再是 registry 顶层而误拒；建立同一有效委托调用的正确准入 ownership，防止重复准入/维护消费，同时对实际 Context/payload\
+      \ 继续核算，并保留真正注册漂移、重入、取消与 teardown 的安全语义。payload 从真实 serializer 语义划分，Google 原生\
+      \ config 的输出/system/tools/thinking 以及 Completions n 等控制变化不能伪装成 metadata；保持合法\
+      \ noop/identity/metadata 与原生默认，不靠不断加大 provider map/黑名单解决分类根因。未知 API 的原生无改动委托及不明控制变更须有明确可证明能力边界，不能一刀切禁\
+      \ API 或把未知都放行。末条 user 支持保持完整旧前缀的非空纯文本后缀，包括多个合作 hooks、多块追加与 string 规范化；累计新增文本/结构开销，保持\
+      \ post-native-clamp 容量、原生 output 与真实超限零发送，禁止原文删改/重排、工具/媒体替换、控制改写和净值抵消增长。\n\n\
+      main 与 maintenance 的 header/auth/payload/response 消费合同要如实成立：公共 Provider/auth\
+      \ 层承载的跨请求必需行为必须两路一致；仅 SDK before_provider_headers/request/response hook 的行为不能被声称自然进入\
+      \ registry.complete。核对 stock 公共桥接能力，在 Nunc 可承担的最小公共路径上修复路由或缩窄错误继承声明，明确运营者如何选择受支持配置；不能读私有\
+      \ runner、复制凭据、修改宿主或用户配置来伪装桥接。对 Nunc 已承诺且公共接口可实现的行为须实修，不能仅换报错/文案逃避。compaction\
+      \ 保持一个显式自定义 writer，受控组合验证 native 最后结果覆盖与 cancel 短路及单 writer 正常 handoff；不声称用户当前已双重生成，不按扩展名禁用、静默改外部配置或造跨扩展协调协议。\n\
+      \nBoundary: exact owner node-typescript-engineer，只有 Nunc repository transaction\
+      \ 与受控离线运行；外部项目和 wrapper 仅只读参照，所有假输入/headers/auth 都是合成。无真实模型/credential 读取、安装、daily\
+      \ state 改动、UI 或全局/外部 effects。保留 F/M/R 与未来 D、incremental M/verbatim K、最新单 checkpoint、native\
+      \ auth/default/output、Grok headroom/raw 固定输出/uncapped allowance、媒体/tool/取消/queues/persistence\
+      \ 与有限效果真正不变量。合作型事故/重入/竞态在范围内，不新增 hostile-local containment。回退是一份 Nunc 源/tests/docs/runner\
+      \ Git 事务，不涉及其他仓库、旧 session 或 host rollback。\n\nAdmit: 完整 review、当前用户要求、产品 refs、stock\
+      \ Pi 0.85.1 的文档/公共类型/实现与现有检查。真实 loader/runner→注册 Provider→native serializer→受控\
+      \ HTTP 是正向/负向证明入口；独立函数或 faux Provider 只补定位，不能代替所声称的原生 seam。覆盖正常包装/多 hooks 的顺序、两路\
+      \ header 合同、单 writer、非法 input/output/media、cancellation/queue、unknown APIs 的正负行为。observer\
+      \ 所需新增选择/可观测能力纳入现有 tracked runner 并行为测试，不重建 launcher 或依赖外部绝对路径才能通过常规 checks。交付可独立集成的仓库候选、完整\
+      \ all 和受影响证据/真实观察需求；无需等待下游独立 provider 效果才能完成本仓库交付。\n\nRecovery: 同一未完成 producer\
+      \ 处理整个兼容修复与缺失检查/runner 批次；断言不得弱化、seam 不得替换、自报 PASS/doc tokens/预置答案不算行为。源/测试/运行前提缺口先诊断并保持真实未证明边界；如必须改变公共产品意义或触及外部配置则报告最小问题，不擅自扩大权限。受控子进程退出与清理后交付，不调用\
+      \ live 来解决 offline producer 问题，不写 Plan 或完成生命周期。"
+    verification: "```yaml\nchecks:\n  - id: cooperative-full-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers:\n      - 全部engine-Pi-live及跨组件库存和类型构建\n      - stock-loader-runner与native-Provider的透明包装链-多次settled请求-reentry-cleanup\n\
+      \      - 单次准入与main-maintenance-independent职责及真实final-Context\n      - multiple-hooks顺序-多块last-user-text-suffix-string规范化-累计post-clamp增长\n\
+      \      - Google原生config与Completions-n控制语义和unknown-API边界\n      - main-maintenance公共Provider-auth-header与SDK-only-hook差异\n\
+      \      - compaction单writer正向与多个handler最后结果覆盖-cancel短路\n      - noop-identity-合法metadata正向和非法input-output-thinking-media-tool零HTTP\n\
+      \      - Grok500k-headroom-nativeclamp-raw固定输出-uncapped完整allowance\n      -\
+      \ F-M-R-D来源-slot增量-K原文-最新checkpoint及model-session配置变化\n      - 真实stock-RPC-TUI的取消优先-队列-原生恢复-append-rebuild与活动路径\n\
+      \      - 有限effects-runner选择-停止核对-unknown-usage-billing和无秘密日志\n```\n使用 Plan check_environment\
+      \ 和跟踪 lock；每个新 check 要能从 clean checkout 加已声明锁定环境重现，不以另一项目安装/私人 profile 为测试前提。最小失败用例先暴露根因，再证明最终受控\
+      \ HTTP 发送/零发送及原生状态；Google 采用实际公开 serializer/transport 与合成 loopback endpoint，禁止把\
+      \ JSON 手工拼装冒充原生形状。不伪造小窗口/输出把真实大模型问题藏掉。测试执行具体行为且有可信失败条件；可在内存断言合成 headers/payload，产物不得记录原文/headers/凭据。producer\
+      \ 给出首次编辑前根因策略、实际移除的复杂性/保留的防线、全系统扫描有据发现处置、最终候选 all 结果及需要补实测的 causal delta；历史\
+      \ 251 项与 110 calls 不是本次完成证明。"
+    evidence_template: 编辑前根因/最小策略；完整review与系统扫描有据批次处置；候选及删减/保留语义；实际native-seam正负证据与完整all
+      argv/结果；真实观察causal delta和仍未证明边界。
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/ENGINE.md
+    - docs/PI.md
+    - docs/POLICY.md
+    - docs/DEVELOPMENT.md
+    - docs/LIVE.md
+    - src/index.ts
+    - src/engine/pi-model.ts
+    - src/pi/admission.ts
+    - src/pi/payload.ts
+    - src/live/observer.ts
+    - src/live/contract.ts
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - scripts/stock-driver.mjs
+    - scripts/observe-payload.mjs
+    - scripts/observe-lifecycle.mjs
+    - tests/pi/admission.test.ts
+    - tests/pi/payload-append.test.ts
+    - tests/pi/queue.test.ts
+    - tests/live/native-delegation.test.ts
+    - package.json
+    - package-lock.json
+    - .node-version
+    - /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-07T11-19-56-356Z-2026-09-07T11-09-57-922Z_01a07b8f-8322-74a4-8086-73fddae85a6a.js-2952d7757f0685b3.txt
+    - /Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+    - /Users/tefx/Projects/larva/src/larva/shell/pi.py
+    - /Users/tefx/Projects/dasein-pi-extension/src/core/provider-payload-injector.ts
+    - /Users/tefx/Projects/dasein-pi-extension/src/index.ts
+    agent: node-typescript-engineer
+  - id: nunc.cooperative-live
+    name: 补齐受影响原生消费观察并供父方最终整合接受
+    status: pending
+    description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      README.md\", \"policies/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
+      , \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      , \"/Users/tefx/.zshrc\", \"/Users/tefx/Projects/larva/**\", \"/Users/tefx/Projects/dasein-pi-extension/**\"\
+      , \"/Users/tefx/Projects/pi-vernier/**\"]\n\nDeliver: 绑定最终整合 Nunc 不可变候选的实际 provider/consumer\
+      \ 观察与旧证据适用判断，供 Orchestrator 作唯一最终整合接受。该步骤独立的原因是新候选在真实 native auth/transport/main→maintenance→checkpoint→continuation\
+      \ 消费边界的观察可能产生付费 provider 效果，目标、权限与核对不同于离线仓库事务；它不提供第二次源代码验收。先消费 producer 的根因/扫描处置、完整\
+      \ all 和 changed seams，逐必要要求判定既有 native-compat/nunc-v1 证据适用性，再只取得缺失/失效的事实。\n\n\
+      实际需要回答：正常合作 Provider 包装和多活动文本 hooks 经原生注册/serializer 在改变的路线是否仍可发送并保留实际 output/accounting；受影响的\
+      \ main/maintenance 公共 Provider/auth/header 合同是否能通过真实所选路由消费；必要的完整来源维护、单 checkpoint、continuation/resume\
+      \ 与取消/效果核对是否仍有适用正向依据。只观察生产者实际支持的 public 路径，不宣称 SDK-only hooks 已桥接或用户整个私人 profile\
+      \ 已复现。没有新增 direct-Google/网关账户授权：其嵌套控制/headers 机械合同由受控原生测试证明，不能为诊断另找服务。某要求全部相关\
+      \ source/config/runtime/provider 输入未变且旧证据适用可直接复用；不得仅为报告重绑定、另一 persona 或信心重跑所有路线/完整\
+      \ c1–c5。\n\nBoundary: exact owner integration-verifier，Nunc 仓库/配置/Plan/lifecycle\
+      \ 只读，使用已跟踪且检查通过的 runner。父方执行前绑定新隔离 target/session/cwd/private outputs、ordered\
+      \ requirements、native 实际选择/有据 invocation-only override、有限 calls/tokens/time/output\
+      \ 总 reservations、停止和 cleanup/reconciliation。允许已有 Codex Luna、OpenRouter Gemini\
+      \ Flash、xAI Grok native access；优先 Luna/Flash low，Grok 仅在受影响需求需要时使用。无 USD ceiling\
+      \ 的授权继续有效而 invoice 未知，不能拿旧 110 次或剩余额度重放/自动加调用。用户日常 sessions/settings/defaults、外部项目、.pi/dashboard、凭据与\
+      \ UI 不动；只用合成任务，不启动 private ambient 或记录 payload/context/header/credential。认证沿用\
+      \ host-managed native handoff，禁止复制 profile/credential、login、host patch、替代 launcher、安装/发布/push。\n\
+      \nAdmit: producer 已集成并有最终候选完整适用 offline inventory；当前产品合同、完整 review 的已处置批次、两旧阶段的适用直接事实。实际\
+      \ effects 前使用同一 caller-bound selection 的 tracked no-effect preflight；CLI exit0/OBSERVED、identity-only\
+      \ callbacks、预置模型答案或受控服务不能证明实际新组合/任务效果。main 与维护共用 finite reservations，失败/unknown\
+      \ 不退款；保留失败和部分证据，区分 native usage、预留、catalog estimate 与未知 invoice。完整 source、工具与未来\
+      \ D、output/cancel/单 writer/JSONL 恢复等只需补被本次改变的必要观察，仍适用事实不重跑。\n\nOrchestrator\
+      \ 完成程序：覆盖 cooperative-root-cause 的修复与观察、native-compat 的完整适用兼容交付、nunc-v1 全部必要项目要求；在最终整合完整\
+      \ all 有效、根因和系统扫描全部有据义务解决、所有必要事实正向且适用、无阻断缺陷/矛盾、实际效果核对之后作本次唯一接受。observer 只分类事实与缺口，不作接受或生命周期决定，不增加\
+      \ gate。纯观察报告可以诚实完成为 negative/unknown，但必要 UNPROVEN/DISPROVEN 不允许项目完成。\n\nRecovery:\
+      \ 未启动 effects 的调用前提/报告修复留在当前 owner；已启动或可能启动先核对全部相关 effects 和进程，再继续。真正取消/共享限额/未核对终态停止，不能用\
+      \ local abort 推断远端取消/账单；独立且核对完成的失败仅停止该例。缺 tracked runner/check 或发现需产品修复时保持本消费者未完成并\
+      \ quiesce，交回父方/Planner 找一个兼容 writable producer，保留全部 DONE；修后继续原消费者的 affected\
+      \ scope，复用有效证据，不临时写 executable 或另建验收节点。"
+    verification: "```yaml\nchecks:\n  - id: final-integrated-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    evidence_policy: reuse_only_when_valid_for_final_integrated_candidate_and_unchanged_check_inputs\n\
+      \  - id: affected-native-no-effect-preflight\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/verify-live.mjs, --preflight]\n    stdin_contract: docs/LIVE.md\n\
+      \    binding: caller_new_target_native_selection_purposeful_finite_limits_and_affected_scenarios\n\
+      \    exit_code: 0\n  - id: affected-native-observation\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/verify-live.mjs]\n    stdin_contract: docs/LIVE.md\n    binding: same_preflight_selection_before_first_effect\n\
+      \    execution_policy: only_missing_or_invalidated_required_observations_with_current_parent_effect_binding\n\
+      ```\n父方完整绑定目标/要求/权限/模态与 effect envelope 后才执行；不预先在 Plan 虚构新调用数量或把待观察结果写成 PASS。报告将\
+      \ producer 控制服务事实与真实 provider 事实分开，说明每个必要要求的适用旧证据或本次新观察、限制及全部实际/可能效果终态。完整 all\
+      \ 的最终整合证明可直接复用适用运行，不因 observer 身份再跑。缺失能力或观察诚实 UNPROVEN；实际矛盾 DISPROVEN，不以扩大预算、mock\
+      \ seam、复述预期答案或新增临时脚本关闭。Orchestrator 消费报告与证据适用性后独立决定本次最终接受。"
+    evidence_template: 最终target与有界要求；旧证据适用/失效原因；实际changed-route观察及未证明边界；命令/模态和nonsecret结果；calls/reservations/usage/unknown-invoice与效果/进程核对；供父方唯一最终接受的剩余约束。
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/PI.md
+    - docs/ENGINE.md
+    - docs/POLICY.md
+    - docs/DEVELOPMENT.md
+    - docs/LIVE.md
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - src/live/contract.ts
+    - src/live/observer.ts
+    - src/live/budget.ts
+    - tests/scenarios/inputs.json
+    - tests/scenarios/observer.json
+    - /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-07T11-19-56-356Z-2026-09-07T11-09-57-922Z_01a07b8f-8322-74a4-8086-73fddae85a6a.js-2952d7757f0685b3.txt
+    depends_on:
+    - nunc.cooperative-repair
+    agent: integration-verifier
