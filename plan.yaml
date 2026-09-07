@@ -1314,7 +1314,7 @@ phases:
       affected callback live on new targets, not repeat unchanged c2/c3 or originalfailedinputs.
 - id: cooperative-root-cause
   name: 合作扩展根因修复与系统性验证
-  status: pending
+  status: in_progress
   gate: 不新增 gate 节点。Orchestrator 在 nunc.cooperative-live 完成程序作唯一最终整合接受，消费本阶段 producer
     与受影响实际观察、native-compat 和 nunc-v1 的全部适用项目要求/证据。要求最终整合完整 all 有效、已知根因和扫描发现的有据义务解决、必要实际
     provider/consumer 观察正向成立或有明确适用旧证据，保护不变量成立、无阻断缺陷/矛盾且效果核对完成。受控 seam 不能冒充 live，observer
@@ -1327,7 +1327,7 @@ phases:
   steps:
   - id: nunc.cooperative-repair
     name: 先定根因策略，再最小修复原生组合并系统扫描测试
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"policies/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
@@ -1415,6 +1415,8 @@ phases:
     - /Users/tefx/Projects/dasein-pi-extension/src/core/provider-payload-injector.ts
     - /Users/tefx/Projects/dasein-pi-extension/src/index.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-07T12:05:53.203144Z'
   - id: nunc.cooperative-live
     name: 补齐受影响原生消费观察并供父方最终整合接受
     status: pending
