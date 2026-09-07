@@ -1196,7 +1196,7 @@ phases:
     agent: integration-verifier
   - id: nunc.payload-append
     name: 支持有界末尾文本追加并交付原生组合观察能力
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -1276,3 +1276,5 @@ phases:
     depends_on:
     - nunc.compatibility
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-07T10:08:05.309473Z'
