@@ -930,7 +930,7 @@ phases:
       No final acceptance.'
 - id: native-compat
   name: Payload 兼容修复与三路线原生实测
-  status: pending
+  status: in_progress
   gate: Orchestrator 在 nunc.compatibility-live 的完成程序作本次唯一最终整合接受决定，消费 native-compat
     两个结果及 nunc-v1 全部仍适用项目证据。实际 payload 兼容故障有据关闭；最终整合完整 all 有效；xAI/Grok、Codex、OpenRouter/Gemini
     各有实际 native 主请求/工具/完整维护/单 checkpoint/续做恢复正向证据；全部必要来源、容量、媒体、取消、队列、持久化与状态保护要求满足，effects
@@ -945,7 +945,7 @@ phases:
   steps:
   - id: nunc.compatibility
     name: 修复原生 payload 兼容并交付完整检查与实测能力
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \"\
       policies/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -1038,6 +1038,8 @@ phases:
     - tests/scenarios/inputs.json
     - tests/scenarios/observer.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-07T08:20:33.184430Z'
   - id: nunc.compatibility-live
     name: 真实验证三路线原生管线并完成整合接受
     status: pending
