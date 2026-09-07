@@ -8,13 +8,14 @@ import { EngineError, legalCuts } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
+type CallRecord = { context: Context; model: Model<Api>; signal: AbortSignal | undefined; simple: boolean; seen: WeakSet<Provider> };
 export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; outputTokens?: number; code?: string; payload?: PayloadObservation }
 
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
 export class Admission {
   private readonly maintenance = new AsyncLocalStorage<{ request: Parameters<Complete>[0]; used: boolean }>();
-  /** Set for one delegated call so inner Nunc wrappers pass through; held old wrappers start a new entry. */
-  private readonly call = new AsyncLocalStorage<true>();
+  /** One delegated request: same Context/model/signal/mode, each wrapper visited at most once as inner pass-through. */
+  private readonly call = new AsyncLocalStorage<CallRecord>();
   private readonly installed = new Map<string, Installation>();
   private cancelledRun = false;
   private readonly rejected = new Map<string, AbortSignal>();
@@ -65,15 +66,25 @@ export class Admission {
   private observe(value: AdmissionObservation): void {
     try { this.pi.events.emit("nunc:admission", value); } catch { /* Notification-only consumers. */ }
   }
+  private sameCall(record: CallRecord | undefined, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean): record is CallRecord {
+    return !!record && record.context === context && record.model.id === model.id && record.model.provider === model.provider && record.signal === options?.signal && record.simple === simple;
+  }
   private dispatch(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
     const entry = this.installed.get(model.provider);
     if (!entry) {
       return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
     }
-    if (this.call.getStore() && entry.wrapper !== wrapper) {
+    const record = this.call.getStore();
+    if (this.sameCall(record, model, context, options, simple) && record.seen.has(wrapper)) {
+      return this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream);
+    }
+    if (this.sameCall(record, model, context, options, simple) && entry.wrapper !== wrapper) {
+      record.seen.add(wrapper);
       return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
     }
-    return this.call.run(true, () => this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream));
+    const next: CallRecord = { context, model, signal: options?.signal, simple, seen: new WeakSet() };
+    next.seen.add(wrapper);
+    return this.call.run(next, () => this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream));
   }
   private enter(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
     const scope = this.maintenance.getStore();

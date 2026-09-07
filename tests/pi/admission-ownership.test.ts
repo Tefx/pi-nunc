@@ -92,6 +92,43 @@ test("maintenance same-Context replay via a held older wrapper cannot consume a 
   assert.equal(e.faux.state.callCount, 1);
 });
 
+test("held older wrapper replay from inside the native callback cannot send twice", async () => {
+  const e = await env();
+  const latest = e.rewrap();
+  assert(latest);
+  let replay: string | undefined;
+  await e.admission.complete(async request => {
+    const options = { signal: request.signal, maxTokens: request.outputTokens };
+    e.faux.setResponses([async () => {
+      const nested = await e.held.stream(e.model, request.context, options).result();
+      replay = nested.stopReason;
+      return fauxAssistantMessage("synthetic answer");
+    }]);
+    return latest.stream(e.model, request.context, options).result();
+  })({ model: e.model, context: e.context, signal: e.options.signal, outputTokens: 128 });
+  assert.equal(replay, "error");
+  assert.equal(e.faux.state.callCount, 1);
+});
+
+test("held older wrapper oversize from inside the native callback still runs main admission", async () => {
+  const e = await env();
+  const latest = e.rewrap();
+  assert(latest);
+  let nested: string | undefined;
+  let nestedMessage: string | undefined;
+  e.faux.setResponses([async () => {
+    const extra = await e.held.streamSimple(e.model, e.huge, e.options).result();
+    nested = extra.stopReason;
+    nestedMessage = extra.errorMessage;
+    return fauxAssistantMessage("synthetic answer");
+  }]);
+  const first = await latest.streamSimple(e.model, e.context, e.options).result();
+  assert.equal(first.stopReason, "stop", first.errorMessage ?? "");
+  assert.equal(nested, "error");
+  assert.match(nestedMessage ?? "", /exceeds safe input|Provider changed after request preparation/);
+  assert.equal(e.faux.state.callCount, 1);
+});
+
 test("after close, leftover wrappers stay transparent; a different signal stays independent", async () => {
   const e = await env();
   const latest = e.rewrap();
