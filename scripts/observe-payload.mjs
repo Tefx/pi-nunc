@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { StockFixture } from './stock-driver.mjs';
 
-const f = await new StockFixture().setup({ timeoutMs: 90000 });
+const f = await new StockFixture().setup({ timeoutMs: 90000, compaction: { enabled: false } });
 let outcome = { status: 'FAIL' };
 try {
   const p = f.start(); await p.command('get_state');
