@@ -13,11 +13,11 @@ Memory maintenance asks: **If only the retained history K and normal working too
 
 ## Status
 
-**Core delivered; UI design accepted, implementation pending** · Updated 2026-09-08.
+**Core delivered; manual M state/restore delivered; footer/overlay pending** · Updated 2026-09-08.
 
 The original core delivery and subsequent native/cooperative compatibility work have completed acceptance recorded in the managed plan. Later capacity-planning and command improvements are also in the tree; those historical acceptance records do not claim a fresh full acceptance of every later revision. Pi retains native compaction, persistence, model selection and transport, with Nunc request-capacity checks.
 
-The next feature is a compact footer plus a Slots/Context overlay with native session-backed manual memory edits. Its [accepted design](docs/UI.md) is documented but not implemented. The current request authorizes documentation and an implementation plan only.
+Manual M-only edits persist through native session entries and restore along the selected path. The compact footer and Slots/Context overlay in the [accepted UI design](docs/UI.md) are not implemented yet.
 
 ## Scope
 

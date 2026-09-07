@@ -53,6 +53,18 @@ export function memoryTokens(slots: Slot[], imageTokens?: number): number {
 export function omitsSerializedOutputCap(model: Model<Api>): boolean {
   return model.api === "openai-codex-responses" || (model.api === "openai-responses" && record(model.compat) && model.compat.supportsMaxOutputTokens === false);
 }
+/** Shared F/M planning numbers for maintenance and manual M edits. */
+export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: EngineConfig) {
+  const mainInputLimit = inputLimit(model, config.main);
+  const extractionInputLimit = inputLimit(model, config.extraction);
+  const effectiveTrigger = Math.min(config.triggerTokens, mainInputLimit);
+  const fixedTokens = requestTokens(mainContext(fixed, [], []), config.imageTokens) + config.main.extraInputTokens;
+  const available = effectiveTrigger - fixedTokens;
+  requireThat(available > 0, "CAPACITY", "A <= 0: effective F and summary envelope exhaust the work budget");
+  const memoryLimit = Math.floor(Math.min(config.memory.fraction * available, config.memory.maxTokens ?? Infinity));
+  const keepTarget = Math.floor(config.keepRecentFraction * (available - memoryLimit));
+  return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, keepTarget };
+}
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   requireThat(integer(model.contextWindow, 1) && integer(model.maxTokens, 1), "CONFIG", "Invalid effective model capacity");
   requireThat(budget.outputTokens <= Math.min(model.maxTokens, budget.outputLimit ?? model.maxTokens), "CONFIG", "Configured total output (including thinking) exceeds model/provider output capacity");

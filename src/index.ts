@@ -5,7 +5,8 @@ import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
 import { inputLimit, omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig } from "./pi/config.js";
-import { eligibleStarts, project } from "./pi/projection.js";
+import { eligibleStarts, project, withEffectiveMemory } from "./pi/projection.js";
+import { createMemorySurface } from "./pi/manual.js";
 import { Admission } from "./pi/admission.js";
 
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
@@ -39,7 +40,6 @@ export default function nunc(pi: ExtensionAPI): void {
     project(ctx.sessionManager.buildContextEntries());
     return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction);
   });
-  pi.on("session_compact", () => admission.invalidateUsage());
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
     return { systemPrompt: ctx.getSystemPrompt(), tools: pi.getActiveTools().map(name => {
@@ -52,6 +52,9 @@ export default function nunc(pi: ExtensionAPI): void {
     try { pi.events.emit("nunc:diagnostic", { level, message }); } catch { /* Notification only. */ }
     try { if (ctx.hasUI) ctx.ui.notify(`Nunc: ${message}`, level); else console.error(`Nunc: ${message}`); } catch { /* Never fall through to default summary. */ }
   };
+  const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => admission.invalidateUsage() });
+  pi.on("session_compact", () => { admission.invalidateUsage(); memory.endFreeze(); });
+  pi.on("session_compact_failed", () => { if (!memory.noteForeignFailure()) memory.endFreeze(); });
   pi.on("session_start", (_event, ctx) => {
     invalidate();
     try {
@@ -70,7 +73,7 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_before_fork", invalidate);
   pi.on("session_before_tree", invalidate);
   pi.on("session_tree", invalidate);
-  pi.on("session_shutdown", (_event, ctx) => { invalidate(); admission.close(ctx); });
+  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); admission.close(ctx); });
   pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); });
   pi.on("thinking_level_select", invalidate);
   pi.on("agent_settled", () => admission.settled());
@@ -83,18 +86,22 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("context", (event, ctx) => {
     // Pi puts the newest native checkpoint first, even when its kept range
     // includes earlier checkpoints. Keep that carrier once and every real K.
-    let seen = false;
-    const messages = event.messages.filter(m => {
-      if (m.role === "assistant" && ["error", "aborted"].includes(m.stopReason)) return false;
-      if (m.role !== "compactionSummary") return true;
-      if (seen) return false;
-      seen = true; return true;
-    });
     admission.ensure(ctx);
-    return { messages };
+    try {
+      return { messages: withEffectiveMemory(event.messages, project(ctx.sessionManager.buildContextEntries()).memory) };
+    } catch (error) {
+      notify(ctx, error instanceof Error ? error.message : "Invalid memory projection");
+      let seen = false;
+      return { messages: event.messages.filter(m => {
+        if (m.role === "assistant" && ["error", "aborted"].includes(m.stopReason)) return false;
+        if (m.role !== "compactionSummary") return true;
+        if (seen) return false;
+        seen = true; return true;
+      }) };
+    }
   });
   pi.on("session_before_compact", async (event, ctx) => {
-    if (running) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
+    if (!memory.beginFreeze()) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
     const controller = new AbortController(); running = controller;
     const abort = () => controller.abort();
     event.signal.addEventListener("abort", abort, { once: true });

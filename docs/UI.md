@@ -1,8 +1,8 @@
 # Nunc 状态与记忆管理界面
 
-状态：**设计已接受，尚未实现**。更新于 2026-09-08。
+状态：**人工 M 状态与恢复已实现；footer / overlay 尚未实现**。更新于 2026-09-08。
 
-本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案，供后续实施和验收使用。当前授权为更新文档并创建实施计划，不包含开始 UI 实现、安装或真实模型调用。现有核心与兼容修复的完成历史保留；本功能需取得自己的受影响行为证据。
+本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案。§5–§6 的有效 M、revision、预算与 `replace`/`delete` 已由 Pi adapter 提供，可在无面板的公开 host fixture 中验证。footer、两个 tab 与 TUI 交互仍待后续步骤。现有核心与兼容修复的完成历史保留。
 
 本设计延续 [DESIGN.md](DESIGN.md) 的 session、来源、原文、容量与 Pi 所有权边界。人工保存按 §5 扩展原先仅在 CompactionEntry 保存 M 的合同。[PI.md](PI.md) 与 [ENGINE.md](ENGINE.md) 中当前预算及 Provider 组合合同仍适用。示意文案、尺寸起点、私有数据格式和模块文件划分是推荐；实现可以替换它们，但须保持本文明确的用户行为、状态所有权、观察边界与兼容限制。
 
@@ -163,7 +163,7 @@ Pi adapter/projection 是唯一有效 M 投影所有者：当前路径最新原�
 | 请求 / 维护观察 | 从现有 Nunc 观察点提供有范围标签的数据；不改变分类、委托、payload 或返回值 |
 | Engine / accounting | Memory 校验、渲染、估算与预算；不依赖 TUI，不写 session |
 
-内部消费接口需提供带 revision 的 memory/status/budget/context view，以及携带所读 revision 的 `replace(slotId, text)` / `delete(slotId)` 意图与 §5.2 结果。示意字段 `{revision, memory, status, budget, contextLayout}` 不要求新公共 SDK 或固定类布局；producer 可选择等价内部类型，但必须让 UI 无需自行猜测记忆来源、预算、保存成功或请求观察完整性。
+内部消费接口由 `pi-nunc/pi` 的 `memorySurface(pi)` 提供（同一扩展实例，经公开 event bus 绑定，不是新 SDK 或临时写命令）。`read(ctx)` 返回 `{revision, memory, status, budget, contextLayout}`：`revision` 标识当前 session 与适用的 native checkpoint / 人工 head，不因无关扩展 entry 变化；`memory` 是唯一有效 M；`status.occupied` 为维护冻结至 Pi 提交终态；`budget` 使用当前模型/F/tools/config 的 `pi-heuristic` M 规划，不可计算时 `unknown: true`；`contextLayout` 给出 slot 数、活动原文条目和最新 checkpoint id。`replace(ctx, revision, slotId, text)` / `delete(ctx, revision, slotId)` 经公开 `pi.appendEntry()` 写入私有 `nunc.memory` CustomEntry，结果为成功或 `invalid` / `conflict` / `occupied` / `overbudget` / `unknown-budget` / `unconfirmed`。UI 只读观察不得阻止合法调用；未知数据留空并标注。
 
 UI 的只读观察不应阻止合法调用，未知数据留空并标注。保留已交付的合作 Provider 链、独立调用透明委托、一次性维护绑定、多块末条 user 文本追加、取消与工具/媒体/输出保护；不恢复旧 main-request tickets、全量 payload 修改禁令或扩展名白名单。
 

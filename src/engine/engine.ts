@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import type { Complete, MaintenanceInput, MaintenanceResult, Observations } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
-import { chooseCut, inputLimit, mainContext, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
+import { chooseCut, mainContext, memoryPlan, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies } from "./request.js";
 import { EngineError, freezeCopy, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
 
@@ -56,14 +56,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     for (const e of frozen.active) for (const m of e.messages) if (typeof m.content !== "string" && m.content.some(b => b.type === "image")) {
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
     }
-    const mainInputLimit = inputLimit(frozen.model, config.main);
-    const extractionInputLimit = inputLimit(frozen.model, config.extraction);
-    const effectiveTrigger = Math.min(config.triggerTokens, mainInputLimit);
-    const fixedTokens = requestTokens(mainContext(frozen.fixed, [], []), config.imageTokens) + config.main.extraInputTokens;
-    const available = effectiveTrigger - fixedTokens;
-    requireThat(available > 0, "CAPACITY", "A <= 0: effective F and summary envelope exhaust the work budget");
-    const memoryLimit = Math.floor(Math.min(config.memory.fraction * available, config.memory.maxTokens ?? Infinity));
-    const keepTarget = Math.floor(config.keepRecentFraction * (available - memoryLimit));
+    const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, memoryLimit, keepTarget } = memoryPlan(frozen.fixed, frozen.model, config);
     const { cut, keptTokens } = chooseCut(frozen.active, cuts, fixedTokens, memoryLimit, keepTarget, effectiveTrigger, config);
     const mainBeforeTokens = requestTokens(mainContext(frozen.fixed, frozen.memory.slots, frozen.active), config.imageTokens) + config.main.extraInputTokens;
     let context = extractionContext(frozen, cut, memoryLimit, frozen.active, []);
