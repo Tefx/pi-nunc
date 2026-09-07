@@ -1441,7 +1441,7 @@ phases:
       not project acceptance.
   - id: nunc.cooperative-live
     name: 补齐受影响原生消费观察并供父方最终整合接受
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"policies/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
@@ -1513,3 +1513,5 @@ phases:
     depends_on:
     - nunc.cooperative-repair
     agent: integration-verifier
+    claimed_by: integration-verifier
+    claimed_at: '2026-09-07T13:07:08.600631Z'
