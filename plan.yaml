@@ -961,7 +961,7 @@ phases:
       No final acceptance.'
 - id: native-compat
   name: Payload 兼容修复与三路线原生实测
-  status: in_progress
+  status: done
   gate: Orchestrator 在 nunc.compatibility-live 完成程序作唯一最终整合接受，消费 nunc.compatibility、nunc.payload-append、原
     live 及 nunc-v1 全部适用结果。实际 pp-equivalent callback 在 safe append/accounting 下有效，完整
     final all 有效，三路线既有完整 native 管线事实仍适用且必要受影响观察补齐，全部必要来源/容量/media/tool/cancel/队列/persistence/protected-state
@@ -1098,7 +1098,7 @@ phases:
       required next, no model-quality claim.'
   - id: nunc.compatibility-live
     name: 真实验证三路线原生管线并完成整合接受
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -1196,6 +1196,31 @@ phases:
     agent: integration-verifier
     claimed_by: integration-verifier
     claimed_at: '2026-09-07T10:40:39.237828Z'
+    done_at: '2026-09-07T10:55:35.031423+00:00'
+    evidence: 'FINAL INTEGRATED ACCEPTANCE: accept native-compat at immutable HEAD499f9584877ece37c9bb00c0714a8d36d16cca39/product0b481e9.
+      Independent verifier-report-append.json validated by review_report_validator.py
+      --kind verifier --binding review-binding-append.json =>valid/POSITIVE_EVIDENCE;
+      all12requirementsPROVEN findingsempty. Reports under /private/tmp/nunc-native-compat-live-bIKTsA;
+      parent read result-append.md and evidence-applicability-append.json, checked
+      targetHEAD and protectedstatus. Grounded causal closure: userpp-vs-pi plus actual
+      shell/Larva resource source shows Nunc+Dasein+Vernier; actualDasein pureinjector
+      appendedlastusertext conflicts oldblanketguard. Final source realinjectorparity+controllednativeHTTP
+      and22actualnativeappenddelegations on Luna/Flash/Grok prove identifiedtransform,
+      not allprivateprofile behavior. No attribution to Larva alone, no privateambient/sensors/session
+      replay. All251/25129files exact final producerall and parentFF/build applicable.
+      Prior85realcalls prove three-route c2threecheckpoints/constraintretry +c3same-sessionresume;
+      new25calls(22main3fullraw) eachroutec3 proves activeappend→tool→fullzeroomissionextraction→singlecheckpoint→newPIDsame-session→correctstream/nullartifact.
+      Maintenance source excludestransientappend, originalK/latestMpreserved. Originalprojectfullsource/giant/lateD/capacity/smallermodel
+      facts mappedunchangedmechanisms without relabelingoldconfig; currentall covers
+      affectedadmission/toolmedia/cancel/TUIcontrols. Necessaryrequirements proven,
+      no knownblockingfinding/crossresultcontradiction. Cumulative110calls90,663,648reserved194,360reportedtokens461.004s,
+      within120calls101,000,000reserved90min bound, allterminal/new6hosts exited no
+      pendingeffects, no refunds/replay and allfailed/partial reports/targetsretained.
+      Invoiceunknown. No furthercallsneeded. No globalinstall/publish/push/dailysettings/otherrepoedits;
+      onlyprotecteduntracked.pi/dashboardremain. Userrequested fix/thoroughtests/live
+      outcome achieved within explicit identifiedappendcontract; no claim arbitraryrewrites/privateprofile
+      replay or live media semanticproof. This is sole terminalintegrationacceptance;
+      priorDONEhistoryunchanged.'
   - id: nunc.payload-append
     name: 支持有界末尾文本追加并交付原生组合观察能力
     status: done
