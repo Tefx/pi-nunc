@@ -1067,7 +1067,7 @@ phases:
       required next, no model-quality claim.'
   - id: nunc.compatibility-live
     name: 真实验证三路线原生管线并完成整合接受
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"scripts/**\", \"tests/**\", \"policies/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -1178,3 +1178,5 @@ phases:
     depends_on:
     - nunc.compatibility
     agent: integration-verifier
+    claimed_by: integration-verifier
+    claimed_at: '2026-09-07T09:22:24.619933Z'
