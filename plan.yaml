@@ -1314,7 +1314,7 @@ phases:
       affected callback live on new targets, not repeat unchanged c2/c3 or originalfailedinputs.
 - id: cooperative-root-cause
   name: 合作扩展根因修复与系统性验证
-  status: in_progress
+  status: done
   gate: 不新增 gate 节点。Orchestrator 在 nunc.cooperative-live 完成程序作唯一最终整合接受，消费本阶段 producer
     与受影响实际观察、native-compat 和 nunc-v1 的全部适用项目要求/证据。要求最终整合完整 all 有效、已知根因和扫描发现的有据义务解决、必要实际
     provider/consumer 观察正向成立或有明确适用旧证据，保护不变量成立、无阻断缺陷/矛盾且效果核对完成。受控 seam 不能冒充 live，observer
@@ -1441,7 +1441,7 @@ phases:
       not project acceptance.
   - id: nunc.cooperative-live
     name: 补齐受影响原生消费观察并供父方最终整合接受
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"policies/**\", \"examples/**\", \"package.json\", \"package-lock.json\"\
@@ -1515,3 +1515,28 @@ phases:
     agent: integration-verifier
     claimed_by: integration-verifier
     claimed_at: '2026-09-07T13:07:08.600631Z'
+    done_at: '2026-09-07T13:21:16.340852+00:00'
+    evidence: 'Parent consumed verifier-report.json/result.md/evidence-applicability.json/effects-reconciliation.json
+      under /private/tmp/nunc-cooperative-live-aZuNMY for exact integrated target577209d9443b8955880e5fb0436acf8bb71b45e7/product6552c41.
+      Parent independently ran installed review_report_validator.py --kind verifier
+      --binding review-binding.json verifier-report.json: valid=true,binding_checked=true,POSITIVE_EVIDENCE,noerrors
+      (supersedes child unavailable-validator limitation). All8 caller-bound requirements
+      PROVEN,nofindings. New native low Luna9calls + Flash8calls demonstrate tracked
+      transparent wrapper after settled request, active two-suffix composition, full
+      raw source extraction without omissions, one checkpoint, same-session new-process
+      recovery and constraint-correct export. Exactly one pre/final admission per
+      actualcall. Live records omit bodies/suffixcount/wrapperidentity; combination
+      proof relies on loaded deterministic tracked hooks/order plus controlled native
+      direct suffix and ownership regressions, not transform label alone. Public Provider/auth
+      path consumed; SDK-only hooks do not enter raw complete, no arbitrary custom
+      model.headers claim. Parent264pass0fail0skip33files finalintegratedall and build
+      applies; historical original nunc-v1/native-compat invariants reused with explicit
+      causal mapping, no universal/private-profile compatibility claim. New effects17calls12,451,456reserved27,721reportedtokens62.625s,
+      all17terminals,4hostsexited,targetsretained,no replay/refund/unknownpending;invoiceunknown.
+      Withinnew32calls24,225,792reserved1800s envelope. Parent accepts requested root-cause
+      repair/systemscan scope: samecall ownership (including capturedold/asyncdescendant/replay)
+      and explicit supported payload mutations replace faulty global-retirement/unknownmetadata
+      assumptions, removes single-part restriction; legitimate raw-hook and single-writer
+      limits retained. No additionalcalls needed. No installation/publication/UI/externalproject/profile
+      changes. Final source remains6552c41; laterPlanonlycommits do not change evidence
+      inputs.'
