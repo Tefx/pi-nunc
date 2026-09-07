@@ -1559,7 +1559,7 @@ phases:
   steps:
   - id: nunc.ui-memory
     name: 原生人工记忆提交、唯一有效 M 与恢复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"tests/pi/**\"\
       , \"tests/engine/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
@@ -1618,6 +1618,41 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-07T17:44:49.529922Z'
+    done_at: '2026-09-07T18:35:23.768066+00:00'
+    evidence: 'Integrated by fast-forward candidate 3aa1a9a0ad70e8f31751971976315f2ca80f77f3
+      from impl/nunc-ui-memory, post-claim base a7d9994dae2067825374fbddb82687f80d9f1020.
+      Exact owner node-typescript-engineer and claims store verified; candidate left
+      managed Plan unchanged; worktree tracked state clean; integration HEAD matched
+      base. Parent reviewed source/consumer/test changes and repaired same-owner gaps
+      before integration: sibling paths sharing M now reject stale drafts while forward
+      unrelated entries remain allowed; native EISDIR partial-append uncertainty prevents
+      further manual saves until disk reconciliation; actual resource session.reload
+      retains the uncertainty through a session-keyed weak mark, unlike true same-file
+      switchSession/disk resume. Successful save survives resource reload. Maintenance
+      freeze covers candidate handoff through native commit/failure and overlap/cancellation
+      checks; no K/boundary/queue/inflight mutation. Effective M native manual entries
+      project once and next native checkpoint absorbs them; public loader/append/SessionManager.open/native
+      compact/prompt/lifecycle component fixtures prove state behavior. Existing real
+      stock CLI/RPC/TUI/transport regression remains passing; no claim of new panel/TUI
+      editing surface or live-model quality.
+
+      Required full argv /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1
+      PI_TELEMETRY=0 /opt/homebrew/bin/node scripts/check.mjs all exit0, 286 pass/0
+      fail/0 cancelled/0 skipped, 35 files; actual stdout/EXIT:0 read at /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-memory/.scratch/nunc-ui-memory-check-all.log.
+      This checked candidate was integrated unchanged; no intervening source/lock/config
+      changes invalidate that evidence. Parent integration build /usr/bin/env -u NODE_OPTIONS
+      /opt/homebrew/bin/node node_modules/typescript/bin/tsc --project tsconfig.json
+      exit0; diff --check passed. Core manual.ts/projection.ts plus shared memoryPlan,
+      interface exports, 365-line behavioral native fixture tests and corresponding
+      docs delivered. Consumer memorySurface(pi).read/replace/delete exposes revision/status.occupied/status.unconfirmed/budget/basic
+      context counts; Context inspector/footer/overlay remain later steps.
+
+      User explicitly authorized execution after planning, then requested PAUSE after
+      this current step fully finishes. This step is now accepted/integrated; DO NOT
+      claim or dispatch nunc.ui-context or nunc.ui-panel until user resumes. Preserve
+      all older DONE history and current worktree/log for reuse. No installation of
+      daily extension, global/default/session changes, push or real-model calls. Protected
+      untracked .pi/ and plan-dashboard.html untouched. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
   - id: nunc.ui-context
     name: 有范围的 Context 布局与请求/维护观察
     status: pending
