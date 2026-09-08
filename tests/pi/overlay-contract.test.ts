@@ -10,7 +10,7 @@ function clean(lines: string[]): string {
   return lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b_pi:c\x07/g, "");
 }
 
-function fixture(options: { rows?: number; text?: string; failure?: string; unconfirmed?: boolean } = {}) {
+function fixture(options: { rows?: number; text?: string; failure?: string; unconfirmed?: boolean; keybindings?: KeybindingsManager } = {}) {
   const text = options.text ?? "original saved text";
   let view: MemoryView = {
     revision: "old",
@@ -83,7 +83,7 @@ function fixture(options: { rows?: number; text?: string; failure?: string; unco
     ctx: ctx as never, memory: memory as never, context: { read: () => structuredClone(contextView()) } as never,
     tui: { requestRender() {}, terminal: { rows: options.rows ?? 40, columns: 120 } } as TUI,
     theme: ctx.ui.theme as never,
-    keybindings: new KeybindingsManager(TUI_KEYBINDINGS),
+    keybindings: options.keybindings ?? new KeybindingsManager(TUI_KEYBINDINGS),
     done() { overlay.dispose(); },
   });
   return { overlay, memory, ctx, saves, statuses, get view() { return view; }, set view(next: MemoryView) { view = next; } };
@@ -337,3 +337,65 @@ test("remapped keys and backslash fallback restore draft on save failure", () =>
     setKeybindings(old);
   }
 });
+
+test("untrimmed leading/trailing whitespace and newlines are preserved across save failure and success", () => {
+  const failureFixture = fixture({ failure: "conflict" });
+  failureFixture.overlay.handleInput("\r");
+  failureFixture.overlay.handleInput("\x15");
+  const indented = "    indented memory text\n";
+  failureFixture.overlay.handleInput(indented);
+  const before = failureFixture.overlay.draftText();
+  assert.equal(before, indented);
+  failureFixture.overlay.handleInput("\r");
+  assert.equal(failureFixture.overlay.layerName, "edit");
+  assert.equal(failureFixture.overlay.draftText(), indented);
+  assert.equal(failureFixture.saves[0]?.text, indented);
+
+  const successFixture = fixture();
+  successFixture.overlay.handleInput("\r");
+  successFixture.overlay.handleInput("\x15");
+  successFixture.overlay.handleInput(indented);
+  successFixture.overlay.handleInput("\r");
+  assert.equal(successFixture.overlay.layerName, "browse");
+  assert.equal(successFixture.saves[0]?.text, indented);
+  assert.equal(successFixture.view.memory.slots[0]?.text, indented);
+});
+
+test("explicit whitespace-only text fails as invalid and retains draft in editor", () => {
+  const f = fixture();
+  f.overlay.handleInput("\r");
+  f.overlay.handleInput("\x15");
+  const spaces = "    \n    ";
+  f.overlay.handleInput(spaces);
+  const before = f.overlay.draftText();
+  f.overlay.handleInput("\r");
+  assert.equal(f.overlay.layerName, "edit");
+  assert.equal(f.overlay.draftText(), before);
+  assert.match(clean(f.overlay.render(90)), /Empty text|invalid|not a valid/i);
+});
+
+test("untrimmed draft preserved across remapped submit and backslash fallback with paste", () => {
+  const old = getKeybindings();
+  const kb = new KeybindingsManager(TUI_KEYBINDINGS, { "tui.input.submit": "shift+enter", "tui.input.newLine": "enter" });
+  setKeybindings(kb);
+  try {
+    const f = fixture({ failure: "overbudget", keybindings: kb });
+    f.overlay.handleInput("\r");
+    f.overlay.handleInput("\x15");
+    const multilineWithIndent = "  def hello():\n    print(1)\n";
+    f.overlay.handleInput(multilineWithIndent);
+    const beforeShift = f.overlay.draftText();
+    f.overlay.handleInput("\x1b[27;2;13~");
+    assert.equal(f.overlay.layerName, "edit");
+    assert.equal(f.overlay.draftText(), beforeShift);
+    assert.equal(f.saves[0]?.text, multilineWithIndent);
+
+    f.overlay.handleInput("\\");
+    f.overlay.handleInput("\r");
+    assert.equal(f.overlay.layerName, "edit");
+    assert.equal(f.overlay.draftText(), multilineWithIndent);
+  } finally {
+    setKeybindings(old);
+  }
+});
+

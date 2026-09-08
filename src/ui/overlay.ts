@@ -6,6 +6,7 @@ import {
   Key,
   KeybindingsManager,
   SelectList,
+  getKeybindings,
   matchesKey,
   truncateToWidth,
   visibleWidth,
@@ -61,6 +62,7 @@ export class NuncOverlay implements Focusable {
   private list: SelectList;
   private editor: Editor | undefined;
   private editBasis: { revision: string; slotId: string; original: string } | undefined;
+  private pendingUntrimmedDraft: string | undefined;
   private editorRows = 6;
   private preferredSlot: string | undefined;
   private contextPath: string[] = [];
@@ -254,8 +256,45 @@ export class NuncOverlay implements Focusable {
       this.leaveEdit(true);
       return;
     }
-    editor.handleInput(data);
+    this.pendingUntrimmedDraft = this.captureUntrimmedDraft(editor, data);
+    try {
+      editor.handleInput(data);
+    } finally {
+      this.pendingUntrimmedDraft = undefined;
+    }
     this.host.tui.requestRender();
+  }
+
+  private captureUntrimmedDraft(editor: Editor, data: string): string {
+    const raw = editor.getExpandedText();
+    if (!matchesKey(data, "enter")) return raw;
+    const submitKeys = [
+      ...this.host.keybindings.getKeys("tui.input.submit"),
+      ...getKeybindings().getKeys("tui.input.submit"),
+    ];
+    const hasShiftEnter = submitKeys.includes("shift+enter") || submitKeys.includes("shift+return");
+    if (!hasShiftEnter) return raw;
+    const cursor = editor.getCursor();
+    const lines = editor.getLines();
+    const currentLine = lines[cursor.line] ?? "";
+    if (cursor.col > 0 && currentLine[cursor.col - 1] === "\\") {
+      let offset = 0;
+      for (let i = 0; i < cursor.line; i++) offset += (lines[i]?.length ?? 0) + 1;
+      offset += cursor.col - 1;
+      const unexpanded = editor.getText();
+      if (unexpanded[offset] === "\\") {
+        if (raw.length === unexpanded.length) {
+          return unexpanded.slice(0, offset) + unexpanded.slice(offset + 1);
+        }
+        const diff = raw.length - unexpanded.length;
+        const rawOffset = offset + diff;
+        if (raw[rawOffset] === "\\") {
+          return raw.slice(0, rawOffset) + raw.slice(rawOffset + 1);
+        }
+      }
+      if (raw.endsWith("\\")) return raw.slice(0, -1);
+    }
+    return raw;
   }
 
   private handleConfirm(data: string, confirm: () => void): void {
@@ -324,6 +363,7 @@ export class NuncOverlay implements Focusable {
   private leaveEdit(clearError: boolean): void {
     this.editor = undefined;
     this.editBasis = undefined;
+    this.pendingUntrimmedDraft = undefined;
     this.layer = "browse";
     this.search.focused = this._focused;
     if (clearError) this.error = undefined;
@@ -334,13 +374,18 @@ export class NuncOverlay implements Focusable {
   private save(slotId: string, text: string): void {
     const basis = this.editBasis;
     if (!basis || basis.slotId !== slotId) return;
-    if (this.memoryView.status.occupied) {
-      this.fail("维护尚未完成原生提交，草稿未保存。", text);
+    const untrimmed = this.pendingUntrimmedDraft ?? text;
+    if (untrimmed.trim().length === 0) {
+      this.fail("Empty text is not a valid slot", untrimmed);
       return;
     }
-    const result = this.host.memory.replace(this.host.ctx, basis.revision, slotId, text);
+    if (this.memoryView.status.occupied) {
+      this.fail("维护尚未完成原生提交，草稿未保存。", untrimmed);
+      return;
+    }
+    const result = this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed);
     if (!result.ok) {
-      this.fail(result.message, text);
+      this.fail(result.message, untrimmed);
       return;
     }
     this.preferredSlot = slotId;
