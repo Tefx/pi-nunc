@@ -1898,7 +1898,7 @@ phases:
       UIclaim/manualfixture preserved.'
   - id: nunc.extraction-engine
     name: 必要项共同保留、协议迁移与原生失败恢复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"src/pi/**\", \"src/index.ts\", \"tests/engine/**\"\
       , \"tests/pi/**\", \"tests/live/**\", \"scripts/**\", \"docs/ENGINE.md\", \"\
@@ -1949,6 +1949,8 @@ phases:
     depends_on:
     - nunc.extraction-policy
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-08T10:25:11.397734Z'
   - id: nunc.extraction-comparison-support
     name: 可复用三组比较入口与隔离观察能力
     status: pending
