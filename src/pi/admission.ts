@@ -16,7 +16,15 @@ export interface AdmissionLayoutEvent {
   model: Model<Api>;
   context: Context;
   observation: AdmissionObservation;
-  payloadGrowth?: { grewTokens: number; append: boolean; addedTokens?: number; addedText?: string };
+  initialMetadataTokens?: number;
+  payloadGrowth?: {
+    grewTokens: number;
+    inputGrewTokens: number;
+    chargedTokens: number;
+    append: boolean;
+    addedTokens?: number;
+    addedText?: string;
+  };
 }
 
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
@@ -75,7 +83,7 @@ export class Admission {
   settled(): void { this.rejected.clear(); this.cancelledRun = false; }
   private observe(value: AdmissionObservation, detail?: Omit<AdmissionLayoutEvent, "observation">): void {
     try { this.pi.events.emit("nunc:admission", value); } catch { /* Notification-only consumers. */ }
-    if (!detail || value.kind !== "main") return;
+    if (!detail || (value.kind !== "main" && value.kind !== "maintenance")) return;
     try { this.onLayout?.({ ...detail, observation: value }); } catch { /* Read-only observer. */ }
   }
   private sameCall(record: CallRecord | undefined, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean): record is CallRecord {
@@ -112,6 +120,7 @@ export class Admission {
       : mainSession ? "main" : "unknown";
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
+    let initialMetadataTokens = 0;
     let budgetObservation: Pick<AdmissionObservation, "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan"> = {};
     try {
       if (kind === "unknown") {
@@ -119,6 +128,7 @@ export class Admission {
         return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
       }
       options?.signal?.throwIfAborted();
+      initialMetadataTokens = textTokens(JSON.stringify(options?.metadata ?? {}));
       if (ctx.modelRegistry.getRegisteredNativeProvider(model.provider) !== wrapper) throw new EngineError("CONFIG", "Provider changed after request preparation; reload before continuing");
       if (legacyStream) throw new EngineError("CONFIG", "Legacy stream overrides are unsupported; select a native Provider without a legacy stream override");
       if (model.samplingParams && Object.keys(model.samplingParams).length || options?.samplingParams && Object.keys(options.samplingParams).length) throw new EngineError("CONFIG", "Raw sampling payload overrides are unsupported");
@@ -143,7 +153,7 @@ export class Admission {
           context.messages.length > previous.messageCount &&
           isDeepStrictEqual(jsonView(context.messages.slice(0, previous.messageCount)), previous.messages);
         const estimate = admissionEstimate(context, model, config.imageTokens, usageApplies, previous?.messageCount ?? 0);
-        inputTokens = estimate.tokens + config.main.extraInputTokens + textTokens(JSON.stringify(options?.metadata ?? {}));
+        inputTokens = estimate.tokens + config.main.extraInputTokens + initialMetadataTokens;
         const plannedInputLimit = inputLimit(model, config.main);
         budgetObservation = { estimator: estimate.estimator, plannedInputLimit, inputExceededPlan: inputTokens > plannedInputLimit, outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens, ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}) };
         limit = mainAdmissionLimit(model, config.main);
@@ -153,7 +163,7 @@ export class Admission {
         const config = this.config(ctx, model);
         outputTokens = omitsSerializedOutputCap(model) ? model.maxTokens : scope!.request.outputTokens;
         budgetObservation = { estimator: "pi-heuristic", outputReserveTokens: scope!.request.outputTokens, outputCapTokens: omitsSerializedOutputCap(model) ? null : scope!.request.outputTokens };
-        inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + textTokens(JSON.stringify(options?.metadata ?? {}));
+        inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + initialMetadataTokens;
         limit = inputLimit(model, config.extraction);
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Maintenance input estimate ${inputTokens} exceeds planned input ${limit}; no recursive recovery`);
       }
@@ -175,11 +185,17 @@ export class Admission {
         const observation: PayloadObservation = append.ok
           ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
           : { mode: delta.mode, categories: delta.categories };
-        const grew = Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0);
-        const payloadGrowth = { grewTokens: grew, append: append.ok, ...(append.ok ? { addedTokens: append.addedTokens, addedText: append.addedText } : {}) };
-        const finalInputTokens = inputTokens! + grew;
+        const chargedTokens = Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0);
+        const payloadGrowth = {
+          grewTokens: delta.grewTokens,
+          inputGrewTokens: delta.inputGrewTokens,
+          chargedTokens,
+          append: append.ok,
+          ...(append.ok ? { addedTokens: append.addedTokens, addedText: append.addedText } : {}),
+        };
+        const finalInputTokens = inputTokens! + chargedTokens;
         if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
-        const layout = { ctx, model, context, payloadGrowth };
+        const layout = { ctx, model, context, payloadGrowth, initialMetadataTokens };
         try {
           authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context });
           this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
@@ -194,7 +210,7 @@ export class Admission {
           throw new EngineError(code, errorMessage);
         }
       } };
-      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context });
+      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context, initialMetadataTokens });
       if (kind === "main") this.previousMain = { model: structuredClone(model), systemPrompt: context.systemPrompt, tools: jsonView(context.tools ?? []), messages: jsonView(context.messages), messageCount: context.messages.length };
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
@@ -208,7 +224,7 @@ export class Admission {
       const message: AssistantMessage = { role: "assistant", content: [], api: model.api, provider: model.provider, model: model.id, timestamp: Date.now(), stopReason: aborted ? "aborted" : "error", errorMessage, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); stream.end();
-      this.observe({ kind, outcome: "reject", code, ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context });
+      this.observe({ kind, outcome: "reject", code, ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context, initialMetadataTokens });
       return stream;
     }
   }

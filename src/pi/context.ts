@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, Slot } from "../engine/index.js";
 import { mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { memoryMessage } from "../engine/memory.js";
+import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
 import type { MemorySurface } from "./manual.js";
@@ -40,9 +41,23 @@ export interface ContextEntry {
   messages: ContextMessage[];
 }
 export interface ToolAssociation { toolCallId: string; toolName: string; callOrder: number; resultOrder: number }
+export interface ToolDefinitionView {
+  name: string;
+  description: string;
+  parameters: unknown;
+  tokens: number | null;
+  unknown: boolean;
+}
+export interface ToolsLayer {
+  count: number;
+  names: string[];
+  tokens: number | null;
+  unknown: boolean;
+  definitions: ToolDefinitionView[];
+}
 export interface ContextLayout {
   system: { text: string; tokens: number };
-  tools: { count: number; names: string[]; tokens: number | null; unknown: boolean };
+  tools: ToolsLayer;
   memory?: { slots: Slot[]; tokens: number; envelopeTokens: number };
   entries?: ContextEntry[];
   messages: ContextMessage[];
@@ -52,6 +67,7 @@ export interface ContextLayout {
   extraInputTokens: number;
   heuristic: TokenCount;
   associations: ToolAssociation[];
+  unavailable?: true;
 }
 export interface ContextBudget {
   modelWindow: number | null;
@@ -84,6 +100,8 @@ export interface CurrentContext {
 export interface LastMainPayload extends PayloadObservation {
   addedTokens?: number;
   addedText?: string;
+  chargedGrowthTokens?: number;
+  unallocatedOverheadTokens?: number;
   unmappedIncrement?: { tokens: number; unknown: true };
 }
 export interface LastMainContext {
@@ -102,6 +120,7 @@ export interface LastMainContext {
   outputTokens?: number;
   outputReserveTokens?: number;
   outputCapTokens?: number | null;
+  initialMetadataTokens?: number;
   layout: ContextLayout;
   payload?: LastMainPayload;
 }
@@ -114,7 +133,14 @@ export interface LastMaintenanceContext {
   reason?: string;
   engine?: "ok" | "fail" | "cancel";
   native: "pending" | "saved" | "failed" | "none";
-  before: { memory: Memory; entries: ContextEntry[]; messages: ContextMessage[] };
+  invalidated?: true;
+  before: {
+    memory: Memory;
+    entries: ContextEntry[];
+    messages: ContextMessage[];
+    system: { text: string; tokens: number };
+    tools: ToolsLayer;
+  };
   cut?: { firstKeptEntryId: string; retiredEntryIds: string[]; keptEntryIds: string[] };
   candidate?: { memory: Memory; firstKeptEntryId: string };
   after?: { memory: Memory; keptEntryIds: string[] };
@@ -132,9 +158,10 @@ export interface ContextSurface {
 }
 export interface ContextObserver extends ContextSurface {
   observeAdmission(event: AdmissionLayoutEvent): void;
-  beginMaintenance(input: { ctx: ExtensionContext; model: Model<Api>; memory: Memory; active: ActiveEntry[]; reason: string; config?: EngineConfig }): void;
+  beginMaintenance(input: { ctx: ExtensionContext; model: Model<Api>; fixed: FixedContext; memory: Memory; active: ActiveEntry[]; reason: string; config?: EngineConfig }): void;
   noteEngine(result: MaintenanceResult): void;
   noteNative(status: "saved" | "failed"): void;
+  noteInvalidated(): void;
   resetPath(): void;
 }
 
@@ -183,24 +210,26 @@ export function createContextSurface(options: {
       };
       return {
         current,
-        ...(applicable(state.lastMain, ctx) ? { lastMain: state.lastMain } : {}),
-        ...(applicable(state.lastMaintenance, ctx) ? { lastMaintenance: state.lastMaintenance } : {}),
+        ...(applicable(state.lastMain, ctx) ? { lastMain: structuredClone(state.lastMain) } : {}),
+        ...(applicable(state.lastMaintenance, ctx) ? { lastMaintenance: structuredClone(state.lastMaintenance) } : {}),
       };
     },
     observeAdmission(event) {
       try {
+        if (event.observation.kind === "maintenance") {
+          captureSentCut(state.lastMaintenance, event.context);
+          return;
+        }
         if (event.observation.kind !== "main") return;
         const observation = event.observation;
-        const config = readConfig(options, event.ctx, event.model);
-        const layout = layoutFromContext(event.context, config?.imageTokens, config?.main.extraInputTokens ?? 0);
-        const payload = payloadView(observation.payload, event.payloadGrowth);
-        state.lastMain = {
+        const recorded: LastMainContext = {
           scope: "last-main",
           observedAt: Date.now(),
           sessionId: event.ctx.sessionManager.getSessionId(),
           leafId: event.ctx.sessionManager.getLeafId(),
           model: identity(event.model),
           outcome: observation.outcome,
+          layout: unavailableLayout(),
           ...(observation.code ? { code: observation.code } : {}),
           ...(observation.estimator ? { estimator: observation.estimator } : {}),
           ...(observation.inputTokens === undefined ? {} : { inputTokens: observation.inputTokens }),
@@ -210,21 +239,31 @@ export function createContextSurface(options: {
           ...(observation.outputTokens === undefined ? {} : { outputTokens: observation.outputTokens }),
           ...(observation.outputReserveTokens === undefined ? {} : { outputReserveTokens: observation.outputReserveTokens }),
           ...(observation.outputCapTokens === undefined ? {} : { outputCapTokens: observation.outputCapTokens }),
-          layout,
-          ...(payload ? { payload } : {}),
+          ...(event.initialMetadataTokens === undefined ? {} : { initialMetadataTokens: event.initialMetadataTokens }),
         };
+        state.lastMain = recorded;
+        try {
+          const config = readConfig(options, event.ctx, event.model);
+          recorded.layout = layoutFromContext(event.context, config?.imageTokens, config?.main.extraInputTokens ?? 0);
+          const payload = payloadView(observation.payload, event.payloadGrowth);
+          if (payload) recorded.payload = payload;
+        } catch {
+          recorded.layout = unavailableLayout();
+        }
       } catch { /* Read-only; never change admission. */ }
     },
     beginMaintenance(input) {
       try {
         const imageTokens = input.config?.imageTokens;
         const inspected = inspectEntries(input.active, imageTokens);
+        const fixed = structuredClone(input.fixed);
         state.frozen = {
           sessionId: input.ctx.sessionManager.getSessionId(),
           leafId: input.ctx.sessionManager.getLeafId(),
           model: identity(input.model),
           observedAt: Date.now(),
           reason: input.reason,
+          fixed,
           memory: structuredClone(input.memory),
           active: structuredClone(input.active),
           ...(imageTokens === undefined ? {} : { imageTokens }),
@@ -237,7 +276,13 @@ export function createContextSurface(options: {
           model: state.frozen.model,
           reason: input.reason,
           native: "pending",
-          before: { memory: state.frozen.memory, entries: inspected.entries, messages: inspected.messages },
+          before: {
+            memory: state.frozen.memory,
+            entries: inspected.entries,
+            messages: inspected.messages,
+            system: { text: fixed.systemPrompt, tokens: textTokens(fixed.systemPrompt) },
+            tools: toolLayer(fixed.tools),
+          },
         };
       } catch { /* Freeze observation is best-effort. */ }
     },
@@ -249,11 +294,13 @@ export function createContextSurface(options: {
         if (result.observations.accounting) current.accounting = structuredClone(result.observations.accounting);
         if (result.ok) {
           current.engine = "ok";
-          current.cut = {
-            firstKeptEntryId: result.candidate.firstKeptEntryId,
-            retiredEntryIds: [...result.candidate.retiredEntryIds],
-            keptEntryIds: result.candidate.kept.map(entry => entry.entryId),
-          };
+          if (!current.cut) {
+            current.cut = {
+              firstKeptEntryId: result.candidate.firstKeptEntryId,
+              retiredEntryIds: [...result.candidate.retiredEntryIds],
+              keptEntryIds: result.candidate.kept.map(entry => entry.entryId),
+            };
+          }
           current.candidate = { memory: structuredClone(result.candidate.memory), firstKeptEntryId: result.candidate.firstKeptEntryId };
         } else {
           current.engine = result.code === "CANCELLED" ? "cancel" : "fail";
@@ -266,9 +313,14 @@ export function createContextSurface(options: {
       const current = state.lastMaintenance;
       if (!current || current.native !== "pending") return;
       current.native = status;
-      if (status === "saved" && current.engine === "ok" && current.candidate && current.cut) {
+      if (status === "saved" && current.engine === "ok" && !current.invalidated && current.candidate && current.cut) {
         current.after = { memory: structuredClone(current.candidate.memory), keptEntryIds: [...current.cut.keptEntryIds] };
       }
+    },
+    noteInvalidated() {
+      const current = state.lastMaintenance;
+      if (!current || current.native === "saved") return;
+      if (current.engine === "ok") current.invalidated = true;
     },
     resetPath() {
       delete state.lastMain;
@@ -296,6 +348,7 @@ interface FrozenMaintenance {
   model: { id: string; provider: string; api: string };
   observedAt: number;
   reason: string;
+  fixed: FixedContext;
   memory: Memory;
   active: ActiveEntry[];
   imageTokens?: number;
@@ -347,19 +400,42 @@ function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedCont
 function payloadView(observation: PayloadObservation | undefined, growth: AdmissionLayoutEvent["payloadGrowth"]): LastMainPayload | undefined {
   if (!observation && !growth) return;
   const base: LastMainPayload = observation ? { ...observation } : { mode: "noop", categories: [] };
-  if (growth?.append) {
+  if (!growth) return base;
+  base.chargedGrowthTokens = growth.chargedTokens;
+  if (growth.append) {
     base.transform = "last-user-text-append";
     if (growth.addedTokens !== undefined) base.addedTokens = growth.addedTokens;
     if (growth.addedText !== undefined) base.addedText = growth.addedText;
+    const overhead = growth.chargedTokens - (growth.addedTokens ?? 0);
+    if (overhead > 0) base.unallocatedOverheadTokens = overhead;
     return base;
   }
-  if (growth && !growth.append) {
-    const categories = observation?.categories ?? [];
-    if (growth.grewTokens > 0 || categories.some(category => category === "input" || category === "tools" || category === "media")) {
-      base.unmappedIncrement = { tokens: growth.grewTokens, unknown: true };
-    }
+  const categories = observation?.categories ?? [];
+  if (categories.some(category => category === "input" || category === "tools" || category === "media")) {
+    base.unmappedIncrement = { tokens: growth.chargedTokens, unknown: true };
+  } else if (growth.chargedTokens > 0) {
+    base.unallocatedOverheadTokens = growth.chargedTokens;
   }
   return base;
+}
+
+function captureSentCut(current: LastMaintenanceContext | undefined, context: Context): void {
+  if (!current || current.native !== "pending" || current.cut) return;
+  try {
+    const texts: string[] = [];
+    for (const message of context.messages) {
+      if (typeof message.content === "string") texts.push(message.content);
+      else if (Array.isArray(message.content)) {
+        for (const block of message.content) if (block.type === "text") texts.push(block.text);
+      }
+    }
+    const records = texts.flatMap(text => readSourceRecords(text));
+    const retiredEntryIds = records.filter(record => record.region === "B").map(record => String(record.entryId));
+    const keptEntryIds = records.filter(record => record.region === "K").map(record => String(record.entryId));
+    const firstKeptEntryId = keptEntryIds[0];
+    if (!firstKeptEntryId) return;
+    current.cut = { firstKeptEntryId, retiredEntryIds, keptEntryIds };
+  } catch { /* Leave cut unknown rather than invent a partition. */ }
 }
 
 function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number): ContextLayout {
@@ -409,10 +485,37 @@ function layoutFromContext(context: Context, imageTokens: number | undefined, ex
   };
 }
 
-function toolLayer(tools: { name: string }[]): { count: number; names: string[]; tokens: number | null; unknown: boolean } {
+function unavailableLayout(): ContextLayout {
+  return {
+    system: { text: "", tokens: 0 },
+    tools: { count: 0, names: [], tokens: null, unknown: true, definitions: [] },
+    messages: [],
+    messageCount: 0,
+    blockCount: 0,
+    packagingTokens: 0,
+    extraInputTokens: 0,
+    heuristic: { tokens: null, unknown: true },
+    associations: [],
+    unavailable: true,
+  };
+}
+
+function toolLayer(tools: readonly { name: string; description?: string; parameters?: unknown }[]): ToolsLayer {
   const names = tools.map(tool => tool.name);
-  try { return { count: tools.length, names, tokens: textTokens(JSON.stringify(tools)), unknown: false }; }
-  catch { return { count: tools.length, names, tokens: null, unknown: true }; }
+  const definitions: ToolDefinitionView[] = tools.map(tool => {
+    try {
+      const parameters = structuredClone(tool.parameters ?? {});
+      const description = typeof tool.description === "string" ? tool.description : "";
+      return { name: tool.name, description, parameters, tokens: textTokens(JSON.stringify({ name: tool.name, description, parameters })), unknown: false };
+    } catch {
+      return { name: tool.name, description: typeof tool.description === "string" ? tool.description : "", parameters: {}, tokens: null, unknown: true };
+    }
+  });
+  try {
+    return { count: tools.length, names, tokens: textTokens(JSON.stringify(tools)), unknown: definitions.some(item => item.unknown), definitions };
+  } catch {
+    return { count: tools.length, names, tokens: null, unknown: true, definitions };
+  }
 }
 
 function inspectEntries(active: readonly ActiveEntry[], imageTokens: number | undefined): { entries: ContextEntry[]; messages: ContextMessage[]; associations: ToolAssociation[] } {
@@ -440,8 +543,10 @@ function inspectMessage(message: Message, order: number, imageTokens: number | u
   const blocks: ContextBlock[] = [];
   if (typeof message.content === "string") {
     blocks.push({ type: "text", tokens: textTokens(message.content), unknown: false, preview: preview(message.content), text: message.content });
-  } else {
+  } else if (Array.isArray(message.content)) {
     for (const block of message.content) blocks.push(inspectBlock(block, imageTokens));
+  } else {
+    blocks.push({ type: "unknown", tokens: null, unknown: true, preview: "[unavailable content]" });
   }
   const unknown = framing.unknown || blocks.some(block => block.unknown);
   const view: ContextMessage = {
@@ -497,6 +602,7 @@ function messageCost(message: Message, imageTokens: number | undefined): TokenCo
   let unknown = false;
   if (message.role === "toolResult") tokens += textTokens(message.toolCallId) + textTokens(message.toolName) + 8;
   if (typeof message.content === "string") return { tokens: tokens + textTokens(message.content), unknown: false };
+  if (!Array.isArray(message.content)) return { tokens, unknown: true };
   for (const block of message.content) {
     const view = inspectBlock(block, imageTokens);
     if (view.unknown || view.tokens === null) unknown = true;

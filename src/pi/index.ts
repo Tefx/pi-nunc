@@ -3,7 +3,7 @@ import type { HostSettingsSource } from "../index.js";
 export { parseConfig, readConfig, engineConfig, type NuncConfig } from "./config.js";
 export { project, eligibleStarts, withEffectiveMemory, MANUAL_MEMORY_TYPE, memoryRevision, revisionApplies } from "./projection.js";
 export { createMemorySurface, memorySurface, type MemorySurface, type MemoryView, type ManualSaveResult, type MemoryBudgetView, type MemoryFreeze } from "./manual.js";
-export { createContextSurface, contextSurface, type ContextSurface, type ContextView, type CurrentContext, type LastMainContext, type LastMaintenanceContext, type ContextLayout, type ContextBudget } from "./context.js";
+export { createContextSurface, contextSurface, type ContextSurface, type ContextView, type CurrentContext, type LastMainContext, type LastMaintenanceContext, type ContextLayout, type ContextBudget, type ToolsLayer, type ToolDefinitionView } from "./context.js";
 export type { HostSettingsSource, MaintenanceEvent } from "../index.js";
 
 /** Call after resource loading, before bindExtensions, again after each reload.

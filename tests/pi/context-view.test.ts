@@ -1,11 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, type Context, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { bindHostSettings, contextSurface, memorySurface, type ContextSurface, type MemorySurface } from "pi-nunc/pi";
+import { emptyMemory } from "../../src/engine/index.js";
 import { mainContext, memoryTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { Admission, type AdmissionObservation } from "../../src/pi/admission.js";
+import { createContextSurface } from "../../src/pi/context.js";
 import { engineConfig } from "../../src/pi/config.js";
 import { applyLastUserTextAppend } from "../../src/pi/payload.js";
 import { project } from "../../src/pi/projection.js";
@@ -184,7 +188,8 @@ test("rejected requests are not sent; candidate is not saved; fail/cancel have n
   assert.equal(pending.lastMaintenance?.native, "pending");
   assert.equal(pending.lastMaintenance?.engine, undefined);
   assert.equal(pending.lastMaintenance?.after, undefined);
-  assert.equal(pending.lastMaintenance?.cut, undefined);
+  assert(pending.lastMaintenance?.cut?.firstKeptEntryId);
+  assert.equal(pending.lastMaintenance.cut.retiredEntryIds.length > 0, true);
   g.runtime.session.abortCompaction();
   release.resolve();
   await Promise.allSettled([compacting]);
@@ -199,6 +204,7 @@ test("rejected requests are not sent; candidate is not saved; fail/cancel have n
   assert.equal(failed.lastMaintenance?.engine, "fail");
   assert.equal(failed.lastMaintenance?.native, "failed");
   assert.equal(failed.lastMaintenance?.after, undefined);
+  assert(failed.lastMaintenance?.cut?.firstKeptEntryId);
 });
 
 test("later hooks appear only on last-main; independent calls and queued D stay out of current/maintenance", async t => {
@@ -401,4 +407,161 @@ test("a throwing layout observer cannot change delegation or payload", async () 
   const ok = await provider.streamSimple(model, { messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] }, { signal, sessionId: "synthetic-session" }).result();
   assert.equal(ok.stopReason, "stop", ok.errorMessage ?? "");
   assert.equal(faux.state.callCount, 1);
+});
+
+test("malformed content rejection replaces prior last-main instead of keeping a delegate", async t => {
+  let breakIt = false;
+  const { f, context, ctx } = await prepared(t, { extras: [{ name: "broken-content", factory(pi) {
+    pi.on("context", event => breakIt ? { messages: [...event.messages, { role: "user", content: { broken: true }, timestamp: 4 } as never] } : undefined);
+  } }] });
+  f.respond(() => fauxAssistantMessage("ok"));
+  await f.runtime.session.prompt("legal first request");
+  const first = context().read(ctx()).lastMain;
+  assert.equal(first?.outcome, "delegate");
+  const calls = f.faux.state.callCount;
+  breakIt = true;
+  await f.runtime.session.prompt("illegal second request");
+  const second = context().read(ctx()).lastMain;
+  assert.equal(second?.outcome, "reject");
+  assert.equal(second?.code, "INPUT");
+  assert.notEqual(second?.observedAt, first?.observedAt);
+  assert.equal(f.faux.state.callCount, calls);
+});
+
+test("tool definitions and frozen F survive later model change; snapshots stay detached", async t => {
+  const { f, context, ctx } = await prepared(t, { tools: [{ name: "read", label: "Read", description: "Read complete file", parameters: Type.Object({ path: Type.String() }), execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }) }] });
+  f.seed(); f.respond(memoryPatch);
+  const systemAtFreeze = ctx().getSystemPrompt();
+  await f.runtime.session.compact();
+  const saved = context().read(ctx());
+  const tool = saved.current.layout.tools.definitions.find(item => item.name === "read");
+  assert(tool);
+  assert.equal(tool.description, "Read complete file");
+  assert.notEqual(tool.tokens, null);
+  assert.equal(tool.unknown, false);
+  assert.equal(saved.lastMaintenance?.before.system.text, systemAtFreeze);
+  assert.equal(saved.lastMaintenance?.before.tools.definitions.find(item => item.name === "read")?.description, "Read complete file");
+  if (saved.lastMaintenance?.candidate?.memory.slots[0]) saved.lastMaintenance.candidate.memory.slots[0].text = "consumer-draft";
+  if (saved.lastMaintenance?.after?.memory.slots[0]) saved.lastMaintenance.after.memory.slots[0].text = "consumer-draft";
+  const again = context().read(ctx());
+  assert.notEqual(again.lastMaintenance?.after?.memory.slots[0]?.text, "consumer-draft");
+  assert.notEqual(again.lastMaintenance?.candidate?.memory.slots[0]?.text, "consumer-draft");
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  f.seed("freeze-f");
+  f.respond(async request => { started.resolve(); await release.promise; return memoryPatch(request); });
+  const compacting = f.runtime.session.compact();
+  await started.promise;
+  const pending = context().read(ctx());
+  assert.equal(pending.lastMaintenance?.native, "pending");
+  assert.equal(pending.lastMaintenance?.before.system.text, systemAtFreeze);
+  pending.lastMaintenance!.before.system.text = "mutated-freeze";
+  await writeFile(f.configFile, JSON.stringify({ memory: { fraction: 0.2 } }));
+  release.resolve();
+  await Promise.allSettled([compacting]);
+  assert.equal(pending.lastMaintenance?.native, "pending");
+  const invalidated = context().read(ctx());
+  assert.equal(invalidated.lastMaintenance?.engine, "ok");
+  assert.equal(invalidated.lastMaintenance?.invalidated, true);
+  assert.notEqual(invalidated.lastMaintenance?.native, "saved");
+  assert.equal(invalidated.lastMaintenance?.after, undefined);
+  assert.notEqual(invalidated.lastMaintenance?.before.system.text, "mutated-freeze");
+});
+
+test("append plus metadata exposes text tokens separately from charged overhead; initial metadata is visible", async t => {
+  const catalog = openaiProvider().getModels().find(m => m.id === "gpt-4.1");
+  assert(catalog);
+  let sends = 0;
+  const openai = openaiProvider();
+  const transport: typeof fetch = async (resource, init) => {
+    sends++;
+    await new Request(resource, init).json();
+    const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Controlled native response.", annotations: [] }] };
+    const events = [
+      { type: "response.created", response: { id: "response-1", model: catalog.id, status: "in_progress", output: [] } },
+      { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
+      { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
+      { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: "Controlled native response." },
+      { type: "response.output_item.done", output_index: 0, item },
+      { type: "response.completed", response: { id: "response-1", model: catalog.id, status: "completed", output: [item], usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+    ];
+    return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  };
+  const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const };
+  const wrapped: Provider = {
+    ...openai,
+    streamSimple: (model, context, options) => openai.streamSimple(model as Model<"openai-responses">, context, { ...options, ...bound }),
+    stream: (model, context, options) => openai.stream(model as Model<"openai-responses">, context, { ...options, ...bound } as Parameters<typeof openai.stream>[2]),
+  };
+  const note = "y".repeat(4000);
+  const captured = port();
+  const f = await fixture({
+    config: { budget: { inputLimit: 8000 } },
+    extras: [
+      ...captured.extras,
+      { name: "append-meta", factory(pi) { pi.on("before_provider_request", event => {
+        const first = applyLastUserTextAppend(event.payload, SYNTHETIC_LAST_USER_APPEND);
+        if (!first.changed) return;
+        return { ...(first.payload as Record<string, unknown>), metadata: { note } };
+      }); } },
+    ],
+  });
+  t.after(() => f.close());
+  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+  await f.modelRuntime.setRuntimeApiKey("openai", "offline-fixture-key");
+  await f.runtime.session.setModel(catalog);
+  await f.runtime.session.prompt("Native append with metadata");
+  assert.equal(sends, 1);
+  const last = captured.context().read(captured.ctx()).lastMain;
+  assert.equal(last?.outcome, "delegate");
+  assert.equal(last?.payload?.transform, "last-user-text-append");
+  assert.equal(last?.payload?.addedTokens, textTokens(SYNTHETIC_LAST_USER_APPEND));
+  assert(last?.payload?.chargedGrowthTokens !== undefined && last.payload.chargedGrowthTokens > (last.payload.addedTokens ?? 0));
+  assert.equal(last.payload?.unallocatedOverheadTokens, (last.payload?.chargedGrowthTokens ?? 0) - (last.payload?.addedTokens ?? 0));
+  assert(last.inputTokens !== undefined && last.layout.heuristic.tokens !== null);
+  const accounted = (last.layout.heuristic.tokens ?? 0) + (last.initialMetadataTokens ?? 0) + (last.payload?.chargedGrowthTokens ?? 0);
+  assert.equal(last.inputTokens, accounted);
+
+  const faux = fauxProvider({ api: "openai-completions", provider: "synthetic-review", models: [{ id: "synthetic", contextWindow: 60000, maxTokens: 8192 }] });
+  faux.setResponses(Array.from({ length: 4 }, () => fauxAssistantMessage("synthetic answer")));
+  const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
+  const registry = new ModelRegistry(runtime);
+  registry.registerProvider(faux.provider);
+  const model = faux.getModel();
+  const signal = new AbortController().signal;
+  const session = { getSessionId: () => "synthetic-session", getLeafId: () => "leaf", getSessionFile: () => "/tmp/nunc-context-meta.jsonl", getBranch: () => [{ id: "leaf" }], buildContextEntries: () => [] };
+  const ctx = { model, signal, sessionManager: session, modelRegistry: registry, getSystemPrompt: () => "Perform the current task." } as unknown as ExtensionContext;
+  const bind: Array<(surface: unknown) => void> = [];
+  const memory: MemorySurface = {
+    read: () => ({ revision: "r", memory: emptyMemory(), status: { occupied: false, unconfirmed: false }, budget: { tokens: 0, limit: 100, unknown: false, overLimit: false }, contextLayout: { slotCount: 0, activeEntries: 0 } }),
+    replace: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
+    delete: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
+  };
+  const host = {
+    events: {
+      on(name: string, fn: (reply: unknown) => void) { if (name === "nunc:context-bind") bind.push(fn); },
+      emit(name: string, value: unknown) {
+        if (name === "nunc:context-bind" && typeof value === "function") value(createContextSurface({ pi: host as never, memory, fixed: () => ({ systemPrompt: "Perform the current task.", tools: [] }), config: () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }) }));
+      },
+    },
+    registerProvider(...args: Parameters<ModelRegistry["registerProvider"]>) { registry.registerProvider(...args); },
+  };
+  const surface = createContextSurface({
+    pi: host as never,
+    memory,
+    fixed: () => ({ systemPrompt: "Perform the current task.", tools: [] }),
+    config: () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }),
+  });
+  const admission = new Admission(host as never, () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }), event => surface.observeAdmission(event));
+  admission.ensure(ctx);
+  const provider = registry.getProvider(model.provider);
+  assert(provider);
+  const metadata = { user_id: "m".repeat(2000) };
+  const expected = textTokens(JSON.stringify(metadata));
+  const sent = await provider.streamSimple(model, { messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] }, { signal, sessionId: "synthetic-session", metadata }).result();
+  assert.equal(sent.stopReason, "stop", sent.errorMessage ?? "");
+  const observed = surface.read(ctx).lastMain;
+  assert.equal(observed?.outcome, "delegate");
+  assert.equal(observed?.initialMetadataTokens, expected);
+  assert(observed?.inputTokens !== undefined && observed.inputTokens >= expected);
 });

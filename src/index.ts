@@ -130,7 +130,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const loaded = await loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) });
       const policy = { ...loaded, user: loaded.user + (event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
       if (controller.signal.aborted) throw new EngineError("CANCELLED", "Maintenance cancelled");
-      contextView.beginMaintenance({ ctx, model, memory: memory.read(ctx).memory, active: projected.active, reason: event.reason, config });
+      contextView.beginMaintenance({ ctx, model, fixed: f, memory: memory.read(ctx).memory, active: projected.active, reason: event.reason, config });
       const result = await maintain({ binding, model, fixed: f, memory: projected.memory, active: projected.active, eligibleKeptEntryIds: eligible, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry)));
       contextView.noteEngine(result);
       // Native Codex OAuth's subscription zero is not an observed USD bill.
@@ -151,6 +151,7 @@ export default function nunc(pi: ExtensionAPI): void {
       if (!eligible.includes(result.candidate.firstKeptEntryId)) throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
       return { compaction: { summary: result.candidate.summary, firstKeptEntryId: result.candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens, details: { nunc: result.candidate.memory } } };
     } catch (error) {
+      contextView.noteInvalidated();
       notify(ctx, `${error instanceof EngineError ? error.code + ": " : ""}${error instanceof Error ? error.message : "Maintenance failed"}`);
       return { cancel: true };
     } finally {
