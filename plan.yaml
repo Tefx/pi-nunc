@@ -65,28 +65,13 @@ project_guidance: 当前阶段 nunc-ui 仅计划已就绪，等待用户明确�
   topology 仅在真实消费者/authority/效果边界变化时由 Planner 处理。
 clipboard:
   author: vectl-orchestrator
-  summary: Markdown slots and Context legend integrated; manual acceptance pending
-  content: 'Latest user UI feedback completed/integrated product70dacad1f065a70b29f565b5bfcf02d31cec2bdc
-    (24b6a284 plus legend semantic correction). Slot previews use public native Markdown
-    with theme; raw stored/editor text unchanged, paging uses renderedlinecount. Context
-    root has discoverable Legend/缩写说明 with F/M/R/B/K/D and drilldown; K accurately
-    refers to subsequent mainrequests using M+K, D remains Pi-owned undelivered input
-    without newround/maintenance/per-item promises. Parent reviewed full feedback
-    diff and corrected K/D/M prose; no broader UI scope change. Producer fullcheck
-    exit0:332pass0fail0skip41files, actual log /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-panel/.scratch/nunc-ui-panel-all.log.
-    Candidate integrated unchangedFF from489eda8 after cleanstate/Planunchanged checks;
-    parent tsc build passed. No changed lock/config; applicable underlying full proof
-    reused. Retained refs/retained/nunc-ui-panel-feedback=70dacad. Root protecteduntracked.pi/dashboardonly.
-
-    Original F1–F7 independent mechanical review closures preserved. nunc.ui-panel
-    remains CLAIMED/node-typescript-engineer; final wholeUI acceptance NOT done pending
-    user realIMEwindow, resize/theme confirmation (formatfeedback does not implythosepassed).
-    Existing manualrecipe /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-panel/.scratch/ime-fixture/run-l05w09/LAUNCH.txt
-    preserved; its dist nownewMarkdownview so user canreopen. No newrealmodelcalls/globalinstall/dailyconfig/push
-    orpeercommunication. Don''tdispatch work absentcurrentuserfeedback or necessaryacceptanceproof.
-    Do notreopenoldDONEsteps orreplaypaidtests. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
-  written_at: '2026-09-08T07:12:42.592017Z'
-  expires_at: '2026-09-10T07:12:42.592017Z'
+  summary: Gemini Flash费用无限额授权；继续extraction真实比较
+  content: '用户明确授权：OpenRouter google/gemini-3.8-flash 不用管费用上限，记住且不要反复询问。该模型使用 maxCostUsd:null，不代表免费，实际/未知费用仍如实记录。调用/token/时间与目标/凭据保护边界不变。本轮已准备
+    preflight 0calls: /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-extraction-runtime-preparation-69483z2j/{selection.json,preflight.json}；400
+    calls/600000000 reserved tokens/3600000ms；当前standalone defaults OpenRouter Gemini3.8Flash
+    medium。候选34b64e7已整合，comparison-support DONE，main522fdd7。UI manual验收仍保留。不要迁移原worktree，不向其他peer发消息。'
+  written_at: '2026-09-08T18:49:02.259156Z'
+  expires_at: '2036-09-05T18:49:02.259156Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
