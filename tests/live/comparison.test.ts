@@ -87,7 +87,7 @@ test("public compare-extraction CLI rejects empty/malformed/oversized stdin", ()
 
 test("public compare-extraction --preflight rejects missing comparison with nonzero exit", () => {
   const run = spawnSync(process.execPath, [compareScript, "--preflight"], {
-    env,
+    env: { ...env, PI_PROVIDER: "anthropic", PI_MODEL: "claude-haiku-4-5" },
     input: JSON.stringify({
       target: { repository, stateRoot: join(repository, ".scratch/test-preflight-missing"), cleanup: "retain" },
       limits: { maxCalls: 1, maxTotalTokens: 100, maxDurationMs: 100, maxOutputTokens: 100, maxCostUsd: null },

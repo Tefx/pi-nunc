@@ -8,7 +8,7 @@ import { toolPath } from "./tool-path.js";
 
 function toolBlockReason(error: unknown, aborted: boolean): string {
   if (aborted || (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) return "Tool action after deadline";
-  if (error instanceof RunnerError && error.code === "TOOL_COMMAND") return error.message;
+  if (error instanceof RunnerError && error.code === "TOOL_COMMAND") return "Tool kind or command is outside authorization: only scenario-local read/write/edit and fixture verification command 'python3 verify.py' are permitted";
   if (error instanceof RunnerError && error.code === "TOOL_KIND") return "Tool kind is outside authorization";
   if (error instanceof RunnerError && error.code === "WRITE_SIZE") return "Artifact write exceeds bound";
   if (error instanceof RunnerError && error.code === "TOOL_PATH") return "Tool path is outside scenario task files";

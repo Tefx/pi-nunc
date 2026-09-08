@@ -97,7 +97,9 @@ export class NativeHost {
     if (o.controlledModels) await writeFile(join(host, "models.json"), JSON.stringify(o.controlledModels), { mode: 0o600 });
     const events = join(o.caseRoot, `events-${process.pid}-${Date.now()}.jsonl`);
     await writeFile(events, "", { mode: 0o600, flag: "wx" });
-    const caseKey = `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
+    const caseKey = o.input.comparison
+      ? `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`
+      : `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
     await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
