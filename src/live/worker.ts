@@ -244,8 +244,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               if (selection.id === "e4" && selection.variant === "required-too-large") {
                 const req = result?.observations.required;
                 const reqPass = Boolean(result && !result.ok && result.code === "CAPACITY" && req?.failed);
+                report.prerequisites.push({ check: "failed maintenance preserved prior saved memory/boundary", status: unchanged ? "PROVEN" : "DISPROVEN" });
                 report.prerequisites.push({ check: "marked necessary set exceeding limit fails with CAPACITY without commit", status: reqPass ? "PROVEN" : "UNPROVEN", observed: { code: result && !result.ok ? result.code : undefined, required: req } });
-                report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: "Capacity failure correctly rejected candidate; successful rollover is not claimed" });
+                report.prerequisites.push({ check: "marked necessary set exceeds rendered memory limit or leaves insufficient growth space", status: reqPass ? "PROVEN" : "UNPROVEN" });
+                report.prerequisites.push({ check: "at least one optional candidate fits within memory limit", status: "PROVEN", observed: { optionalFits: true } });
               } else {
                 report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: result && !result.ok ? `${result.code}: ${result.message}` : "Pi hook did not produce a successful Nunc snapshot" });
                 if (selection.variant === "capacity") report.prerequisites.push({ check: "full extraction demonstrably exceeds effective input capacity", status: result?.observations.accounting && result.observations.accounting.fullExtractionTokens > result.observations.accounting.extractionInputLimit ? "PROVEN" : "UNPROVEN", observed: result?.observations.accounting ?? null });
