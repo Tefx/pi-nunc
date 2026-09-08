@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { KeybindingsManager, TUI_KEYBINDINGS, type TUI } from "@earendil-works/pi-tui";
 import { initTheme, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
 initTheme();
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { contextSurface, memorySurface, type ContextSurface, type MemorySurface } from "pi-nunc/pi";
 import { NuncOverlay } from "../../src/ui/overlay.js";
 import { UNLOAD_LIMIT } from "../../src/ui/status.js";
@@ -135,4 +136,24 @@ test("context tab shows F/M/R and jumps M to slots without writing", async t => 
   assert.equal(overlay.tabName, "slots");
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
   assert(memory().read(ctx()).memory.slots.length >= 1);
+});
+
+test("native compact during edit conflicts on original revision and keeps draft", async t => {
+  const { overlay, memory, ctx, f } = await prepared(t);
+  const before = memory().read(ctx());
+  overlay.handleInput("\r");
+  overlay.handleInput(" Local draft.");
+  const started = overlay.editRevision();
+  f.seed("new-turn");
+  f.respond(() => fauxAssistantMessage(JSON.stringify({ add: [{ key: "new", text: "New fact added by background maintenance." }], remove: [], priority: [...before.memory.slots.map(s => s.id), "new"] })));
+  await f.runtime.session.compact();
+  const expected = memory().replace(ctx(), before.revision, before.memory.slots[0]!.id, overlay.draftText() ?? "");
+  assert.equal(expected.ok, false);
+  if (!expected.ok) assert.equal(expected.code, "conflict");
+  overlay.sync();
+  assert.equal(overlay.editRevision(), started);
+  overlay.handleInput("\r");
+  assert.equal(overlay.layerName, "edit");
+  assert.match(overlay.draftText() ?? "", /Local draft/);
+  assert.equal(overlay.editRevision(), started);
 });

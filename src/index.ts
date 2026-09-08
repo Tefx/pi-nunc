@@ -63,7 +63,15 @@ export default function nunc(pi: ExtensionAPI): void {
     try { if (ctx.hasUI) ctx.ui.notify(`Nunc: ${message}`, level); else console.error(`Nunc: ${message}`); } catch { /* Never fall through to default summary. */ }
     if (level !== "info") ui.refresh(ctx);
   };
-  observeLayout = event => contextView.observeAdmission(event);
+  observeLayout = event => {
+    contextView.observeAdmission(event);
+    if (event.observation.kind === "main" && event.observation.outcome === "reject") {
+      ui.noteDiagnostic("warning", `Admission ${event.observation.code ?? "reject"}`);
+    } else if (event.observation.kind === "main" && event.observation.outcome === "delegate") {
+      ui.recover();
+    }
+    ui.refresh(event.ctx);
+  };
   pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   pi.on("session_start", (_event, ctx) => {
@@ -86,8 +94,9 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
   pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); ui.refresh(ctx); });
   pi.on("thinking_level_select", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
-  pi.on("agent_settled", () => admission.settled());
-  pi.on("message_end", event => {
+  pi.on("agent_settled", (_event, ctx) => { admission.settled(); ui.refresh(ctx); });
+  pi.on("message_end", (event, ctx) => {
+    ui.refresh(ctx);
     if (event.message.role === "assistant") {
       const message = admission.finalized(event.message);
       if (message) return { message };
@@ -112,7 +121,6 @@ export default function nunc(pi: ExtensionAPI): void {
   });
   pi.on("session_before_compact", async (event, ctx) => {
     if (!memory.beginFreeze()) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
-    ui.refresh(ctx);
     const controller = new AbortController(); running = controller;
     const abort = () => controller.abort();
     event.signal.addEventListener("abort", abort, { once: true });
@@ -135,8 +143,10 @@ export default function nunc(pi: ExtensionAPI): void {
       const policy = { ...loaded, user: loaded.user + (event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
       if (controller.signal.aborted) throw new EngineError("CANCELLED", "Maintenance cancelled");
       contextView.beginMaintenance({ ctx, model, fixed: f, memory: memory.read(ctx).memory, active: projected.active, reason: event.reason, config });
+      ui.refresh(ctx);
       const result = await maintain({ binding, model, fixed: f, memory: projected.memory, active: projected.active, eligibleKeptEntryIds: eligible, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry)));
       contextView.noteEngine(result);
+      ui.refresh(ctx);
       // Native Codex OAuth's subscription zero is not an observed USD bill.
       if (model.api === "openai-codex-responses") result.observations.usage.cost = null;
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }

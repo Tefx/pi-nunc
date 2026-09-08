@@ -43,7 +43,8 @@ The runner requires actual target, call/token/time/known-cost limits and scenari
 | `tests/engine` | Slot changes/priorities, source fidelity/tool pairing, full/reduced accounting, output/thinking limits, unknown/cache usage, growth, policy loading, cancellation and public model bridge. |
 | `tests/pi` component fixtures | Public package/extension loading, hooks, native JSONL/path rebuilding, source/media/config changes, cancellation, real isolated append failure, manual M save/restore through public `appendEntry` (unique effective M, freeze-to-native-terminal exclusion, revision conflicts, over-budget reduction, unconfirmed writes), read-only Context layout/observation (`tests/pi/context-view.test.ts`: F/M/R counts, last-main vs maintenance, planned vs enforced admission, payload appends, path/reload cleanup), compact footer formatting, `/nunc` `status`/`details` completions, and overlay list/search/edit/delete/context-jump input (`tests/pi/overlay.test.ts`). Their SDK fixtures supplement stock-host evidence. |
 | `scripts/observe-stock.mjs` via `tests/pi/queue.test.ts` | `verify-live` stdin/preflight → stock RPC or actual PTY/TUI → native local capacity rejection → engine maintenance → Pi retry. Delivered B/K versus future D, original queue/custom delivery, future images, editor state, main and maintenance cancellation. |
-| `scripts/observe-ui.mjs` via `tests/pi/ui-panel.test.ts` | Stock PTY/TUI: `setStatus` footer, `/nunc` overlay Slots/Context, search/edit/native save, delete confirm, `/nunc status`/`details`/unknown, inflight request preserved, main editor draft after close, short 12×40 overlay. IME candidate-window geometry is recorded as unproven. |
+| `scripts/observe-ui.mjs` via `tests/pi/ui-panel.test.ts` | Stock PTY/TUI: footer, overlay search/edit/native save, slot-editor CJK paste, delete confirm, `/nunc status`/`details`/unknown, inflight HTTP preserved, main editor not overwritten by overlay, short 12×40 browse+edit controls. IME candidate-window geometry remains unproven. |
+| `tests/pi/overlay-contract.test.ts` | Rejected/occupied submit keeps draft; edit revision stays frozen across live refresh; Context arrows vs preview paging; last-main/maintenance drilldown; short/multiline cursor+hints; unconfirmed footer; injected cancel binding. |
 | `scripts/observe-capacity-defaults.mjs` | Stock Codex/Pi default reserves, usage-backed admission of 200k characters, raw semantic extraction, absent wire cap, complete 12k output above an 8k planning reserve, native checkpoint and continuation. Controlled usage follows payload size; no live accuracy claim. |
 | `scripts/observe-grok-budget.mjs` | Stock Grok 500k catalog, native Responses output sizing, 80k last-user append send, overlarge append zero-send, fixed raw extraction, native checkpoint continuation and oversized zero-send (controlled loopback service). |
 | `scripts/observe-lifecycle.mjs` | Three legal overlapping checkpoints, actual restart/reload, model/tree/fork/clone/new, threshold/manual/disabled-auto behavior, provider replacement, independent raw delegation, later context composition, payload/sampling rejection, captured-native dispatch, bounded failures. |
@@ -55,3 +56,18 @@ The runner requires actual target, call/token/time/known-cost limits and scenari
 Drivers preserve mechanical reports, native sessions, request payloads and process/PTY observations under their isolated artifact directories before cleaning fixture state. The downstream `--observe-stock` route embeds evidence in its returned report before authorized removal. Controlled services return protocol fixtures, including incremental patches derived from the structured request; they make no model judgment. Fixed or scripted artifact contents test plumbing and scorer behavior only.
 
 `all` proves the checked local mechanics. Real token accuracy, cache benefit, model policy quality, paid-service behavior, continued-task effectiveness and final integrated acceptance require separately authorized observation and judgment. See [PI](PI.md) for the extension contract and [LIVE](LIVE.md) for the bounded downstream runner. This producer neither installs a daily extension nor performs live/paid calls.
+
+## Manual IME / visual overlay check
+
+PTY injection of CJK bytes does not prove IME candidate-window placement. Isolated, no daily credentials or live models:
+
+```sh
+cd /path/to/pi-nunc-worktrees/nunc-ui-panel
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  /opt/homebrew/bin/node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+  --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-tools \
+  -e dist/src/index.js --provider groq --model nunc-native --thinking off \
+  --system-prompt 'Inspect Nunc overlay IME.' --session-dir /tmp/nunc-ime-sessions
+```
+
+Use a loopback `models.json` / dummy key in a task-owned `PI_CODING_AGENT_DIR`. `/nunc`, Enter a slot, type with a real CJK IME. Confirm the candidate window tracks the overlay editor cursor, not the main prompt. Esc discards. Do not send a model request.

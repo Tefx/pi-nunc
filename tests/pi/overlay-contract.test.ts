@@ -1,0 +1,204 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, type TUI } from "@earendil-works/pi-tui";
+import { NuncOverlay } from "../../src/ui/overlay.js";
+import { NuncUi } from "../../src/ui/index.js";
+import type { ContextView } from "../../src/pi/context.js";
+import type { MemoryView } from "../../src/pi/manual.js";
+
+function clean(lines: string[]): string {
+  return lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b_pi:c\x07/g, "");
+}
+
+function fixture(options: { rows?: number; text?: string; failure?: string; unconfirmed?: boolean } = {}) {
+  const text = options.text ?? "original saved text";
+  let view: MemoryView = {
+    revision: "old",
+    memory: { version: 1, nextId: 3, slots: [{ id: "s1", text }, { id: "s2", text: "second slot" }] },
+    status: { occupied: false, unconfirmed: options.unconfirmed === true },
+    budget: { tokens: 20, limit: 2000, unknown: false, overLimit: false },
+    contextLayout: { slotCount: 2, activeEntries: 0 },
+  };
+  const saves: { rev: string; id: string; text: string }[] = [];
+  const statuses: { key: string; value: string | undefined }[] = [];
+  const memory = {
+    read: () => structuredClone(view),
+    replace(_ctx: unknown, rev: string, id: string, next: string) {
+      saves.push({ rev, id, text: next });
+      if (options.failure) return { ok: false as const, code: options.failure as "overbudget", message: `REJECTED ${options.failure}`, view: structuredClone(view) };
+      view = { ...view, revision: `${rev}+`, memory: { ...view.memory, slots: view.memory.slots.map(slot => slot.id === id ? { ...slot, text: next } : slot) } };
+      return { ok: true as const, revision: view.revision, memory: view.memory };
+    },
+    delete() { throw new Error("unexpected delete"); },
+  };
+  const contextView = (): ContextView => ({
+    current: {
+      scope: "current", sessionId: "s", leafId: "l", model: null, revision: view.revision,
+      occupied: view.status.occupied, unconfirmed: view.status.unconfirmed, contextLayout: view.contextLayout,
+      layout: {
+        system: { text: "SYSTEM_BODY", tokens: 3 },
+        tools: { count: 1, names: ["tool"], tokens: 4, unknown: false, definitions: [{ name: "tool", description: "Readable tool", parameters: { type: "object" }, tokens: 4, unknown: false }] },
+        memory: { slots: view.memory.slots, tokens: 20, envelopeTokens: 1 },
+        messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0,
+        heuristic: { tokens: 27, unknown: false }, associations: [],
+      },
+      budget: {
+        modelWindow: 10000, triggerTokens: 8000, plannedInputLimit: 8500, mainAdmissionLimit: 9999,
+        memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: 1000,
+        outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: 1000, extractionOutputCapTokens: null, safetyTokens: 500,
+      },
+    },
+    lastMain: {
+      scope: "last-main", observedAt: 1, sessionId: "s", leafId: "l",
+      model: { id: "m", provider: "p", api: "openai-completions" }, outcome: "delegate",
+      initialMetadataTokens: 7,
+      layout: {
+        system: { text: "REQ_SYS", tokens: 2 },
+        tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] },
+        messages: [{ order: 0, role: "user", tokens: 4, unknown: false, preview: "hello", blocks: [{ type: "text", tokens: 4, unknown: false, preview: "hello", text: "hello observed" }] }],
+        messageCount: 1, blockCount: 1, packagingTokens: 0, extraInputTokens: 0,
+        heuristic: { tokens: 6, unknown: false }, associations: [],
+      },
+      payload: { mode: "replacement", categories: ["input"], transform: "last-user-text-append", addedTokens: 3, addedText: "APPENDED_TEXT", chargedGrowthTokens: 5 },
+    },
+    lastMaintenance: {
+      scope: "last-maintenance", observedAt: 2, sessionId: "s", leafId: "l",
+      model: { id: "m", provider: "p", api: "openai-completions" }, reason: "threshold", engine: "ok", native: "saved",
+      before: {
+        memory: view.memory, entries: [{ entryId: "e1", sourceRole: "user", messages: [] }],
+        messages: [{ order: 0, role: "user", tokens: 2, unknown: false, preview: "old", blocks: [{ type: "text", tokens: 2, unknown: false, preview: "old", text: "frozen body" }] }],
+        system: { text: "FROZEN_SYS", tokens: 1 },
+        tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] },
+      },
+      cut: { firstKeptEntryId: "keep1", retiredEntryIds: ["b1"], keptEntryIds: ["keep1"] },
+      candidate: { memory: view.memory, firstKeptEntryId: "keep1" },
+      after: { memory: view.memory, keptEntryIds: ["keep1"] },
+    },
+  });
+  const ctx = {
+    hasUI: true, mode: "tui",
+    ui: { theme: { fg: (_: string, s: string) => s, bg: (_: string, s: string) => s, bold: (s: string) => s }, setStatus: (key: string, value: string | undefined) => statuses.push({ key, value }) },
+  };
+  const overlay = new NuncOverlay({
+    ctx: ctx as never, memory: memory as never, context: { read: () => structuredClone(contextView()) } as never,
+    tui: { requestRender() {}, terminal: { rows: options.rows ?? 40, columns: 120 } } as TUI,
+    theme: ctx.ui.theme as never,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS),
+    done() { overlay.dispose(); },
+  });
+  return { overlay, memory, ctx, saves, statuses, get view() { return view; }, set view(next: MemoryView) { view = next; } };
+}
+
+test("rejected and occupied submits keep the full editor draft", () => {
+  for (const failure of ["overbudget", "conflict", "unconfirmed"] as const) {
+    const f = fixture({ failure });
+    f.overlay.handleInput("\r");
+    f.overlay.handleInput(" more draft");
+    const before = f.overlay.draftText();
+    f.overlay.handleInput("\r");
+    assert.equal(f.overlay.layerName, "edit");
+    assert.equal(f.overlay.draftText(), before);
+    assert.match(clean(f.overlay.render(90)), /REJECTED/);
+  }
+  const occupied = fixture();
+  occupied.overlay.handleInput("\r");
+  occupied.overlay.handleInput(" more draft");
+  occupied.view.status.occupied = true;
+  occupied.overlay.sync();
+  const before = occupied.overlay.draftText();
+  occupied.overlay.handleInput("\r");
+  assert.equal(occupied.saves.length, 0);
+  assert.equal(occupied.overlay.draftText(), before);
+  assert.equal(occupied.overlay.layerName, "edit");
+});
+
+test("edit keeps original revision when live saved view changes", () => {
+  const f = fixture();
+  f.overlay.handleInput("\r");
+  f.overlay.handleInput(" local edit");
+  const started = f.overlay.editRevision();
+  f.view.revision = "new-checkpoint";
+  f.view.memory.slots[0] = { id: "s1", text: "maintenance replacement" };
+  f.overlay.sync();
+  assert.equal(f.overlay.editRevision(), started);
+  f.overlay.handleInput("\r");
+  assert.equal(f.saves[0]?.rev, started);
+  assert.match(f.saves[0]?.text ?? "", /local edit/);
+});
+
+test("context arrows move the list; page keys scroll preview; recent scopes drill down", () => {
+  const f = fixture();
+  f.overlay.handleInput("\t");
+  f.overlay.handleInput("\r");
+  f.overlay.handleInput("\r");
+  const onSystem = clean(f.overlay.render(90));
+  assert.match(onSystem, /system/);
+  f.overlay.handleInput("\x1b[B");
+  const onTools = clean(f.overlay.render(90));
+  assert.notEqual(onSystem, onTools);
+  assert.match(onTools, /tools/);
+  f.overlay.handleInput("\x1b");
+  f.overlay.handleInput("\x1b");
+  f.overlay.handleInput("\x1b[B");
+  const lastMain = clean(f.overlay.render(90));
+  assert.match(lastMain, /Last main request/);
+  f.overlay.handleInput("\x1b[B");
+  const lastMaint = clean(f.overlay.render(90));
+  assert.match(lastMaint, /Last maintenance/);
+  f.overlay.handleInput("\r");
+  const drilled = clean(f.overlay.render(90));
+  assert.match(drilled, /B\/K|Before|Candidate|After/);
+  f.overlay.handleInput("\x1b");
+  f.overlay.handleInput("\x1b[A");
+  f.overlay.handleInput("\r");
+  assert.match(clean(f.overlay.render(90)), /Observation|initialMetadataTokens|Payload|hello observed|REQ_SYS/);
+});
+
+test("short and multiline edit keep cursor plus save/exit hints", () => {
+  const short = fixture({ rows: 12 });
+  const browse = clean(short.overlay.render(36));
+  assert.match(browse, /close|esc/i);
+  short.overlay.handleInput("\r");
+  const editLines = short.overlay.render(36);
+  assert.equal(editLines.some(line => line.includes(CURSOR_MARKER)), true);
+  assert.match(clean(editLines), /save/);
+  const long = fixture({ rows: 24, text: Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n") });
+  long.overlay.handleInput("\r");
+  const longLines = long.overlay.render(90);
+  assert.equal(longLines.some(line => line.includes(CURSOR_MARKER)), true);
+  assert.match(clean(longLines), /save/);
+});
+
+test("injected cancel binding closes browse", () => {
+  const f = fixture();
+  let closed = false;
+  const overlay = new NuncOverlay({
+    ctx: f.ctx as never, memory: f.memory as never,
+    context: { read: () => ({ current: { scope: "current", sessionId: "s", leafId: "l", model: null, revision: "old", occupied: false, unconfirmed: false, contextLayout: { slotCount: 2, activeEntries: 0 }, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, memoryLimit: null, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null } } }) } as never,
+    tui: { requestRender() {}, terminal: { rows: 40, columns: 120 } } as TUI,
+    theme: f.ctx.ui.theme as never,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS, { "tui.select.cancel": "q" }),
+    done() { closed = true; overlay.dispose(); },
+  });
+  overlay.handleInput("q");
+  assert.equal(closed, true);
+});
+
+test("sync rereads last-main without replacing an edit revision", () => {
+  const f = fixture();
+  f.overlay.handleInput("\r");
+  f.overlay.handleInput(" keep");
+  const started = f.overlay.editRevision();
+  f.overlay.sync();
+  assert.equal(f.overlay.editRevision(), started);
+  assert.match(f.overlay.draftText() ?? "", /keep/);
+});
+
+test("unconfirmed footer is not a normal percentage", () => {
+  const f = fixture({ unconfirmed: true });
+  const ui = new NuncUi({ memory: f.memory as never, context: { read: () => ({ current: { revision: "old", occupied: false, unconfirmed: true, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null }, contextLayout: { slotCount: 2, activeEntries: 0 }, scope: "current", sessionId: "s", leafId: "l", model: null } }) } as never, supported() {} });
+  ui.attach(f.ctx as never);
+  assert.equal(f.statuses.at(-1)?.key, "nunc");
+  assert.match(f.statuses.at(-1)?.value ?? "", /nunc !/);
+  assert.doesNotMatch(f.statuses.at(-1)?.value ?? "", /%/);
+});

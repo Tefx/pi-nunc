@@ -8,6 +8,7 @@ export type FooterTone = "dim" | "accent" | "warning" | "error";
 export interface CompactFooterInput {
   unavailable: boolean;
   occupied: boolean;
+  unconfirmed: boolean;
   warning: boolean;
   slotCount: number;
   budget: { tokens: number; limit: number | null; unknown: boolean };
@@ -33,7 +34,7 @@ export function compactFooter(input: CompactFooterInput): { text: string; tone: 
   if (input.unavailable) return { text: "nunc ×", tone: "error" };
   const n = String(input.slotCount);
   if (input.occupied) return { text: `nunc ↻ ${n}`, tone: "accent" };
-  if (input.warning) return { text: `nunc ! ${n}`, tone: "warning" };
+  if (input.unconfirmed || input.warning) return { text: `nunc ! ${n}`, tone: "warning" };
   if (input.budget.unknown || input.budget.limit === null) return { text: `nunc ${n}·?`, tone: "dim" };
   if (input.budget.limit === 0) return { text: `nunc ${n}`, tone: "dim" };
   return { text: `nunc ${n}·${Math.round((input.budget.tokens / input.budget.limit) * 100)}%`, tone: "dim" };

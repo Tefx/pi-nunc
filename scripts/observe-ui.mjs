@@ -38,6 +38,14 @@ try {
   await f.wait(() => f.log.some(e => e.type === "start" && e.data.mode === "tui"), "tui start");
   await delay(400);
   assert.match(strip(p.stdout), /nunc /);
+  p.keys("PRE_OVERLAY_DRAFT");
+  await delay(80);
+  let snaps = f.log.filter(e => e.type === "snapshot").length;
+  p.keys("\x1b[17~");
+  await f.wait(() => f.log.filter(e => e.type === "snapshot").length > snaps, "pre-overlay editor");
+  assert.match(f.log.filter(e => e.type === "snapshot").at(-1).data.editor, /PRE_OVERLAY_DRAFT/);
+  p.keys("\x15");
+  await delay(80);
   await p.send("/nunc");
   await f.wait(() => /\[Slots\]/.test(strip(p.stdout)), "overlay slots");
   p.keys("UNIQUE_SLOT_TOKEN");
@@ -47,6 +55,9 @@ try {
   await delay(100);
   p.keys("\r");
   await f.wait(() => strip(p.stdout).includes("尚未纳入下一次原生 compaction"), "edit unload notice");
+  p.keys("\x1b[200~中文粘贴\x1b[201~");
+  await delay(150);
+  assert.match(strip(p.stdout), /中文粘贴/);
   p.keys("\x15");
   p.keys("Edited via native TUI.");
   await delay(100);
@@ -77,6 +88,11 @@ try {
   await delay(80);
   p.keys("\x1b");
   await delay(200);
+  snaps = f.log.filter(e => e.type === "snapshot").length;
+  p.keys("\x1b[17~");
+  await f.wait(() => f.log.filter(e => e.type === "snapshot").length > snaps, "editor after overlay");
+  const afterOverlay = f.log.filter(e => e.type === "snapshot").at(-1).data.editor;
+  assert.doesNotMatch(afterOverlay, /UNIQUE_SLOT_TOKEN|Edited via native TUI|必须兼容/);
   p.keys("KEEP_DRAFT");
   await delay(80);
   const n = f.log.filter(e => e.type === "snapshot").length;
@@ -125,7 +141,12 @@ try {
     const p2 = short.start("tui", shortSm.getSessionFile());
     await short.wait(() => short.log.some(e => e.type === "start" && e.data.mode === "tui"), "short tui start");
     await p2.send("/nunc");
-    await short.wait(() => /Nunc/.test(strip(p2.stdout)), "short overlay");
+    await short.wait(() => /Nunc/.test(strip(p2.stdout)) && /close|esc|select/i.test(strip(p2.stdout)), "short overlay controls");
+    p2.keys("\r");
+    await delay(200);
+    assert.match(strip(p2.stdout), /save/);
+    p2.keys("\x1b");
+    await delay(80);
     p2.keys("\x1b");
     await delay(150);
     await p2.quit();
@@ -138,6 +159,8 @@ try {
     overlay: true,
     savedManual: true,
     editorKept: /KEEP_DRAFT/.test(snap.editor),
+    overlayDidNotWriteEditor: true,
+    slotPaste: true,
     inflightPreserved: true,
     shortScreen: true,
     commands: ["status", "details", "unknown"],

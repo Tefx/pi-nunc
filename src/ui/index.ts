@@ -74,6 +74,7 @@ export class NuncUi {
     const footer = compactFooter({
       unavailable: Boolean(this.unavailable),
       occupied: view?.status.occupied ?? false,
+      unconfirmed: view?.status.unconfirmed ?? false,
       warning: Boolean(this.currentWarning),
       slotCount: view?.memory.slots.length ?? 0,
       budget: view?.budget ?? { tokens: 0, limit: null, unknown: true },
@@ -92,6 +93,8 @@ export class NuncUi {
           memory: this.options.memory,
           context: this.options.context,
           done: () => done(null),
+          onFailure: message => { this.noteDiagnostic("warning", message); this.refresh(ctx); },
+          onSuccess: () => { this.recover(); this.refresh(ctx); },
         });
         this.overlay = overlay;
         return overlay;
