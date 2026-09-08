@@ -180,3 +180,50 @@ test("inspector setStatus failure does not cancel native compact or save", async
     ui.setStatus = original;
   }
 });
+
+test("successful save and delete acknowledge mutation even when context.read throws after commit", async t => {
+  const { memory, context, ctx } = await prepared(t);
+  const realMem = memory();
+  const realCtx = context();
+  let boom = false;
+  const overlay = new NuncOverlay({
+    ctx: ctx(),
+    memory: {
+      ...realMem,
+      replace(...args) {
+        const result = realMem.replace(...args);
+        if (result.ok) boom = true;
+        return result;
+      },
+      delete(...args) {
+        const result = realMem.delete(...args);
+        if (result.ok) boom = true;
+        return result;
+      },
+    },
+    context: {
+      read(c) {
+        if (boom) throw new Error("inspector-fault-after-commit");
+        return realCtx.read(c);
+      },
+    },
+    tui: mockTui(),
+    theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS),
+    done() { overlay.dispose(); },
+  });
+
+  overlay.handleInput("\r");
+  overlay.handleInput(" SAVED_POST_COMMIT");
+  assert.doesNotThrow(() => overlay.handleInput("\r"));
+  assert.equal(overlay.layerName, "browse");
+  assert.match(realMem.read(ctx()).memory.slots[0]?.text ?? "", /SAVED_POST_COMMIT/);
+
+  boom = false;
+  overlay.handleInput("\x04");
+  assert.equal(overlay.layerName, "confirm-delete");
+  assert.doesNotThrow(() => overlay.handleInput("\r"));
+  assert.equal(overlay.layerName, "browse");
+  overlay.dispose();
+});
+

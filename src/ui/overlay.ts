@@ -1,5 +1,6 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
+  CURSOR_MARKER,
   Editor,
   Input,
   Key,
@@ -38,14 +39,15 @@ export interface OverlayHost {
 const ANSI_RESET = "\x1b[0m";
 const ANSI_RESET_RE = /\x1b\[(?:0)?m/g;
 
-function interceptSubmit(editor: Editor, attempt: (text: string) => void): void {
-  Object.defineProperty(editor, "submitValue", {
-    configurable: true,
-    value() {
-      if (editor.disableSubmit) return;
-      attempt(editor.getExpandedText());
-    },
-  });
+function windowEditorLines(lines: string[], budget: number): string[] {
+  if (lines.length <= budget) return lines;
+  const cursorIndex = lines.findIndex(line => line.includes(CURSOR_MARKER));
+  const target = cursorIndex >= 0 ? cursorIndex : lines.length - 1;
+  let start = Math.max(0, target - Math.floor(budget / 2));
+  if (start + budget > lines.length) {
+    start = Math.max(0, lines.length - budget);
+  }
+  return lines.slice(start, start + budget);
 }
 
 export class NuncOverlay implements Focusable {
@@ -107,7 +109,7 @@ export class NuncOverlay implements Focusable {
   get tabName(): OverlayTab { return this.tab; }
   get layerName(): Layer { return this.layer; }
   selectedSlotId(): string | undefined { return this.tab === "slots" ? this.list.getSelectedItem()?.value : undefined; }
-  draftText(): string | undefined { return this.editor?.getText(); }
+  draftText(): string | undefined { return this.editor?.getExpandedText() ?? this.editor?.getText(); }
   editRevision(): string | undefined { return this.editBasis?.revision; }
 
   sync(): void {
@@ -151,11 +153,13 @@ export class NuncOverlay implements Focusable {
     const renderWidth = Math.max(1, Math.floor(width));
     if (renderWidth < 8) return [truncateToWidth("Nunc", renderWidth)];
     const rows = Number.isFinite(this.host.tui.terminal?.rows) ? this.host.tui.terminal.rows : 24;
-    const withShadow = renderWidth >= 10 && rows >= 10;
+    const availHeight = Math.max(1, rows - 2);
+    const maxAllowed = Math.max(6, Math.min(Math.floor(rows * 0.9), availHeight));
+    const withShadow = renderWidth >= 10 && maxAllowed >= 11;
     const boxWidth = withShadow ? renderWidth - 1 : renderWidth;
     const contentWidth = Math.max(1, boxWidth - 4);
-    const maxBox = Math.max(8, Math.min(Math.floor(rows * 0.9), rows - (rows >= 12 ? 1 : 0)));
-    const innerBudget = Math.max(5, maxBox - 2 - (withShadow ? 1 : 0));
+    const outerChrome = 2 + (withShadow ? 1 : 0);
+    const innerBudget = Math.max(3, maxAllowed - outerChrome);
     this.listHeight = Math.max(1, Math.min(8, Math.floor(innerBudget / 3)));
     const title = this.host.theme.fg("accent", this.host.theme.bold("Nunc"));
     const topTitle = truncateToWidth(`─ ${title} `, boxWidth - 2);
@@ -312,7 +316,7 @@ export class NuncOverlay implements Focusable {
     }, { paddingX: 0 });
     editor.setText(slot.text);
     editor.focused = this._focused;
-    interceptSubmit(editor, text => this.save(slotId, text));
+    editor.onSubmit = text => this.save(slotId, text);
     this.editor = editor;
     this.host.tui.requestRender();
   }
@@ -331,25 +335,47 @@ export class NuncOverlay implements Focusable {
     const basis = this.editBasis;
     if (!basis || basis.slotId !== slotId) return;
     if (this.memoryView.status.occupied) {
-      this.fail("维护尚未完成原生提交，草稿未保存。");
+      this.fail("维护尚未完成原生提交，草稿未保存。", text);
       return;
     }
     const result = this.host.memory.replace(this.host.ctx, basis.revision, slotId, text);
     if (!result.ok) {
-      this.fail(result.message);
+      this.fail(result.message, text);
       return;
     }
     this.preferredSlot = slotId;
-    this.memoryView = this.host.memory.read(this.host.ctx);
-    this.contextView = this.host.context.read(this.host.ctx);
-    this.host.onSuccess?.();
-    this.leaveEdit(true);
+    this.error = undefined;
+    this.editBasis = undefined;
+    this.editor = undefined;
+    this.layer = "browse";
+    this.search.focused = this._focused;
+    this.memoryView = { ...this.memoryView, revision: result.revision, memory: result.memory };
+    try {
+      this.memoryView = this.host.memory.read(this.host.ctx);
+    } catch { /* Retain acknowledged view from result */ }
+    try {
+      this.contextView = this.host.context.read(this.host.ctx);
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : "Inspector read failed";
+    }
+    try {
+      this.host.onSuccess?.();
+    } catch { /* Callback only. */ }
+    this.rebuildList();
+    try {
+      this.host.tui.requestRender();
+    } catch { /* Paint only. */ }
   }
 
-  private fail(message: string): void {
+  private fail(message: string, draftToRestore?: string): void {
     this.error = message;
+    if (draftToRestore !== undefined && this.editor) {
+      this.editor.setText(draftToRestore);
+    }
     this.host.onFailure?.(message);
-    this.host.tui.requestRender();
+    try {
+      this.host.tui.requestRender();
+    } catch { /* Paint only. */ }
   }
 
   private deleteSelected(): void {
@@ -364,18 +390,29 @@ export class NuncOverlay implements Focusable {
       this.host.onFailure?.(result.message);
       this.layer = "browse";
       this.search.focused = this._focused;
-      this.host.tui.requestRender();
+      try { this.host.tui.requestRender(); } catch { /* Paint only. */ }
       return;
     }
     this.preferredSlot = neighbor;
     this.error = undefined;
     this.layer = "browse";
     this.search.focused = this._focused;
-    this.memoryView = this.host.memory.read(this.host.ctx);
-    this.contextView = this.host.context.read(this.host.ctx);
-    this.host.onSuccess?.();
+    this.memoryView = { ...this.memoryView, revision: result.revision, memory: result.memory };
+    try {
+      this.memoryView = this.host.memory.read(this.host.ctx);
+    } catch { /* Retain acknowledged view from result */ }
+    try {
+      this.contextView = this.host.context.read(this.host.ctx);
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : "Inspector read failed";
+    }
+    try {
+      this.host.onSuccess?.();
+    } catch { /* Callback only. */ }
     this.rebuildList();
-    this.host.tui.requestRender();
+    try {
+      this.host.tui.requestRender();
+    } catch { /* Paint only. */ }
   }
 
   private close(): void {
@@ -465,13 +502,16 @@ export class NuncOverlay implements Focusable {
 
   private renderEditor(contentWidth: number, innerBudget: number): string[] {
     const theme = this.host.theme;
-    const notice = wrapTextWithAnsi(theme.fg("muted", UNLOAD_LIMIT), contentWidth).slice(0, 1);
-    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error), contentWidth).slice(0, 2) : [];
-    const hint = theme.fg("dim", `${this.keyLabel("tui.input.submit")} save · ${this.keyLabel("tui.input.newLine")} newline · ${this.keyLabel("tui.select.cancel")} cancel`);
+    const hint = theme.fg("dim", `${this.keyLabel("tui.input.submit")} save · ${this.keyLabel("tui.select.cancel")} cancel · ${this.keyLabel("tui.input.newLine")} newline`);
+    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error), contentWidth).slice(0, 1) : [];
+    const noticeAllowed = innerBudget - 1 - error.length >= 7;
+    const notice = noticeAllowed ? wrapTextWithAnsi(theme.fg("muted", UNLOAD_LIMIT), contentWidth).slice(0, 1) : [];
     const reserved = notice.length + error.length + 1;
-    this.editorRows = Math.max(3, innerBudget - reserved);
+    const editorBudget = Math.max(3, innerBudget - reserved);
+    this.editorRows = editorBudget;
     const editorLines = this.editor ? this.editor.render(contentWidth) : [];
-    return [...notice, ...editorLines, ...error, hint];
+    const windowed = windowEditorLines(editorLines, editorBudget);
+    return [...notice, ...windowed, ...error, hint].slice(0, innerBudget);
   }
 
   private renderConfirm(contentWidth: number): string[] {

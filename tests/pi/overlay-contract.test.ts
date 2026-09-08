@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, getKeybindings, setKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, TuiMainScreen, getKeybindings, setKeybindings, type TUI } from "@earendil-works/pi-tui";
 import { NuncOverlay } from "../../src/ui/overlay.js";
 import { NuncUi } from "../../src/ui/index.js";
 import type { ContextView } from "../../src/pi/context.js";
@@ -272,4 +272,68 @@ test("refresh isolates inspector read failures", () => {
   boom = true;
   assert.doesNotThrow(() => overlay.sync());
   assert.match(overlay.draftText() ?? "", /keep-draft/);
+});
+
+test("native composed 12x40 terminal sink keeps cursor, error, and save/cancel hints", () => {
+  const f = fixture({ rows: 12, text: Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n"), failure: "overbudget" });
+  f.overlay.handleInput("\r");
+  f.overlay.handleInput(" draft");
+  f.overlay.handleInput("\r");
+
+  let output = "";
+  const terminal = new Proxy(
+    { rows: 12, columns: 40, write(data: string) { output += data; } },
+    { get(target, prop) { return prop in target ? (target as Record<string, unknown>)[prop as string] : () => {}; } }
+  );
+  const tui = new TuiMainScreen(terminal as never);
+  tui.start();
+  tui.showOverlay(f.overlay, { width: "90%", maxHeight: "90%", anchor: "center", margin: 1 });
+  tui.renderNow(true);
+
+  const shown = output.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.equal(f.overlay.render(36).length <= 10, true);
+  assert.equal(shown.includes("REJECTED"), true);
+  assert.equal(shown.includes("save"), true);
+  assert.equal(shown.includes("cancel"), true);
+  assert.equal(f.overlay.render(36).some(line => line.includes(CURSOR_MARKER)), true);
+  tui.stop();
+});
+
+test("rejected paste retains full draft in editor without clearing", () => {
+  const f = fixture({ failure: "overbudget" });
+  f.overlay.handleInput("\r");
+  const pasted = Array.from({ length: 20 }, (_, i) => `中文粘贴行 ${i}`).join("\n");
+  f.overlay.handleInput(`\x1b[200~${pasted}\x1b[201~`);
+  const before = f.overlay.draftText();
+  assert(before && before.includes("中文粘贴行 19"));
+  f.overlay.handleInput("\r");
+  assert.equal(f.overlay.layerName, "edit");
+  assert.equal(f.overlay.draftText(), before);
+  assert.equal(f.saves[0]?.text.endsWith(pasted), true);
+});
+
+test("remapped keys and backslash fallback restore draft on save failure", () => {
+  const old = getKeybindings();
+  const kb = new KeybindingsManager(TUI_KEYBINDINGS, { "tui.input.submit": "shift+enter", "tui.input.newLine": "enter" });
+  setKeybindings(kb);
+  try {
+    const f = fixture({ failure: "conflict" });
+    f.overlay.handleInput("\r");
+    f.overlay.handleInput(" failed edit");
+    const before = f.overlay.draftText();
+    // Shift+Enter submit fails
+    f.overlay.handleInput("\x1b[27;2;13~");
+    assert.equal(f.overlay.layerName, "edit");
+    assert.equal(f.overlay.draftText(), before);
+    assert.match(clean(f.overlay.render(90)), /REJECTED conflict/);
+
+    // Backslash+Enter submit fails
+    f.overlay.handleInput(" \\");
+    const beforeBs = f.overlay.draftText();
+    f.overlay.handleInput("\r");
+    assert.equal(f.overlay.layerName, "edit");
+    assert.match(clean(f.overlay.render(90)), /REJECTED conflict/);
+  } finally {
+    setKeybindings(old);
+  }
 });
