@@ -9,6 +9,7 @@ import { runSegment } from "../../src/live/worker.js";
 import { readLedger, ledgerSummary } from "../../src/live/budget.js";
 import { repository } from "./fixtures.js";
 import { comparisonStock, compareCli } from "./comparison-native-fixture.js";
+import { matchedParity } from "../../src/live/comparison-observation.js";
 
 async function actualWorker(f: any, selection: Pick<Selection, "id" | "variant">) {
   const model: Model<Api> = { id: f.modelId, name: f.modelId, provider: f.provider, api: f.api, baseUrl: f.endpoint, reasoning: false, input: ["text", "image"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
@@ -44,12 +45,22 @@ test("public CLI -> worker -> stock Pi -> loopback: all groups, per-roll matchin
     assert.equal(modes[1].records.matchedParity.fileListsMeasured, true);
     for (const mode of modes) for (const group of ["native", "current", "candidate"]) {
       const rows = mode.groups[group].scenarios;
+      const timings = mode.groups[group].caseTimings;
+      assert.equal(timings.length, 5);
+      assert.equal(timings.filter((c: any) => c.scenarioId === "e4").length, 2);
+      for (const c of timings) {
+        assert.equal(c.segments.length, c.scenarioId === "e1" || c.scenarioId === "e3" ? 2 : 1);
+        assert(c.timing.elapsedMs >= c.segments.reduce((n: number, s: any) => n + s.elapsedMs, 0));
+      }
+      for (const row of rows) assert(row.timing.elapsedMs > row.latencyMs);
+      const raw = report.rawSegments.filter((s: any) => s.mode === mode.mode && s.group === group);
+      assert(raw.every((s: any) => s.timing.elapsedMs > s.segmentUsage.latencyMs));
       const e1 = rows.filter((r: any) => r.scenarioId === "e1"); assert.deepEqual(e1.map((r: any) => r.status), ["PAUSED", "OBSERVED"]);
       assert.equal(e1[1].rollovers.length, 2);
       assert.equal(e1[1].score.actionReview[0].status, "PROVEN");
       const e2 = rows.find((r: any) => r.scenarioId === "e2"); assert.equal(e2.rollovers.length, 3);
-      if (group !== "native") assert(e2.setupChecks.slice(0, 2).every((p: any) => p.status === "PROVEN"));
-      assert(e2.setupChecks.slice(2).every((p: any) => p.status === "UNPROVEN"));
+      assert(e2.setupChecks.slice(0, 3).every((p: any) => p.status === "PROVEN"), JSON.stringify({ group, setupChecks: e2.setupChecks }));
+      assert(e2.setupChecks.slice(3).every((p: any) => p.status === "UNPROVEN"));
       const e3 = rows.filter((r: any) => r.scenarioId === "e3"); assert.deepEqual(e3.map((r: any) => r.status), ["PAUSED", "OBSERVED"]);
       assert.equal(e3[1].rollovers.length, 1);
       assert.equal(e3[1].rollovers[0].callIds.length, 1);
@@ -60,6 +71,15 @@ test("public CLI -> worker -> stock Pi -> loopback: all groups, per-roll matchin
         assert(row.outputCaps.every((cap: number) => cap > 0));
       }
     }
+    const e2Pair = [{ label: "e2", groups: ["native", "current", "candidate"].map(group => {
+      const s = report.rawSegments.find((s: any) => s.group === group && s.mode === "matched" && s.scenario === "e2");
+      return { group, complete: s.status === "OBSERVED", cwd: join(stateRoot, `matched-${group}-e2`, "task"), rows: s.rollovers, requests: s.requests };
+    }) }];
+    assert.equal(matchedParity(e2Pair).cutMatched, true);
+    const shifted = structuredClone(e2Pair), row = shifted[0]!.groups[2]!.rows[0];
+    row.snapshot.firstKeptEntryId = row.active[row.active.findIndex((e: any) => e.id === row.snapshot.firstKeptEntryId) + 1].id;
+    assert.equal(matchedParity(shifted).cutMatched, false);
+    assert.equal(matchedParity(shifted).kMatched, false);
     const candidateE4 = report.matrix.find((r: any) => r.mode === "defaults" && r.group === "candidate" && r.scenarioId === "e4");
     assert(candidateE4.setupChecks.every((c: any) => c.status === "PROVEN"));
     const refs = report.rawSegments.filter((s: any) => s.mode === "matched" && s.group !== "native").flatMap((s: any) => s.rollovers.map((r: any) => r.prepared?.matching));

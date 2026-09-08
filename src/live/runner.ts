@@ -6,9 +6,11 @@ import { ledgerSummary, readLedger } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
 import { childEnvironment, nativeEnvironment } from "./host.js";
 export { childEnvironment } from "./host.js";
+import { elapsedInterval, type WallClockInterval } from "./timing.js";
 
-export interface ChildReceipt { exitCode: number | null; signal: string | null; timedOut: boolean; diagnostic?: { code: string; message: string } }
+export interface ChildReceipt { timing?: WallClockInterval; exitCode: number | null; signal: string | null; timedOut: boolean; diagnostic?: { code: string; message: string } }
 export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal): Promise<ChildReceipt> {
+  const startedAt = Date.now();
   return new Promise((resolve, reject) => {
     // Orchestration keeps the checked repository cwd and supervisor's temp root.
     // Only the native task host uses task cwd/TMPDIR. Compiler validation also
@@ -27,7 +29,7 @@ export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal
     const timer = setTimeout(stop, Math.max(1, job.deadline - Date.now()));
     signal.addEventListener("abort", stop, { once: true });
     child.once("error", error => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); reject(error); });
-    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut, ...(diagnostic ? { diagnostic } : {}) }); });
+    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut, timing: elapsedInterval(startedAt), ...(diagnostic ? { diagnostic } : {}) }); });
     // The explicit stdin pipe above is guaranteed; the IPC overload loses that type refinement.
     const stdin = child.stdin!;
     stdin.on("error", () => { /* Early rejection is reported by child exit, never replayed. */ });

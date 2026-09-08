@@ -8,6 +8,7 @@ import { parsePatch } from "../engine/memory.js";
 import { validateMemory } from "../engine/validation.js";
 import type { Context, Message } from "@earendil-works/pi-ai";
 import type { MaintenanceResult } from "../engine/types.js";
+import type { RolloverObservation } from "./comparison-observation.js";
 import { object, requireValue, within, type Selection } from "./contract.js";
 
 export interface Turn { id: string; text: string }
@@ -254,17 +255,17 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
         return { check, status: "DISPROVEN" as const, reason: `Verification command executed prematurely during turn ${premature.turn} instead of required turn ${requiredTurn}` };
       }
 
-      const matchingCall = verifyCalls.find(c => requiredTurn === undefined || c.turn === requiredTurn);
-      if (!matchingCall) {
-        return { check, status: "UNPROVEN" as const, reason: `No python3 verify.py executed during required turn ${requiredTurn}` };
-      }
-
-      // Check matching tool_result
-      const callId = matchingCall.event.toolCallId;
-      const resultAction = rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_result" && a.event.toolCallId === callId && a.event.toolName === "bash" && a.turn === matchingCall.turn);
-      if (!resultAction || resultAction.event.isError !== false) {
-        return { check, status: "DISPROVEN" as const, reason: "Verification command failed with an error" };
-      }
+      // Only a later, same-turn/same-tool result establishes an effect. Failed attempts
+      // remain in the history but do not preclude repair and successful reverification.
+      const completed = rawActions.flatMap((call, callIndex) => {
+        if (!object(call) || !object(call.event) || call.event.type !== "tool_call") return [];
+        const resultIndex = rawActions.findIndex((a, i) => i > callIndex && object(a) && object(a.event) && a.turn === call.turn && a.event.type === "tool_result" && a.event.toolCallId === call.event.toolCallId && a.event.toolName === call.event.toolName);
+        return resultIndex >= 0 && rawActions[resultIndex]!.event.isError === false ? [{ call, callIndex, resultIndex, result: rawActions[resultIndex]!.event }] : [];
+      });
+      const successful = completed.filter(e => verifyCalls.includes(e.call));
+      if (successful.length === 0) return { check, status: "DISPROVEN" as const, reason: "No verification command has an ordered successful result" };
+      const edits = completed.filter(e => ["write", "edit"].includes(e.call.event.toolName) && typeof e.call.event.input?.path === "string")
+        .map(e => ({ ...e, path: relative(cwd, resolve(cwd, e.call.event.input.path)) }));
 
       // Check verification artifact created and passed
       const artifactName = observer.id === "e1" ? "verification.json" : "verified.json";
@@ -278,60 +279,20 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
         return { check, status: "DISPROVEN" as const, reason: `Verification artifact ${artifactName} missing or passed !== true` };
       }
 
-      if (context?.requireVerificationReceipt && (!object(resultAction.event.verification) || resultAction.event.verification.scriptUnchanged !== true || !isDeepStrictEqual(resultAction.event.verification.artifact, verifyArtifact))) {
-        return { check, status: "UNPROVEN" as const, reason: "Successful command lacks a matching original-script and artifact-effect receipt" };
-      }
-
-      // Check whether verify.py was modified
-      const scriptModified = rawActions.some(a => {
-        if (!object(a) || !object(a.event)) return false;
-        const e = a.event;
-        if (e.type !== "tool_call" || !["write", "edit"].includes(String(e.toolName))) return false;
-        const rawPath = typeof (e.input as any)?.path === "string" ? (e.input as any).path : "";
-        const normPath = relative(cwd, resolve(cwd, rawPath));
-        if (normPath !== "verify.py") return false;
-        const callId = e.toolCallId;
-        const res = rawActions.find(r => object(r) && object(r.event) && r.event.type === "tool_result" && r.event.toolCallId === callId);
-        return Boolean(res && !res.event.isError);
-      });
-      if (scriptModified) {
+      if (edits.some(e => e.path === "verify.py")) {
         return { check, status: "DISPROVEN" as const, reason: "Verification script verify.py was modified" };
       }
 
-      // Check whether verification artifact was authored directly by tool call
-      const directWrite = rawActions.some(a => {
-        if (!object(a) || !object(a.event)) return false;
-        const e = a.event;
-        if (e.type !== "tool_call" || !["write", "edit"].includes(String(e.toolName))) return false;
-        const rawPath = typeof (e.input as any)?.path === "string" ? (e.input as any).path : "";
-        const normPath = relative(cwd, resolve(cwd, rawPath));
-        if (normPath !== artifactName) return false;
-        const callId = e.toolCallId;
-        const res = rawActions.find(r => object(r) && object(r.event) && r.event.type === "tool_result" && r.event.toolCallId === callId);
-        return Boolean(res && !res.event.isError);
-      });
-      if (directWrite) {
+      if (edits.some(e => e.path === artifactName)) {
         return { check, status: "DISPROVEN" as const, reason: `Verification artifact ${artifactName} was authored directly by tool call rather than python3 verify.py` };
       }
 
-      // Check that target export was not modified after this verification command
-      const callIndex = rawActions.indexOf(matchingCall);
-      const laterEdits = rawActions.slice(callIndex + 1).some(a => {
-        if (!object(a) || !object(a.event)) return false;
-        const e = a.event;
-        if (e.type !== "tool_call" || !["write", "edit"].includes(String(e.toolName))) return false;
-        const rawPath = typeof (e.input as any)?.path === "string" ? (e.input as any).path : "";
-        const normPath = relative(cwd, resolve(cwd, rawPath));
-        if (normPath !== targetExport) return false;
-        const callId = e.toolCallId;
-        const res = rawActions.find(r => object(r) && object(r.event) && r.event.type === "tool_result" && r.event.toolCallId === callId);
-        return Boolean(res && !res.event.isError);
-      });
-      if (laterEdits) {
-        return { check, status: "DISPROVEN" as const, reason: `Target artifact ${targetExport} was modified after verification command ran` };
-      }
-
-      return { check, status: "PROVEN" as const, observed: { toolCallId: callId, turn: matchingCall.turn, artifact: artifactName, passed: true } };
+      const receipted = successful.filter(e => !context?.requireVerificationReceipt || (object(e.result.verification) && e.result.verification.scriptUnchanged === true && isDeepStrictEqual(e.result.verification.artifact, verifyArtifact)));
+      if (receipted.length === 0) return { check, status: "UNPROVEN" as const, reason: "Successful commands lack a matching original-script and artifact-effect receipt" };
+      // A completed write must precede this invocation, including writes that overlap it.
+      const valid = receipted.findLast(v => !edits.some(e => e.path === targetExport && e.resultIndex > v.callIndex));
+      if (!valid) return { check, status: "DISPROVEN" as const, reason: `Target artifact ${targetExport} changed after the last valid verification; no successful reverification covers it` };
+      return { check, status: "PROVEN" as const, observed: { toolCallId: valid.call.event.toolCallId, turn: valid.call.turn, artifact: artifactName, passed: true } };
     }
     return { check, status: "UNPROVEN" as const, reason: "Independent observer must inspect actual session/tool actions; no judge model is called" };
   });
@@ -419,6 +380,22 @@ export function evaluateCapacityPredicates(
   }
   return results;
 }
+/** Native E2 uses actual preparation and persisted prefix/suffix, never Nunc JSON carriers. */
+function nativeE2Regions(row: RolloverObservation | undefined, persisted: SessionEntry[], turn: string) {
+  if (!row || row.turn !== turn || !row.snapshot || row.snapshot.fromHook || row.preparation.isSplitTurn || row.callIds.length === 0) return undefined;
+  const cut = row.active.findIndex(e => e.id === row.snapshot!.firstKeptEntryId);
+  if (cut < 0 || row.preparation.firstKeptEntryId !== row.snapshot.firstKeptEntryId || !persisted.some(e => isDeepStrictEqual(e, row.snapshot))) return undefined;
+  const b = row.active.slice(0, cut).filter(e => e.type !== "compaction"), k = row.active.slice(cut).filter(e => e.type !== "compaction");
+  const records = (entries: SessionEntry[]) => entries.map(e => ({ entryId: e.id, messages: convertToLlm(sessionEntryToContextMessages(e)) })).filter(r => r.messages.length > 0);
+  const bRecords = records(b), kRecords = records(k);
+  const expected = bRecords.flatMap(r => r.messages).map(semanticEvidence);
+  const summarized = convertToLlm(row.preparation.messagesToSummarize as Parameters<typeof convertToLlm>[0]).map(semanticEvidence);
+  if (!isDeepStrictEqual(expected, summarized) || row.preparation.turnPrefixMessages.length !== 0 ||
+      !row.active.every(e => row.branch.some(p => isDeepStrictEqual(p, e))) ||
+      !row.rebuilt?.some(e => isDeepStrictEqual(e, row.snapshot)) ||
+      !isDeepStrictEqual(row.rebuilt.filter(e => e.type !== "compaction"), k)) return undefined;
+  return { b: bRecords, k: kRecords, snapshotId: row.snapshot.id };
+}
 export function evaluateE2SetupChecks(
   turnEntries: Record<string, string[]>,
   branch: SessionEntry[],
@@ -427,12 +404,13 @@ export function evaluateE2SetupChecks(
   observedContexts: Array<{ turn: string; kind: string; context: Context }> = [],
   actions: unknown[] = [],
   cwd?: string,
-  expectedProbe?: string
+  expectedProbe?: string,
+  nativeRollovers?: RolloverObservation[]
 ): CheckResult[] {
   const checks: CheckResult[] = [];
-  const m1 = maintenanceEvents[0];
+  const native = nativeRollovers?.map((row, i) => nativeE2Regions(row, branch, ["b", "c", "d"][i] ?? ""));
   const maintContext1 = observedContexts.find(c => c.kind === "maintenance");
-  const bRecords = maintContext1 ? readContextRecords(maintContext1.context, "B") : [];
+  const bRecords = native ? native[0]?.b ?? [] : maintContext1 ? readContextRecords(maintContext1.context, "B") : [];
   const turnAIds = turnEntries["a"] ?? [];
   const bHasTurnA = turnAIds.length > 0 && turnAIds.every(id => bRecords.some(r => (r as any).entryId === id));
   checks.push({
@@ -441,9 +419,8 @@ export function evaluateE2SetupChecks(
     observed: { bRecordsFound: bRecords.length, bHasTurnA, turnACount: turnAIds.length }
   });
 
-  const m2 = maintenanceEvents[1];
   const maintContext2 = observedContexts.filter(c => c.kind === "maintenance")[1];
-  const kRecords = maintContext2 ? readContextRecords(maintContext2.context, "K") : [];
+  const kRecords = native ? native[1]?.k ?? [] : maintContext2 ? readContextRecords(maintContext2.context, "K") : [];
   const turnCIds = turnEntries["c"] ?? [];
   const kHasTurnC = turnCIds.length > 0 && turnCIds.every(id => kRecords.some(r => (r as any).entryId === id));
 
@@ -461,11 +438,20 @@ export function evaluateE2SetupChecks(
   const kHasProbe = Boolean(completeProbe && probeResult && kHasCall && kMessages.some(m => m.role === "toolResult" && m.toolCallId === probeCallId && m.toolName === "read" && m.isError === false && isDeepStrictEqual(m.content, probeResult.event.content)));
 
   const turnBIds = turnEntries["b"] ?? [];
-  const bRetired = Boolean(m2?.ok && turnBIds.length > 0 && turnBIds.every(id => m2.candidate.retiredEntryIds.includes(id)));
+  const retires = (index: number, ids: string[]) => ids.length > 0 && (native
+    ? Boolean(native[index] && ids.every(id => native[index]!.b.some(r => r.entryId === id)))
+    : Boolean(maintenanceEvents[index]?.ok && ids.every(id => (maintenanceEvents[index] as Extract<MaintenanceResult, { ok: true }>).candidate.retiredEntryIds.includes(id))));
+  const bRetired = retires(1, turnBIds);
   checks.push({
     check: "correction and probe in K at second maintenance while b retires",
     status: kHasTurnC && kHasProbe && bRetired ? "PROVEN" : "UNPROVEN",
     observed: { kHasTurnC, kHasProbe, bRetired, turnBCount: turnBIds.length }
+  });
+  const cRetired = retires(2, turnCIds);
+  checks.push({
+    check: "correction and complete probe retired at third maintenance",
+    status: kHasTurnC && kHasProbe && cRetired ? "PROVEN" : "UNPROVEN",
+    observed: { cRetired, turnCIds, ...(native ? { snapshotId: native[2]?.snapshotId ?? null } : {}) }
   });
 
   checks.push({

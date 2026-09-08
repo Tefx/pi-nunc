@@ -6,6 +6,7 @@ import { launchWorker, type ChildReceipt } from "./runner.js";
 import type { SegmentReport } from "./worker.js";
 import { matchedParity, rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
 import type { MatchReference } from "./preparation.js";
+import { elapsedInterval, type WallClockInterval } from "./timing.js";
 
 export const ALL_GROUPS: ComparisonGroup[] = ["native", "current", "candidate"];
 export interface ComparisonScenarioResult {
@@ -14,10 +15,13 @@ export interface ComparisonScenarioResult {
   prerequisites: SegmentReport["prerequisites"]; setupChecks?: SegmentReport["setupChecks"]; score?: SegmentReport["score"];
   calls: number; tokens: number | null; latencyMs: number; costUsd: number | null; callIds: number[];
   rollovers: RolloverFacts[];
+  timing?: WallClockInterval | undefined;
 }
 export interface ComparisonModeReport {
   mode: ComparisonMode; status: "OBSERVED" | "UNPROVEN" | "STOPPED";
-  groups: Record<ComparisonGroup, { config: Record<string, unknown>; revision: string; scenarios: ComparisonScenarioResult[] }>;
+  timing?: WallClockInterval;
+  groups: Record<ComparisonGroup, { config: Record<string, unknown>; revision: string; scenarios: ComparisonScenarioResult[]; timing?: WallClockInterval;
+    caseTimings: Array<{ scenarioId: string; variant?: string | undefined; timing: WallClockInterval; segments: WallClockInterval[] }> }>;
   records: { hComparison?: Record<string, unknown>; memorySizeComparison?: Record<string, unknown>; overheadComparison?: Record<string, unknown>; usageComparison?: Record<string, unknown>; matchedParity?: ReturnType<typeof matchedParity> };
 }
 export interface ComparisonReport {
@@ -82,21 +86,29 @@ export async function executeComparison(value: unknown, repository: string, scri
   try {
     let anyFailed = false;
     for (const mode of input.comparison.modes) {
+      const modeStarted = Date.now();
       let modeFailed = false;
       const revisions = { native: "Pi-0.85.1-native", current: "70dacad", candidate: receipt.candidate };
       const groupReport = (group: ComparisonGroup): ComparisonModeReport["groups"][ComparisonGroup] => ({ config: {
         selections: input.scenarios.map(s => ({ id: s.id, variant: s.variant, config: s.config })),
         actualConfiguration: "rawSegments[].rollovers[].preparation.settings / config / result.observations.accounting",
-      }, revision: revisions[group], scenarios: [] });
+      }, revision: revisions[group], scenarios: [], caseTimings: [] });
       const modeReport: ComparisonModeReport = { mode, status: "STOPPED", groups: { native: groupReport("native"), current: groupReport("current"), candidate: groupReport("candidate") }, records: {} };
+      report.comparison.modes.push(modeReport);
+      try {
       const completed = new Map<string, SegmentReport[]>();
       const roots = new Map<string, string>();
-      for (const group of ALL_GROUPS) for (let scenarioIndex = 0; scenarioIndex < input.scenarios.length; scenarioIndex++) {
+      for (const group of ALL_GROUPS) {
+        const groupStarted = Date.now();
+        try {
+        for (let scenarioIndex = 0; scenarioIndex < input.scenarios.length; scenarioIndex++) {
         signal.throwIfAborted(); requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
         const selection = input.scenarios[scenarioIndex]!, label = `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`;
         const caseKey = `${mode}:${group}:${label}`, caseRoot = join(root, `${mode}-${group}-${label}`);
         const key = `${group}:${label}`, segments: SegmentReport[] = []; completed.set(key, segments); roots.set(key, join(caseRoot, "task"));
+        const caseStarted = Date.now(), segmentIntervals: WallClockInterval[] = [];
         let resume = false;
+        try {
         do {
           requireValue(report.usage.calls < input.limits.maxCalls, "CALL_LIMIT", "Shared call ceiling exhausted; no further child/session effects");
           const smallestReservation = Math.min(...input.models.map(m => m.contextWindow + m.maxTokens));
@@ -107,6 +119,7 @@ export async function executeComparison(value: unknown, repository: string, scri
           const matchReferences: MatchReference[] = native.rows.map(row => { const f = rolloverFacts(row, native.requests, "native"); return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps }; });
           const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences }, signal);
           report.children.push(child);
+          if (child.timing) segmentIntervals.push(child.timing);
           const records = readLedger(join(root, "calls.jsonl")); report.usage = ledgerSummary(records);
           requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete");
           const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
@@ -114,7 +127,7 @@ export async function executeComparison(value: unknown, repository: string, scri
           const ids = new Set(records.filter(r => r.kind === "reserve" && r.caseKey === caseKey && !beforeIds.has(r.id)).map(r => r.id));
           const result: ComparisonScenarioResult = { mode, group, scenarioId: selection.id, variant: selection.variant, status: segment.status, reason: segment.reason,
             prerequisites: segment.prerequisites, setupChecks: segment.setupChecks, score: segment.score, sessionFile: segment.sessionFile,
-            ...scopedUsage(records, ids), rollovers: (segment.rollovers ?? []).map(row => rolloverFacts(row, segment.requests ?? [], group)) };
+            timing: child.timing, ...scopedUsage(records, ids), rollovers: (segment.rollovers ?? []).map(row => rolloverFacts(row, segment.requests ?? [], group)) };
           modeReport.groups[group].scenarios.push(result); report.matrix.push(result);
           requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
           const failed = segment.prerequisites.some(c => c.status !== "PROVEN");
@@ -122,6 +135,9 @@ export async function executeComparison(value: unknown, repository: string, scri
           if (segment.status !== "OBSERVED" || failed) modeFailed = true;
           break;
         } while (resume);
+        } finally { modeReport.groups[group].caseTimings.push({ scenarioId: selection.id, variant: selection.variant, timing: elapsedInterval(caseStarted), segments: segmentIntervals }); }
+        }
+        } finally { modeReport.groups[group].timing = elapsedInterval(groupStarted); }
       }
       const groupRecords = (pick: (facts: RolloverFacts) => unknown) => Object.fromEntries(ALL_GROUPS.map(group => [group, input.scenarios.map(s => {
         const label = `${s.id}${s.variant ? `-${s.variant}` : ""}`, j = joined(completed.get(`${group}:${label}`) ?? []);
@@ -140,7 +156,8 @@ export async function executeComparison(value: unknown, repository: string, scri
       }));
       // Observation completion and parity are independent: measured inequality is a valid observation.
       modeReport.status = modeFailed ? "UNPROVEN" : "OBSERVED";
-      report.comparison.modes.push(modeReport); anyFailed ||= modeFailed;
+      anyFailed ||= modeFailed;
+      } finally { modeReport.timing = elapsedInterval(modeStarted); }
     }
     report.status = anyFailed ? "UNPROVEN" : "OBSERVED";
   } catch (error) {

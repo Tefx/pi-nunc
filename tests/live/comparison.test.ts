@@ -40,15 +40,19 @@ test("comparison preflight validates modes, all prepared targets, baseline ident
   const extra = join(baseline, "dist/src/stale-extra-file.js"); await writeFile(extra, "export const stale = true;");
   try { await assert.rejects(preflight(input, repository), /Stale extra JS|BUILD/); } finally { await rm(extra); }
   const receipt = await preflight(input, repository); assert.equal(receipt.pi, "0.85.1"); assert.equal(receipt.callsMade, 0);
+  assert.equal(receipt.version, 1); assert.equal(typeof receipt.binding, "string"); assert(receipt.binding.length > 0);
   input.scenarios = [{ id: "e3", config: input.scenarios[0]!.config }];
   const run = spawnSync(process.execPath, [compareScript, "--preflight"], { env: { ...env, PI_PROVIDER: input.models[0]!.provider, PI_MODEL: input.models[0]!.id }, input: JSON.stringify(publicValue(input)), encoding: "utf8" });
   assert.equal(run.status, 0, run.stderr);
-  assert.equal(JSON.parse(run.stdout).status, "PREFLIGHT");
+  const out = JSON.parse(run.stdout);
+  assert.equal(out.status, "PREFLIGHT"); assert.equal(out.receipt.version, 1);
+  assert.deepEqual(out.comparison.modes, ["defaults", "matched"]); assert(out.limitations.length > 0);
   await assert.rejects(lstat(input.target.stateRoot), { code: "ENOENT" });
 });
 test("three groups load actual distinct native/current/candidate hooks", async () => {
   const input = await comparisonFixture();
   const native = liveExtensionFlags(repository, input, "native"), current = liveExtensionFlags(repository, input, "current"), candidate = liveExtensionFlags(repository, input, "candidate");
+  for (const flags of [native, current, candidate]) assert(flags.includes(join(repository, "dist/src/live/observer.js")));
   assert(!native.some(f => f.endsWith("index.js")));
   assert(current.includes(join(baseline, "dist/src/index.js"))); assert(!current.includes(join(repository, "dist/src/index.js")));
   assert(candidate.includes(join(repository, "dist/src/index.js"))); assert(!candidate.includes(join(baseline, "dist/src/index.js")));
@@ -57,7 +61,7 @@ test("extraction assets and explicit asset selection preserve controls and indep
   const input = await comparisonFixture(), config = input.scenarios[0]!.config;
   for (const selection of [{ id: "e1" }, { id: "e2" }, { id: "e3" }, { id: "e4", variant: "fits-required" }, { id: "e4", variant: "required-too-large" }] as const) {
     const loaded = await loadScenario(repository, { ...selection, config, assets: { inputs: "tests/scenarios/extraction-inputs.json", observer: "tests/scenarios/extraction-observer.json" } });
-    assert.equal(loaded.input.id, selection.id); assert(loaded.observer.controls.length > 0);
+    assert.equal(loaded.input.id, selection.id); assert.equal(loaded.observer.id, selection.id); assert(loaded.observer.controls.length > 0);
     if (selection.id === "e3") assert.equal(loaded.observer.controls[0]!.trigger?.when, "after_result_before_continuation");
   }
 });
@@ -76,9 +80,38 @@ test("aggregator never proves parity from empty mock contexts or relabels defaul
     assert(report.comparison.modes[1]?.records.matchedParity?.discrepancies.length);
     assert.equal(report.usage.calls, 0); assert(report.matrix.every(r => r.calls === 0));
     assert.equal(report.cleanup, "retained");
+    assert(existsSync(join(input.target.stateRoot, "report.json")));
+    assert(existsSync(join(input.target.stateRoot, "owner.json")));
     await assert.rejects(preflight(input, repository), /already exists/);
   } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
 });
+test("comparison wall-clock intervals include delayed workers and process restart separately from provider latency", async () => {
+  const input = await comparisonFixture(); input.comparison!.modes = ["defaults"];
+  input.scenarios = [{ id: "c3", config: input.scenarios[0]!.config }]; input.limits.maxDurationMs = 15000;
+  try {
+    const report = await executeComparison(input, repository, mockWorker, new AbortController().signal);
+    assert.equal(report.status, "OBSERVED"); assert.equal(report.children.length, 6);
+    assert.equal(new Set(report.rawSegments!.map(s => s.pid)).size, 6);
+    const mode = report.comparison.modes[0]!;
+    for (const group of Object.values(mode.groups)) {
+      const c = group.caseTimings[0]!;
+      assert.equal(c.scenarioId, "c3"); assert.equal(c.segments.length, 2);
+      assert.deepEqual(group.scenarios.map(r => r.status), ["PAUSED", "OBSERVED"]);
+      assert.deepEqual(group.scenarios.map(r => r.timing), c.segments);
+      assert(c.segments.every(s => s.elapsedMs >= 200)); // Each real worker waited 250 ms.
+      assert(c.segments[1]!.startedAt >= c.segments[0]!.endedAt);
+      assert(c.timing.startedAt <= c.segments[0]!.startedAt && c.timing.endedAt >= c.segments[1]!.endedAt);
+      assert(c.timing.elapsedMs >= c.segments.reduce((n, s) => n + s.elapsedMs, 0));
+      assert(group.timing!.elapsedMs >= c.timing.elapsedMs);
+      assert(group.timing!.startedAt >= mode.timing!.startedAt && group.timing!.endedAt <= mode.timing!.endedAt);
+      for (const interval of [mode.timing!, group.timing!, c.timing, ...c.segments]) assert.equal(interval.elapsedMs, interval.endedAt - interval.startedAt);
+      assert(group.scenarios.every(r => r.latencyMs === 0 && r.calls === 0));
+    }
+    assert(report.elapsedMs >= mode.timing!.elapsedMs);
+    assert.equal(report.usage.calls, 0); assert.equal(report.usage.totalTokens, 0);
+  } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+});
+
 test("call-ID totals do not count paused history twice and missing terminals stay unknown", () => {
   const reserve = (id: number) => ({ kind: "reserve", id, at: 0, model: "fixture", inputEstimate: 1, outputCeiling: 20, reservedTokens: 100, reservedCostUsd: null });
   const terminal = (id: number) => ({ kind: "terminal", id, at: 1, latencyMs: 1, stopReason: "stop", usage: { input: 5, cacheRead: 0, cacheWrite: 0, contextInput: 5, output: 5, reasoning: null, totalTokens: 10, cost: null } });

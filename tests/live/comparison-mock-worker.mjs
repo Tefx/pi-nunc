@@ -12,7 +12,10 @@ const { input, scenarioIndex, resume, group, mode, caseRoot: explicitCaseRoot } 
 const selection = input.scenarios[scenarioIndex];
 const caseRoot = explicitCaseRoot ?? join(input.target.stateRoot, `${mode ?? "defaults"}-${group ?? "candidate"}-${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
 await mkdir(caseRoot, { recursive: true });
+// c3 exercises measured process pause/resume latency only, with no provider calls.
+if (selection.id === "c3") await new Promise(resolve => setTimeout(resolve, 250));
 const base = {
+  ...(selection.id === "c3" ? { status: resume ? "OBSERVED" : "PAUSED" } : {}),
   pid: process.pid,
   scenario: selection.id,
   group: group ?? "candidate",

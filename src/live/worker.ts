@@ -1,4 +1,5 @@
 import { qualifyCapacity, checkCapacityRecovery } from "./capacity-observation.js";
+import { elapsedInterval, type WallClockInterval } from "./timing.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -18,6 +19,7 @@ export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: n
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig; actions?: unknown[]; lastBeforeActive?: SessionEntry[]; rollovers?: RolloverObservation[]; requests?: RequestObservation[]; runConfig?: Selection["config"] }
 export interface SegmentReport {
   pid: number;
+  timing?: WallClockInterval;
   scenario: string;
   group?: ComparisonGroup | undefined;
   mode?: ComparisonMode | undefined;
@@ -89,6 +91,7 @@ function captureComparisonFacts(
   // No host/transaction means no observed facts. Selection values never stand in for observations.
 }
 export async function runSegment(job: WorkerJob, overrides: { controlledModels?: unknown; models?: Model<Api>[]; signal?: AbortSignal } = {}): Promise<SegmentReport> {
+  const startedAt = Date.now();
   const { input } = job, selection = input.scenarios[job.scenarioIndex];
   requireValue(selection, "SCENARIO", "Invalid worker selection");
   const group: ComparisonGroup = job.group ?? "candidate";
@@ -406,7 +409,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       if (text && deliveredUserIds(sm.getBranch(), text).length === 0) report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze without a serial prompt", status: "UNPROVEN", reason: "Accepted steer was never delivered by native continuation" });
     }
     if (selection.id === "e2") {
-      report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts, report.actions, join(caseRoot, "task"), scenario.files["probe.json"]);
+      report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts, report.actions, join(caseRoot, "task"), scenario.files["probe.json"], group === "native" ? report.rollovers : undefined);
     }
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, { actions: report.actions, requireVerificationReceipt: true });
     captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);
@@ -440,6 +443,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       latencyMs: segmentTerminals.reduce((sum, r) => sum + r.latencyMs, 0), costUsd: usage.costUsd };
     process.removeListener("SIGTERM", onSignal); process.removeListener("SIGINT", onSignal);
     await mkdir(caseRoot, { recursive: true });
+    report.timing = elapsedInterval(startedAt);
     await writeFile(join(caseRoot, job.resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(report, null, 2), { mode: 0o600 });
   }
   return report;
