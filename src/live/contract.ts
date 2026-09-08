@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { lstat, readFile, realpath, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
@@ -100,7 +101,18 @@ export function parseInput(value: unknown, execution = false): RunInput {
   keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison", "assets"], "input");
   requireValue(value.version === 1, "INPUT", "Expected input version 1");
   requireValue(value.mode === "controlled" || value.mode === "native", "INPUT", "Invalid internal execution mode");
-  requireValue(!execution || value.mode === "native", "EXECUTION", "Controlled observations cannot dispatch native service calls");
+  if (execution) {
+    if (value.comparison === undefined) {
+      requireValue(value.mode === "native", "EXECUTION", "Controlled observations cannot dispatch native service calls");
+    } else if (value.mode === "controlled") {
+      for (const model of (value.models as any[])) {
+        let url: URL | undefined;
+        try { url = new URL(model.baseUrl); } catch { /* handled */ }
+        const isLoopback = url && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+        requireValue(isLoopback, "AUTHORIZATION", "Controlled execution requires an explicit loopback or synthetic endpoint; real service endpoints are forbidden in controlled mode");
+      }
+    }
+  }
   keys(value.target, ["repository", "stateRoot", "cleanup"], "target");
   requireValue(text(value.target.repository) && isAbsolute(value.target.repository) && text(value.target.stateRoot) && isAbsolute(value.target.stateRoot), "TARGET", "Explicit absolute repository and new stateRoot required");
   requireValue(value.target.cleanup === "retain" || value.target.cleanup === "remove", "TARGET", "Explicit cleanup disposition required");
@@ -213,7 +225,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   }
   const { loadScenario } = await import("./scenarios.js");
   for (const selection of input.scenarios) {
-    const { observer } = await loadScenario(repository, selection);
+    const { observer } = await loadScenario(repository, selection, input.assets);
     if (selection.config.retentionCalibration) requireValue(observer.controls.filter(c => c.action === "rollover").every(c => c.placement !== undefined), "CONFIG", "Retention calibration requires an explicit observer placement for every rollover");
   }
   const { assertBuildParity } = await import("./build.js");
@@ -231,6 +243,8 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     requireValue(curStat.isDirectory(), "TARGET", "Current baseline target must be a real directory");
     const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
     requireValue(curHead.startsWith("70dacad"), "TARGET", `Current baseline target must be at 70dacad, found ${curHead}`);
+    const curDirty = execFileSync("/usr/bin/git", ["-C", curRepo, "status", "--porcelain", "--untracked-files=normal", "--", "src", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8" }).trim();
+    requireValue(curDirty === "", "CANDIDATE", "Current baseline target repository must have a committed clean working tree");
     const curIndex = join(curRepo, "dist/src/index.js");
     try { const stat = await lstat(curIndex); requireValue(stat.isFile(), "BUILD", "Current baseline target missing dist/src/index.js"); }
     catch { throw new RunnerError("BUILD", "Current baseline target must have compiled dist/src/index.js"); }
@@ -262,6 +276,18 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   const digest = createHash("sha256");
   const { receipt: _receipt, ...bindingInput } = input;
   digest.update(canonical(bindingInput)); digest.update(candidate); digest.update(node);
+  if (input.comparison !== undefined) {
+    const curRepo = resolve(input.comparison.targets.current.repository);
+    const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    digest.update(curHead);
+    digest.update(await readFile(join(curRepo, "dist/src/index.js")));
+    const curPolicy = join(curRepo, "policies/default.md");
+    if (existsSync(curPolicy)) digest.update(await readFile(curPolicy));
+    digest.update(await readFile(join(curRepo, "package-lock.json")));
+    const natRepo = resolve(input.comparison.targets.native.repository);
+    const natPiManifest = JSON.parse(await readFile(join(natRepo, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
+    digest.update(natPiManifest.version);
+  }
   async function bind(path: string): Promise<void> {
     const stat = await lstat(path); requireValue(!stat.isSymbolicLink(), "CANDIDATE", "Bound input must not be a symlink");
     if (stat.isDirectory()) { for (const name of (await readdir(path)).sort()) await bind(join(path, name)); }

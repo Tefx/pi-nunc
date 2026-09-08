@@ -2,12 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
-import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, sessionEntryToContextMessages, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { closeHost, openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateCapacityPredicates, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, type CheckResult } from "./scenarios.js";
 import { ledgerSummary, readLedger } from "./budget.js";
 import { loadPolicy } from "../engine/index.js";
+import { memoryTokens, requestTokens, textTokens } from "../engine/accounting.js";
 import type { MaintenanceResult } from "../engine/types.js";
 import { engineConfig, eligibleStarts, project, type NuncConfig } from "../pi/index.js";
 import { calibrateRetention, type RetentionCalibration } from "./calibration.js";
@@ -48,6 +49,7 @@ export interface SegmentReport {
       splitTurnCalls?: number | undefined;
     } | undefined;
     requiredObservation?: unknown;
+    guardApplicability?: string | undefined;
   } | undefined;
 }
 function userText(entry: SessionEntry): string | undefined {
@@ -75,6 +77,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   const scheduledSteers = new Set<string>();
   let checkpoint: Checkpoint | undefined;
   let effectiveConfig = structuredClone(selection.config.nunc);
+  let lastBeforeActive: SessionEntry[] = [];
   try {
     if (job.resume) {
       checkpoint = JSON.parse(await readFile(checkpointPath, "utf8")) as Checkpoint;
@@ -91,6 +94,20 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     });
     report.pid = runtime.pid ?? process.pid;
     const session = runtime.session, sm = session.sessionManager;
+
+    // e3 public-seam spending prevention: refuse before model turns when public tool-boundary control is unavailable
+    if (selection.id === "e3") {
+      report.status = "UNPROVEN";
+      report.reason = "UNSUPPORTED_PUBLIC_SEAM";
+      report.diagnostic = "Exact tool-boundary split control for e3 is not supported by public RPC host without private host mutation; skipped before task model turns to prevent spending";
+      report.prerequisites.push({
+        check: "public tool-boundary split control during a",
+        status: "UNPROVEN",
+        reason: report.diagnostic,
+      });
+      return report;
+    }
+
     if (checkpoint) {
       const restored = sm.buildContextEntries();
       const same = checkpoint.pid !== report.pid && sm.getSessionId() === checkpoint.sessionId && sm.getLeafId() === checkpoint.leafId && session.sessionFile === checkpoint.sessionFile && isDeepStrictEqual(restored, checkpoint.rebuilt);
@@ -111,6 +128,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const last = session.messages.findLast(m => m.role === "assistant");
       requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", last?.role === "assistant" && last.errorMessage ? last.errorMessage : "Main run did not end in a complete stop state");
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
+
+      if (selection.id === "e4" && selection.variant === "required-too-large" && turn === "c") {
+        const cDelivered = Boolean(last && last.role === "assistant" && last.stopReason === "stop");
+        report.prerequisites.push({ check: "continuation following capacity failure (failure-path recovery)", status: cDelivered ? "PROVEN" : "UNPROVEN", observed: { turn: "c", deliveredOnce: cDelivered } });
+      }
       for (const id of scheduledSteers) {
         const text = scenario.turns.find(t => t.id === id)?.text; if (!text) continue;
         if (report.prerequisites.some(p => p.check === "corrective D delivered verbatim once after freeze without a serial prompt")) continue;
@@ -146,6 +168,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           await session.setModel(next, { persist: false });
           report.prerequisites.push({ check: "public session model switch recorded distinct smaller real catalog target", status: session.model?.id === next.id && sm.getBranch().some(e => e.type === "model_change" && e.provider === next.provider && e.modelId === next.id) ? "PROVEN" : "UNPROVEN", observed: { from: { provider: before.provider, id: before.id, capacity: before.contextWindow }, to: { provider: next.provider, id: next.id, capacity: next.contextWindow }, controlledProvider: Boolean(overrides.controlledModels) } });
         } else if (control.action === "rollover") {
+          lastBeforeActive = structuredClone(sm.buildContextEntries());
           if (group === "native") {
             const before = structuredClone(sm.getBranch());
             let failed = false;
@@ -172,9 +195,6 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             for (const t of placement?.retainTurns ?? []) {
               const ids = turns[t] ?? [];
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
-            }
-            if (selection.id === "e4") {
-              report.prerequisites.push({ check: "native Pi required guard", status: "PROVEN", reason: "Native Pi 0.85.1 has no required-item guard; continuing ordinary task execution" });
             }
           } else {
             const beforeActive = structuredClone(sm.buildContextEntries());
@@ -225,7 +245,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 const req = result?.observations.required;
                 const reqPass = Boolean(result && !result.ok && result.code === "CAPACITY" && req?.failed);
                 report.prerequisites.push({ check: "marked necessary set exceeding limit fails with CAPACITY without commit", status: reqPass ? "PROVEN" : "UNPROVEN", observed: { code: result && !result.ok ? result.code : undefined, required: req } });
-                report.prerequisites.push({ check: "continuation following capacity failure (failure-path recovery)", status: "PROVEN" });
+                report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: "Capacity failure correctly rejected candidate; successful rollover is not claimed" });
               } else {
                 report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: result && !result.ok ? `${result.code}: ${result.message}` : "Pi hook did not produce a successful Nunc snapshot" });
                 if (selection.variant === "capacity") report.prerequisites.push({ check: "full extraction demonstrably exceeds effective input capacity", status: result?.observations.accounting && result.observations.accounting.fullExtractionTokens > result.observations.accounting.extractionInputLimit ? "PROVEN" : "UNPROVEN", observed: result?.observations.accounting ?? null });
@@ -238,12 +258,31 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               if (selection.id === "e4") {
                 if (group === "candidate") {
                   const req = result?.observations.required;
+                  const survivingOld = (result as any)?.candidate?.memory?.slots ?? [];
+                  const patch = (result as any)?.candidate ? {
+                    add: (result as any).candidate.memory.slots.map((s: any) => ({ key: s.id, text: s.text })),
+                    priority: (result as any).candidate.memory.slots.map((s: any) => s.id),
+                    required: req?.declared ?? [],
+                  } : undefined;
+                  const accounting = result?.observations.accounting;
+                  const memoryLimit = accounting?.memoryLimit ?? 4000;
+                  const growthTokens = accounting?.growthTokens ?? 128;
+                  const measure = (slots: Array<{ key: string; text: string }>) => memoryTokens(slots.map(s => ({ id: s.key, text: s.text })));
+                  const predicates = evaluateCapacityPredicates(
+                    selection.variant as "fits-required" | "required-too-large",
+                    patch,
+                    memoryLimit,
+                    measure,
+                    survivingOld,
+                    growthTokens
+                  );
+                  report.prerequisites.push(...predicates);
                   if (selection.variant === "fits-required") {
                     const pass = Boolean(result?.ok && req && !req.failed && req.declared.length > 0);
                     report.prerequisites.push({ check: "all marked necessary candidates jointly retained in final memory", status: pass ? "PROVEN" : "UNPROVEN", observed: req ?? null });
+                  } else if (selection.variant === "required-too-large") {
+                    report.prerequisites.push({ check: "required-too-large rollover eligibility", status: "DISPROVEN", reason: "Maintenance unexpectedly succeeded when marked necessary set was configured to exceed limit" });
                   }
-                } else if (group === "current") {
-                  report.prerequisites.push({ check: "baseline 70dacad required guard", status: "PROVEN", reason: "Product baseline 70dacad has no required-item guard; continuing ordinary task execution" });
                 }
               } else if (selection.id === "c4") {
                 const exception = scenario.generatedFiles?.[0]?.segments.find(s => s.repeat === 1)?.text.trim();
@@ -287,7 +326,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       if (text && deliveredUserIds(sm.getBranch(), text).length === 0) report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze without a serial prompt", status: "UNPROVEN", reason: "Accepted steer was never delivered by native continuation" });
     }
     if (selection.id === "e2") {
-      report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[]);
+      report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts);
     }
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, { actions: report.actions });
     const firstModel = session.model ?? overrides.models?.[0] ?? selectedModels(input)[0]!;
@@ -295,27 +334,41 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     const branch = sm.getBranch();
     const latestCompact = branch.findLast(e => e.type === "compaction");
     const firstKeptEntryId = latestCompact?.type === "compaction" ? latestCompact.firstKeptEntryId : undefined;
-    const rebuilt = sm.buildContextEntries();
-    const kEntries = firstKeptEntryId ? rebuilt.filter(e => e.type !== "compaction") : [];
-    const kTokens = kEntries.reduce((sum, e) => sum + (e.type === "message" && "content" in e.message ? (typeof e.message.content === "string" ? Math.ceil(e.message.content.length / 4) : 10) : 0), 0);
+    const cutPoint = firstKeptEntryId ? lastBeforeActive.findIndex((e: SessionEntry) => e.id === firstKeptEntryId) : undefined;
+    const keptEntries = firstKeptEntryId && cutPoint !== undefined && cutPoint >= 0 ? lastBeforeActive.slice(cutPoint) : [];
+    const kMessages = keptEntries.length > 0 ? (convertToLlm(keptEntries.flatMap(e => sessionEntryToContextMessages(e) as any) as any) as any) : [];
+    const kTokens = kMessages.length > 0 ? requestTokens({ systemPrompt: "", messages: kMessages }) : 0;
     const mSlots = latestCompact?.type === "compaction" && object(latestCompact.details) && object((latestCompact.details as any).nunc) ? (latestCompact.details as any).nunc.slots : [];
+    const mTokens = group === "native"
+      ? (latestCompact?.summary ? textTokens(latestCompact.summary) : 0)
+      : memoryTokens(mSlots);
     const mSize = group === "native" ? (latestCompact?.summary?.length ?? 0) : JSON.stringify(mSlots).length;
+    const rawSlotChars = mSlots.reduce((sum: number, s: any) => sum + (s.text?.length ?? 0), 0);
+    const wrapperOverheadTokens = group === "native" ? 0 : Math.max(0, mTokens - Math.ceil(rawSlotChars / 4));
+    const splitTurnCalls = branch.filter(e => e.type === "compaction" && (e as any).details?.turnPrefixMessages?.length > 0).length;
+    const fileListCount = latestCompact?.details && Array.isArray((latestCompact.details as any).readFiles)
+      ? (latestCompact.details as any).readFiles.length + ((latestCompact.details as any).modifiedFiles?.length ?? 0)
+      : 0;
+    const outputCap = group === "native"
+      ? Math.min(Math.floor(0.8 * selection.config.compaction.reserveTokens), firstModel.maxTokens)
+      : (selection.config.nunc.extraction?.outputTokens ?? firstModel.maxTokens);
     const lastM = maintenanceResult(report.maintenance.at(-1));
     report.comparisonFacts = {
       h,
-      cutPoint: firstKeptEntryId ? rebuilt.findIndex(e => e.id === firstKeptEntryId) : undefined,
+      cutPoint,
       firstKeptEntryId,
       kTokens,
-      mTokens: group === "native" ? Math.ceil((latestCompact?.summary?.length ?? 0) / 4) : mSlots.length * 50,
+      mTokens,
       summarySize: mSize,
-      outputCap: selection.config.nunc.extraction?.outputTokens ?? 8192,
+      outputCap,
       outputReserve: selection.config.compaction.reserveTokens,
       overhead: {
-        fileListCount: latestCompact?.details && Array.isArray((latestCompact.details as any).readFiles) ? (latestCompact.details as any).readFiles.length : 0,
-        wrapperOverheadTokens: group === "native" ? 0 : 35,
-        splitTurnCalls: group === "native" ? 1 : 0,
+        fileListCount,
+        wrapperOverheadTokens,
+        splitTurnCalls,
       },
       requiredObservation: lastM?.observations?.required,
+      guardApplicability: (group === "native" || group === "current") ? "NOT_APPLICABLE" : "APPLICABLE",
     };
     report.status = report.prerequisites.every(p => p.status === "PROVEN") && !report.score.checks.some(c => c.status === "DISPROVEN") ? "OBSERVED" : "UNPROVEN";
   } catch (error) {

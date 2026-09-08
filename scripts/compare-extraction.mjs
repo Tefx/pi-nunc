@@ -12,6 +12,10 @@ try {
   let value;
   try { value = await readBoundedJson(process.stdin); } finally { clearTimeout(timer); }
   if (flags[0] !== "--worker") {
+    if (!value || typeof value !== "object" || !("comparison" in value)) {
+      const { RunnerError } = await import("../dist/src/live/contract.js");
+      throw new RunnerError("COMPARISON", "comparison configuration is required for compare-extraction");
+    }
     const { resolveInput } = await import("../dist/src/live/defaults.js");
     value = await resolveInput(value);
     const { parseComparisonInput } = await import("../dist/src/live/contract.js");

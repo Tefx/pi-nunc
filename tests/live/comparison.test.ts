@@ -43,6 +43,8 @@ function ensureBaseline70dacad(repo: string): string {
 async function comparisonFixture(): Promise<RunInput> {
   const input = await fixture();
   const baseline = ensureBaseline70dacad(repository);
+  input.models[0]!.baseUrl = "http://127.0.0.1:8080/v1";
+  input.resolvedModels![0]!.baseUrl = "http://127.0.0.1:8080/v1";
   input.comparison = {
     modes: ["defaults", "matched"],
     targets: {
@@ -112,7 +114,7 @@ test("public compare-extraction --preflight with e3 exposes limitation and unsup
     }),
     encoding: "utf8",
   });
-  assert.equal(run.status, 0);
+  assert.equal(run.status, 0, run.stderr);
   const out = JSON.parse(run.stdout);
   assert(out.unsupportedPublicSeams.includes("rollover_at_tool_boundary"));
   assert(out.limitations.some((l: string) => l.includes("e3 exact mid-turn tool-boundary split control")));
@@ -287,12 +289,61 @@ test("explicit asset-path selection contract is honored", async () => {
   assert.equal(sObs.id, "e1");
 });
 
-test("e1 and e3 fixture verification commands are authorized through narrow bash tool", async () => {
+test("controlled execution boundary enforces loopback endpoints and rejects real service endpoints", async () => {
+  const input = await comparisonFixture();
+  input.mode = "controlled";
+  input.models[0]!.baseUrl = "https://api.anthropic.com";
+  input.resolvedModels![0]!.baseUrl = "https://api.anthropic.com";
+  assert.throws(() => parseInput(input, true), (err: any) => err.code === "AUTHORIZATION" || /loopback|synthetic/i.test(err?.message));
+  await assert.rejects(executeComparison(input, repository, mockWorker, new AbortController().signal), (err: any) => err.code === "AUTHORIZATION" || /loopback|synthetic/i.test(err?.message));
+});
+
+test("e1 and e3 fixture verification commands require successful execution receipts and uninvalidated artifacts", async () => {
   const { observer } = await loadScenario(repository, { id: "e1", config: (await fixture()).scenarios[0]!.config });
-  const scored = await scoreArtifacts(repository, observer, [{ check: "prereq", status: "PROVEN" }], {
-    actions: [{ event: { type: "tool_call", toolName: "bash", input: { command: "python3 verify.py" } } }],
-  });
-  assert(scored.actionReview.some(r => r.check.includes("python3 verify.py") && r.status === "PROVEN"));
+  const taskDir = join(repository, ".scratch", `test-verify-receipt-${Date.now()}`);
+  await mkdir(taskDir, { recursive: true });
+  try {
+    // 1. Success case: python3 verify.py on turn e, tool result success, verification.json passed: true, no later edits
+    await writeFile(join(taskDir, "export.json"), JSON.stringify({ records: [1, null, 3], retryLimit: 2, retryAfterCommit: false }));
+    await writeFile(join(taskDir, "verification.json"), JSON.stringify({ passed: true, artifact: "export.json" }));
+    const successActions = [
+      { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_1", input: { command: "python3 verify.py" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_1", isError: false, content: "ok" } },
+    ];
+    const scoredSuccess = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: successActions });
+    const verifyCheckSuccess = scoredSuccess.actionReview.find(r => r.check.includes("python3 verify.py"));
+    assert.equal(verifyCheckSuccess?.status, "PROVEN");
+
+    // 2. Failed command: isError: true
+    const failedActions = [
+      { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_2", input: { command: "python3 verify.py" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_2", isError: true, content: "AssertionError" } },
+    ];
+    const scoredFailed = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: failedActions });
+    const verifyCheckFailed = scoredFailed.actionReview.find(r => r.check.includes("python3 verify.py"));
+    assert.equal(verifyCheckFailed?.status, "DISPROVEN");
+
+    // 3. Premature execution on wrong turn (turn c instead of e)
+    const prematureActions = [
+      { turn: "c", event: { type: "tool_call", toolName: "bash", toolCallId: "call_3", input: { command: "python3 verify.py" } } },
+      { turn: "c", event: { type: "tool_result", toolName: "bash", toolCallId: "call_3", isError: false, content: "ok" } },
+    ];
+    const scoredPremature = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: prematureActions });
+    const verifyCheckPremature = scoredPremature.actionReview.find(r => r.check.includes("python3 verify.py"));
+    assert.equal(verifyCheckPremature?.status, "DISPROVEN");
+
+    // 4. Invalidating later edit: export.json edited after verify command
+    const invalidatedActions = [
+      { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_4", input: { command: "python3 verify.py" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_4", isError: false, content: "ok" } },
+      { turn: "e", event: { type: "tool_call", toolName: "write", toolCallId: "call_5", input: { path: "export.json", content: "{}" } } },
+    ];
+    const scoredInvalidated = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: invalidatedActions });
+    const verifyCheckInvalidated = scoredInvalidated.actionReview.find(r => r.check.includes("python3 verify.py"));
+    assert.equal(verifyCheckInvalidated?.status, "DISPROVEN");
+  } finally {
+    await rm(taskDir, { recursive: true, force: true });
+  }
 });
 
 test("e4 capacity predicates evaluate necessary fit, competition overflow, and optional fit", () => {
@@ -373,7 +424,7 @@ test("single finite budget ledger charges all groups; quota exhaustion and clean
 });
 
 test("end-to-end comparison across native, current and candidate via public CLI, stock Pi and loopback", { timeout: 120000 }, async () => {
-  const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs")) as { StockFixture: any };
+  const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs")) as { StockFixture: any; text: any };
   const f = await new StockFixture().setup({ api: "openai-codex-responses", compaction: { enabled: false, reserveTokens: 200000 } });
   const baseline = ensureBaseline70dacad(repository);
   const stateRoot = join(f.dir, "nunc-live-runner-cmp");
@@ -382,8 +433,8 @@ test("end-to-end comparison across native, current and candidate via public CLI,
   await writeFile(join(f.state, "agent/settings.json"), JSON.stringify(settings));
 
   const selection = {
-    target: { repository, stateRoot, cleanup: "retain" },
-    limits: { maxCalls: 20, maxTotalTokens: 8000000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 128000 },
+    target: { repository, stateRoot, cleanup: "remove" },
+    limits: { maxCalls: 40, maxTotalTokens: 8000000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 128000 },
     observations: ["stock_rpc"],
     scenarios: [{ id: "c1" }],
     comparison: {
@@ -397,8 +448,25 @@ test("end-to-end comparison across native, current and candidate via public CLI,
   };
 
   const write = (path: string, content: unknown) => [{ tool: { name: "write", input: { path, content: JSON.stringify(content) } } }, "Saved."];
-  const steps = ["Pending.", ...write("decision.json", { route: "direct", reason: "Controlled fixture reason." })];
-  f.response = (_row: unknown, source: unknown) => source ? JSON.stringify({ add: [], remove: [], priority: [], required: [] }) : (() => { return steps.length ? steps.shift() : "Done"; })();
+  f.response = (row: any, source: any) => {
+    const messages = row?.payload?.messages ?? row?.payload?.input ?? [];
+    const firstText = messages.length > 0 ? text(messages[0]) : "";
+    if (firstText.includes("The messages above are a conversation to summarize")) {
+      return "## Goal\nComplete investigation.\n\n## Constraints & Preferences\n- preserve conditions\n\n## Progress\nDone: turn 1\n\n## Next Steps\nContinue.";
+    }
+    if (source) {
+      const isCandidate = JSON.stringify(row.payload).includes("required");
+      if (isCandidate) return JSON.stringify({ add: [{ key: "k1", text: "note" }], remove: [], priority: ["k1"], required: ["k1"] });
+      return JSON.stringify({ add: [{ key: "k1", text: "note" }], remove: [], priority: ["k1"] });
+    }
+    const lastMsg = messages[messages.length - 1];
+    const lastText = lastMsg ? text(lastMsg) : "";
+    const isToolOutput = lastMsg && (lastMsg.role === "toolResult" || lastMsg.type === "function_call_output" || lastText.includes("decision.json") || lastText.includes("Saved."));
+    if (isToolOutput) {
+      return "Decision has been recorded.";
+    }
+    return { tool: { name: "write", input: { path: "decision.json", content: JSON.stringify({ route: "direct", reason: "Controlled fixture reason." }) } } };
+  };
 
   const runEnv = { PATH: "/opt/homebrew/bin:/usr/bin:/bin", HOME: join(f.state, "home"), PI_CODING_AGENT_DIR: join(f.state, "agent"), TMPDIR: join(f.state, "tmp"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" };
 
@@ -410,15 +478,16 @@ test("end-to-end comparison across native, current and candidate via public CLI,
     child.stdin.end(JSON.stringify(selection));
     const code = await new Promise((resolve) => child.once("close", resolve));
 
-    assert.equal(code, 2); // UNPROVEN exit code
+    assert.equal(code, 2, stderr); // c1 oracle expectations on synthetic service report UNPROVEN
     assert(stdout.length > 0);
     const report = JSON.parse(stdout);
     assert.equal(report.matrix.length, 3);
     assert.equal(report.comparison.modes.length, 1);
     assert.equal(report.comparison.modes[0].mode, "defaults");
-    assert(report.usage.calls >= 6);
+    assert(report.usage.calls >= 3);
     assert.deepEqual(report.usage.unreconciledCallIds, []);
     assert.equal(report.matrix.every((m: any) => m.calls > 0), true);
+    assert.equal(report.rawSegments?.length, 3);
   } finally {
     await f.close();
   }

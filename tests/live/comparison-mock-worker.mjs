@@ -29,6 +29,14 @@ const base = {
     checks: [{ check: "mock artifact check", status: "PROVEN" }],
     actionReview: [],
   },
+  comparisonFacts: {
+    h: 183616,
+    summarySize: 100,
+    kTokens: 50,
+    mTokens: 50,
+    outputCap: 4096,
+    outputReserve: 10000,
+  },
 };
 await writeFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(base), { mode: 0o600 });
 process.exitCode = 0;

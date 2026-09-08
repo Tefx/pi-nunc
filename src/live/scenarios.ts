@@ -1,4 +1,5 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, DEFAULT_MAX_BYTES, truncateHead, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
@@ -205,7 +206,26 @@ export function checkArtifact(check: ArtifactCheck, artifact: unknown): CheckRes
   );
   return { check: `${check.path}${check.pointer}`, status: passed ? "PROVEN" : "DISPROVEN", observed: observed ?? null };
 }
-export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[] }) {
+function userTextFromMessage(message: Message): string | undefined {
+  if (message.role !== "user") return undefined;
+  if (typeof message.content === "string") return message.content;
+  if (Array.isArray(message.content)) return message.content.filter(b => b.type === "text").map(b => (b as any).text).join("");
+  return undefined;
+}
+function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: string; messages: Message[] }> {
+  const records: Array<{ region: string; messages: Message[] }> = [];
+  for (const message of ctx.messages ?? []) {
+    if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (block.type === "text") {
+          records.push(...(readSourceRecords(block.text).filter(r => r.region === region) as any));
+        }
+      }
+    }
+  }
+  return records;
+}
+export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]> }) {
   const artifacts: Record<string, unknown> = {};
   for (const check of observer.artifactChecks) {
     if (Object.hasOwn(artifacts, check.path)) continue;
@@ -215,21 +235,68 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   }
   const eligible = prerequisites.length > 0 && prerequisites.every(p => p.status === "PROVEN");
   const checks = observer.artifactChecks.map(check => eligible ? checkArtifact(check, artifacts[check.path]) : { check: `${check.path}${check.pointer}`, status: "UNPROVEN" as const, reason: "Required persisted source placement/restart/capacity prerequisites did not pass" });
+
+  const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview = observer.actionChecks.map(check => {
-    // Check if python3 verify.py execution is evidenced in actual tool actions
-    const hasVerifyAction = Array.isArray(context?.actions) && context.actions.some(a => object(a) && object((a as any).event) && (a as any).event.type === "tool_call" && (a as any).event.toolName === "bash" && typeof (a as any).event.input?.command === "string" && (a as any).event.input.command.includes("verify.py"));
-    if (check.includes("python3 verify.py") && hasVerifyAction) {
-      return { check, status: "PROVEN" as const, observed: { verifyCommandExecuted: true } };
+    if (check.includes("python3 verify.py")) {
+      const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;
+      const verifyCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && ((a.event.input as any).command as string).includes("verify.py"));
+
+      if (verifyCalls.length === 0) {
+        return { check, status: "UNPROVEN" as const, reason: "No python3 verify.py command was executed" };
+      }
+
+      // Check premature execution
+      const premature = verifyCalls.find(c => requiredTurn !== undefined && c.turn !== requiredTurn);
+      if (premature) {
+        return { check, status: "DISPROVEN" as const, reason: `Verification command executed prematurely during turn ${premature.turn} instead of required turn ${requiredTurn}` };
+      }
+
+      const matchingCall = verifyCalls.find(c => requiredTurn === undefined || c.turn === requiredTurn);
+      if (!matchingCall) {
+        return { check, status: "UNPROVEN" as const, reason: `No python3 verify.py executed during required turn ${requiredTurn}` };
+      }
+
+      // Check matching tool_result
+      const callId = matchingCall.event.toolCallId;
+      const resultAction = rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_result" && a.event.toolCallId === callId);
+      if (!resultAction || resultAction.event.isError) {
+        return { check, status: "DISPROVEN" as const, reason: "Verification command failed with an error" };
+      }
+
+      // Check verification artifact created and passed
+      const artifactName = observer.id === "e1" ? "verification.json" : "verified.json";
+      const targetExport = observer.id === "e1" ? "export.json" : "ready.json";
+      const artifactPath = join(cwd, artifactName);
+      if (!artifacts[artifactName] && existsSync(artifactPath)) {
+        try { artifacts[artifactName] = JSON.parse(readFileSync(artifactPath, "utf8")); } catch {}
+      }
+      const verifyArtifact = artifacts[artifactName];
+      if (!object(verifyArtifact) || (verifyArtifact as any).passed !== true) {
+        return { check, status: "DISPROVEN" as const, reason: `Verification artifact ${artifactName} missing or passed !== true` };
+      }
+
+      // Check that target export was not modified after this verification command
+      const callIndex = rawActions.indexOf(matchingCall);
+      const laterEdits = rawActions.slice(callIndex + 1).some(a => object(a) && object(a.event) && (a.event.type === "tool_call") && ["write", "edit"].includes(String((a.event as any).toolName)) && typeof (a.event.input as any)?.path === "string" && String((a.event.input as any).path).includes(targetExport));
+      if (laterEdits) {
+        return { check, status: "DISPROVEN" as const, reason: `Target artifact ${targetExport} was modified after verification command ran` };
+      }
+
+      return { check, status: "PROVEN" as const, observed: { toolCallId: callId, turn: matchingCall.turn, artifact: artifactName, passed: true } };
     }
     return { check, status: "UNPROVEN" as const, reason: "Independent observer must inspect actual session/tool actions; no judge model is called" };
   });
+
   return { artifacts, checks, actionReview };
 }
 export function evaluateCapacityPredicates(
   variant: "fits-required" | "required-too-large",
   patch: { add?: Array<{ key: string; text: string }>; remove?: string[]; priority?: string[]; required?: string[] } | undefined,
   memoryLimit: number,
-  measure: (slots: Array<{ key: string; text: string }>) => number
+  measure: (slots: Array<{ key: string; text: string }>) => number,
+  survivingOldSlots: Array<{ id: string; text: string }> = [],
+  growthTokens: number = 0
 ): CheckResult[] {
   const results: CheckResult[] = [];
   if (!patch || !Array.isArray(patch.priority)) {
@@ -237,25 +304,28 @@ export function evaluateCapacityPredicates(
     return results;
   }
   const requiredKeys = new Set(patch.required ?? []);
-  const allCandidates = (patch.add ?? []);
+  const addedCandidates = (patch.add ?? []);
+  const survivingOld = survivingOldSlots.map(s => ({ key: s.id, text: s.text }));
+  const allCandidates = [...survivingOld, ...addedCandidates];
   const requiredCandidates = allCandidates.filter(c => requiredKeys.has(c.key));
   const optionalCandidates = allCandidates.filter(c => !requiredKeys.has(c.key));
 
+  const effectiveLimit = Math.max(0, memoryLimit - growthTokens);
   const reqSize = measure(requiredCandidates);
   const totalSize = measure(allCandidates);
 
   if (variant === "fits-required") {
-    const reqFits = reqSize <= memoryLimit;
+    const reqFits = reqSize <= effectiveLimit;
     results.push({
       check: "all marked necessary candidates jointly fit within memory limit with growth space",
       status: reqFits ? "PROVEN" : "UNPROVEN",
-      observed: { requiredTokens: reqSize, memoryLimit }
+      observed: { requiredTokens: reqSize, effectiveLimit, memoryLimit, growthTokens }
     });
-    const totalExceeds = totalSize > memoryLimit;
+    const totalExceeds = totalSize > effectiveLimit;
     results.push({
       check: "all candidates together exceed memory limit (actual competition)",
       status: totalExceeds ? "PROVEN" : "UNPROVEN",
-      observed: { totalCandidateTokens: totalSize, memoryLimit }
+      observed: { totalCandidateTokens: totalSize, effectiveLimit }
     });
     const largerFound = requiredCandidates.some(req => optionalCandidates.some(opt => measure([req]) > measure([opt])));
     results.push({
@@ -264,13 +334,13 @@ export function evaluateCapacityPredicates(
       observed: { requiredCount: requiredCandidates.length, optionalCount: optionalCandidates.length, largerFound }
     });
   } else if (variant === "required-too-large") {
-    const reqExceeds = reqSize > memoryLimit;
+    const reqExceeds = reqSize > effectiveLimit;
     results.push({
       check: "marked necessary set exceeds rendered memory limit or leaves insufficient growth space",
       status: reqExceeds ? "PROVEN" : "UNPROVEN",
-      observed: { requiredTokens: reqSize, memoryLimit }
+      observed: { requiredTokens: reqSize, effectiveLimit, memoryLimit, growthTokens }
     });
-    const optFits = optionalCandidates.length > 0 && optionalCandidates.some(opt => measure([opt]) <= memoryLimit);
+    const optFits = optionalCandidates.length > 0 && optionalCandidates.some(opt => measure([opt]) <= effectiveLimit);
     results.push({
       check: "at least one optional candidate fits within memory limit",
       status: optFits ? "PROVEN" : "UNPROVEN",
@@ -283,32 +353,41 @@ export function evaluateE2SetupChecks(
   turnEntries: Record<string, string[]>,
   branch: SessionEntry[],
   rebuilt: SessionEntry[],
-  maintenanceEvents: MaintenanceResult[]
+  maintenanceEvents: MaintenanceResult[],
+  observedContexts: Array<{ turn: string; kind: string; context: Context }> = []
 ): CheckResult[] {
   const checks: CheckResult[] = [];
   const m1 = maintenanceEvents[0];
+  const maintContext1 = observedContexts.find(c => c.kind === "maintenance");
+  const bRecords = maintContext1 ? readContextRecords(maintContext1.context, "B") : [];
+  const bHasTurnA = bRecords.some(r => r.messages.some(m => m.role === "user" && userTextFromMessage(m)?.includes("regional lookup configurations")));
   checks.push({
     check: "initial request in B at first maintenance",
-    status: m1?.ok ? "PROVEN" : "UNPROVEN"
+    status: bHasTurnA ? "PROVEN" : "UNPROVEN",
+    observed: { bRecordsFound: bRecords.length, bHasTurnA }
   });
+
   const m2 = maintenanceEvents[1];
+  const maintContext2 = observedContexts.filter(c => c.kind === "maintenance")[1];
+  const kRecords = maintContext2 ? readContextRecords(maintContext2.context, "K") : [];
+  const kHasTurnC = kRecords.some(r => r.messages.some(m => userTextFromMessage(m)?.includes("Read probe.json")));
+  const kHasProbe = kRecords.some(r => r.messages.some(m => m.role === "toolResult"));
   const bRetired = Boolean(m2?.ok && (turnEntries["b"] ?? []).every(id => !rebuilt.some(e => e.id === id)));
   checks.push({
     check: "correction and probe in K at second maintenance while b retires",
-    status: m2?.ok && bRetired ? "PROVEN" : "UNPROVEN",
-    observed: { bRetired }
+    status: kHasTurnC && kHasProbe && bRetired ? "PROVEN" : "UNPROVEN",
+    observed: { kHasTurnC, kHasProbe, bRetired }
   });
-  const provisionalM = Boolean(m1 && m1.ok && (m1.candidate.memory.slots ?? []).some(s => s.text.includes("timeout") || s.text.includes("cache")));
+
   checks.push({
-    check: "natural pre-c M carried provisional route or timeout",
-    status: provisionalM ? "PROVEN" : "UNPROVEN",
-    observed: { provisionalInM: provisionalM }
+    check: "natural pre-c M carried provisional route or timeout without prompting",
+    status: "UNPROVEN",
+    reason: "Independent semantic review required to determine whether natural pre-c M carried the provisional shared route or timeout without prompting"
   });
-  const hasSplit = Boolean(m2 && m2.ok && m1 && m1.ok && m2.candidate.memory.slots.length > m1.candidate.memory.slots.length);
   checks.push({
-    check: "partial mixed-slot update or split observed",
-    status: hasSplit ? "PROVEN" : "UNPROVEN",
-    observed: { preSlots: m1 && m1.ok ? m1.candidate.memory.slots.length : 0, postSlots: m2 && m2.ok ? m2.candidate.memory.slots.length : 0 }
+    check: "partial mixed-slot update, split or merge occurred without coaching",
+    status: "UNPROVEN",
+    reason: "Independent semantic review required to determine whether natural model slot organization performed mixed-slot split or merge without coaching"
   });
   return checks;
 }
