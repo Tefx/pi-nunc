@@ -1809,7 +1809,7 @@ phases:
     claimed_at: '2026-09-08T03:58:25.715202Z'
 - id: nunc-extraction
   name: 面向续做的提取策略、必要项保护与原生对照
-  status: pending
+  status: in_progress
   gate: 交付策略、引擎、可复用比较能力及真实观察四个结果；本阶段不重复作项目接受。唯一新增最终整合决定由依赖本阶段和 nunc-ui 的 nunc.extraction-acceptance
     承担。必要观察仍未证明时保持未完成，不把 producer 或 runner 退出当成效果接受。
   context: "当前授权为用户先更新文档再创建实施计划，文档已提交；本次不 claim/dispatch/实施/安装或调用真实模型。未来执行以各记录 owner\
@@ -1843,7 +1843,7 @@ phases:
   steps:
   - id: nunc.extraction-policy
     name: 任务焦点、多 slot 提取策略与独立续做场景
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/**\", \"tests/scenarios/**\", \"docs/POLICY.md\"\
       , \"docs/EXTRACTION.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -1873,6 +1873,8 @@ phases:
     - tests/scenarios/inputs.json
     - tests/scenarios/observer.json
     agent: llm-agent-expert
+    claimed_by: llm-agent-expert
+    claimed_at: '2026-09-08T10:12:57.925605Z'
   - id: nunc.extraction-engine
     name: 必要项共同保留、协议迁移与原生失败恢复
     status: pending
