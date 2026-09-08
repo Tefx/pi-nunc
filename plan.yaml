@@ -2135,7 +2135,7 @@ phases:
     agent: integration-verifier
   - id: nunc.extraction-runner-repair
     name: 修复比较执行授权、原生切轮生命周期与资格诊断
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/live/**\", \"tests/scenarios/**\"\
       , \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\", \"docs/EXTRACTION.md\"]\n  blocked_paths:\
@@ -2216,6 +2216,28 @@ phases:
     agent: principal-engineer
     claimed_by: principal-engineer
     claimed_at: '2026-09-08T19:51:46.641147Z'
+    done_at: '2026-09-08T20:42:34.712486+00:00'
+    evidence: Integrated exact candidate58816ecc51cd234dc40d7df107b766a68c01ab50 via
+      fast-forward from bbac7f8d7ea899d9dccbd561c892d99129606968; retained refs/retained/nunc-extraction-runner-repair.
+      Principal delivered original-fixture preexecution authorization, public post-commit
+      E3 configuration restoration/consumed-boundary restart and bounded repeat refusal,
+      truthful E4 missing/invalid qualification, diagnostics and isolated existing
+      build-parity negative. Independent integration-verifier report COMPLETED/PROVEN
+      all7 requirements/no findings; validator valid:true binding_checked:true POSITIVE_EVIDENCE.
+      Binding /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-runner-repair-acceptance-1b6tdlxs/review-binding.json;
+      report/evidence /tmp/larva-agent-artifacts/nunc-runner-repair-acceptance-58816ec/{verifier-report.json,evidence-index.md,controlled-observations.json}.
+      Fresh stock script authorization/E3/E4 tests prove denied sentinel execution
+      before effects, original artifact repair/reverification, complete split/suffix/restart
+      and bounded failure.135 reservations135terminals,26hosts absent,17fixture roots
+      removed,unknown usage/billing preserved. Required full381/381 across47files
+      reused on unchanged exact target at .vectl/worktrees/nunc-extraction-runner-repair/.scratch/runner-repair/{required-all.log,required-all.exit,evidence-index.md};
+      independent verifier inspected source and applicability. No product engine/pi/ui/policy
+      semantics changed, no paid calls or consumed-target replay. UI DONE and manual
+      acceptance preserved. Retained real current/candidate low-usage E3 arithmetic
+      remains infeasible, prior pre-roll task violations/semantic gaps and native
+      rendered-memory parity remain unresolved for original runtime consumer; this
+      completion proves runner capability only, not real-model quality or final project
+      acceptance.
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
