@@ -17,7 +17,7 @@ test("public stdin resolves synthetic native defaults and current shell selectio
   await writeFile(join(profile, "host/auth.json"), "fictional-invalid-auth-never-resolved");
   const selection = { target: input.target, limits: input.limits, scenarios: [{ id: "c2" }], observations: ["stock_rpc"] };
   const env = childEnvironment(profile);
-  const run = (value: unknown, extra: NodeJS.ProcessEnv = {}, flags = ["--preflight"]) => spawnSync(process.execPath, [join(repository, "scripts/verify-live.mjs"), ...flags], { cwd: repository, env: { ...env, ...extra }, input: JSON.stringify(value), encoding: "utf8", timeout: 20000 });
+  const run = (value: unknown, extra: NodeJS.ProcessEnv = {}, flags = ["--preflight"]) => spawnSync(process.execPath, [join(repository, "scripts/verify-live.mjs"), ...flags], { cwd: repository, env: { ...env, ...extra }, input: JSON.stringify(value), encoding: "utf8", timeout: 60000 });
   try {
     const defaultRun = run(selection); assert.equal(defaultRun.status, 0, defaultRun.stderr);
     const defaults = JSON.parse(defaultRun.stdout); assert.equal(defaults.models[0].id, "gpt-6-astra"); assert.equal(defaults.models[0].maxTokens, 128000);

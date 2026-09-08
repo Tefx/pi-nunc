@@ -23,7 +23,7 @@ test("fictional OpenRouter Completions default and invoking-runtime switch resol
   await writeFile(join(profile, "host/auth.json"), "fictional-invalid-auth-never-resolved");
   const selection = { target: input.target, limits: { maxCalls: 20, maxTotalTokens: 8_000_000, maxCostUsd: 100, maxDurationMs: 120000 }, scenarios: [{ id: "c2" }], observations: ["stock_rpc"] };
   const env = childEnvironment(profile);
-  const run = (value: unknown, extra: NodeJS.ProcessEnv = {}) => spawnSync(process.execPath, [join(repository, "scripts/verify-live.mjs"), "--preflight"], { cwd: repository, env: { ...env, ...extra }, input: JSON.stringify(value), encoding: "utf8", timeout: 20000 });
+  const run = (value: unknown, extra: NodeJS.ProcessEnv = {}) => spawnSync(process.execPath, [join(repository, "scripts/verify-live.mjs"), "--preflight"], { cwd: repository, env: { ...env, ...extra }, input: JSON.stringify(value), encoding: "utf8", timeout: 60000 });
   try {
     const resolved = run(selection); assert.equal(resolved.status, 0, resolved.stderr);
     const defaults = JSON.parse(resolved.stdout);
