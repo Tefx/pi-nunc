@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseInput, preflight, type RunInput } from "../../src/live/contract.js";
 import { liveExtensionFlags } from "../../src/live/host.js";
@@ -37,8 +37,17 @@ test("comparison preflight validates modes, all prepared targets, baseline ident
   const missing = structuredClone(input); delete (missing.comparison as any).targets.current; assert.throws(() => parseInput(missing));
   for (const repo of ["/path/does/not/exist", repository]) { const bad = structuredClone(input); bad.comparison!.targets.current.repository = repo; await assert.rejects(preflight(bad, repository)); }
   const mismatch = structuredClone(input); mismatch.comparison!.targets.candidate.repository = baseline; await assert.rejects(preflight(mismatch, repository), /Candidate target/);
-  const extra = join(baseline, "dist/src/stale-extra-file.js"); await writeFile(extra, "export const stale = true;");
-  try { await assert.rejects(preflight(input, repository), /Stale extra JS|BUILD/); } finally { await rm(extra); }
+  // Other stock CLI tests read the shared baseline concurrently. Corrupt only this test's target.
+  const isolated = await mkdtemp(join(repository, ".scratch/stale-build-"));
+  try {
+    const clone = spawnSync("git", ["clone", "--shared", "--no-hardlinks", baseline, isolated], { env, encoding: "utf8" });
+    assert.equal(clone.status, 0, clone.stderr);
+    await symlink(join(baseline, "node_modules"), join(isolated, "node_modules"), "dir");
+    await cp(join(baseline, "dist"), join(isolated, "dist"), { recursive: true });
+    const badBuild = structuredClone(input); badBuild.comparison!.targets.current.repository = isolated;
+    await writeFile(join(isolated, "dist/src/stale-extra-file.js"), "export const stale = true;");
+    await assert.rejects(preflight(badBuild, repository), /Stale extra JS|BUILD/);
+  } finally { await rm(isolated, { recursive: true, force: true }); }
   const receipt = await preflight(input, repository); assert.equal(receipt.pi, "0.85.1"); assert.equal(receipt.callsMade, 0);
   assert.equal(receipt.version, 1); assert.equal(typeof receipt.binding, "string"); assert(receipt.binding.length > 0);
   input.scenarios = [{ id: "e3", config: input.scenarios[0]!.config }];

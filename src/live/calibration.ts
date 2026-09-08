@@ -51,7 +51,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     const trigger = Math.min(config.triggerTokens, mainInput);
     const fixed = requestTokens(mainContext(source.fixed, [], []), config.imageTokens) + config.main.extraInputTokens;
     const available = trigger - fixed;
-    requireValue(available > 0, "CALIBRATION", "Effective F exhausts the work budget");
+    requireValue(available > 0, "CALIBRATION", `Effective F exhausts the work budget: F=${fixed}, H=${trigger}, mainInputLimit=${mainInput}`);
     const memoryLimit = Math.floor(Math.min(config.memory.fraction * available, config.memory.maxTokens ?? Infinity));
     const denominator = available - memoryLimit;
     const suffix = new Array<number>(active.length + 1).fill(0);
@@ -88,7 +88,8 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
         accounting: { effectiveTrigger: trigger, fixedTokens: fixed, memoryLimit, keepTarget, keptTokens: chosen.keptTokens, mainInputLimit: mainInput, extractionInputLimit: extractionInput, fullExtractionTokens: fullExtraction, extractionTokens: extraction, normalExtractionAtTrigger: normalAtTrigger, growthReserve: config.growthTokens },
       };
     }
-    throw new RunnerError("CALIBRATION", "No legal retained boundary within the authorized fraction range satisfies actual turn placement and growth");
+    const wanted = target ? active.findIndex(e => e.entryId === target.firstKeptEntryId) : -1;
+    throw new RunnerError("CALIBRATION", `No legal retained boundary within the authorized fraction range satisfies actual turn placement and growth: H=${trigger}, F=${fixed}, memoryLimit=${memoryLimit}, growth=${config.growthTokens}, requestedK=${wanted >= 0 ? suffix[wanted] : "unselected"}, legalCuts=${cuts.length}, feasibleCuts=${feasible.length}`);
   } catch (error) {
     if (error instanceof RunnerError) throw error;
     throw new RunnerError("CALIBRATION", error instanceof Error ? error.message : "Placement accounting failed before any maintenance call");

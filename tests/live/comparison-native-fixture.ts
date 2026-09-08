@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { repository } from "./fixtures.js";
 
 /** Protocol fixtures execute tools and native scheduling; generated content makes no model-quality claim. */
-export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure"; tooLarge?: boolean; earlyVerify?: boolean } = {}) {
+export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure" | "long-suffix" | "low-native" | "repeat-threshold" | "restart-threshold"; tooLarge?: boolean; earlyVerify?: boolean; invalidCapacity?: boolean } = {}) {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, timeoutMs: 300000 });
   f.limits = { ...f.limits, maxCalls: 300, maxTotalTokens: 24000000 }; // Five selections × three groups × two modes, including tool continuations.
@@ -17,8 +17,10 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
   f.response = (row: any, source: any) => {
     const messages = row.payload.messages ?? row.payload.input ?? [], last = messages.at(-1);
     const serialized = messages.some((m: any) => text(m).includes("<conversation>"));
+    if (serialized && current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
     if (serialized) return "## Goal\nContinue the authorized local task.\n\n## Progress\nThe preceding ordinary turns completed. Preserve the remaining work and original restrictions.\n\n## Next Steps\nContinue only when the ordinary user turn authorizes it.\n\n## Critical Context\nThe task files remain available through the ordinary file tools. This controlled summary exercises the stock serializer and carries no quality claim.";
     if (source) {
+      if (current?.scenario === "e4" && options.invalidCapacity) return "Incomplete capacity response";
       if (current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
       const required = JSON.stringify(row.payload).includes("four required fields");
       const add = current?.scenario === "e4" ? [{ key: "req", text: "n".repeat(options.tooLarge ? 1000 : 240) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "note", text: "Controlled protocol note." }];
@@ -37,11 +39,17 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
     if (key === "e2:d") return n === 0 ? write("note.txt", "UTC is a time standard.") : "Written.";
     if (key === "e2:e") return n === 0 ? write("east.json", { route: "direct", timeoutMs: 650, crossTenantSharing: false, reason: "Probe excludes cache sharing." }) : "Written.";
     if (key === "e3:a") {
-      if (n > 0) return { text: "Draft remains pending.", input: 2000 };
+      if (n > 0) {
+        if (["long-suffix", "low-native", "repeat-threshold"].includes(options.e3 ?? "")) {
+          const response = n === 1 ? { tool: { name: "read", input: { path: "drafts/export-v2.json" } } } : n === 2 ? write("notes.txt", "Draft inspected; awaiting permission.") : n === 3 ? { tool: { name: "read", input: { path: "notes.txt" } } } : { text: "Draft remains pending." };
+          return { ...response, input: options.e3 === "repeat-threshold" ? 30000 : 20000 };
+        }
+        return { text: "Draft remains pending.", input: 2000 };
+      }
       const input = options.e3 === "failed" ? { path: "investigation.json", offset: 100 } : { path: options.e3 === "wrong" ? "drafts/export-v2.json" : "investigation.json" };
-      return { input: options.e3 === "small" ? 200 : 15000, tools: [{ name: "read", input }, ...(options.e3 === "siblings" ? [{ name: "read", input: { path: "drafts/export-v2.json" } }] : [])] };
+      return { input: options.e3 === "small" ? 200 : options.e3 === "low-native" ? 900 : 15000, tools: [{ name: "read", input }, ...(options.e3 === "siblings" ? [{ name: "read", input: { path: "drafts/export-v2.json" } }] : [])] };
     }
-    if (key === "e3:b") return n === 0 ? write("ready.json", { route: "stream", records: [9, null, 4], status: "ready" }) : n === 1 ? verify : { text: "Ready checked.", input: 2000 };
+    if (key === "e3:b") return n === 0 ? write("ready.json", { route: "stream", records: [9, null, 4], status: "ready" }) : n === 1 ? verify : { text: "Ready checked.", input: options.e3 === "restart-threshold" ? 30000 : 2000 };
     if (key === "e4:b") return n === 0 ? write("sum.json", 42) : "Written.";
     if (key === "e4:c") return n === 0 ? write("routing.json", lanes) : "Written.";
     return "Understood; awaiting continuation.";

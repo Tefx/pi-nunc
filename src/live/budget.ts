@@ -16,7 +16,7 @@ export function readLedger(path: string): LedgerRecord[] {
   requireValue(!text || text.endsWith("\n"), "RECONCILIATION", "Incomplete ledger write; do not retry");
   return text.trim() ? text.trim().split("\n").map(line => JSON.parse(line) as LedgerRecord) : [];
 }
-const LOCAL_GATE = new Set(["PAYLOAD", "ENDPOINT", "CALL_LIMIT", "MODEL", "AUTHORIZATION", "OUTPUT_LIMIT", "INPUT_LIMIT", "COST_LIMIT", "TOKEN_LIMIT", "TIME_LIMIT", "CONCURRENCY", "TERMINAL_FAILURE", "BILLING"]);
+const LOCAL_GATE = new Set(["PREPARATION", "PAYLOAD", "ENDPOINT", "CALL_LIMIT", "MODEL", "AUTHORIZATION", "OUTPUT_LIMIT", "INPUT_LIMIT", "COST_LIMIT", "TOKEN_LIMIT", "TIME_LIMIT", "CONCURRENCY", "TERMINAL_FAILURE", "BILLING"]);
 const NETWORK_CODE = /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EPIPE|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ERR_SOCKET_CONNECTION_TIMEOUT|UND_ERR_[A-Z0-9_]{1,40}|AbortError|TimeoutError)$/;
 function httpStatusOf(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599 ? value : undefined;

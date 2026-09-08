@@ -41,6 +41,7 @@ export interface SegmentReport {
   rollovers?: RolloverObservation[] | undefined;
   requests?: RequestObservation[];
   preparations?: Array<PreparedBoundary | { failure: string; turn: string }>;
+  configurationChanges?: Array<{ phase: "boundary-prepare" | "boundary-restore"; from: Selection["config"]; to: Selection["config"] }>;
   callIds?: number[];
   calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>;
   preparationFailure?: { afterTurn: string; message: string } | undefined;
@@ -113,6 +114,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   let runConfig = structuredClone(selection.config);
   let effectiveConfig = runConfig.nunc;
   let prepared: PreparedBoundary | undefined;
+  let boundaryRestoreConfig: Selection["config"] | undefined;
+  let boundaryFailure: string | undefined;
   let pendingAdmission: any;
   report.rollovers = []; report.requests = []; report.preparations = [];
   const boundaryControl = observer.controls.find(c => c.action === "rollover_at_tool_boundary");
@@ -123,6 +126,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       model: runtime!.model!, fixed: runtime!.fixed, ...(targetRepository ? { repository: targetRepository } : {}), signal,
       ...(trigger ? { trigger } : {}), matched: mode === "matched", ...(job.matchReferences?.[report.rollovers!.length] ? { reference: job.matchReferences[report.rollovers!.length]! } : {}) });
     report.preparations!.push(result);
+    (report.configurationChanges ??= []).push({ phase: "boundary-prepare", from: structuredClone(runConfig), to: structuredClone(result.config) });
     runConfig = result.config; effectiveConfig = runConfig.nunc; prepared = result;
     if (result.calibration) report.calibrations.push({ ...result.calibration, effectiveConfig: structuredClone(effectiveConfig) });
     await runtime!.reconfigure(runConfig);
@@ -146,20 +150,40 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     runtime = await openHost({ repository: input.target.repository, input, selection: { ...selection, config: runConfig }, caseRoot, modelTargets: overrides.models ?? selectedModels(input), deadline: job.deadline, signal,
       group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
-      boundary, verification: scenario.files["verify.py"] ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
+      boundary, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
       onBoundary: async data => {
         try {
+          boundaryRestoreConfig = structuredClone(runConfig);
           const result = await prepare(data.branch, data.active, boundaryControl!, { callId: data.triggerId, requestText: boundary!.requestText,
             path: boundaryControl!.trigger!.pathArgument, cwd: join(caseRoot, "task"), fixtureContent: boundary!.fixtureContent, contextTokens: data.usage?.tokens ?? null });
           await runtime!.releaseBoundary({ firstKeptEntryId: result.firstKeptEntryId });
         } catch (error) {
           const failure = error instanceof Error ? error.message : "Boundary preparation failed";
+          boundaryFailure = failure;
           report.preparations!.push({ failure, turn });
           report.prerequisites.push({ check: "actual mid-turn preparation", status: "UNPROVEN", reason: failure });
           await runtime!.releaseBoundary({ stop: failure });
         }
       },
+      onBoundaryRestore: async () => {
+        try {
+          requireValue(boundaryRestoreConfig, "PREPARATION", "Missing pre-boundary configuration");
+          const from = structuredClone(runConfig);
+          runConfig = structuredClone(boundaryRestoreConfig); effectiveConfig = runConfig.nunc;
+          await runtime!.reconfigure(runConfig);
+          (report.configurationChanges ??= []).push({ phase: "boundary-restore", from, to: structuredClone(runConfig) });
+          await runtime!.releaseBoundary({ restored: true });
+        } catch {
+          boundaryFailure ??= "Boundary configuration restoration failed";
+          await runtime!.releaseBoundary({ stop: boundaryFailure });
+        }
+      },
       onObservation: (type, data) => {
+        if (type === "stopped") boundaryFailure ??= data.message;
+        if (boundary && type === "lifecycle") {
+          if (data.stopped) boundaryFailure ??= data.stopped;
+          if (data.phase === "maintenance-failed") boundaryFailure ??= "Automatic boundary maintenance failed; suffix is unproven";
+        }
         if (type === "preparation") {
           report.rollovers!.push({ ...data, turn, config: structuredClone(runConfig), ...(prepared ? { prepared } : {}), callIds: [] });
           prepared = undefined;
@@ -205,6 +229,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       await session.prompt(inputTurn.text, { expandPromptTemplates: false });
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
+      requireValue(!boundaryFailure, "PREPARATION", boundaryFailure ?? "Boundary preparation failed");
       const last = session.messages.findLast(m => m.role === "assistant");
       requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", last?.role === "assistant" && last.errorMessage ? last.errorMessage : "Main run did not end in a complete stop state");
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
@@ -337,7 +362,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                   capacityFailure = { snapshots: structuredClone(previousSnapshots), active: structuredClone(beforeActive), maintenanceCount: report.maintenance.length };
                 }
                 report.prerequisites.push({ check: "marked necessary set exceeding limit fails with CAPACITY without commit", status: reqPass ? "PROVEN" : "UNPROVEN", observed: { code: result && !result.ok ? result.code : undefined, required: req } });
-                report.rolloverQuality = { check: "successful required persisted rollover", status: "UNPROVEN", reason: "Capacity failure correctly rejected candidate; successful rollover is not claimed" };
+                report.rolloverQuality = { check: "successful required persisted rollover", status: "UNPROVEN", reason: reqPass ? "Observed required CAPACITY failure without a successful rollover; qualification and recovery are separate checks" : "No observed required CAPACITY failure; capacity qualification and successful rollover remain unproven" };
+                if (!reqPass) throw new RunnerError("MAINTENANCE", result && !result.ok ? `${result.code}: ${result.message}` : "No current maintenance result or complete response; required-capacity failure is unproven");
               } else {
                 report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: result && !result.ok ? `${result.code}: ${result.message}` : "Pi hook did not produce a successful Nunc snapshot" });
                 if (selection.variant === "capacity") report.prerequisites.push({ check: "full extraction demonstrably exceeds effective input capacity", status: result?.observations.accounting && result.observations.accounting.fullExtractionTokens > result.observations.accounting.extractionInputLimit ? "PROVEN" : "UNPROVEN", observed: result?.observations.accounting ?? null });
@@ -423,6 +449,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     if (error instanceof RunnerError) report.diagnostic = error.message;
   }
   finally {
+    if (selection.id === "e4" && group === "candidate" && !report.setupChecks?.some(c => c.check === "capacity predicate bound to one frozen request and complete response")) {
+      (report.setupChecks ??= []).push({ check: "capacity predicate bound to one frozen request and complete response", status: "UNPROVEN", reason: "No qualifying current maintenance transaction was observed" });
+    }
     if (runtime) {
       report.commands = runtime.commands.slice();
       if (runtime.session.sessionFile) report.sessionFile = runtime.session.sessionFile;

@@ -1,20 +1,22 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Control } from "./scenarios.js";
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string }
+export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
+export function observerState(source: string): ObserverState | undefined { return states.get(source); }
 import { boundedProvider, BudgetLedger } from "./budget.js";
 import { RunnerError, requireValue, type RunInput } from "./contract.js";
-import { toolPath } from "./tool-path.js";
+import { authorizeVerification, toolPath } from "./tool-path.js";
 
 function toolBlockReason(error: unknown, aborted: boolean): string {
   if (aborted || (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) return "Tool action after deadline";
   if (error instanceof RunnerError && error.code === "TOOL_COMMAND") return "Tool kind or command is outside authorization: only scenario-local read/write/edit and fixture verification command 'python3 verify.py' are permitted";
+  if (error instanceof RunnerError && error.code.startsWith("SCRIPT_")) return error.message;
   if (error instanceof RunnerError && error.code === "TOOL_KIND") return "Tool kind is outside authorization";
   if (error instanceof RunnerError && error.code === "WRITE_SIZE") return "Artifact write exceeds bound";
   if (error instanceof RunnerError && error.code === "TOOL_PATH") return "Tool path is outside scenario task files";
@@ -27,11 +29,11 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; verification?: { script: string; artifact: string } };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string } };
   const signal = AbortSignal.timeout(Math.max(1, binding.deadline - Date.now()));
   const log = (type: string, data: unknown) => appendFileSync(binding.events, JSON.stringify({ type, data }) + "\n", { mode: 0o600 });
   const ledger = new BudgetLedger(binding.ledger, binding.input.limits, binding.deadline, signal, binding.caseKey);
-  const state = states.get(source) ?? { bases: new WeakMap<Provider, Provider>(), occurrence: 0 };
+  const state = states.get(source) ?? { bases: new WeakMap<Provider, Provider>(), occurrence: 0, boundaryDone: binding.boundaryCompleted === true, boundaryCommitted: binding.boundaryCompleted === true };
   states.set(source, state);
   pi.on("session_start", (_event, ctx) => {
     state.ctx = ctx;
@@ -41,7 +43,10 @@ export default function observer(pi: ExtensionAPI): void {
       while (state.bases.has(base)) base = state.bases.get(base)!;
       const decorated = boundedProvider(base, binding.models.filter(m => m.provider === id), ledger, {
         classify: simple => state.compacting || !simple ? "maintenance" : "main",
-        beforeRequest: () => requireValue(!state.stop, "PREPARATION", state.stop ?? "Boundary preparation failed"),
+        beforeRequest: () => {
+          if (state.stop) log("stopped", { code: "PREPARATION", message: state.stop });
+          requireValue(!state.stop, "PREPARATION", state.stop ?? "Boundary preparation failed");
+        },
         onRequest: data => log("request", { ...data, thinking: state.ctx?.thinkingLevel ?? null }),
         onPayload: data => log("request-cap", data),
         checkAuth: model => { if (model.provider === "openai-codex") requireValue(state.ctx!.modelRegistry.isUsingOAuth(model), "AUTHORIZATION", "Selected Codex route requires native OAuth in the isolated host"); },
@@ -76,19 +81,21 @@ export default function observer(pi: ExtensionAPI): void {
     log("preparation", { reason: event.reason, model: ctx.model, thinking: ctx.thinkingLevel,
       preparation: { ...event.preparation, fileOps: Object.fromEntries(Object.entries(event.preparation.fileOps).map(([k, v]) => [k, [...v]])) },
       branch: event.branchEntries, active: ctx.sessionManager.buildContextEntries() });
-    if (binding.boundary && (!state.boundaryDone || state.expectedFirst && state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop = "Native preparation did not select the eligible tool boundary";
+    if (binding.boundary && state.boundaryCommitted) state.stop ??= "E3 requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
+    if (binding.boundary && (!state.boundaryDone || state.expectedFirst && state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select the eligible tool boundary";
     log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryDone: state.boundaryDone, expectedFirst: state.expectedFirst, stopped: state.stop });
     if (state.stop) return { cancel: true };
   });
   pi.on("session_compact", (event, ctx) => {
     state.compacting = false;
     log("commit", { reason: event.reason, snapshot: event.compactionEntry, rebuilt: ctx.sessionManager.buildContextEntries() });
+    if (state.expectedFirst) { state.boundaryCommitted = true; state.restorePending = true; }
     delete state.expectedFirst;
     log("lifecycle", { phase: "maintenance-end", reason: event.reason, willRetry: event.willRetry });
   });
   pi.on("session_compact_failed", event => {
     state.compacting = false;
-    if (state.expectedFirst) state.stop = "Automatic boundary maintenance failed; suffix is unproven";
+    if (binding.boundary) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
     log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry });
   });
   pi.on("turn_end", async (event, ctx) => {
@@ -115,7 +122,9 @@ export default function observer(pi: ExtensionAPI): void {
           "TOOL_COMMAND",
           "Only authorized fixture verification command 'python3 verify.py' is permitted"
         );
-        requireValue(existsSync(join(binding.cwd, "verify.py")), "TOOL_PATH", "verify.py missing in task directory");
+        const caller = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === event.toolCallId));
+        const writes = caller?.type === "message" && caller.message.role === "assistant" ? caller.message.content.flatMap(b => b.type === "toolCall" && ["write", "edit"].includes(b.name) ? [b.arguments.path] : []) : [];
+        await authorizeVerification(binding.cwd, binding.verification?.script, writes);
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       } else {
         requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL_KIND", "Only scenario-local read/write/edit/bash(verify.py) are authorized");
@@ -123,7 +132,11 @@ export default function observer(pi: ExtensionAPI): void {
         if (event.toolName === "write") requireValue(typeof event.input.content === "string" && Buffer.byteLength(event.input.content) <= 1_000_000, "WRITE_SIZE", "Artifact write exceeds bound");
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       }
-    } catch (error) { return { block: true, reason: toolBlockReason(error, signal.aborted) }; }
+    } catch (error) {
+      const reason = toolBlockReason(error, signal.aborted);
+      log("action", { type: "tool_blocked", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input, reason });
+      return { block: true, reason };
+    }
   });
   pi.on("tool_result", event => {
     let verification: unknown;
@@ -135,9 +148,10 @@ export default function observer(pi: ExtensionAPI): void {
   });
   pi.registerCommand("nunc-observer-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("nunc-observer-release", { handler: async args => {
-    const decision = JSON.parse(args) as { firstKeptEntryId?: string; stop?: string };
-    if (decision.stop) state.stop = decision.stop;
+    const decision = JSON.parse(args) as { firstKeptEntryId?: string; stop?: string; restored?: boolean };
+    if (decision.stop) state.stop ??= decision.stop;
     if (decision.firstKeptEntryId) state.expectedFirst = decision.firstKeptEntryId;
+    if (decision.restored) { state.restorePending = false; log("lifecycle", { phase: "boundary-config-restored" }); }
     state.held?.(); delete state.held;
   } });
   pi.registerCommand("nunc-observer-quit", { handler: async (_args, ctx) => ctx.shutdown() });
