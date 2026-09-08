@@ -1,0 +1,54 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "id": "e1",
+      "files": {
+        "rows.json": "[1,null,3]\n",
+        "verify.py": "import json\nfrom pathlib import Path\np = Path('export.json')\nassert p.exists(), 'export missing'\na = json.loads(p.read_text())\nassert a['records'] == json.loads(Path('rows.json').read_text()), 'records changed'\nassert type(a['retryLimit']) is int and type(a['retryAfterCommit']) is bool, 'invalid retry field types'\nPath('verification.json').write_text(json.dumps({'passed': True, 'artifact': 'export.json'}))\n"
+      },
+      "turns": [
+        {"id": "a", "text": "I need two deliverables: an export.json from rows.json preserving null entries, and a reviewer handoff.json. The export must set retryLimit to exactly 2 and retryAfterCommit to false: retry is allowed only before successful commit. You may edit local draft files; do not publish or delete the input. For now inspect the input and wait. Completion requires the local verification command python3 verify.py, then my separate acceptance. The handoff must distinguish implementation, verification and acceptance; it cannot grant publishing permission."},
+        {"id": "b", "text": "Side question: write units.txt with a brief explanation of KiB versus kB."},
+        {"id": "c", "text": "Continue the export only as far as implementation this turn. Write the draft with records and the two retry fields. Leave verification and the reviewer handoff for later."},
+        {"id": "d", "text": "Another quick calculation: write seconds.json with the number of seconds in 7 minutes."},
+        {"id": "e", "text": "Continue the outstanding work within the existing authority. Write handoff.json with implemented, verified, accepted and publishAllowed booleans, the verified artifact path, and any remaining wait. Do the remaining authorized work before handing off."}
+      ]
+    },
+    {
+      "id": "e2",
+      "files": {
+        "probe.json": "{\"cache\":{\"tested\":true,\"compatible\":false,\"reason\":\"shares entries between tenants\"},\"direct\":{\"tested\":true,\"compatible\":true}}\n"
+      },
+      "turns": [
+        {"id": "a", "text": "Prepare two regional lookup configurations later, east and west. For each use timeoutMs 900 and never allow cross-tenant sharing. My provisional route for both is cache; validation is pending. West additionally requires audit enabled. Do not produce either configuration yet."},
+        {"id": "b", "text": "Write count.json with the number of days in two ordinary weeks."},
+        {"id": "c", "text": "Read probe.json. Its result applies to both regions. Correction for east only: timeoutMs is 650. Cancel the west deliverable; the audit preference was west-only. Keep east pending, with its existing other constraints. Do not write its configuration yet."},
+        {"id": "d", "text": "Write note.txt with one sentence about UTC."},
+        {"id": "e", "text": "Finish the remaining lookup deliverable in east.json with route, timeoutMs, crossTenantSharing and reason fields."}
+      ]
+    },
+    {
+      "id": "e3",
+      "files": {
+        "drafts/export-v2.json": "{\"route\":null,\"records\":[9,null,4],\"status\":\"draft\"}\n",
+        "drafts/export-v1.json": "{\"route\":\"legacy\",\"records\":[9,4],\"status\":\"obsolete\"}\n",
+        "investigation.json": "{\"legacy\":{\"tested\":true,\"compatible\":false,\"reason\":\"drops nulls\"},\"stream\":{\"tested\":true,\"compatible\":true,\"preservesNull\":true}}\n",
+        "verify.py": "import json\nfrom pathlib import Path\na = json.loads(Path('ready.json').read_text())\nroutes = json.loads(Path('investigation.json').read_text())\ndraft = json.loads(Path('drafts/export-v2.json').read_text())\nassert routes[a['route']]['tested'] and routes[a['route']]['compatible']\nassert a['records'] == draft['records']\nassert a['status'] == 'ready'\nPath('verified.json').write_text(json.dumps({'artifact':'ready.json','passed':True}))\n"
+      },
+      "turns": [
+        {"id": "a", "text": "Resume the export from drafts/export-v2.json; v1 is obsolete. Preserve every record including null. Only local draft work is authorized, no publishing. Read investigation.json first, then read the v2 draft and explain the remaining work. The investigation is completed evidence; do not rerun an incompatible route without new evidence. Leave the final ready.json and its python3 verify.py check pending until I say continue."},
+        {"id": "b", "text": "Continue the pending work now. Produce the ready artifact and perform the agreed local check."}
+      ]
+    },
+    {
+      "id": "e4",
+      "files": {},
+      "turns": [
+        {"id": "a", "text": "Prepare a local routing.json later, keyed by lane. Each lane value needs maxC, holdMinutes, fallbackAllowed, and condition. This shipment-specific table overrides ordinary defaults and remains required in full; do not approximate it: amber: 4, 35, false, 'sealed glass only; a broken seal requires hold'; birch: -2, 18, true, 'fallback only before dispatch, never after receipt'; cedar: 6, 42, false, 'humidity above 70 percent requires hold'; dune: 3, 27, true, 'fallback requires two operator approvals'; elm: -5, 16, false, 'never mix with ambient parcels'; fir: 2, 55, true, 'fallback only to a pre-cooled vehicle'; grove: 7, 23, false, 'missing logger requires hold regardless of spot reading'; heath: 1, 48, true, 'fallback before loading only; retain original logger'. Preserve exact numeric limits, negations and conditions. Do not create the final configuration yet. An optional internal label suggestion is 'morning run'; it is expendable and has no operational effect. Wait for my continuation."},
+        {"id": "b", "text": "Write sum.json containing 23 plus 19."},
+        {"id": "c", "text": "Continue the pending routing configuration now, using the agreed shipment conditions."}
+      ]
+    }
+  ]
+}

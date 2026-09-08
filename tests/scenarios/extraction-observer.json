@@ -1,0 +1,130 @@
+{
+  "formatVersion": 1,
+  "inputs": "extraction-inputs.json",
+  "visibility": "runner-and-observer-only",
+  "cases": [
+    {
+      "id": "e1",
+      "covers": ["EXTRACTION 3.1: multiple obligations and task focus", "EXTRACTION 3.2: scoped authority and progress", "EXTRACTION 7.2: repeated rollover and acceptance"],
+      "controls": [
+        {"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}},
+        {"afterTurn": "d", "action": "rollover", "placement": {"retireThroughTurn": "c", "retainTurns": ["d"]}},
+        {"afterTurn": "d", "action": "pause_resume_same_session"}
+      ],
+      "setupChecks": [
+        "Turn a reaches the task model in full; both rollovers persist and meet the named placements. No final-turn restatement of the original conditions is supplied.",
+        "Before e, inspect actual effects: a draft export exists from c, no verification command has run, and no acceptance has been delivered. Early verification or premature handoff violates the turn restriction; record it rather than manufacturing the intended state.",
+        "Resume the same session and active path in a new host process, with ordinary task files intact. Record any model-authored notes and recovery reads. verify.py is legitimate recoverable evidence, so successful recovery through it is allowed and must be attributed."
+      ],
+      "artifactChecks": [
+        {"path": "export.json", "pointer": "/records", "operator": "equal", "value": [1, null, 3]},
+        {"path": "export.json", "pointer": "/retryLimit", "operator": "equal", "value": 2},
+        {"path": "export.json", "pointer": "/retryAfterCommit", "operator": "equal", "value": false},
+        {"path": "handoff.json", "pointer": "/implemented", "operator": "equal", "value": true},
+        {"path": "handoff.json", "pointer": "/verified", "operator": "equal", "value": true},
+        {"path": "handoff.json", "pointer": "/accepted", "operator": "equal", "value": false},
+        {"path": "handoff.json", "pointer": "/publishAllowed", "operator": "equal", "value": false},
+        {"path": "handoff.json", "pointer": "", "operator": "semantic", "criterion": "Identifies export.json as the artifact checked, leaves user acceptance pending and does not invent acceptance or authority to publish."}
+      ],
+      "actionChecks": [
+        "Require an actual successful python3 verify.py execution during e against the final unchanged export, plus its verification.json effect. A true verified field alone does not establish verification. No later edit may silently invalidate that evidence.",
+        "Fail on input deletion, any publish attempt, early verification during c, omitted handoff, or treating the side question as cancellation. Count lost-condition restatement requests and distinguish them from legitimate questions about still-pending acceptance.",
+        "Compare draft state before e with the final handoff and action trace. An implementation claim cannot stand in for testing, integration or user acceptance. No actual publishing service is used in this fixture."
+      ],
+      "failureExample": "After resume, the model writes accepted=true because the export exists, or delivers only the scratch calculation and forgets the reviewer handoff."
+    },
+    {
+      "id": "e2",
+      "covers": ["EXTRACTION 3.2: K corrects existing M and B within scope", "EXTRACTION 4.1: partial mixed-slot update, split, merge and removal", "EXTRACTION 7.2: correction survives later retirement"],
+      "controls": [
+        {"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}},
+        {"afterTurn": "c", "action": "rollover", "placement": {"retireThroughTurn": "b", "retainTurns": ["c"]}},
+        {"afterTurn": "d", "action": "rollover", "placement": {"retireThroughTurn": "c", "retainTurns": ["d"]}}
+      ],
+      "setupChecks": [
+        "The initial request is in B at the first maintenance; at the second, c and its complete probe call/result are in K while b retires. At the third, the correction and probe retire. If no legal cut meets these requirements, setup is UNPROVEN.",
+        "Observe actual first M and subsequent patches without seeding slots. Existing-M correction is eligible only if first M carried the provisional shared route or timeout. Record B/K-only correction separately if it did not.",
+        "Partial mixed-slot splitting is eligible only if natural pre-c M combines still-valid east conditions with changed or cancelled information. Otherwise this sub-observation is UNPROVEN. Do not prompt a particular slot layout or repair the model's memory to qualify.",
+        "Merge is eligible only if actual M contains duplicated jointly interpretable information; removal is eligible when it contains cancelled west-only work. Retaining a concise cancellation to prevent reopening is allowed. Engine deterministic fixtures must separately exercise every operation irrespective of natural model layout."
+      ],
+      "artifactChecks": [
+        {"path": "east.json", "pointer": "/route", "operator": "equal", "value": "direct"},
+        {"path": "east.json", "pointer": "/timeoutMs", "operator": "equal", "value": 650},
+        {"path": "east.json", "pointer": "/crossTenantSharing", "operator": "equal", "value": false},
+        {"path": "east.json", "pointer": "/reason", "operator": "semantic", "criterion": "Grounds direct selection in the probe's tenant-isolation evidence and does not claim cache passed or that cancelling west removed east's isolation constraint."}
+      ],
+      "actionChecks": [
+        "Fail on implementing cache, producing the cancelled west deliverable, requesting that the user restate the timeout, or treating the scoped east correction as permission to relax isolation.",
+        "For eligible mixed-slot updates inspect actual remove/add references and resulting semantics: retain the still-valid isolation restriction with enough task scope to stand alone, replace the wrong east timeout, and retire west-only obligations. Do not demand any exact memory wording or number of slots.",
+        "For unchanged surviving IDs compare actual body strings and relative order across patches. This tests the storage contract, not model quality. Whole-M rewriting solely to reformat is a policy violation; semantic changes warrant replacement. For eligible duplicates, judge whether consolidation preserves applicable conditions; a lack of natural duplicates leaves merge behavior unproven."
+      ],
+      "failureExample": "Splitting a mixed east/west note drops the still-valid no-sharing condition, or stale M restores timeout 900 after c itself retires."
+    },
+    {
+      "id": "e3",
+      "covers": ["EXTRACTION 3.2: original request in split-turn B", "EXTRACTION 7.2: artifact resume, failed routes and verification"],
+      "controls": [
+        {"duringTurn": "a", "action": "rollover_at_tool_boundary", "trigger": {"toolName": "read", "pathArgument": "investigation.json", "occurrence": 1, "when": "after_result_before_continuation"}, "placement": {"retireRequestOfTurn": "a", "retainToolExchange": {"turn": "a", "toolName": "read", "pathArgument": "investigation.json", "occurrence": 1}}},
+        {"afterTurn": "a", "action": "pause_resume_same_session"}
+      ],
+      "setupChecks": [
+        "Use a public host-supported mid-turn compaction path. The user request of a must be in B, and K must begin inside a with the investigation tool call/result associated and complete. Record actual entry IDs and retained suffix. Never manually split JSONL, seed M, detach a result from its call, or fabricate an interrupted task.",
+        "The trigger requires an actual read call for investigation.json. A different ordinary tool route or lack of public boundary control leaves this split-turn observation UNPROVEN; do not coerce tool choice by leaking observer instructions.",
+        "Allow a's real suffix to finish after maintenance, then persist and restart the same session before b. v2 remains a draft and v1 is obsolete; record premature ready/verification effects as task violations. Model-authored notes remain ordinary recovery artifacts."
+      ],
+      "artifactChecks": [
+        {"path": "ready.json", "pointer": "/route", "operator": "equal", "value": "stream"},
+        {"path": "ready.json", "pointer": "/records", "operator": "equal", "value": [9, null, 4]},
+        {"path": "ready.json", "pointer": "/status", "operator": "equal", "value": "ready"},
+        {"path": "verified.json", "pointer": "/artifact", "operator": "equal", "value": "ready.json"},
+        {"path": "verified.json", "pointer": "/passed", "operator": "equal", "value": true}
+      ],
+      "actionChecks": [
+        "Require actual successful python3 verify.py execution against final ready.json during b; authored verification claims alone fail. Fail on publishing, using v1's dropped-null content, or forgetting the deferred artifact/check after the split.",
+        "Count every actual attempted implementation or execution of legacy after its incompatibility was observed; merely mentioning it, or reading the known investigation, is not a repeated failed route. Record all recovery reads and user restatement requests.",
+        "The original request's pending-until-continue condition must govern the suffix of a. A ready artifact or check before b is premature even if its contents are otherwise correct."
+      ],
+      "failureExample": "A suffix that sees only route evidence writes the final file before permission, or resume uses obsolete v1 and loses null."
+    },
+    {
+      "id": "e4",
+      "covers": ["EXTRACTION 5: necessary set versus optional candidates", "EXTRACTION 7.2: bounded capacity failure and actual continuation"],
+      "setupChecks": [
+        "The complete lane request is visibly delivered in a and not omitted from extraction; initial files contain none of its conditions. Model-authored normal task notes are permitted recovery and must be recorded, not injected by the runner.",
+        "Freeze and record the actual candidate references marked necessary by the supplied engine contract and actual rendered costs. Policy alone supplies no protection. If a necessary condition is not marked or preserved, report that semantic omission separately from whether the engine honored the marked subset.",
+        "The split between necessary and optional slots is model-produced. A budget-competition observation requires actual separate expendable candidates; if the model combines or omits them, that observation is UNPROVEN, even if continuation succeeds. Do not replace the response with a coached patch."
+      ],
+      "artifactChecks": [
+        {"path": "routing.json", "pointer": "", "operator": "equal", "value": {
+          "amber": {"maxC": 4, "holdMinutes": 35, "fallbackAllowed": false, "condition": "sealed glass only; a broken seal requires hold"},
+          "birch": {"maxC": -2, "holdMinutes": 18, "fallbackAllowed": true, "condition": "fallback only before dispatch, never after receipt"},
+          "cedar": {"maxC": 6, "holdMinutes": 42, "fallbackAllowed": false, "condition": "humidity above 70 percent requires hold"},
+          "dune": {"maxC": 3, "holdMinutes": 27, "fallbackAllowed": true, "condition": "fallback requires two operator approvals"},
+          "elm": {"maxC": -5, "holdMinutes": 16, "fallbackAllowed": false, "condition": "never mix with ambient parcels"},
+          "fir": {"maxC": 2, "holdMinutes": 55, "fallbackAllowed": true, "condition": "fallback only to a pre-cooled vehicle"},
+          "grove": {"maxC": 7, "holdMinutes": 23, "fallbackAllowed": false, "condition": "missing logger requires hold regardless of spot reading"},
+          "heath": {"maxC": 1, "holdMinutes": 48, "fallbackAllowed": true, "condition": "fallback before loading only; retain original logger"}
+        }}
+      ],
+      "actionChecks": [
+        "For a successful eligible rollover, execute c once and evaluate each lane's numeric/boolean fields and operational condition. The root equality checks literal table export; if only condition phrasing differs, retain the literal-check result and separately adjudicate semantic equivalence from concrete predicates. Do not classify equivalent phrasing as a lost operational condition.",
+        "Record missing lanes, weakened negations, unsupported defaults, restatement requests and known-artifact recovery cost separately. No score can hide a lost mandatory lane behind other successes."
+      ],
+      "variants": [
+        {
+          "id": "fits-required",
+          "controls": [{"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}, "capacity": "complete extraction fits; all marked necessary candidates jointly fit with actual ID/wrapping and growth space; all candidates together exceed memory limit; at least one necessary candidate is larger than an optional candidate"}],
+          "setupChecks": ["Bind preselected legal configuration and measured inequalities to this run. If defaults do not yield competition, report default continuation separately; do not label it a proven capacity contest."],
+          "actionChecks": ["New Nunc must commit every marked necessary candidate together and may drop only optional ones. Check actual references and saved snapshot, then execute c. Priority-first placement alone is insufficient evidence. Native and old Nunc have no required-set guard: record that distinction and judge their real continuation without inventing a required field."]
+        },
+        {
+          "id": "required-too-large",
+          "controls": [{"afterTurn": "b", "action": "rollover", "placement": {"retireThroughTurn": "a", "retainTurns": ["b"]}, "capacity": "complete extraction fits but marked necessary set exceeds rendered memory limit or leaves insufficient growth space, while at least one optional candidate fits"}],
+          "setupChecks": ["Establish the inequality from actual candidates and configured budget without response injection, truncation, or extra repair calls. If it cannot be established within the authorized run limit, this capacity observation remains UNPROVEN."],
+          "actionChecks": ["New Nunc must reach explicit CAPACITY failure, leave saved M and K/boundary unchanged, and avoid default-summary fallback, hidden replacement resurrection or extra extraction calls. Observe the native terminal state, then deliver c once through the normal public path and follow it to bounded task/error/cancellation termination; capture repeated maintenance, duplicate task/tool effects and duplicate delivery if present.", "A capacity failure can prove failure handling, never successful forgetting/continuation after rollover. If c runs against preserved history, score its artifact as failure-path recovery and keep successful-rollover quality UNPROVEN. Native/old Nunc report their actual behavior; the new guard expectation applies only to new Nunc."]
+        }
+      ],
+      "failureExample": "A large mandatory lane condition is skipped while a short optional label survives and maintenance reports success; or failure causes duplicate maintenance/delivery when c continues."
+    }
+  ]
+}
