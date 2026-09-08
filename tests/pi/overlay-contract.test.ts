@@ -399,3 +399,55 @@ test("untrimmed draft preserved across remapped submit and backslash fallback wi
   }
 });
 
+test("compressed paste with literal backslash and Ctrl+A backslash fallback preserves exact untrimmed text", () => {
+  const old = getKeybindings();
+  const kb = new KeybindingsManager(TUI_KEYBINDINGS, { "tui.input.submit": "shift+enter", "tui.input.newLine": "enter" });
+  setKeybindings(kb);
+  try {
+    const lines20 = Array.from({ length: 20 }, (_, i) => i === 19 ? "line 19 \\" : `line ${i}`).join("\n");
+
+    // 1. Success case: paste 20 lines ending in literal backslash, Ctrl+A to start, type backslash, then Enter
+    const successFixture = fixture({ keybindings: kb });
+    successFixture.overlay.handleInput("\r");
+    successFixture.overlay.handleInput("\x15");
+    successFixture.overlay.handleInput(`\x1b[200~${lines20}\x1b[201~`);
+    successFixture.overlay.handleInput("\x01"); // Ctrl+A to start
+    successFixture.overlay.handleInput("\\");
+    successFixture.overlay.handleInput("\r");
+    assert.equal(successFixture.overlay.layerName, "browse");
+    assert.equal(successFixture.saves[0]?.text, lines20);
+    assert.equal(successFixture.saves[0]?.text.endsWith("\\"), true);
+    assert.equal(successFixture.saves[0]?.text.startsWith("\\"), false);
+    assert.equal(successFixture.view.memory.slots[0]?.text, lines20);
+
+    // 2. Rejection case: same sequence but with conflict failure; draft must retain lines20 exactly
+    const failureFixture = fixture({ failure: "conflict", keybindings: kb });
+    failureFixture.overlay.handleInput("\r");
+    failureFixture.overlay.handleInput("\x15");
+    failureFixture.overlay.handleInput(`\x1b[200~${lines20}\x1b[201~`);
+    failureFixture.overlay.handleInput("\x01"); // Ctrl+A to start
+    failureFixture.overlay.handleInput("\\");
+    failureFixture.overlay.handleInput("\r");
+    assert.equal(failureFixture.overlay.layerName, "edit");
+    assert.equal(failureFixture.overlay.draftText(), lines20);
+    assert.equal(failureFixture.saves[0]?.text, lines20);
+    assert.equal(failureFixture.overlay.draftText()?.endsWith("\\"), true);
+    assert.equal(failureFixture.overlay.draftText()?.startsWith("\\"), false);
+
+    // 3. Compressed paste with literal backslash and submit
+    const afterCursorFixture = fixture({ failure: "overbudget", keybindings: kb });
+    afterCursorFixture.overlay.handleInput("\r");
+    afterCursorFixture.overlay.handleInput("\x15");
+    afterCursorFixture.overlay.handleInput("prefix \\\n");
+    afterCursorFixture.overlay.handleInput(`\x1b[200~${lines20}\x1b[201~`);
+    const beforeSubmit = afterCursorFixture.overlay.draftText();
+    afterCursorFixture.overlay.handleInput("\x1b[27;2;13~");
+    assert.equal(afterCursorFixture.overlay.layerName, "edit");
+    assert.equal(afterCursorFixture.overlay.draftText(), beforeSubmit);
+    assert.equal(afterCursorFixture.saves[0]?.text, beforeSubmit);
+  } finally {
+    setKeybindings(old);
+  }
+});
+
+
