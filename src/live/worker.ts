@@ -207,7 +207,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
 
       if (selection.id === "e4" && selection.variant === "required-too-large" && turn === "c") {
-        if (group === "candidate") report.prerequisites.push(checkCapacityRecovery({
+        if (group === "candidate") (capacityFailure ? report.prerequisites : (report.setupChecks ??= [])).push(checkCapacityRecovery({
           capacityFailed: capacityFailure !== undefined,
           deliveredCount: deliveredUserIds(sm.getBranch(), inputTurn.text).length,
           terminalStop: last?.role === "assistant" && last.stopReason === "stop",

@@ -98,6 +98,10 @@ export async function executeComparison(value: unknown, repository: string, scri
         const key = `${group}:${label}`, segments: SegmentReport[] = []; completed.set(key, segments); roots.set(key, join(caseRoot, "task"));
         let resume = false;
         do {
+          requireValue(report.usage.calls < input.limits.maxCalls, "CALL_LIMIT", "Shared call ceiling exhausted; no further child/session effects");
+          const smallestReservation = Math.min(...input.models.map(m => m.contextWindow + m.maxTokens));
+          requireValue(report.usage.reservedTokens + smallestReservation <= input.limits.maxTotalTokens, "TOKEN_LIMIT", "Shared token ceiling cannot reserve another task request");
+          if (input.limits.maxCostUsd !== null) requireValue(report.usage.reservedCostUsd !== null && report.usage.reservedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
           const beforeIds = new Set(readLedger(join(root, "calls.jsonl")).filter(r => r.kind === "reserve").map(r => r.id));
           const native = joined(completed.get(`native:${label}`) ?? []);
           const matchReferences: MatchReference[] = native.rows.map(row => { const f = rolloverFacts(row, native.requests, "native"); return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps }; });

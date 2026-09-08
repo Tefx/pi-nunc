@@ -7,7 +7,7 @@ import { repository } from "./fixtures.js";
 export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure"; tooLarge?: boolean; earlyVerify?: boolean } = {}) {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, timeoutMs: 300000 });
-  f.limits = { ...f.limits, maxCalls: 240, maxTotalTokens: 19200000 };
+  f.limits = { ...f.limits, maxCalls: 300, maxTotalTokens: 24000000 }; // Five selections × three groups × two modes, including tool continuations.
   const suite = JSON.parse(await readFile(join(repository, "tests/scenarios/extraction-inputs.json"), "utf8"));
   const turns = suite.cases.flatMap((c: any) => c.turns.map((t: any) => ({ scenario: c.id, ...t })));
   let current: { scenario: string; id: string } | undefined, step = 0;
@@ -51,7 +51,7 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
 }
 export async function compareCli(f: any, scenarios: unknown[], modes: string[], tag: string) {
   const stateRoot = join(f.dir, `nunc-live-${tag}`);
-  const selection = { target: { repository, stateRoot, cleanup: "remove" }, limits: { maxCalls: 240, maxTotalTokens: 19200000, maxDurationMs: 240000, maxOutputTokens: 20000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios,
+  const selection = { target: { repository, stateRoot, cleanup: "remove" }, limits: { maxCalls: 300, maxTotalTokens: 24000000, maxDurationMs: 240000, maxOutputTokens: 20000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios,
     overrides: [{ requirement: "controlled-extraction-observation", reason: "Named isolated loopback native scheduling and measured retention", config: { nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } }, compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
     comparison: { modes, targets: { native: { repository }, current: { repository: join(repository, ".scratch/baseline-70dacad") }, candidate: { repository } } } };
   const child = spawn(process.execPath, [join(repository, "scripts/compare-extraction.mjs")], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"] });
