@@ -1843,7 +1843,7 @@ phases:
   steps:
   - id: nunc.extraction-policy
     name: 任务焦点、多 slot 提取策略与独立续做场景
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/**\", \"tests/scenarios/**\", \"docs/POLICY.md\"\
       , \"docs/EXTRACTION.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -1875,6 +1875,27 @@ phases:
     agent: llm-agent-expert
     claimed_by: llm-agent-expert
     claimed_at: '2026-09-08T10:12:57.925605Z'
+    done_at: '2026-09-08T10:25:00.142005+00:00'
+    evidence: 'Integrated 3b0228da458b0dc1bcbd9f60c2622c3caf241521 unchanged FF from
+      postclaim240726e; retained refs/retained/nunc-extraction-policy. Exactowner
+      llm-agent-expert, clean worktree; parent read complete policies/default.md and
+      new extraction-inputs/extraction-observer JSON plus full POLICY/EXTRACTION doc
+      delta against acceptedcontract. Focus/seven dimensions/sourceauthority/state/unfinishedobligations,
+      multi-add/split/merge/remove/unchangedbody, necessary-marking delegation and
+      Markdown/raw semantics delivered. Fourtasks/fiveselections with independent
+      inputs/oracles/controls: e1 multitask/acceptance/restart; e2 scopedcorrection/conditionalnatural
+      mixedslot updates; e3 publicmidturn/split+artifact/excludedroute; e4 requiredcompetition/failure.
+      Actualqualifying layout/cut/budget mustbe observed; fixedexpectedpatch/manualM
+      notallowed. Engine deterministic operations independently prove primitives.
+      Parent reviewed task verification scripts as ordinary source/route checks, not
+      hidden answer tables; future expectedoracles are separate. Producer JSONjoin/IDs/controlrefs/pointer/path/embeddedJSON/Python
+      syntax checks passed; parent diff--check passed, managedPlan unchangedbycandidate.
+      These are content/interface observations, NOT modelquality, native runtime or
+      requiredguard proof. Nextconsumers need explicitnewassets/variants/whole-documentpointer,
+      publictool-boundarycontrol, actualcandidate/budget/terminalfacts and threegroups/defaults-matched;
+      missing placement remainsUNPROVEN. Currentengine parser still3fields andinnerfencewording
+      needs nextstep coordination. No source/host/Plan edits byproducer, no realmodelcalls/globalinstall/push;
+      UIclaim/manualfixture preserved.'
   - id: nunc.extraction-engine
     name: 必要项共同保留、协议迁移与原生失败恢复
     status: pending
