@@ -1,115 +1,32 @@
-import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  canonical,
-  parseInput,
-  preflight,
-  publicInput,
-  requireValue,
-  RunnerError,
-  within,
-  type ComparisonGroup,
-  type ComparisonMode,
-  type Receipt,
-  type RunInput,
-} from "./contract.js";
-import { ledgerSummary, readLedger, type CallEnd, type CallRecord } from "./budget.js";
+import { canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type ComparisonGroup, type ComparisonMode, type Receipt, type RunInput } from "./contract.js";
+import { ledgerSummary, readLedger, type LedgerRecord } from "./budget.js";
 import { launchWorker, type ChildReceipt } from "./runner.js";
 import type { SegmentReport } from "./worker.js";
-import type { CheckResult } from "./scenarios.js";
+import { matchedParity, rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
+import type { MatchReference } from "./preparation.js";
 
 export const ALL_GROUPS: ComparisonGroup[] = ["native", "current", "candidate"];
-
 export interface ComparisonScenarioResult {
-  mode: ComparisonMode;
-  group: ComparisonGroup;
-  scenarioId: string;
-  variant?: string | undefined;
-  status: "OBSERVED" | "UNPROVEN" | "STOPPED" | "PAUSED";
-  reason?: string | undefined;
-  h?: number | undefined;
-  cutPoint?: number | undefined;
-  firstKeptEntryId?: string | undefined;
-  kTokens?: number | undefined;
-  mTokens?: number | undefined;
-  memoryLimit?: number | undefined;
-  model?: string | undefined;
-  summarySize?: number | undefined;
-  outputCap?: number | undefined;
-  outputReserve?: number | undefined;
-  calls: number;
-  tokens: number | null;
-  latencyMs: number;
-  costUsd: number | null;
-  overhead?: {
-    fileListCount?: number | undefined;
-    wrapperOverheadTokens?: number | undefined;
-    splitTurnCalls?: number | undefined;
-  } | undefined;
-  exposure?: {
-    turns: string[];
-    toolResultsCount: number;
-  } | undefined;
-  requiredObservation?: {
-    declared: string[];
-    retainedSlotIds: string[];
-    failed: boolean;
-  } | undefined;
-  prerequisites: CheckResult[];
-  setupChecks?: CheckResult[] | undefined;
-  score?: SegmentReport["score"] | undefined;
-  sessionFile?: string | undefined;
+  mode: ComparisonMode; group: ComparisonGroup; scenarioId: string; variant?: string | undefined;
+  status: SegmentReport["status"]; reason?: string | undefined; sessionFile?: string | undefined;
+  prerequisites: SegmentReport["prerequisites"]; setupChecks?: SegmentReport["setupChecks"]; score?: SegmentReport["score"];
+  calls: number; tokens: number | null; latencyMs: number; costUsd: number | null; callIds: number[];
+  rollovers: RolloverFacts[];
 }
-
 export interface ComparisonModeReport {
-  mode: ComparisonMode;
-  status: "OBSERVED" | "UNPROVEN" | "STOPPED";
-  groups: Record<ComparisonGroup, {
-    config: Record<string, unknown>;
-    revision: string;
-    scenarios: ComparisonScenarioResult[];
-  }>;
-  records: {
-    hComparison?: Record<ComparisonGroup, number | undefined>;
-    cutComparison?: Record<ComparisonGroup, unknown>;
-    kComparison?: Record<ComparisonGroup, unknown>;
-    memorySizeComparison?: Record<ComparisonGroup, unknown>;
-    outputPlanningComparison?: Record<ComparisonGroup, unknown>;
-    usageComparison?: Record<ComparisonGroup, unknown>;
-    overheadComparison?: Record<ComparisonGroup, unknown>;
-    matchedParity?: {
-      modelMatched: boolean;
-      exposureMatched: boolean;
-      cutMatched: boolean;
-      kMatched: boolean;
-      budgetMatched: boolean;
-      wrappersMatched: boolean;
-      fileListMatched: boolean;
-      discrepancies: string[];
-      status: "PROVEN" | "UNPROVEN";
-    };
-  };
+  mode: ComparisonMode; status: "OBSERVED" | "UNPROVEN" | "STOPPED";
+  groups: Record<ComparisonGroup, { config: Record<string, unknown>; revision: string; scenarios: ComparisonScenarioResult[] }>;
+  records: { hComparison?: Record<string, unknown>; memorySizeComparison?: Record<string, unknown>; overheadComparison?: Record<string, unknown>; usageComparison?: Record<string, unknown>; matchedParity?: ReturnType<typeof matchedParity> };
 }
-
 export interface ComparisonReport {
-  version: 1;
-  status: "OBSERVED" | "UNPROVEN" | "STOPPED";
-  selection: RunInput;
-  comparison: {
-    modes: ComparisonModeReport[];
-  };
-  matrix: ComparisonScenarioResult[];
-  children: ChildReceipt[];
-  usage: ReturnType<typeof ledgerSummary>;
-  elapsedMs: number;
-  cleanup: "retained" | "removed" | "retained-for-reconciliation";
-  limitations: string[];
-  unsupportedPublicSeams?: string[];
-  reason?: string | undefined;
-  sessions?: Record<string, unknown[]> | undefined;
-  rawSegments?: SegmentReport[] | undefined;
+  version: 1; status: "OBSERVED" | "UNPROVEN" | "STOPPED"; selection: RunInput;
+  comparison: { modes: ComparisonModeReport[] }; matrix: ComparisonScenarioResult[]; children: ChildReceipt[];
+  usage: ReturnType<typeof ledgerSummary>; ledger?: LedgerRecord[]; elapsedMs: number;
+  cleanup: "retained" | "removed" | "retained-for-reconciliation"; limitations: string[]; reason?: string | undefined;
+  sessions?: Record<string, unknown[]> | undefined; rawSegments?: SegmentReport[] | undefined;
 }
-
 export async function finalizeComparisonRun(input: RunInput, receipt: Receipt, report: ComparisonReport): Promise<void> {
   const root = input.target.stateRoot;
   if (report.usage.unreconciledCallIds.length > 0) report.cleanup = "retained-for-reconciliation";
@@ -117,10 +34,7 @@ export async function finalizeComparisonRun(input: RunInput, receipt: Receipt, r
   requireValue(canonical(bound.receipt) === canonical(receipt), "CLEANUP", "Run ownership changed; retain state");
   if (input.target.cleanup === "remove" && report.status === "OBSERVED" && report.cleanup !== "retained-for-reconciliation") {
     report.sessions = {};
-    const sessionFiles = new Set<string>();
-    for (const item of report.matrix) {
-      if (item.sessionFile) sessionFiles.add(item.sessionFile);
-    }
+    const sessionFiles = new Set(report.matrix.flatMap(item => item.sessionFile ? [item.sessionFile] : []));
     for (const file of sessionFiles) {
       requireValue(within(file, root), "CLEANUP", "Session evidence is outside owned run");
       const text = await readFile(file, "utf8");
@@ -134,296 +48,102 @@ export async function finalizeComparisonRun(input: RunInput, receipt: Receipt, r
     await writeFile(join(root, "owner.json"), JSON.stringify({ ...bound, status: "terminal", result: report.status, reason: report.reason, cleanup: report.cleanup }), { mode: 0o600 });
   }
 }
-
-export async function executeComparison(
-  value: unknown,
-  repository: string,
-  script: string,
-  signal: AbortSignal
-): Promise<ComparisonReport> {
+/** Call-ID joining is shared by segment, case and group totals. Missing terminals stay unknown. */
+export function scopedUsage(records: LedgerRecord[], ids: Set<number>) {
+  const scoped = records.filter(r => ids.has(r.id));
+  const summary = ledgerSummary(scoped);
+  return { callIds: [...ids], calls: summary.calls, tokens: summary.totalTokens, costUsd: summary.costUsd,
+    latencyMs: scoped.filter(r => r.kind === "terminal").reduce((n, r) => n + r.latencyMs, 0) };
+}
+function joined(segments: SegmentReport[]) {
+  const rows = new Map<string, RolloverObservation>(), requests = new Map<number, RequestObservation>();
+  for (const segment of segments) {
+    for (const row of segment.rollovers ?? []) rows.set(row.snapshot?.id ?? `${row.branch.at(-1)?.id}:${row.callIds.join(",")}`, row);
+    for (const req of segment.requests ?? []) requests.set(req.callId, req);
+  }
+  return { rows: [...rows.values()], requests: [...requests.values()] };
+}
+export async function executeComparison(value: unknown, repository: string, script: string, signal: AbortSignal): Promise<ComparisonReport> {
   const input = parseInput(value, true);
   requireValue(input.comparison, "COMPARISON", "comparison configuration is required");
-  const receipt = await preflight(input, repository);
-  input.receipt = receipt;
+  const receipt = await preflight(input, repository); input.receipt = receipt;
   const root = input.target.stateRoot;
-  await mkdir(root, { mode: 0o700 });
-  await mkdir(join(root, "tmp"), { mode: 0o700 });
+  await mkdir(root, { mode: 0o700 }); await mkdir(join(root, "tmp"), { mode: 0o700 });
   const started = Date.now(), deadline = started + input.limits.maxDurationMs;
   await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600, flag: "wx" });
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
-
-  const report: ComparisonReport = {
-    version: 1,
-    status: "STOPPED",
-    selection: publicInput(input),
-    comparison: { modes: [] },
-    matrix: [],
-    rawSegments: [],
-    children: [],
-    usage: ledgerSummary([]),
-    elapsedMs: 0,
-    cleanup: "retained",
-    limitations: [
-      "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
-      "Semantic reasons, repeated failed attempts, restatement needs and unsupported claims require independent review of recorded actions/session evidence. No judge or additional model calls are authorized by this runner.",
-      "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null. Missing usage stays null.",
-      "A local abort/terminated process does not prove remote cancellation or final billing. Unresolved requests, cancellation, and exhausted shared call/token/time/known-cost limits stop further effects and retain isolated evidence.",
-      "Stock Pi 0.85.1 RPC mode has no public seam to pause at tool boundaries mid-turn before continuation without private host mutation or session entry editing; e3 split-turn observation is reported as UNPROVEN."
-    ],
-    unsupportedPublicSeams: ["rollover_at_tool_boundary"],
-  };
-
+  const report: ComparisonReport = { version: 1, status: "STOPPED", selection: publicInput(input), comparison: { modes: [] }, matrix: [], rawSegments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
+    "Controlled HTTP responses prove stock-host scheduling, accounting and scorer mechanics only; semantic policy and continuation quality require independent observation.",
+    "All setup, maintenance and continuation calls share the finite ledger. Unknown usage/cost remains null; reservations are never refunded.",
+    "Matched runs prepare each actual rollover independently. Native summaries have provider output limits but no enforced rendered-memory ceiling after wrapper/file-list append; realized-size matching alone leaves budget parity UNPROVEN.",
+    "E3 uses awaited public turn_end, task settings reload and native automatic compaction. Each actual tool batch must satisfy exposure, cut and capacity inequalities before further transport.",
+    "Semantic claims, restatements and excluded actions require independent review of retained contexts, actions, artifacts and native sessions. No model judge or repair replay is run.",
+  ] };
   try {
     let anyFailed = false;
     for (const mode of input.comparison.modes) {
-      const modeReport: ComparisonModeReport = {
-        mode,
-        status: "STOPPED",
-        groups: {
-          native: { config: { compaction: input.effective?.compaction ?? { enabled: true, reserveTokens: 16384, keepRecentTokens: 0 } }, revision: "Pi-0.85.1-native", scenarios: [] },
-          current: { config: { memory: { fraction: 0.1 }, compaction: { reserveTokens: 16384 } }, revision: "70dacad", scenarios: [] },
-          candidate: { config: { memory: { fraction: 0.1 }, compaction: { reserveTokens: 16384 }, requiredGuard: true }, revision: receipt.candidate, scenarios: [] },
-        },
-        records: {},
-      };
-
-      for (const group of ALL_GROUPS) {
-        for (let scenarioIndex = 0; scenarioIndex < input.scenarios.length; scenarioIndex++) {
-          signal.throwIfAborted();
-          requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
-          const selection = input.scenarios[scenarioIndex]!;
-
-          const caseKey = `${mode}:${group}:${selection.id}${selection.variant ? `-${selection.variant}` : ""}`;
-          const caseDirName = `${mode}-${group}-${selection.id}${selection.variant ? `-${selection.variant}` : ""}`;
-          const caseRoot = join(root, caseDirName);
-          let resume = false;
-          do {
-            signal.throwIfAborted();
-            const child = await launchWorker(script, {
-              input,
-              scenarioIndex,
-              deadline,
-              resume,
-              group,
-              mode,
-              caseRoot,
-            }, signal);
-            report.children.push(child);
-            const ledgerRecords = readLedger(join(root, "calls.jsonl"));
-            report.usage = ledgerSummary(ledgerRecords);
-            requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete");
-            const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
-            report.rawSegments!.push(segment);
-            requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
-            const failedPlacement = segment.prerequisites.some(c => c.status !== "PROVEN");
-
-            // Extract case-level usage from ledger records matching this caseKey by call ID
-            const caseReserves = ledgerRecords.filter((r): r is CallRecord => r.kind === "reserve" && (r as any).caseKey === caseKey);
-            const caseReserveIds = new Set(caseReserves.map(r => r.id));
-            const caseTerminals = ledgerRecords.filter((r): r is CallEnd => r.kind === "terminal" && (caseReserveIds.has(r.id) || (r as any).caseKey === caseKey));
-            const totalTokens = caseTerminals.length === 0 ? null : caseTerminals.some(r => r.usage.totalTokens === null) ? null : caseTerminals.reduce((sum, r) => sum + (r.usage.totalTokens ?? 0), 0);
-            const latencyMs = caseTerminals.reduce((sum, r) => sum + r.latencyMs, 0);
-            const costUsd = caseTerminals.length === 0 ? null : caseTerminals.some(r => r.usage.cost === null) ? null : caseTerminals.reduce((sum, r) => sum + (r.usage.cost ?? 0), 0);
-
-            const facts = segment.comparisonFacts;
-            const scenarioResult: ComparisonScenarioResult = {
-              mode,
-              group,
-              scenarioId: selection.id,
-              variant: selection.variant,
-              status: segment.status,
-              reason: segment.reason,
-              h: facts?.h ?? (input.models[0]!.contextWindow - (selection.config.compaction.reserveTokens ?? 16384)),
-              cutPoint: facts?.cutPoint,
-              firstKeptEntryId: facts?.firstKeptEntryId,
-              kTokens: facts?.kTokens,
-              mTokens: facts?.mTokens,
-              memoryLimit: facts?.memoryLimit,
-              model: facts?.model ?? `${input.models[0]!.provider}/${input.models[0]!.id}`,
-              summarySize: facts?.summarySize,
-              outputCap: facts?.outputCap,
-              outputReserve: facts?.outputReserve,
-              overhead: facts?.overhead,
-              exposure: facts?.exposure,
-              requiredObservation: facts?.requiredObservation as any,
-              prerequisites: segment.prerequisites,
-              setupChecks: segment.setupChecks,
-              score: segment.score,
-              sessionFile: segment.sessionFile,
-              calls: segment.segmentUsage?.calls ?? (caseReserves.length > 0 ? caseReserves.length : 0),
-              tokens: segment.segmentUsage ? segment.segmentUsage.tokens : totalTokens,
-              latencyMs: segment.segmentUsage ? segment.segmentUsage.latencyMs : latencyMs,
-              costUsd: segment.segmentUsage ? segment.segmentUsage.costUsd : costUsd,
-            };
-            modeReport.groups[group].scenarios.push(scenarioResult);
-            report.matrix.push(scenarioResult);
-
-            if (segment.status === "PAUSED") {
-              if (failedPlacement) { anyFailed = true; break; }
-              resume = true; continue;
-            }
-            if (segment.status !== "OBSERVED" || failedPlacement) anyFailed = true;
-            break;
-          } while (resume);
-        }
+      let modeFailed = false;
+      const revisions = { native: "Pi-0.85.1-native", current: "70dacad", candidate: receipt.candidate };
+      const groupReport = (group: ComparisonGroup): ComparisonModeReport["groups"][ComparisonGroup] => ({ config: {
+        selections: input.scenarios.map(s => ({ id: s.id, variant: s.variant, config: s.config })),
+        actualConfiguration: "rawSegments[].rollovers[].preparation.settings / config / result.observations.accounting",
+      }, revision: revisions[group], scenarios: [] });
+      const modeReport: ComparisonModeReport = { mode, status: "STOPPED", groups: { native: groupReport("native"), current: groupReport("current"), candidate: groupReport("candidate") }, records: {} };
+      const completed = new Map<string, SegmentReport[]>();
+      const roots = new Map<string, string>();
+      for (const group of ALL_GROUPS) for (let scenarioIndex = 0; scenarioIndex < input.scenarios.length; scenarioIndex++) {
+        signal.throwIfAborted(); requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
+        const selection = input.scenarios[scenarioIndex]!, label = `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`;
+        const caseKey = `${mode}:${group}:${label}`, caseRoot = join(root, `${mode}-${group}-${label}`);
+        const key = `${group}:${label}`, segments: SegmentReport[] = []; completed.set(key, segments); roots.set(key, join(caseRoot, "task"));
+        let resume = false;
+        do {
+          const beforeIds = new Set(readLedger(join(root, "calls.jsonl")).filter(r => r.kind === "reserve").map(r => r.id));
+          const native = joined(completed.get(`native:${label}`) ?? []);
+          const matchReferences: MatchReference[] = native.rows.map(row => { const f = rolloverFacts(row, native.requests, "native"); return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps }; });
+          const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences }, signal);
+          report.children.push(child);
+          const records = readLedger(join(root, "calls.jsonl")); report.usage = ledgerSummary(records);
+          requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete");
+          const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
+          segments.push(segment); report.rawSegments!.push(segment);
+          const ids = new Set(records.filter(r => r.kind === "reserve" && r.caseKey === caseKey && !beforeIds.has(r.id)).map(r => r.id));
+          const result: ComparisonScenarioResult = { mode, group, scenarioId: selection.id, variant: selection.variant, status: segment.status, reason: segment.reason,
+            prerequisites: segment.prerequisites, setupChecks: segment.setupChecks, score: segment.score, sessionFile: segment.sessionFile,
+            ...scopedUsage(records, ids), rollovers: (segment.rollovers ?? []).map(row => rolloverFacts(row, segment.requests ?? [], group)) };
+          modeReport.groups[group].scenarios.push(result); report.matrix.push(result);
+          requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+          const failed = segment.prerequisites.some(c => c.status !== "PROVEN");
+          if (segment.status === "PAUSED" && !failed) { resume = true; continue; }
+          if (segment.status !== "OBSERVED" || failed) modeFailed = true;
+          break;
+        } while (resume);
       }
-
-      if (mode === "defaults") {
-        const hComp: Record<ComparisonGroup, number | undefined> = { native: undefined, current: undefined, candidate: undefined };
-        const memComp: Record<ComparisonGroup, unknown> = { native: undefined, current: undefined, candidate: undefined };
-        const overComp: Record<ComparisonGroup, unknown> = { native: undefined, current: undefined, candidate: undefined };
-        const usageComp: Record<ComparisonGroup, unknown> = { native: undefined, current: undefined, candidate: undefined };
-
-        for (const g of ALL_GROUPS) {
-          const scens = modeReport.groups[g].scenarios;
-          hComp[g] = scens.length > 0 ? scens[0]?.h : undefined;
-          const totalCalls = scens.reduce((sum, s) => sum + s.calls, 0);
-          const totalToks = scens.some(s => s.tokens === null) ? null : scens.reduce((sum, s) => sum + (s.tokens ?? 0), 0);
-          const totalLat = scens.reduce((sum, s) => sum + s.latencyMs, 0);
-          const totalCost = scens.some(s => s.costUsd === null) ? null : scens.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
-          usageComp[g] = { calls: totalCalls, tokens: totalToks, latencyMs: totalLat, costUsd: totalCost };
-
-          if (g === "native") {
-            const files = scens.reduce((sum, s) => sum + (s.overhead?.fileListCount ?? 0), 0);
-            overComp[g] = `cumulative file list ops tracking (${files} files across ${scens.length} scenario runs)`;
-            const avgM = scens.length > 0 ? scens.reduce((sum, s) => sum + (s.summarySize ?? 0), 0) / scens.length : 0;
-            memComp[g] = `Pi 0.85.1 text summary (avg ${Math.round(avgM)} chars)`;
-          } else {
-            const wrap = scens.reduce((sum, s) => sum + (s.overhead?.wrapperOverheadTokens ?? 0), 0);
-            overComp[g] = `Nunc memory XML tags and slot ID wrapping (~${wrap} tokens total)`;
-            const avgM = scens.length > 0 ? scens.reduce((sum, s) => sum + (s.summarySize ?? 0), 0) / scens.length : 0;
-            memComp[g] = g === "current" ? `70dacad Nunc slots (avg ${Math.round(avgM)} chars)` : `candidate Nunc slots (avg ${Math.round(avgM)} chars, required guard active)`;
-          }
-        }
-        modeReport.records.hComparison = hComp;
-        modeReport.records.memorySizeComparison = memComp;
-        modeReport.records.overheadComparison = overComp;
-        modeReport.records.usageComparison = usageComp;
-      } else if (mode === "matched") {
-        const discrepancies: string[] = [];
-        let modelsEqual = true;
-        let exposureMatchedAll = true;
-        let cutMatchedAll = true;
-        let kMatchedAll = true;
-        let budgetMatchedAll = true;
-        let wrappersMatchedAll = true;
-        let fileListMatchedAll = true;
-
-        for (const g of ALL_GROUPS) {
-          const scens = modeReport.groups[g].scenarios;
-          if (scens.length === 0 || scens.every(s => s.calls === 0)) {
-            modelsEqual = false;
-            discrepancies.push(`${g}: no observed model execution`);
-          }
-        }
-
-        for (let i = 0; i < input.scenarios.length; i++) {
-          const sel = input.scenarios[i]!;
-          const sid = sel.id;
-          const svar = sel.variant;
-          const label = `${sid}${svar ? `-${svar}` : ""}`;
-          const natS = modeReport.groups.native.scenarios.find(s => s.scenarioId === sid && s.variant === svar);
-          const curS = modeReport.groups.current.scenarios.find(s => s.scenarioId === sid && s.variant === svar);
-          const candS = modeReport.groups.candidate.scenarios.find(s => s.scenarioId === sid && s.variant === svar);
-
-          if (!natS || !curS || !candS) {
-            discrepancies.push(`${label}: missing group scenario result`);
-            continue;
-          }
-
-          if (!natS.model || !curS.model || !candS.model || natS.model !== curS.model || curS.model !== candS.model) {
-            modelsEqual = false;
-            discrepancies.push(`${label}: model mismatch (${natS.model ?? "none"} vs ${curS.model ?? "none"} vs ${candS.model ?? "none"})`);
-          }
-
-          const natExp = natS.exposure ?? { turns: [], toolResultsCount: 0 };
-          const curExp = curS.exposure ?? { turns: [], toolResultsCount: 0 };
-          const candExp = candS.exposure ?? { turns: [], toolResultsCount: 0 };
-          if (JSON.stringify(natExp) !== JSON.stringify(curExp) || JSON.stringify(curExp) !== JSON.stringify(candExp)) {
-            exposureMatchedAll = false;
-            discrepancies.push(`${label}: task exposure difference between groups`);
-          }
-
-          if (natS.cutPoint === undefined || curS.cutPoint === undefined || candS.cutPoint === undefined) {
-            cutMatchedAll = false;
-            discrepancies.push(`${label}: cut point unobserved`);
-          } else if (natS.cutPoint !== curS.cutPoint || curS.cutPoint !== candS.cutPoint) {
-            cutMatchedAll = false;
-            discrepancies.push(`${label}: cut point mismatch (native cut at ${natS.cutPoint}, current at ${curS.cutPoint}, candidate at ${candS.cutPoint})`);
-          }
-
-          if (!natS.kTokens || !curS.kTokens || !candS.kTokens) {
-            kMatchedAll = false;
-            discrepancies.push(`${label}: K budget unobserved`);
-          } else if (natS.kTokens !== curS.kTokens || curS.kTokens !== candS.kTokens) {
-            kMatchedAll = false;
-            discrepancies.push(`${label}: K budget mismatch (native K ${natS.kTokens} tokens, current K ${curS.kTokens} tokens, candidate K ${candS.kTokens} tokens)`);
-          }
-
-          if (natS.outputReserve === undefined || curS.outputReserve === undefined || candS.outputReserve === undefined) {
-            budgetMatchedAll = false;
-            discrepancies.push(`${label}: planned reserve unobserved`);
-          } else if (natS.outputReserve !== curS.outputReserve || curS.outputReserve !== candS.outputReserve) {
-            budgetMatchedAll = false;
-            discrepancies.push(`${label}: planned reserve mismatch (native reserve ${natS.outputReserve}, current reserve ${curS.outputReserve}, candidate reserve ${candS.outputReserve})`);
-          }
-
-          if (natS.memoryLimit !== undefined && curS.memoryLimit !== undefined && candS.memoryLimit !== undefined) {
-            if (natS.memoryLimit !== curS.memoryLimit || curS.memoryLimit !== candS.memoryLimit) {
-              budgetMatchedAll = false;
-              discrepancies.push(`${label}: memory budget mismatch (native limit ${natS.memoryLimit}, current limit ${curS.memoryLimit}, candidate limit ${candS.memoryLimit})`);
-            }
-          }
-
-          const natWrap = natS.overhead?.wrapperOverheadTokens ?? 0;
-          const curWrap = curS.overhead?.wrapperOverheadTokens ?? 0;
-          const candWrap = candS.overhead?.wrapperOverheadTokens ?? 0;
-          if (natWrap !== curWrap || curWrap !== candWrap) {
-            wrappersMatchedAll = false;
-            discrepancies.push(`${label}: wrapper overhead difference (native ~${natWrap} tokens vs current ~${curWrap} tokens vs candidate ~${candWrap} tokens)`);
-          }
-
-          const natFiles = natS.overhead?.fileListCount ?? 0;
-          const curFiles = curS.overhead?.fileListCount ?? 0;
-          const candFiles = candS.overhead?.fileListCount ?? 0;
-          if (natFiles !== curFiles || curFiles !== candFiles) {
-            fileListMatchedAll = false;
-            discrepancies.push(`${label}: file list tracking difference (native ${natFiles} ops vs current ${curFiles} ops vs candidate ${candFiles} ops)`);
-          }
-        }
-
-        const allMatched = modelsEqual &&
-          exposureMatchedAll &&
-          cutMatchedAll &&
-          kMatchedAll &&
-          budgetMatchedAll &&
-          wrappersMatchedAll &&
-          fileListMatchedAll &&
-          discrepancies.length === 0;
-
-        modeReport.records.matchedParity = {
-          modelMatched: modelsEqual && discrepancies.every(d => !d.includes("model mismatch") && !d.includes("no observed model execution")),
-          exposureMatched: exposureMatchedAll && discrepancies.every(d => !d.includes("task exposure difference")),
-          cutMatched: cutMatchedAll && discrepancies.every(d => !d.includes("cut point")),
-          kMatched: kMatchedAll && discrepancies.every(d => !d.includes("K budget")),
-          budgetMatched: budgetMatchedAll && discrepancies.every(d => !d.includes("memory budget") && !d.includes("memory limit")),
-          wrappersMatched: wrappersMatchedAll && discrepancies.every(d => !d.includes("wrapper overhead")),
-          fileListMatched: fileListMatchedAll && discrepancies.every(d => !d.includes("file list tracking")),
-          discrepancies,
-          status: allMatched ? "PROVEN" : "UNPROVEN",
-        };
-      }
-      modeReport.status = anyFailed ? "UNPROVEN" : "OBSERVED";
-      report.comparison.modes.push(modeReport);
+      const groupRecords = (pick: (facts: RolloverFacts) => unknown) => Object.fromEntries(ALL_GROUPS.map(group => [group, input.scenarios.map(s => {
+        const label = `${s.id}${s.variant ? `-${s.variant}` : ""}`, j = joined(completed.get(`${group}:${label}`) ?? []);
+        return { selection: label, rollovers: j.rows.map(row => pick(rolloverFacts(row, j.requests, group))) };
+      })]));
+      modeReport.records.hComparison = groupRecords(f => f.h);
+      modeReport.records.memorySizeComparison = groupRecords(f => ({ realized: f.mTokens, limit: f.memoryLimit, finalContext: f.finalContextTokens, remaining: f.remainingContextTokens }));
+      modeReport.records.overheadComparison = groupRecords(f => f.overhead);
+      const records = readLedger(join(root, "calls.jsonl"));
+      modeReport.records.usageComparison = Object.fromEntries(ALL_GROUPS.map(group => [group, scopedUsage(records, new Set(records.filter(r => r.kind === "reserve" && r.caseKey?.startsWith(`${mode}:${group}:`)).map(r => r.id)))]));
+      if (mode === "matched") modeReport.records.matchedParity = matchedParity(input.scenarios.map(s => {
+        const label = `${s.id}${s.variant ? `-${s.variant}` : ""}`;
+        return { label, groups: ALL_GROUPS.map(group => { const key = `${group}:${label}`, segments = completed.get(key) ?? []; return {
+          group, complete: segments.at(-1)?.status === "OBSERVED", cwd: roots.get(key)!, ...joined(segments),
+        }; }) };
+      }));
+      // Observation completion and parity are independent: measured inequality is a valid observation.
+      modeReport.status = modeFailed ? "UNPROVEN" : "OBSERVED";
+      report.comparison.modes.push(modeReport); anyFailed ||= modeFailed;
     }
     report.status = anyFailed ? "UNPROVEN" : "OBSERVED";
   } catch (error) {
-    report.status = "UNPROVEN";
-    report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR";
+    report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR";
   } finally {
-    try { report.usage = ledgerSummary(readLedger(join(root, "calls.jsonl"))); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
+    try { report.ledger = readLedger(join(root, "calls.jsonl")); report.usage = ledgerSummary(report.ledger); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
     report.elapsedMs = Date.now() - started;
-    if (report.usage.unreconciledCallIds.length > 0) report.cleanup = "retained-for-reconciliation";
     await finalizeComparisonRun(input, receipt, report);
   }
   return report;

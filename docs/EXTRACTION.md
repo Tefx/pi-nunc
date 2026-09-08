@@ -176,7 +176,7 @@ Markdown 是生成风格约定。没有标题或列表不能成为拒绝有效�
 
 ### 7.3 证据与执行边界
 
-已交付跟踪比较入口 `scripts/compare-extraction.mjs`，支持 `--preflight` 与默认执行。入口消费非秘密 JSON，明确输入、三组（native Pi 0.85.1、baseline 70dacad、candidate）与两种预算口径（defaults、matched）。对于原生 Pi 0.85.1 RPC 模式缺少切轮中途工具切点公共控制 seam 的客观事实，e3 切轮检查如实标为 `UNPROVEN` 并报告 `UNSUPPORTED_PUBLIC_SEAM`，不伪造 SDK hook 或手工拼接 JSONL。
+已交付跟踪比较入口 `scripts/compare-extraction.mjs`，支持 `--preflight` 与默认执行。入口消费非秘密 JSON，明确输入、三组（native Pi 0.85.1、baseline 70dacad、candidate）与两种预算口径（defaults、matched）。e3 使用 awaited `turn_end` 观察完整工具批次，经公共 command reload 更新隔离任务配置，再由原生 automatic compaction 继续当前 agent loop；完整匹配结果、切点和容量不满足时，在后续 transport 前停止并记录 `UNPROVEN`。不使用 SDK 替代宿主、私有 hook、abort/replay 或手工拼接 JSONL。matched 逐轮准备实际合法切点和目标自身 accounting，并分别记录输出 cap、实现后的完整记忆包装与原生文件清单。原生没有与 Nunc 相同的 rendered-memory 强制上限，按原生实际产出准备 Nunc 容量仍不能证明预算约束相同，该维度保持 `UNPROVEN`。
 
 机械检查覆盖真实 parser、必要集合预算、未变正文、多 slot 操作、原生提交/失败/恢复、比较 runner CLI/preflight/三组隔离及完整现有库存；真实模型运行验证覆盖与续做效果。只缺证据时补观察，不因报告或 Plan 变化重跑仍适用的底层行为。
 

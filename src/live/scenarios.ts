@@ -4,6 +4,8 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, DEFAULT_MAX_BYTES, truncateHead, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
 import { readSourceRecords } from "../engine/request.js";
+import { parsePatch } from "../engine/memory.js";
+import { validateMemory } from "../engine/validation.js";
 import type { Context, Message } from "@earendil-works/pi-ai";
 import type { MaintenanceResult } from "../engine/types.js";
 import { object, requireValue, within, type Selection } from "./contract.js";
@@ -225,7 +227,7 @@ function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: st
   }
   return records;
 }
-export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]> }) {
+export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean }) {
   const artifacts: Record<string, unknown> = {};
   for (const check of observer.artifactChecks) {
     if (Object.hasOwn(artifacts, check.path)) continue;
@@ -259,8 +261,8 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
 
       // Check matching tool_result
       const callId = matchingCall.event.toolCallId;
-      const resultAction = rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_result" && a.event.toolCallId === callId);
-      if (!resultAction || resultAction.event.isError) {
+      const resultAction = rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_result" && a.event.toolCallId === callId && a.event.toolName === "bash" && a.turn === matchingCall.turn);
+      if (!resultAction || resultAction.event.isError !== false) {
         return { check, status: "DISPROVEN" as const, reason: "Verification command failed with an error" };
       }
 
@@ -272,8 +274,12 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
         try { artifacts[artifactName] = JSON.parse(readFileSync(artifactPath, "utf8")); } catch {}
       }
       const verifyArtifact = artifacts[artifactName];
-      if (!object(verifyArtifact) || (verifyArtifact as any).passed !== true) {
+      if (!object(verifyArtifact) || (verifyArtifact as any).passed !== true || verifyArtifact.artifact !== targetExport) {
         return { check, status: "DISPROVEN" as const, reason: `Verification artifact ${artifactName} missing or passed !== true` };
+      }
+
+      if (context?.requireVerificationReceipt && (!object(resultAction.event.verification) || resultAction.event.verification.scriptUnchanged !== true || !isDeepStrictEqual(resultAction.event.verification.artifact, verifyArtifact))) {
+        return { check, status: "UNPROVEN" as const, reason: "Successful command lacks a matching original-script and artifact-effect receipt" };
       }
 
       // Check whether verify.py was modified
@@ -334,16 +340,22 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
 }
 export function evaluateCapacityPredicates(
   variant: "fits-required" | "required-too-large",
-  patch: { add?: Array<{ key: string; text: string }>; remove?: string[]; priority?: string[]; required?: string[] } | undefined,
+  rawPatch: unknown,
   memoryLimit: number,
   measure: (slots: Array<{ id: string; text: string }>) => number,
   survivingOldSlots: Array<{ id: string; text: string }> = [],
   nextId: number = 1
 ): CheckResult[] {
   const results: CheckResult[] = [];
-  if (!patch || !Array.isArray(patch.priority)) {
-    results.push({ check: "valid patch for capacity predicate evaluation", status: "UNPROVEN", reason: "No valid patch observed" });
-    return results;
+  let patch;
+  try {
+    const memory = { version: 1 as const, slots: survivingOldSlots, nextId };
+    validateMemory(memory);
+    if (!Number.isSafeInteger(memoryLimit) || memoryLimit < 0) throw new Error("Missing actual memory limit");
+    patch = parsePatch(rawPatch, memory);
+    if (patch.required.length === 0) throw new Error("Capacity variant requires a nonempty marked necessary set");
+  } catch {
+    return [{ check: "valid patch for capacity predicate evaluation", status: "UNPROVEN", reason: "Missing or invalid frozen memory, memory limit or required patch" }];
   }
   const requiredKeys = new Set(patch.required ?? []);
   const removedKeys = new Set(patch.remove ?? []);
@@ -410,7 +422,9 @@ export function evaluateE2SetupChecks(
   rebuilt: SessionEntry[],
   maintenanceEvents: MaintenanceResult[],
   observedContexts: Array<{ turn: string; kind: string; context: Context }> = [],
-  actions: unknown[] = []
+  actions: unknown[] = [],
+  cwd?: string,
+  expectedProbe?: string
 ): CheckResult[] {
   const checks: CheckResult[] = [];
   const m1 = maintenanceEvents[0];
@@ -431,13 +445,20 @@ export function evaluateE2SetupChecks(
   const kHasTurnC = turnCIds.length > 0 && turnCIds.every(id => kRecords.some(r => (r as any).entryId === id));
 
   const rawActions = actions as Array<{ turn?: string; event?: any }>;
-  const probeCall = rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "read" && typeof (a.event.input as any)?.path === "string" && (a.event.input as any).path.includes("probe.json"));
+  const probeCall = rawActions.find(a => {
+    if (a.turn !== "c" || !object(a.event) || a.event.type !== "tool_call" || a.event.toolName !== "read" || !object(a.event.input) || typeof a.event.input.path !== "string") return false;
+    const path = a.event.input.path;
+    return cwd ? relative(cwd, resolve(cwd, path)) === "probe.json" : !isAbsolute(path) && relative("/", resolve("/", path)) === "probe.json";
+  });
   const probeCallId = probeCall?.event?.toolCallId;
-  const probeResult = probeCallId ? rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_result" && a.event.toolCallId === probeCallId && !a.event.isError) : undefined;
-  const kHasProbe = Boolean(probeResult && kRecords.some(r => r.messages.some(m => m.role === "toolResult" && (m as any).toolCallId === probeCallId && !(m as any).isError)));
+  const probeResult = probeCallId ? rawActions.find(a => a.turn === "c" && object(a.event) && a.event.type === "tool_result" && a.event.toolName === "read" && a.event.toolCallId === probeCallId && a.event.isError === false) : undefined;
+  const kMessages = kRecords.flatMap(r => r.messages);
+  const kHasCall = kMessages.some(m => m.role === "assistant" && Array.isArray(m.content) && m.content.some(b => b.type === "toolCall" && b.id === probeCallId && b.name === "read" && isDeepStrictEqual(b.arguments, probeCall?.event.input)));
+  const completeProbe = expectedProbe !== undefined && Array.isArray(probeResult?.event.content) && probeResult.event.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim() === expectedProbe.trim();
+  const kHasProbe = Boolean(completeProbe && probeResult && kHasCall && kMessages.some(m => m.role === "toolResult" && m.toolCallId === probeCallId && m.toolName === "read" && m.isError === false && isDeepStrictEqual(m.content, probeResult.event.content)));
 
   const turnBIds = turnEntries["b"] ?? [];
-  const bRetired = Boolean(m2?.ok && turnBIds.length > 0 && turnBIds.every(id => !rebuilt.some(e => e.id === id)));
+  const bRetired = Boolean(m2?.ok && turnBIds.length > 0 && turnBIds.every(id => m2.candidate.retiredEntryIds.includes(id)));
   checks.push({
     check: "correction and probe in K at second maintenance while b retires",
     status: kHasTurnC && kHasProbe && bRetired ? "PROVEN" : "UNPROVEN",

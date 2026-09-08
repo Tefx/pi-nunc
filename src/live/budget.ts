@@ -109,7 +109,7 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
   requireValue(prefix === "/" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`), "ENDPOINT", "Transport path is outside authorized model baseUrl");
 }
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
-export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void } = {}): Provider {
+export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState> }) => void } = {}): Provider {
   function stream(model: Model<Api>, context: Context, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = new AssistantMessageEventStream();
     void (async () => {
@@ -123,6 +123,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         options.onResponse?.(model, message, simple ? "main" : "maintenance");
       };
       try {
+        options.beforeRequest?.(); // A failed boundary must stop before reservation and transport.
         const selected = models.find(m => m.id === model.id && m.provider === model.provider);
         requireValue(selected && ["id", "provider", "api", "baseUrl", "contextWindow", "maxTokens", "cost"].every(key => canonical(selected[key as keyof Model<Api>]) === canonical(model[key as keyof Model<Api>])), "MODEL", "Request changed its authorized model");
         options.checkAuth?.(model);
@@ -132,6 +133,9 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         reservation = ledger.reserve(model, context, maxTokens);
         // Agent tools also carry executable callbacks. Observe only the public model-facing Tool fields.
         options.onContext?.(model, structuredClone({ ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) } : {}) }), simple ? "main" : "maintenance");
+        options.onRequest?.({ callId: reservation.id, kind: simple ? "main" : "maintenance", model,
+          outputPlanning: original?.maxTokens ?? null, reasoning: (original as SimpleStreamOptions | undefined)?.reasoning ?? null,
+          context: { ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters }) => ({ name, description, parameters })) } : {}) } });
         const combined = AbortSignal.any([ledger.signal, ...(original?.signal ? [original.signal] : [])]);
         const onPayload = async (payload: unknown, selected: Model<Api>) => {
           const replacement = await original?.onPayload?.(payload, selected);
@@ -144,6 +148,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
             requireValue(caps.kind !== "invalid" && caps.kind !== "conflict", "PAYLOAD", "Native serialized output cap is invalid");
             if (caps.kind === "missing") requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
             else requireValue(caps.value > 0 && caps.value <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
+            options.onPayload?.({ callId: reservation!.id, cap: caps });
             payloadChecked = true; return replacement;
           } catch (error) { if (error instanceof RunnerError) localCode = error.code; throw error; }
         };

@@ -1,6 +1,6 @@
-import { chooseCut, inputLimit, mainContext, messageTokens, requestTokens } from "../engine/accounting.js";
-import { extractionContext, reduceToolBodies } from "../engine/request.js";
-import { legalCuts, validateConfig, validateMemory } from "../engine/validation.js";
+import * as accounting from "../engine/accounting.js";
+import * as request from "../engine/request.js";
+import * as validation from "../engine/validation.js";
 import type { MaintenanceInput } from "../engine/types.js";
 import { requireValue, RunnerError, type RetentionCalibrationRange } from "./contract.js";
 import { validateControl, type Control } from "./scenarios.js";
@@ -16,11 +16,15 @@ export interface RetentionCalibration {
 }
 
 /** Arithmetic only. No model call, host mutation, boundary injection, padding or observer prose enters a request. */
-export function calibrateRetention(source: MaintenanceInput, control: Control, turnEntries: Record<string, string[]>, turnOrder: string[], range: RetentionCalibrationRange): RetentionCalibration {
+export function calibrateRetention(source: MaintenanceInput, control: Control, turnEntries: Record<string, string[]>, turnOrder: string[], range: RetentionCalibrationRange, target?: { firstKeptEntryId: string; accounting: typeof import("../engine/accounting.js"); request: typeof import("../engine/request.js"); validation: typeof import("../engine/validation.js") }): RetentionCalibration {
+  const { chooseCut, inputLimit, mainContext, messageTokens, requestTokens } = target?.accounting ?? accounting;
+  const { extractionContext, reduceToolBodies } = target?.request ?? request;
+  const { legalCuts, validateConfig } = target?.validation ?? validation;
+  const validateMemory: typeof validation.validateMemory = (target?.validation ?? validation).validateMemory;
   try {
     source.signal.throwIfAborted();
     validateControl(control, turnOrder);
-    requireValue(control.action === "rollover" && control.placement, "CALIBRATION", "Calibration requires explicit rollover placement");
+    requireValue((control.action === "rollover" || control.action === "rollover_at_tool_boundary" && target) && control.placement, "CALIBRATION", "Calibration requires explicit rollover placement");
     requireValue(Number.isFinite(range.minFraction) && Number.isFinite(range.maxFraction) && range.minFraction > 0 && range.minFraction <= range.maxFraction && range.maxFraction < 1, "CALIBRATION", "Invalid authorized fraction range");
     validateConfig(source.config); validateMemory(source.memory);
     const { active, config, model } = source;
@@ -54,6 +58,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     for (let i = active.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + active[i]!.messages.reduce((sum, message) => sum + messageTokens(message, config.imageTokens), 0);
     const feasible = cuts.filter(cut => fixed + memoryLimit + suffix[cut]! + config.growthTokens <= trigger);
     for (const [position, cut] of feasible.entries()) {
+      if (target && active[cut]!.entryId !== target.firstKeptEntryId) continue;
       if (active.slice(cut).some(e => retired.has(e.entryId)) || active.slice(0, cut).some(e => retained.has(e.entryId))) continue;
       // chooseCut selects the first feasible suffix <= floor(q*denominator), or its last feasible suffix if none fit.
       const lowerTarget = position === feasible.length - 1 ? 0 : suffix[cut]!;
@@ -78,7 +83,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       }
       requireValue(extraction <= extractionInput, "CALIBRATION", "The selected extraction cannot fit; no maintenance call made");
       return {
-        afterTurn: control.afterTurn!, firstKeptEntryId: active[cut]!.entryId, previousFraction: config.keepRecentFraction, selectedFraction: fraction, authorizedRange: { ...range },
+        afterTurn: (control.afterTurn ?? control.duringTurn)!, firstKeptEntryId: active[cut]!.entryId, previousFraction: config.keepRecentFraction, selectedFraction: fraction, authorizedRange: { ...range },
         model: { provider: model.provider, id: model.id, contextWindow: model.contextWindow },
         accounting: { effectiveTrigger: trigger, fixedTokens: fixed, memoryLimit, keepTarget, keptTokens: chosen.keptTokens, mainInputLimit: mainInput, extractionInputLimit: extractionInput, fullExtractionTokens: fullExtraction, extractionTokens: extraction, normalExtractionAtTrigger: normalAtTrigger, growthReserve: config.growthTokens },
       };

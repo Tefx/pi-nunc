@@ -22,6 +22,7 @@ export function liveExtensionFlags(repository: string, input: RunInput, group?: 
   flags.push("-e", join(candRepo, "dist/src/index.js"));
   return flags;
 }
+import type { Control } from "./scenarios.js";
 export interface HostOptions {
   repository: string; input: RunInput; selection: Selection; caseRoot: string; modelTargets: Model<Api>[];
   deadline: number; signal: AbortSignal; sessionFile?: string | undefined;
@@ -36,6 +37,10 @@ export interface HostOptions {
   onMaintenanceResponse?: ((event: unknown) => void) | undefined;
   onContext?: ((model: Model<Api>, context: Context, kind: string) => void) | undefined;
   onAction?: ((event: unknown) => void) | undefined;
+  boundary?: { control: Control; requestText: string; fixtureContent: string } | undefined;
+  verification?: { script: string; artifact: string } | undefined;
+  onBoundary?: ((data: any) => Promise<void>) | undefined;
+  onObservation?: ((type: string, data: any) => void) | undefined;
 }
 export function childEnvironment(state: string): NodeJS.ProcessEnv {
   return { HOME: join(state, "home"), PI_CODING_AGENT_DIR: join(state, "host"), TMPDIR: join(state, "tmp"),
@@ -101,7 +106,7 @@ export class NativeHost {
     const caseKey = o.input.comparison
       ? `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`
       : `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
-    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey }), { mode: 0o600 });
+    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, boundary: o.boundary, verification: o.verification }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
     const natRepo = o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository;
@@ -155,6 +160,8 @@ export class NativeHost {
     for (const row of rows) {
       this.cursor += row.length + 1;
       const e: unknown = JSON.parse(row); requireValue(object(e), "OBSERVER", "Invalid observer record");
+      this.options.onObservation?.(String(e.type), e.data);
+      if (e.type === "tool-boundary") void this.options.onBoundary?.(e.data).catch(() => this.fail("PREPARATION", "Boundary coordination failed"));
       if (e.type === "maintenance") this.options.onMaintenance?.(e.data);
       if (e.type === "maintenance_response") this.options.onMaintenanceResponse?.(e.data);
       if (e.type === "action" || e.type === "lifecycle") this.options.onAction?.(e.data);
@@ -196,6 +203,17 @@ export class NativeHost {
       this.changed.on("event", check); check();
     });
     await this.refresh();
+  }
+  async reconfigure(config: Selection["config"]): Promise<void> {
+    const settingsPath = this.options.controlledModels ? join(this.options.input.target.stateRoot, "host/settings.json") : join(this.options.caseRoot, "task/.pi/settings.json");
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+    await writeFile(settingsPath, JSON.stringify({ ...settings, compaction: config.compaction }), { mode: 0o600 });
+    if (this.options.group !== "native") await writeFile(join(this.options.caseRoot, "nunc-config.json"), JSON.stringify(config.nunc), { mode: 0o600 });
+    await this.command("prompt", { message: "/nunc-observer-reload" });
+    await this.refresh();
+  }
+  async releaseBoundary(decision: { firstKeptEntryId?: string; stop?: string }): Promise<void> {
+    await this.command("prompt", { message: `/nunc-observer-release ${JSON.stringify(decision)}` });
   }
   async compact(during?: (signal: AbortSignal) => Promise<void>): Promise<void> {
     const stop = new AbortController();

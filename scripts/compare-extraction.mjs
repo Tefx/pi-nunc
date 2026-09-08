@@ -29,7 +29,7 @@ try {
       "No task state created, credentials resolved, or model calls made. Internal binding protects candidate/target identity; no receipt must be returned by the caller."
     ];
     if (input.scenarios.some(s => s.id === "e3")) {
-      limitations.push("e3 exact mid-turn tool-boundary split control requires boundary pause before continuation; manual ctx.compact() aborts without continuing, while automatic threshold compaction occurs on token threshold crossing. Reported as UNPROVEN before execution.");
+      limitations.push("e3 uses the public awaited turn_end and command reload path before native automatic compaction. Actual read success, whole sibling batch, threshold and group capacity remain runtime predicates; an infeasible batch stops before further transport.");
     }
     process.stdout.write(`${JSON.stringify({
       status: "PREFLIGHT",
@@ -41,8 +41,7 @@ try {
       overrides: input.overrides,
       limits: input.limits,
       scenarios: input.scenarios,
-      limitations,
-      unsupportedPublicSeams: input.scenarios.some(s => s.id === "e3") ? ["rollover_at_tool_boundary"] : []
+      limitations
     })}\n`);
   } else if (flags[0] === "--worker") {
     const { workerMain } = await import("../dist/src/live/worker.js");

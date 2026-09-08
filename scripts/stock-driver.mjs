@@ -110,8 +110,9 @@ export class StockFixture {
     }
     const chunk = (delta, finish_reason = null) => frame({ id: `response-${row.number}`, object: 'chat.completion.chunk', created: 1, model: payload.model, choices: [{ index: 0, delta, finish_reason }] });
     chunk({ role: 'assistant', content: '' });
-    chunk(reply.tool ? { tool_calls: [{ index: 0, id: `tool-${row.number}`, type: 'function', function: { name: reply.tool.name, arguments: JSON.stringify(reply.tool.input) } }] } : { content: typeof reply === 'string' ? reply : reply.text });
-    chunk({}, reply.finish ?? (reply.tool ? 'tool_calls' : 'stop'));
+    const tools = reply.tools ?? (reply.tool ? [reply.tool] : []);
+    chunk(tools.length ? { tool_calls: tools.map((tool, index) => ({ index, id: tools.length === 1 ? `tool-${row.number}` : `tool-${row.number}-${index}`, type: 'function', function: { name: tool.name, arguments: JSON.stringify(tool.input) } })) } : { content: typeof reply === 'string' ? reply : reply.text });
+    chunk({}, reply.finish ?? (tools.length ? 'tool_calls' : 'stop'));
     frame({ id: `response-${row.number}`, object: 'chat.completion.chunk', model: payload.model, choices: [], usage: { prompt_tokens: observedInput, completion_tokens: observedOutput, total_tokens: observedInput + observedOutput } });
     res.end('data: [DONE]\n\n');
   }
