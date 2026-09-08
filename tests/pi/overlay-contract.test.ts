@@ -506,12 +506,13 @@ test("context abbreviations legend is reachable in panel and explains F, M, R, B
   assert.match(legendDrill, /R · Raw history/);
   assert.match(legendDrill, /B · Retiring/);
   assert.match(legendDrill, /K · Kept/);
-  assert.match(legendDrill, /D · Queued/);
+  assert.match(legendDrill, /D · 未交付输入/);
 
   // Move down to M
   f.overlay.handleInput("\x1b[B");
   const mPreview = clean(f.overlay.render(90));
-  assert.match(mPreview, /不是消息计数器/);
+  assert.match(mPreview, /工作记忆/);
+  assert.match(mPreview, /关键约束/);
 
   // Move down to B
   f.overlay.handleInput("\x1b[B");
@@ -520,12 +521,17 @@ test("context abbreviations legend is reachable in panel and explains F, M, R, B
   assert.match(bPreview, /退役/);
   assert.match(bPreview, /不会提前预测/);
 
+  // Move down to K
+  f.overlay.handleInput("\x1b[B");
+  const kPreview = clean(f.overlay.render(90));
+  assert.match(kPreview, /保留/);
+  assert.match(kPreview, /继续处理/);
+
   // Move down to D
   f.overlay.handleInput("\x1b[B");
-  f.overlay.handleInput("\x1b[B");
   const dPreview = clean(f.overlay.render(90));
-  assert.match(dPreview, /排队/);
-  assert.match(dPreview, /不计入当前活动布局/);
+  assert.match(dPreview, /未交付/);
+  assert.match(dPreview, /调度规则/);
 
   // Esc returns to root level of Context tab
   f.overlay.handleInput("\x1b");
