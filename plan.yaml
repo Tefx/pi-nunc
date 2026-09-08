@@ -1649,7 +1649,7 @@ phases:
       untracked .pi/ and plan-dashboard.html untouched. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
   - id: nunc.ui-context
     name: 有范围的 Context 布局与请求/维护观察
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"tests/pi/**\"\
       , \"tests/engine/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
@@ -1710,6 +1710,8 @@ phases:
     depends_on:
     - nunc.ui-memory
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-08T02:33:05.359052Z'
   - id: nunc.ui-panel
     name: 紧凑状态栏、Slots/Context 双 tab 与整合交付
     status: pending
