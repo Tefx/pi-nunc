@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { Control } from "./scenarios.js";
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-interface ObserverState { ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string }
+interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
 import { boundedProvider, BudgetLedger } from "./budget.js";
@@ -40,6 +40,7 @@ export default function observer(pi: ExtensionAPI): void {
       requireValue(base, "MODEL", "Authorized native provider unavailable");
       while (state.bases.has(base)) base = state.bases.get(base)!;
       const decorated = boundedProvider(base, binding.models.filter(m => m.provider === id), ledger, {
+        classify: simple => state.compacting || !simple ? "maintenance" : "main",
         beforeRequest: () => requireValue(!state.stop, "PREPARATION", state.stop ?? "Boundary preparation failed"),
         onRequest: data => log("request", { ...data, thinking: state.ctx?.thinkingLevel ?? null }),
         onPayload: data => log("request-cap", data),
@@ -71,6 +72,7 @@ export default function observer(pi: ExtensionAPI): void {
   });
   pi.on("before_provider_request", event => event.payload);
   pi.on("session_before_compact", (event, ctx) => {
+    state.compacting = true;
     log("preparation", { reason: event.reason, model: ctx.model, thinking: ctx.thinkingLevel,
       preparation: { ...event.preparation, fileOps: Object.fromEntries(Object.entries(event.preparation.fileOps).map(([k, v]) => [k, [...v]])) },
       branch: event.branchEntries, active: ctx.sessionManager.buildContextEntries() });
@@ -79,11 +81,13 @@ export default function observer(pi: ExtensionAPI): void {
     if (state.stop) return { cancel: true };
   });
   pi.on("session_compact", (event, ctx) => {
+    state.compacting = false;
     log("commit", { reason: event.reason, snapshot: event.compactionEntry, rebuilt: ctx.sessionManager.buildContextEntries() });
     delete state.expectedFirst;
     log("lifecycle", { phase: "maintenance-end", reason: event.reason, willRetry: event.willRetry });
   });
   pi.on("session_compact_failed", event => {
+    state.compacting = false;
     if (state.expectedFirst) state.stop = "Automatic boundary maintenance failed; suffix is unproven";
     log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry });
   });
