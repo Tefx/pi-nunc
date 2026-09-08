@@ -65,22 +65,31 @@ project_guidance: 当前阶段 nunc-ui 仅计划已就绪，等待用户明确�
   topology 仅在真实消费者/authority/效果边界变化时由 Planner 处理。
 clipboard:
   author: vectl-orchestrator
-  summary: User resumed UI execution after capacity fix 33989fa
-  content: 'User now says 另一个agent已完成修复，继续调度: previous pause is lifted. Resume nunc.ui-context
-    then nunc.ui-panel, exact owner node-typescript-engineer. Current main product33989fa61b51f5377e97127192ad8ddcadf47a34
-    preserves completed ui-memory3aa1a9a and adds capacity ownership repair. Read
-    docs/CAPACITY.md and latest docs/PI.md/ENGINE.md: mainAdmissionLimit distinct
-    from memory inputLimit, plannedInputLimit/inputExceededPlan observations, no soft
-    planning-target local overflow; explicit/main-window guards and native output/append
-    protections remain. Carry these into Context inspector, don''t restore old reserve-based
-    main gate. No peer communication needed; user earlier requested ignore other agent
-    messages. Claims empty at resume; protected .pi/ and plan-dashboard.html remain
-    untracked. No new paid calls or installations authorized by this continuation
-    beyond existing scoped implementation preparation. Current source/test changes
-    require applicable new full native checks during UI delivery. Reusable helpers:
-    /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
-  written_at: '2026-09-08T02:32:57.480661Z'
-  expires_at: '2026-09-10T02:32:57.480661Z'
+  summary: UI panel blocked by worker model 403; three findings remain
+  content: 'Current nunc.ui-panel/node-typescript-engineer remains claimed and NOT
+    accepted. Last resume failed before producing edits: LARVA_CHILD_RUNTIME_FAILED,
+    OpenAI-compatible Grok 403 exhausted credits/subscription. No automatic retry
+    or model/persona substitution. Need restored runtime model availability or user-authorized
+    model change before continuing SAME owner.
+
+    Reconciled worktree /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-panel tracked
+    clean at a47ea733fcbabb7b2f7639c87248fff8cc41002b. Main unchanged9eb64a2; only
+    protected untracked .pi/dashboard. Candidate not integrated. Previous321pass41files
+    does NOT close outstanding F1 private Editor.submitValue hook, F5 post-success
+    inspector read escaping save/delete acknowledgment, F7 native compositor clipping
+    controls at12x40 rejected multiline. Full remaining repair task was sent to child
+    /Users/tefx/.pi/larva/child-sessions/2026-09-08T03-59-40-763Z_01a07f2b-eedb-71e4-a422-b68333acbbd3.jsonl;
+    no new child product changes. Reviewer task /Users/tefx/.pi/larva/child-sessions/2026-09-08T04-21-20-432Z_01a07f3f-c3af-7744-849c-98ebbad7ba14.jsonl
+    can consume next bounded delta; earlier F2/F3/F4/F6 closed, don''t replay broadreview.
+    Helpers probe-ui-final-a47e.mjs reproduces remaining issues. Public native onSubmit
+    supported; private submitValue replacement violates acceptedhostboundary. ManualIME
+    fixture scripts/ime-fixture.mjs validate/print now runnable/validated but realIMEwindow,
+    resize/theme manual observation remain unproven. No paid product calls/globalinstall/push.
+    Ignore unrelated peer messages per user.
+
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
+  written_at: '2026-09-08T05:21:51.659742Z'
+  expires_at: '2026-09-10T05:21:51.659742Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
