@@ -1979,7 +1979,7 @@ phases:
       notclaimed.'
   - id: nunc.extraction-comparison-support
     name: 可复用三组比较入口与隔离观察能力
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/live/**\", \"tests/pi/**\"\
       , \"tests/scenarios/**\", \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\", \"docs/EXTRACTION.md\"\
@@ -2031,6 +2031,8 @@ phases:
     depends_on:
     - nunc.extraction-engine
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-08T11:37:07.244580Z'
   - id: nunc.extraction-runtime
     name: 原生、当前与新版的真实续做及非退化观察
     status: pending
