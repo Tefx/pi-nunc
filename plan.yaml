@@ -1979,7 +1979,7 @@ phases:
       notclaimed.'
   - id: nunc.extraction-comparison-support
     name: 可复用三组比较入口与隔离观察能力
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/live/**\", \"tests/pi/**\"\
       , \"tests/scenarios/**\", \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\", \"docs/EXTRACTION.md\"\
@@ -2033,6 +2033,25 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-08T11:37:07.244580Z'
+    done_at: '2026-09-08T18:38:54.086684+00:00'
+    evidence: 'Integrated exact independently accepted candidate 34b64e7fc170725a55bdf26564db5fe9d15b929c
+      by fast-forward from unchanged e01ec09b0c2debe9330f47a5e9590c000ad402d7. Actual
+      executor Principal Engineer after reconciled ordinary-owner capability dead
+      end; original node-typescript-engineer claim preserved. Public three-target
+      defaults/matched preparation, E3 stock automatic compaction/continuation/restart,
+      E1 ordered final-artifact verification, native/Nunc E2 structural qualification,
+      E4 frozen capacity/recovery, call-ID accounting and wall-clock intervals delivered.
+      Required post-commit all check:374 passed/46 files exit0; complete log and test
+      replacement mapping at /Users/tefx/Projects/pi-nunc-worktrees/nunc-extraction-comparison/.scratch/comparison-repair-3e3515d/{all-check.log,replacement-map.md,delivery.md}.
+      Actual public CLI controlled report .scratch/stock/run-RE3OM4/positive-report.json
+      retains30 sessions42 segments,258 reconciled calls,successful removed cleanup.
+      Independent ten-requirement verifier COMPLETED/PROVEN, no findings; validator
+      valid:true binding_checked:true POSITIVE_EVIDENCE for exact target: /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-comparison-acceptance-hsy_sde0/{repair-review-binding.json,repair-verifier-report.json}.
+      F1-F4 resolved; no assertion weakening or semantic acceptance inferred from
+      controlled responses. Native rendered-memory constraint parity, natural mixed-slot
+      semantics, real-model effectiveness and manual UI acceptance remain independent
+      limitations/obligations. Retained ref refs/retained/nunc-extraction-comparison
+      preserved; no push/global install/daily configuration or protected UI changes.'
   - id: nunc.extraction-runtime
     name: 原生、当前与新版的真实续做及非退化观察
     status: pending
