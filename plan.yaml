@@ -1898,7 +1898,7 @@ phases:
       UIclaim/manualfixture preserved.'
   - id: nunc.extraction-engine
     name: 必要项共同保留、协议迁移与原生失败恢复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"src/pi/**\", \"src/index.ts\", \"tests/engine/**\"\
       , \"tests/pi/**\", \"tests/live/**\", \"scripts/**\", \"docs/ENGINE.md\", \"\
@@ -1951,6 +1951,32 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-08T10:25:11.397734Z'
+    done_at: '2026-09-08T11:36:52.173110+00:00'
+    evidence: 'Integrated unchanged FF candidate2a034075a5028a6d6653215389ede79c8e7938fe
+      from postclaim9633ca5; retained refs/retained/nunc-extraction-engine. Parent
+      inspected engine/parser/observation changes and final closure delta; candidate
+      clean, managedPlan unchanged. Four-field add/remove/priority/required protocol
+      coordinated with controlled consumers; required references valid unique surviving
+      subset, all jointly retained beforeoptional selection, fullID/wrapping/rawbody/order/version1
+      preserved; true necessarycapacity fails with no candidate. Required diagnostics
+      separate declared/retained/failed. No extra extraction repair; semantic completeness
+      notclaimed. Full source-bound all passed349/41,0fail0skip, producer .scratch/check-all.log.
+      Independent integration-verifier exact task10-52-18 bounded PASS on finalcandidate
+      closes all3 materialtest/doc gaps, reusing applicable runtime/core evidence.
+      SDK aborted-history threshold observed2maintenance/1main/differentnewpromptpresence/0checkpoints,
+      correctly attributed preprompt andpostrun _checkCompaction, notsame frozen replay
+      or universalcallceiling. Tracked stockRPC/HTTP observe-required-capacity included
+      in all: complete recoverysequence assertsmanual1event/1mainDelta,threshold1/2,overflow1/2;
+      exactrequiredCAPACITYreasons, orderedonceuserentries,0checkpoints,processhealthyterminal.
+      SDKtoolcases requireactualCAPACITY eventcountsmanual1/threshold1/overflow+threshold2,
+      onetool execution/result/no checkpoints. Initial weaktests/wrongmethodattribution
+      and erroneousproducerfullSHA were repaired, notrelabeledpassing. Requiredfailed
+      hypotheticalmisclassification hadnoordinaryreachablecounterexample; no unrelatedhardening.
+      Mainadmission/softplanning, completestopovercatalog andnative/queue/manualM
+      protections retained. No paidmodelcalls/globalinstall/dailyconfig/credential
+      changes. Independent artifacts /tmp/larva-agent-artifacts/nunc-required-verifier/;
+      reusablehelpers there. UI manualIME/resize/theme stillseparatepending. Comparisonrunner/realquality/finalacceptance
+      notclaimed.'
   - id: nunc.extraction-comparison-support
     name: 可复用三组比较入口与隔离观察能力
     status: pending
