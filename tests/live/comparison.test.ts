@@ -337,6 +337,7 @@ test("e1 and e3 fixture verification commands require successful execution recei
       { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_4", input: { command: "python3 verify.py" } } },
       { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_4", isError: false, content: "ok" } },
       { turn: "e", event: { type: "tool_call", toolName: "write", toolCallId: "call_5", input: { path: "export.json", content: "{}" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "write", toolCallId: "call_5", isError: false, content: "ok" } },
     ];
     const scoredInvalidated = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: invalidatedActions });
     const verifyCheckInvalidated = scoredInvalidated.actionReview.find(r => r.check.includes("python3 verify.py"));
@@ -345,6 +346,7 @@ test("e1 and e3 fixture verification commands require successful execution recei
     // 5. Verification script modified
     const scriptModifiedActions = [
       { turn: "e", event: { type: "tool_call", toolName: "write", toolCallId: "call_6", input: { path: "verify.py", content: "exit(0)" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "write", toolCallId: "call_6", isError: false, content: "ok" } },
       { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_7", input: { command: "python3 verify.py" } } },
       { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_7", isError: false, content: "ok" } },
     ];
@@ -355,19 +357,31 @@ test("e1 and e3 fixture verification commands require successful execution recei
     // 6. Verification artifact authored directly by model write tool
     const directWriteActions = [
       { turn: "e", event: { type: "tool_call", toolName: "write", toolCallId: "call_8", input: { path: "verification.json", content: '{"passed":true}' } } },
+      { turn: "e", event: { type: "tool_result", toolName: "write", toolCallId: "call_8", isError: false, content: "ok" } },
       { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_9", input: { command: "python3 verify.py" } } },
       { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_9", isError: false, content: "ok" } },
     ];
     const scoredDirectWrite = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: directWriteActions });
     const verifyCheckDirectWrite = scoredDirectWrite.actionReview.find(r => r.check.includes("python3 verify.py"));
     assert.equal(verifyCheckDirectWrite?.status, "DISPROVEN");
+
+    // 7. Failed write attempt to verify.py does not modify the script
+    const failedWriteActions = [
+      { turn: "e", event: { type: "tool_call", toolName: "write", toolCallId: "call_10", input: { path: "verify.py", content: "exit(0)" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "write", toolCallId: "call_10", isError: true, content: "permission denied" } },
+      { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_11", input: { command: "python3 verify.py" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_11", isError: false, content: "ok" } },
+    ];
+    const scoredFailedWrite = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: failedWriteActions });
+    const verifyCheckFailedWrite = scoredFailedWrite.actionReview.find(r => r.check.includes("python3 verify.py"));
+    assert.equal(verifyCheckFailedWrite?.status, "PROVEN");
   } finally {
     await rm(taskDir, { recursive: true, force: true });
   }
 });
 
 test("e4 capacity predicates evaluate necessary fit, competition overflow, and optional fit", () => {
-  const measure = (slots: Array<{ key: string; text: string }>) => slots.reduce((sum, s) => sum + s.text.length, 0);
+  const measure = (slots: Array<{ id: string; text: string }>) => slots.reduce((sum, s) => sum + s.text.length, 0);
   const patchFits = {
     add: [
       { key: "nec1", text: "x".repeat(30) },
@@ -410,6 +424,26 @@ test("e4 capacity predicates evaluate necessary fit, competition overflow, and o
   assert.equal(optFitsCheck?.status, "UNPROVEN");
 });
 
+test("e4 capacity evaluation does not double-charge growth against full memory limit", () => {
+  const measure = (slots: Array<{ id: string; text: string }>) => slots.reduce((sum, s) => sum + s.text.length, 0);
+  const patch = {
+    add: [
+      { key: "s1", text: "x".repeat(65) },
+      { key: "s2", text: "o".repeat(6) },
+    ],
+    remove: [],
+    priority: ["s1", "s2"],
+    required: ["s1"],
+  };
+  const res = evaluateCapacityPredicates("required-too-large", patch, 100, measure);
+  const exceedsCheck = res.find(r => r.check.includes("marked necessary set exceeds rendered memory limit"));
+  assert.equal(exceedsCheck?.status, "UNPROVEN");
+
+  const resFits = evaluateCapacityPredicates("fits-required", patch, 100, measure);
+  const fitsCheck = resFits.find(r => r.check.includes("all marked necessary candidates jointly fit"));
+  assert.equal(fitsCheck?.status, "PROVEN");
+});
+
 test("comparison defaults and matched modes report truthful differences and matched parity", async () => {
   const input = await comparisonFixture();
   input.scenarios = [input.scenarios[0]!]; // e1 only for fast structure test
@@ -427,16 +461,64 @@ test("comparison defaults and matched modes report truthful differences and matc
   assert.equal(typeof defaultsMode.records.memorySizeComparison?.native, "string");
   assert.equal(typeof defaultsMode.records.memorySizeComparison?.candidate, "string");
 
-  // Matched mode truthfully reports matched parity when dimensions match, and discrepancies when they diverge
+  // Matched mode truthfully reports UNPROVEN parity and discrepancies when facts are unobserved or mismatched
   const matchedMode = report.comparison.modes.find(m => m.mode === "matched");
   assert(matchedMode);
-  assert.equal(matchedMode.records.matchedParity?.status, "PROVEN");
-  assert.equal(matchedMode.records.matchedParity?.cutMatched, true);
-  assert.equal(matchedMode.records.matchedParity?.budgetMatched, true);
-  assert.deepEqual(matchedMode.records.matchedParity?.discrepancies, []);
+  assert.equal(matchedMode.records.matchedParity?.status, "UNPROVEN");
+  assert(matchedMode.records.matchedParity!.discrepancies.length > 0);
+  assert(matchedMode.records.matchedParity!.discrepancies.some(d => d.includes("unobserved") || d.includes("no observed model execution")));
 
   // Unsupported public seam for mid-turn boundary split control is explicitly reported
   assert(report.unsupportedPublicSeams?.includes("rollover_at_tool_boundary"));
+});
+
+test("matched mode reports PROVEN parity when all 3 groups observe matching cuts, K and reserves", async () => {
+  const input = await comparisonFixture();
+  input.target.stateRoot = join(repository, ".scratch", `nunc-live-pos-${Date.now()}`);
+  input.scenarios = [input.scenarios[0]!];
+  input.comparison!.modes = ["matched"];
+  input.limits.maxDurationMs = 5000;
+
+  const posMockWorker = join(repository, ".scratch/test-pos-mock-worker.mjs");
+  await writeFile(posMockWorker, `#!/usr/bin/env node
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const job = JSON.parse(Buffer.concat(chunks).toString());
+const { input, scenarioIndex, resume, group, mode, caseRoot: explicitCaseRoot } = job;
+const selection = input.scenarios[scenarioIndex];
+const caseRoot = explicitCaseRoot ?? join(input.target.stateRoot, \`\${mode ?? "defaults"}-\${group ?? "candidate"}-\${selection.id}\`);
+await mkdir(caseRoot, { recursive: true });
+const base = {
+  pid: process.pid, scenario: selection.id, group: group ?? "candidate", mode: mode ?? "defaults",
+  prerequisites: [{ check: "controlled test mock prerequisite", status: "PROVEN" }],
+  nextTurn: 0, contexts: [], maintenance: [], actions: [{ type: "mock-action" }], commands: [], calibrations: [],
+  score: { artifacts: {}, checks: [{ check: "mock artifact check", status: "PROVEN" }], actionReview: [] },
+  segmentUsage: { calls: 1, tokens: 100, latencyMs: 50, costUsd: null },
+  comparisonFacts: {
+    h: 183616, summarySize: 100, kTokens: 50, mTokens: 50, outputCap: 4096,
+    outputReserve: 10000,
+    cutPoint: 1,
+  },
+};
+await writeFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(base), { mode: 0o600 });
+process.exitCode = 0;
+`);
+
+  try {
+    const report = await executeComparison(input, repository, posMockWorker, new AbortController().signal);
+    const matchedMode = report.comparison.modes.find(m => m.mode === "matched");
+    assert(matchedMode);
+    assert.equal(matchedMode.records.matchedParity?.status, "PROVEN");
+    assert.equal(matchedMode.records.matchedParity?.cutMatched, true);
+    assert.equal(matchedMode.records.matchedParity?.kMatched, true);
+    assert.equal(matchedMode.records.matchedParity?.budgetMatched, true);
+    assert.deepEqual(matchedMode.records.matchedParity?.discrepancies, []);
+  } finally {
+    await rm(posMockWorker, { force: true });
+    await rm(input.target.stateRoot, { recursive: true, force: true });
+  }
 });
 
 test("e3 pre-spend refusal skips model turns and charges zero calls when public seam is unsupported", async () => {
@@ -568,11 +650,17 @@ test("end-to-end comparison across native, current and candidate via public CLI,
     }
     const lastMsg = messages[messages.length - 1];
     const lastText = lastMsg ? text(lastMsg) : "";
-    const isToolOutput = lastMsg && (lastMsg.role === "toolResult" || lastMsg.type === "function_call_output" || lastText.includes("decision.json") || lastText.includes("Saved."));
+    const isToolOutput = lastMsg && (lastMsg.role === "toolResult" || lastMsg.type === "function_call_output" || lastText.includes("probe.json") || lastText.includes("decision.json") || lastText.includes("Saved."));
     if (isToolOutput) {
-      return "Decision has been recorded.";
+      return "Observed and recorded.";
     }
-    return { tool: { name: "write", input: { path: "decision.json", content: JSON.stringify({ route: "direct", reason: "Controlled fixture reason." }) } } };
+    if (lastText.includes("Read probe.json")) {
+      return { tool: { name: "read", input: { path: "probe.json" } } };
+    }
+    if (lastText.includes("Write decision.json")) {
+      return { tool: { name: "write", input: { path: "decision.json", content: JSON.stringify({ route: "direct", reason: "Direct route is compatible with account isolation." }) } } };
+    }
+    return "Understood. Awaiting instructions.";
   };
 
   const runEnv = { PATH: "/opt/homebrew/bin:/usr/bin:/bin", HOME: join(f.state, "home"), PI_CODING_AGENT_DIR: join(f.state, "agent"), TMPDIR: join(f.state, "tmp"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" };
@@ -585,7 +673,7 @@ test("end-to-end comparison across native, current and candidate via public CLI,
     child.stdin.end(JSON.stringify(selection));
     const code = await new Promise((resolve) => child.once("close", resolve));
 
-    assert.equal(code, 2, stderr); // c1 oracle expectations on synthetic service report UNPROVEN
+    assert.equal(code, 2, stderr);
     assert(stdout.length > 0);
     const report = JSON.parse(stdout);
     assert.equal(report.matrix.length, 3);

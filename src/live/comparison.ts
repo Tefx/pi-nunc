@@ -190,7 +190,7 @@ export async function executeComparison(
           // Same effective config + controls: reuse comparison execution rather than launch a duplicate run
           const defaultsMode = report.comparison.modes.find(m => m.mode === "defaults");
           const defaultsScenario = defaultsMode?.groups[group].scenarios.find(s => s.scenarioId === selection.id && s.variant === selection.variant);
-          if (mode === "matched" && defaultsScenario) {
+          if (mode === "matched" && defaultsScenario && defaultsScenario.status === "OBSERVED" && defaultsScenario.calls > 0) {
             const reused: ComparisonScenarioResult = {
               ...defaultsScenario,
               mode: "matched",
@@ -254,10 +254,10 @@ export async function executeComparison(
               setupChecks: segment.setupChecks,
               score: segment.score,
               sessionFile: segment.sessionFile,
-              calls: caseReserves.length > 0 ? caseReserves.length : segment.actions.length,
-              tokens: totalTokens,
-              latencyMs,
-              costUsd,
+              calls: segment.segmentUsage ? segment.segmentUsage.calls : caseReserves.length,
+              tokens: segment.segmentUsage ? segment.segmentUsage.tokens : totalTokens,
+              latencyMs: segment.segmentUsage ? segment.segmentUsage.latencyMs : latencyMs,
+              costUsd: segment.segmentUsage ? segment.segmentUsage.costUsd : costUsd,
             };
             modeReport.groups[group].scenarios.push(scenarioResult);
             report.matrix.push(scenarioResult);
@@ -305,39 +305,65 @@ export async function executeComparison(
         modeReport.records.usageComparison = usageComp;
       } else if (mode === "matched") {
         const discrepancies: string[] = [];
-        const modelsEqual = input.models.length > 0 && ALL_GROUPS.every(g => modeReport.groups[g].scenarios.length > 0);
+        let modelsEqual = true;
         let exposureMatchedAll = true;
         let cutMatchedAll = true;
         let kMatchedAll = true;
         let budgetMatchedAll = true;
 
-        for (let i = 0; i < input.scenarios.length; i++) {
-          const sid = input.scenarios[i]!.id;
-          const natS = modeReport.groups.native.scenarios.find(s => s.scenarioId === sid);
-          const candS = modeReport.groups.candidate.scenarios.find(s => s.scenarioId === sid);
+        for (const g of ALL_GROUPS) {
+          const scens = modeReport.groups[g].scenarios;
+          if (scens.length === 0 || scens.every(s => s.calls === 0)) {
+            modelsEqual = false;
+            discrepancies.push(`${g}: no observed model execution`);
+          }
+        }
 
-          if (natS && candS) {
-            if (natS.cutPoint !== undefined && candS.cutPoint !== undefined && natS.cutPoint !== candS.cutPoint) {
-              cutMatchedAll = false;
-              discrepancies.push(`${sid}: cut point mismatch (native cut at ${natS.cutPoint} vs candidate cut at ${candS.cutPoint})`);
-            }
-            if ((natS.kTokens ?? 0) > 0 && (candS.kTokens ?? 0) > 0 && Math.abs((natS.kTokens ?? 0) - (candS.kTokens ?? 0)) > 50) {
-              kMatchedAll = false;
-              discrepancies.push(`${sid}: K budget difference (native K ${natS.kTokens ?? 0} tokens vs candidate K ${candS.kTokens ?? 0} tokens)`);
-            }
-            if (natS.outputReserve !== undefined && candS.outputReserve !== undefined && natS.outputReserve !== candS.outputReserve) {
-              budgetMatchedAll = false;
-              discrepancies.push(`${sid}: planned reserve mismatch (native reserve ${natS.outputReserve} vs candidate reserve ${candS.outputReserve})`);
-            }
+        for (let i = 0; i < input.scenarios.length; i++) {
+          const sel = input.scenarios[i]!;
+          const sid = sel.id;
+          const svar = sel.variant;
+          const label = `${sid}${svar ? `-${svar}` : ""}`;
+          const natS = modeReport.groups.native.scenarios.find(s => s.scenarioId === sid && s.variant === svar);
+          const curS = modeReport.groups.current.scenarios.find(s => s.scenarioId === sid && s.variant === svar);
+          const candS = modeReport.groups.candidate.scenarios.find(s => s.scenarioId === sid && s.variant === svar);
+
+          if (!natS || !curS || !candS) {
+            discrepancies.push(`${label}: missing group scenario result`);
+            continue;
+          }
+
+          if (natS.cutPoint === undefined || curS.cutPoint === undefined || candS.cutPoint === undefined) {
+            cutMatchedAll = false;
+            discrepancies.push(`${label}: cut point unobserved`);
+          } else if (natS.cutPoint !== curS.cutPoint || curS.cutPoint !== candS.cutPoint) {
+            cutMatchedAll = false;
+            discrepancies.push(`${label}: cut point mismatch (native cut at ${natS.cutPoint}, current at ${curS.cutPoint}, candidate at ${candS.cutPoint})`);
+          }
+
+          if (!natS.kTokens || !curS.kTokens || !candS.kTokens) {
+            kMatchedAll = false;
+            discrepancies.push(`${label}: K budget unobserved`);
+          } else if (natS.kTokens !== curS.kTokens || curS.kTokens !== candS.kTokens) {
+            kMatchedAll = false;
+            discrepancies.push(`${label}: K budget mismatch (native K ${natS.kTokens} tokens, current K ${curS.kTokens} tokens, candidate K ${candS.kTokens} tokens)`);
+          }
+
+          if (natS.outputReserve === undefined || curS.outputReserve === undefined || candS.outputReserve === undefined) {
+            budgetMatchedAll = false;
+            discrepancies.push(`${label}: planned reserve unobserved`);
+          } else if (natS.outputReserve !== curS.outputReserve || curS.outputReserve !== candS.outputReserve) {
+            budgetMatchedAll = false;
+            discrepancies.push(`${label}: planned reserve mismatch (native reserve ${natS.outputReserve}, current reserve ${curS.outputReserve}, candidate reserve ${candS.outputReserve})`);
           }
         }
 
         modeReport.records.matchedParity = {
-          modelMatched: modelsEqual,
+          modelMatched: modelsEqual && discrepancies.every(d => !d.includes("no observed model execution")),
           exposureMatched: exposureMatchedAll,
-          cutMatched: cutMatchedAll && discrepancies.every(d => !d.includes("cut point mismatch")),
-          kMatched: kMatchedAll && discrepancies.every(d => !d.includes("K budget difference")),
-          budgetMatched: budgetMatchedAll && discrepancies.every(d => !d.includes("planned reserve mismatch")),
+          cutMatched: cutMatchedAll && discrepancies.every(d => !d.includes("cut point")),
+          kMatched: kMatchedAll && discrepancies.every(d => !d.includes("K budget")),
+          budgetMatched: budgetMatchedAll && discrepancies.every(d => !d.includes("reserve")),
           wrappersMatched: false,
           fileListMatched: false,
           discrepancies,

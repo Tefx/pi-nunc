@@ -293,6 +293,18 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     if (stat.isDirectory()) { for (const name of (await readdir(path)).sort()) await bind(join(path, name)); }
     else { digest.update(relative(repository, path)); digest.update(await readFile(path)); }
   }
+  const explicitAssets = [
+    input.assets?.inputs,
+    input.assets?.observer,
+    ...input.scenarios.flatMap(s => [s.assets?.inputs, s.assets?.observer])
+  ].filter((p): p is string => typeof p === "string" && p.trim().length > 0);
+  for (const assetFile of explicitAssets) {
+    const p = isAbsolute(assetFile) ? assetFile : join(repository, assetFile);
+    if (existsSync(p)) {
+      const stat = await lstat(p);
+      if (stat.isFile()) digest.update(await readFile(p));
+    }
+  }
   for (const name of ["src", "scripts", "dist/src", "tests/scenarios", "policies", "package.json", "package-lock.json", "tsconfig.json"]) await bind(join(repository, name));
   await lstat(join(repository, "dist/src/index.js"));
   for (const s of input.scenarios) if (s.config.nunc.policyFile) {
