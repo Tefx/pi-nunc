@@ -1534,7 +1534,7 @@ phases:
       inputs.'
 - id: nunc-ui
   name: Nunc 状态、Slots 管理与 Context 布局界面
-  status: in_progress
+  status: done
   gate: 最终整合接受放在 nunc.ui-panel 完成程序，由 Orchestrator 判断；不新增 gate step。范围包含 nunc-ui 的人工记忆状态、Context
     观察、完整双 tab/compact footer，以及 nunc-v1/native-compat/cooperative-root-cause 全部适用核心结果和当前预算/命令合同。最终不可变整合候选的完整原生
     offline inventory 通过，docs/UI.md 全部必要行为有实际 native TUI/保存/恢复/竞态/观察边界证据，K/队列/在途请求及原生
@@ -1735,7 +1735,7 @@ phases:
       execute. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
   - id: nunc.ui-panel
     name: 紧凑状态栏、Slots/Context 双 tab 与整合交付
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/ui/**\", \"src/pi/**\", \"src/engine/**\"\
       , \"tests/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
@@ -1794,6 +1794,34 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-08T03:58:25.715202Z'
+    done_at: '2026-09-08T19:05:39.431466+00:00'
+    evidence: Orchestrator final integrated UI acceptance completed. User explicitly
+      confirmed entire nunc-ui phase works normally, including prior IME candidate-window/resize/theme
+      confirmation; latest user permits closing UI first and removes earlier ordering
+      constraint. Confirmation was durably recorded in this step; no repeat human
+      check requested. Integrated product target34b64e7fc170725a55bdf26564db5fe9d15b929c;
+      current main differs only in managed plan lifecycle/evidence. git diff70dacad..HEAD
+      -- src/ui src/pi src/index.ts is empty, so manual confirmation applies to unchanged
+      UI/native editor implementation. Full docs/UI.md §§1-7 reviewed against existing
+      memory/context/panel delivery and current applicable evidence. Required current
+      all inventory374 passed/46 files/exit0 at /Users/tefx/Projects/pi-nunc-worktrees/nunc-extraction-comparison/.scratch/comparison-repair-3e3515d/all-check.log,
+      already independently inspected during exact-target comparison acceptance, reused
+      without rerun. Log covers footer/commands/Context scopes and unknowns, Markdown
+      raw-text preservation/scrolling, search/edit/delete/keybindings/paste/draft
+      preservation, native composition12x40, manual revision/persistence/reload and
+      branch behavior, candidate-to-native save exclusion, conflict/budget/unconfirmed/failure
+      paths, provider composition/media/tool/append/cancellation and actual stock
+      RPC/TUI. Native UI result .scratch/stock/run-GjFs35/result.json and session/events/timeline
+      prove footer/overlay/save/editor preservation/inflight/shortscreen and clean
+      child/server/state termination; its sole IME limitation is closed by the user's
+      actual observation, not PTY inference. Earlier scoped UI F1-F7 fixes and accepted
+      core/native-compat/cooperative results remain valid; no unresolved UI requirement
+      or source/lock change invalidates this proof. This terminal Orchestrator judgment
+      closes UI delivery only; ongoing extraction real-model effectiveness and broader
+      final acceptance remain separate. No published/global/daily configuration effects.
+      Original UI worktree, fixture and retained candidates preserved; no user process
+      manipulated. Cancelled unnecessary pending Planner performed read-only tools
+      only and made no topology mutation.
 - id: nunc-extraction
   name: 面向续做的提取策略、必要项保护与原生对照
   status: in_progress
