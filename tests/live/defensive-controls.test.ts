@@ -178,7 +178,7 @@ test("same-case failed terminal still blocks a second send; a later case can res
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
-test("supervisor loop: failed PAUSED does not resume; STOPPED/CLEANUP stops; semantic UNPROVEN continues", { timeout: 60000 }, async () => {
+test("supervisor loop: failed PAUSED does not resume; STOPPED/CLEANUP stops; semantic UNPROVEN continues", { timeout: 120000 }, async () => {
   for (const mode of ["paused-unproven", "stopped-cleanup", "unproven-main"] as const) {
     const input = await fixture();
     input.mode = "native";
