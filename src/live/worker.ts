@@ -322,7 +322,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.setupChecks.push(...qualifyCapacity(selection.variant as "fits-required" | "required-too-large",
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
                 report.contexts.slice(capacityContextStart).filter(c => c.kind === "maintenance").map(c => c.context),
-                maintenanceResponses.slice(capacityResponseStart), capacityModel));
+                maintenanceResponses.slice(capacityResponseStart), capacityModel, report.rollovers!.at(-1)?.prepared?.calibration?.accounting));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
               const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots);

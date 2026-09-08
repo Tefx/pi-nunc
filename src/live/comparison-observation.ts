@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, sessionEntryToContextMessages, serializeConversation, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { memoryTokens, messageTokens, requestTokens, textTokens } from "../engine/accounting.js";
 import { memoryMessage } from "../engine/memory.js";
@@ -35,7 +35,13 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
   const cap = (r: RequestObservation) => r.cap?.kind === "known" || r.cap?.kind === "value" ? r.cap.value ?? null : r.cap?.value ?? null;
   const next = requests.find(r => r.callId === row.continuationCallId);
   const accounting = row.result?.observations.accounting;
-  const fileLists = native && snap && Array.isArray(details?.readFiles) && Array.isArray(details?.modifiedFiles) ? { read: details.readFiles as string[], modified: details.modifiedFiles as string[] } : native ? null : { read: [], modified: [] };
+  const fileLists = native && snap && Array.isArray(details?.readFiles) && Array.isArray(details?.modifiedFiles) ? { read: details.readFiles as string[], modified: details.modifiedFiles as string[] } : native || !snap ? null : { read: [], modified: [] };
+  const nativeSources = [row.preparation.messagesToSummarize, row.preparation.turnPrefixMessages].filter(m => m.length > 0);
+  const nativeSourceObserved = native && calls.length > 0 && nativeSources.length > 0 && nativeSources.every(messages => {
+    const serialized = serializeConversation(convertToLlm(messages as any));
+    return calls.some(c => c.context.messages.some(m => (typeof m.content === "string" ? m.content : m.content.filter(b => b.type === "text").map(b => b.text).join("")).includes(serialized)));
+  });
+  const nativeTruncatedTools = nativeSources.flat().filter((m: any) => m.role === "toolResult" && Array.isArray(m.content) && m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").length > 2000).length;
   return { snapshotId: snap?.id ?? null, h: model.contextWindow - row.preparation.settings.reserveTokens,
     model: `${model.provider}/${model.id}`, modelConfig: model, thinking: row.thinking,
     cutPoint: index < 0 ? null : index, firstKeptEntryId: snap?.firstKeptEntryId ?? null,
@@ -54,7 +60,9 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
     overhead: { wrapperOverheadTokens: snap && mTokens !== null ? native ? mTokens - summaryBodyTokens! : mTokens - textTokens(slots.map((s: any) => s.text).join("")) : null,
       fileLists, fileListCount: fileLists ? fileLists.read.length + fileLists.modified.length : null,
       splitTurnCalls: native && row.preparation.isSplitTurn ? calls.length : 0 },
-    source: { active: row.active, kept, nativeHistory: row.preparation.messagesToSummarize, nativePrefix: row.preparation.turnPrefixMessages },
+    source: { active: row.active, kept, nativeHistory: row.preparation.messagesToSummarize, nativePrefix: row.preparation.turnPrefixMessages,
+      extractionContexts: calls.map(c => c.context), nativeSourceObserved: native ? nativeSourceObserved : null,
+      nativeTruncatedTools: native ? nativeTruncatedTools : null, omissions: row.result?.observations.omissions ?? null },
     callIds: row.callIds, continuationCallId: row.continuationCallId ?? null,
     requiredObservation: row.result?.observations.required ?? null,
     guardApplicability: native || group === "current" ? "NOT_APPLICABLE" : "APPLICABLE" };
@@ -85,8 +93,8 @@ export function matchedParity(cases: Array<{ label: string; groups: Array<{ grou
       const rows = g.map(x => x.rows[i]!);
       const f = g.map((x, n) => rolloverFacts(rows[n]!, x.requests, x.group));
       const same = (values: unknown[]) => values.every(v => v !== null && v !== undefined && isDeepStrictEqual(v, values[0]));
-      if (!same(f.map(x => ({ provider: x.modelConfig.provider, id: x.modelConfig.id, api: x.modelConfig.api, contextWindow: x.modelConfig.contextWindow, maxTokens: x.modelConfig.maxTokens, thinking: x.thinking }))) || f.some(x => x.thinking === null || !x.callIds.length)) fail("modelMatched", `${label}: actual model/thinking unobserved or different`);
-      if (!same(f.map((x, n) => evidence(x.source.active, g[n]!.cwd)))) fail("exposureMatched", `${label}: actual delivered source exposure differs`);
+      if (!same(f.map(x => ({ model: x.modelConfig, thinking: x.thinking }))) || f.some(x => x.thinking === null || !x.callIds.length)) fail("modelMatched", `${label}: actual model/thinking unobserved or different`);
+      if (!same(f.map((x, n) => evidence(x.source.active, g[n]!.cwd))) || f.some((x, n) => x.source.extractionContexts.length === 0 || (g[n]!.group === "native" ? !x.source.nativeSourceObserved || x.source.nativeTruncatedTools !== 0 : x.source.omissions === null || x.source.omissions.length > 0))) fail("exposureMatched", `${label}: actual delivered/extraction source exposure differs, is omitted or unobserved`);
       if (!same(f.map(x => x.cutPoint)) || f.some(x => x.snapshotId === null)) fail("cutMatched", `${label}: actual cut point unobserved or different`);
       if (!same(f.map((x, n) => evidence(x.source.kept, g[n]!.cwd))) || !same(f.map(x => x.kTokens))) fail("kMatched", `${label}: whole K content/association/accounting unobserved or different`);
       // Native output caps constrain provider tokens; Pi appends file lists and wrappers after generation.

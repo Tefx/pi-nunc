@@ -19,6 +19,8 @@ test("capacity reconstruction uses frozen nextId and collision-aware actual rend
   evaluateCapacityPredicates("fits-required", patch, 50, slots => { seen.push(slots.map(s => s.id)); return slots.reduce((n, s) => n + s.id.length + s.text.length, 0); }, [{ id: "s9", text: "old" }], 9);
   assert.deepEqual(seen[0], ["s10"]);
   assert.deepEqual(seen[1], ["s10", "s11"]);
+  const exhausted = evaluateCapacityPredicates("fits-required", { ...patch, remove: [] }, 50, () => 0, [], Number.MAX_SAFE_INTEGER);
+  assert.equal(exhausted[0]!.status, "UNPROVEN");
 });
 
 test("capacity source binding rejects stale response, missing request/accounting and changed frozen M", () => {

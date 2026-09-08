@@ -370,7 +370,10 @@ export function evaluateCapacityPredicates(
   }
   for (const a of patch.add ?? []) {
     let id: string;
-    do { id = `s${curId++}`; } while (existingIds.has(id));
+    do {
+      if (!Number.isSafeInteger(curId + 1)) return [{ check: "allocatable generated memory IDs", status: "UNPROVEN", reason: "Frozen ID counter is exhausted" }];
+      id = `s${curId++}`;
+    } while (existingIds.has(id));
     existingIds.add(id);
     candidates.push({ key: a.key, slot: { id, text: a.text } });
   }
@@ -384,7 +387,7 @@ export function evaluateCapacityPredicates(
   if (variant === "fits-required") {
     const reqFits = reqSize <= memoryLimit;
     results.push({
-      check: "all marked necessary candidates jointly fit within memory limit with growth space",
+      check: "all marked necessary candidates jointly fit within full memory limit",
       status: reqFits ? "PROVEN" : "UNPROVEN",
       observed: { requiredTokens: reqSize, memoryLimit }
     });
@@ -403,7 +406,7 @@ export function evaluateCapacityPredicates(
   } else if (variant === "required-too-large") {
     const reqExceeds = reqSize > memoryLimit;
     results.push({
-      check: "marked necessary set exceeds rendered memory limit or leaves insufficient growth space",
+      check: "marked necessary set exceeds rendered memory limit",
       status: reqExceeds ? "PROVEN" : "UNPROVEN",
       observed: { requiredTokens: reqSize, memoryLimit }
     });

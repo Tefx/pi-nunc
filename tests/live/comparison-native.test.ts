@@ -28,11 +28,11 @@ async function actualWorker(f: any, selection: Pick<Selection, "id" | "variant">
 test("public CLI -> worker -> stock Pi -> loopback: all groups, per-roll matching, restart and successful remove", { timeout: 300000 }, async () => {
   const f = await comparisonStock({ e3: "siblings" });
   try {
-    const { code, stderr, report, stateRoot } = await compareCli(f, [{ id: "e1" }, { id: "e2" }, { id: "e3" }, { id: "e4", variant: "fits-required" }], ["defaults", "matched"], "positive");
+    const { code, stderr, report, stateRoot } = await compareCli(f, [{ id: "e1" }, { id: "e2" }, { id: "e3" }, { id: "e4", variant: "fits-required" }, { id: "e4", variant: "required-too-large" }], ["defaults", "matched"], "positive");
     assert.equal(code, 0, JSON.stringify({ stderr, reason: report?.reason, matrix: report?.matrix?.map((m: any) => ({ group: m.group, mode: m.mode, id: m.scenarioId, reason: m.reason, status: m.status, failed: m.prerequisites.filter((p: any) => p.status !== "PROVEN") })), segments: report?.rawSegments?.filter((s: any) => s.status === "UNPROVEN").map((s: any) => ({ diagnostic: s.diagnostic, preparations: s.preparations })) }));
     assert.equal(report.status, "OBSERVED"); assert.equal(report.cleanup, "removed"); assert.equal(existsSync(stateRoot), false);
-    assert.equal(Object.keys(report.sessions).length, 24);
-    assert.equal(report.rawSegments.length, 36); // e1/e3 pause and resume in each group/mode.
+    assert.equal(Object.keys(report.sessions).length, 30);
+    assert.equal(report.rawSegments.length, 42); // e1/e3 pause and resume in each group/mode.
     assert.equal(report.usage.calls, f.requests.length);
     assert.deepEqual(report.usage.unreconciledCallIds, []);
     assert.equal(report.matrix.reduce((n: number, r: any) => n + r.calls, 0), report.usage.calls);

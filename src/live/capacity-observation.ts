@@ -13,6 +13,7 @@ export function qualifyCapacity(
   contexts: Context[],
   responses: Array<{ model: string; stopReason: string; patch: unknown }>,
   model: string,
+  growth?: { growthReserve: number; fixedTokens: number; memoryLimit: number; keptTokens: number; effectiveTrigger: number },
 ): CheckResult[] {
   const check = "capacity predicate bound to one frozen request and complete response";
   const limit = result?.observations.accounting?.memoryLimit;
@@ -25,7 +26,11 @@ export function qualifyCapacity(
       m.content.flatMap(b => b.type === "text" ? readSourceRecords(b.text) : []));
     const fm = records.filter(r => r.source === "F/M");
     if (!declared || Number(declared[1]) !== limit || fm.length !== 1 || !isDeepStrictEqual(fm[0]!.M, memory.slots)) throw new Error("Frozen source differs");
+    const a = result?.observations.accounting;
+    const growthMatches = growth && a && ["fixedTokens", "memoryLimit", "keptTokens", "effectiveTrigger"].every(k => (growth as any)[k] === (a as any)[k]);
+    const growthFits = growthMatches && growth!.fixedTokens + limit + growth!.keptTokens + growth!.growthReserve <= growth!.effectiveTrigger;
     return [{ check, status: "PROVEN", observed: { model, memoryLimit: limit, nextId: memory.nextId, memory: memory.slots, response: responses[0]!.patch } },
+      { check: "growth reserved once outside the full memory limit", status: growthFits ? "PROVEN" : "UNPROVEN", observed: growth ?? null },
       ...evaluateCapacityPredicates(variant, responses[0]!.patch, limit, memoryTokens, memory.slots, memory.nextId)];
   } catch {
     return [{ check, status: "UNPROVEN", reason: "Missing or inconsistent current request/response, frozen memory or actual memory limit" }];
