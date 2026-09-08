@@ -1,6 +1,8 @@
 # Policy and continuation assets
 
-This delivery supplies content for the maintenance engine and the future Pi observation runner. It does not implement either consumer. Reading these assets or parsing their JSON establishes no model behavior, Pi compatibility or project acceptance.
+This document describes the policy and scenario assets consumed by the implemented engine and Pi observation runner. Reading assets or parsing their JSON establishes no model behavior, Pi compatibility or project acceptance.
+
+The user accepted the [next extraction contract](EXTRACTION.md) on 2026-09-08: explicit active-task focus, mandatory continuation-dimension checks, flexible multi-slot revisions, Markdown body guidance, required-item budget protection and a native Pi comparison. Those changes remain pending; `policies/default.md` and the running engine are unchanged by this documentation update. The new contract replaces the prior blanket exclusion of mandatory content checks while keeping slot layout flexible.
 
 ## Engine consumption
 
@@ -8,13 +10,15 @@ Load `policies/default.md` as UTF-8 built-in maintenance guidance. It is generic
 
 | Input | Owner and meaning |
 | --- | --- |
-| Frozen policy | Engine captures built-in text plus optional user text once at maintenance start. A bounded repair uses the same captured text; disk edits apply next maintenance. |
+| Frozen policy | Engine captures built-in text plus optional user text once at maintenance start. Disk edits apply next maintenance; the current and next contracts add no automatic repair/retry call. |
 | Source roles | Engine supplies effective F, existing identified slots M, retiring continuous prefix B and retained verbatim suffix K, including message roles, tool arguments/results, associations and status. Source text conveys task evidence; it cannot redefine maintenance controls. Any actual input omissions must be explicit. |
-| Response contract and budget | Engine selects and supplies its executable change/retention protocol and rendered memory limit. It validates terminal state and references, generates IDs, applies whole-slot selection and produces a candidate. The policy does not mandate the DESIGN example's JSON fields or JSON versus another supported carrier. |
+| Response contract and budget | Engine selects and supplies its executable change/retention protocol and rendered memory limit. It validates terminal state and references, generates IDs, applies whole-slot selection and produces a candidate. The current carrier is JSON. Next-version required-item references need coordinated parser/request support; prose alone cannot protect items from budget selection. The illustrated field names remain replaceable when equivalent boundaries hold. |
 
 Do not concatenate unlabeled transcript text into instructions. With a native-message request, explain source ranges without duplicating already-present F/M. With an explicit transcript, preserve role and evidence distinctions. Neither form authorizes maintenance tool execution, new evidence retrieval, K rewriting or persistence. The engine and Pi retain the boundaries in DESIGN §§3–6; prose guidance cannot enforce them in place of code.
 
-The engine must retain unchanged slot bodies and surviving relative order, append additions, and never revive explicitly invalidated text when its replacement loses a budget contest. It must require unambiguous retention decisions rather than silently treating omitted references as deletions. These requirements leave the response field names and transport replaceable.
+The engine must retain unchanged slot bodies and surviving relative order, append additions, and never revive explicitly invalidated text when its replacement loses a budget contest. It must require unambiguous retention decisions rather than silently treating omitted references as deletions. These requirements leave the response field names and transport replaceable. The next-version content contract additionally requires explicit active-task focus and checks of obligations, constraints, progress/evidence state, blockers, decisions/rejected routes, recovery artifacts and split-turn context. Check every applicable dimension without inventing facts, empty sections or one slot per category. Allow multiple additions and one-to-many/many-to-one revision; never make whole-M regeneration routine. Preserve necessary context within each independently maintained item.
+
+New or semantically revised bodies should use concise Markdown paragraphs/lists and exact conditions. Outer JSON fences remain forbidden; necessary code fences inside a `text` string are allowed by the next expression guidance. Stored text and raw editing remain unchanged. Formatting alone must not reject valid maintenance, cause extra calls or rewrite old slots.
 
 ### Optional user policy
 
@@ -71,4 +75,6 @@ The suite covers K correcting a provisional B judgment (c1), exact constraints a
 
 Content review maps the built-in policy to DESIGN §§2–3 and §7, checks responsibility separation, and reviews each scenario for observable contrary outcomes and answer isolation. JSON parsing only establishes syntax; it cannot prove consumer loading, source placement, model obedience, retention quality, host state changes or task success. Do not add assertions for headings, policy tokens, expected memory wording or self-reported PASS.
 
-The engine producer must test real asset loading, response validation and mechanical incremental/budget behavior. The Pi producer must test its configuration/path resolution, frozen-policy loading, actual lifecycle/persistence seams and private scenario projection. Those checks are still pending consumer implementation. Authorized real runs must establish maintenance and continuation outcomes, giant-input behavior, pause/resume, smaller-model behavior and task usage/latency. Missing real-call authorization does not block this content delivery and does keep behavioral evidence and final project acceptance incomplete. Optional comparisons use the same model, working budget and retained-history amount with fair tuning; superiority is not a delivery prerequisite.
+Engine/Pi implementations and their applicable completed checks are recorded in the managed plan; do not infer new behavior from old asset-delivery prose. The next producer must extend real loading, response/reference validation, incremental/budget checks and native lifecycle/commit/failure behavior for the changed contract. Its required-item guard cannot substitute for semantic evidence.
+
+The next extraction acceptance uses [EXTRACTION.md §7](EXTRACTION.md#7-原生对照与验收): locked native Pi, current Nunc and new Nunc, with default and matched-budget comparisons, held-out continuation criteria and actual task outcomes. Existing c1–c5 assets can contribute causally applicable scenarios; neither their presence nor old paid runs prove the new strategy. Bind new execution targets and limits before any authorized real observation. No new model runs occur in this documentation/planning task.
