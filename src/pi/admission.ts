@@ -11,6 +11,13 @@ import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = { context: Context; model: Model<Api>; signal: AbortSignal | undefined; simple: boolean; seen: WeakSet<Provider> };
 export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; plannedInputLimit?: number; inputExceededPlan?: boolean; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; code?: string; payload?: PayloadObservation }
+export interface AdmissionLayoutEvent {
+  ctx: ExtensionContext;
+  model: Model<Api>;
+  context: Context;
+  observation: AdmissionObservation;
+  payloadGrowth?: { grewTokens: number; append: boolean; addedTokens?: number; addedText?: string };
+}
 
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
 export class Admission {
@@ -22,7 +29,7 @@ export class Admission {
   private previousMain: { model: Model<Api>; systemPrompt: string | undefined; tools: unknown; messages: unknown; messageCount: number } | undefined;
   invalidateUsage(): void { this.previousMain = undefined; }
   private readonly rejected = new Map<string, AbortSignal>();
-  constructor(private readonly pi: ExtensionAPI, private readonly config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig) {}
+  constructor(private readonly pi: ExtensionAPI, private readonly config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig, private readonly onLayout?: (event: AdmissionLayoutEvent) => void) {}
 
   complete(call: Complete): Complete {
     return request => this.maintenance.run({ request, used: false }, () => call(request));
@@ -66,8 +73,10 @@ export class Admission {
   recoveryCancelled(): boolean { return [...this.rejected.values()].some(signal => signal.aborted); }
   cancelRun(): void { this.cancelledRun = true; }
   settled(): void { this.rejected.clear(); this.cancelledRun = false; }
-  private observe(value: AdmissionObservation): void {
+  private observe(value: AdmissionObservation, detail?: Omit<AdmissionLayoutEvent, "observation">): void {
     try { this.pi.events.emit("nunc:admission", value); } catch { /* Notification-only consumers. */ }
+    if (!detail || value.kind !== "main") return;
+    try { this.onLayout?.({ ...detail, observation: value }); } catch { /* Read-only observer. */ }
   }
   private sameCall(record: CallRecord | undefined, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean): record is CallRecord {
     return !!record && record.context === context && record.model.id === model.id && record.model.provider === model.provider && record.signal === options?.signal && record.simple === simple;
@@ -166,11 +175,14 @@ export class Admission {
         const observation: PayloadObservation = append.ok
           ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
           : { mode: delta.mode, categories: delta.categories };
-        const finalInputTokens = inputTokens! + Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0);
+        const grew = Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0);
+        const payloadGrowth = { grewTokens: grew, append: append.ok, ...(append.ok ? { addedTokens: append.addedTokens, addedText: append.addedText } : {}) };
+        const finalInputTokens = inputTokens! + grew;
         if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
+        const layout = { ctx, model, context, payloadGrowth };
         try {
           authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context });
-          this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
           return replacement;
         } catch (error) {
           const code = error instanceof EngineError ? error.code : "CONFIG";
@@ -178,11 +190,11 @@ export class Admission {
           const capacity = kind === "main" && code === "CAPACITY" && !aborted;
           const errorMessage = `${capacity ? "context_length_exceeded: " : ""}Nunc local ${code}; request=${randomUUID()}; ${error instanceof Error ? error.message : "Request rejected"}`;
           if (capacity && options?.signal) this.rejected.set(errorMessage, options.signal);
-          this.observe({ kind, outcome: "reject", code, ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation });
+          this.observe({ kind, outcome: "reject", code, ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
           throw new EngineError(code, errorMessage);
         }
       } };
-      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });
+      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context });
       if (kind === "main") this.previousMain = { model: structuredClone(model), systemPrompt: context.systemPrompt, tools: jsonView(context.tools ?? []), messages: jsonView(context.messages), messageCount: context.messages.length };
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
@@ -196,7 +208,7 @@ export class Admission {
       const message: AssistantMessage = { role: "assistant", content: [], api: model.api, provider: model.provider, model: model.id, timestamp: Date.now(), stopReason: aborted ? "aborted" : "error", errorMessage, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); stream.end();
-      this.observe({ kind, outcome: "reject", code, ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) });
+      this.observe({ kind, outcome: "reject", code, ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context });
       return stream;
     }
   }

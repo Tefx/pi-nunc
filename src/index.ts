@@ -7,7 +7,8 @@ import { inputLimit, mainAdmissionLimit, omitsSerializedOutputCap } from "./engi
 import { engineConfig, readConfig } from "./pi/config.js";
 import { eligibleStarts, project, withEffectiveMemory } from "./pi/projection.js";
 import { createMemorySurface } from "./pi/manual.js";
-import { Admission } from "./pi/admission.js";
+import { createContextSurface } from "./pi/context.js";
+import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
 
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
 export interface HostSettingsSource { readSettings: () => { compaction: Required<CompactionSettings>; blockImages: boolean } }
@@ -35,11 +36,12 @@ export default function nunc(pi: ExtensionAPI): void {
     if (!ctx.sessionManager.getSessionFile()) throw new EngineError("CONFIG", "Persistent sessions only; start Pi without --no-session");
     if (settings(ctx).blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");
   };
+  let observeLayout = (_event: AdmissionLayoutEvent) => {};
   const admission = new Admission(pi, (ctx, model) => {
     supported(ctx);
     project(ctx.sessionManager.buildContextEntries());
     return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction);
-  });
+  }, event => observeLayout(event));
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
     return { systemPrompt: ctx.getSystemPrompt(), tools: pi.getActiveTools().map(name => {
@@ -53,10 +55,15 @@ export default function nunc(pi: ExtensionAPI): void {
     try { if (ctx.hasUI) ctx.ui.notify(`Nunc: ${message}`, level); else console.error(`Nunc: ${message}`); } catch { /* Never fall through to default summary. */ }
   };
   const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => admission.invalidateUsage() });
-  pi.on("session_compact", () => { admission.invalidateUsage(); memory.endFreeze(); });
-  pi.on("session_compact_failed", () => { if (!memory.noteForeignFailure()) memory.endFreeze(); });
+  const contextView = createContextSurface({
+    pi, memory, fixed,
+    config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction),
+  });
+  observeLayout = event => contextView.observeAdmission(event);
+  pi.on("session_compact", () => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); });
+  pi.on("session_compact_failed", () => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } });
   pi.on("session_start", (_event, ctx) => {
-    invalidate();
+    invalidate(); contextView.resetPath();
     try {
       admission.ensure(ctx); supported(ctx);
       if (ctx.model) {
@@ -69,11 +76,11 @@ export default function nunc(pi: ExtensionAPI): void {
       project(ctx.sessionManager.buildContextEntries());
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid startup configuration"); }
   });
-  pi.on("session_before_switch", invalidate);
-  pi.on("session_before_fork", invalidate);
-  pi.on("session_before_tree", invalidate);
+  pi.on("session_before_switch", () => { invalidate(); contextView.resetPath(); });
+  pi.on("session_before_fork", () => { invalidate(); contextView.resetPath(); });
+  pi.on("session_before_tree", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_tree", invalidate);
-  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); admission.close(ctx); });
+  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); contextView.resetPath(); admission.close(ctx); });
   pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); });
   pi.on("thinking_level_select", invalidate);
   pi.on("agent_settled", () => admission.settled());
@@ -123,7 +130,9 @@ export default function nunc(pi: ExtensionAPI): void {
       const loaded = await loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) });
       const policy = { ...loaded, user: loaded.user + (event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
       if (controller.signal.aborted) throw new EngineError("CANCELLED", "Maintenance cancelled");
+      contextView.beginMaintenance({ ctx, model, memory: memory.read(ctx).memory, active: projected.active, reason: event.reason, config });
       const result = await maintain({ binding, model, fixed: f, memory: projected.memory, active: projected.active, eligibleKeptEntryIds: eligible, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry)));
+      contextView.noteEngine(result);
       // Native Codex OAuth's subscription zero is not an observed USD bill.
       if (model.api === "openai-codex-responses") result.observations.usage.cost = null;
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }

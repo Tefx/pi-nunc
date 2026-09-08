@@ -1,8 +1,8 @@
 # Nunc 状态与记忆管理界面
 
-状态：**人工 M 状态与恢复已实现；footer / overlay 尚未实现**。更新于 2026-09-08。
+状态：**人工 M 与只读 Context 观察已实现；footer / overlay 尚未实现**。更新于 2026-09-08。
 
-本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案。§5–§6 的有效 M、revision、预算与 `replace`/`delete` 已由 Pi adapter 提供，可在无面板的公开 host fixture 中验证。footer、两个 tab 与 TUI 交互仍待后续步骤。现有核心与兼容修复的完成历史保留。
+本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案。§4 与 §6 的只读 Context 布局/请求/维护观察，以及 §5–§6 的有效 M、revision、预算与 `replace`/`delete`，已由 Pi adapter 提供，可在无面板的公开 host fixture 中验证。footer、两个 tab 与 TUI 交互仍待后续步骤。现有核心与兼容修复的完成历史保留。
 
 本设计延续 [DESIGN.md](DESIGN.md) 的 session、来源、原文、容量与 Pi 所有权边界。人工保存按 §5 扩展原先仅在 CompactionEntry 保存 M 的合同。[PI.md](PI.md) 与 [ENGINE.md](ENGINE.md) 中当前预算及 Provider 组合合同仍适用。示意文案、尺寸起点、私有数据格式和模块文件划分是推荐；实现可以替换它们，但须保持本文明确的用户行为、状态所有权、观察边界与兼容限制。
 
@@ -163,7 +163,9 @@ Pi adapter/projection 是唯一有效 M 投影所有者：当前路径最新原�
 | 请求 / 维护观察 | 从现有 Nunc 观察点提供有范围标签的数据；不改变分类、委托、payload 或返回值 |
 | Engine / accounting | Memory 校验、渲染、估算与预算；不依赖 TUI，不写 session |
 
-内部消费接口由 `pi-nunc/pi` 的 `memorySurface(pi)` 提供（同一扩展实例，经公开 event bus 绑定，不是新 SDK 或临时写命令）。`read(ctx)` 返回 `{revision, memory, status, budget, contextLayout}`：`revision` 标识当前 session、适用的 native checkpoint / 人工 head，以及读取时的 leaf；同路径上向前追加的无关 entry 仍适用该 revision，选定路径切到共享同一 checkpoint 的其它分支则冲突。`memory` 是唯一有效 M；`status.occupied` 为维护冻结至 Pi 提交终态；`status.unconfirmed` 表示一次原生追加已推进内存但未确认落盘，仅读当前内存 view 不能解除。资源 `/reload` 只重建扩展、不重开 SessionManager 文件，不能当作核对。继续写入前须 `switchSession`/resume 同一 session 文件，使内存与磁盘一致。`budget` 使用当前模型/F/tools/config 的 `pi-heuristic` M 规划，不可计算时 `unknown: true`；`contextLayout` 给出 slot 数、活动原文条目和最新 checkpoint id。`replace(ctx, revision, slotId, text)` / `delete(ctx, revision, slotId)` 经公开 `pi.appendEntry()` 写入私有 `nunc.memory` CustomEntry，结果为成功或 `invalid` / `conflict` / `occupied` / `overbudget` / `unknown-budget` / `unconfirmed`。UI 只读观察不得阻止合法调用；未知数据留空并标注。
+内部消费接口由 `pi-nunc/pi` 的 `memorySurface(pi)` 与 `contextSurface(pi)` 提供（同一扩展实例，经公开 event bus 绑定，不是新 SDK 或临时写命令）。`memorySurface.read(ctx)` 返回 `{revision, memory, status, budget, contextLayout}`：`revision` 标识当前 session、适用的 native checkpoint / 人工 head，以及读取时的 leaf；同路径上向前追加的无关 entry 仍适用该 revision，选定路径切到共享同一 checkpoint 的其它分支则冲突。`memory` 是唯一有效 M；`status.occupied` 为维护冻结至 Pi 提交终态；`status.unconfirmed` 表示一次原生追加已推进内存但未确认落盘，仅读当前内存 view 不能解除。资源 `/reload` 只重建扩展、不重开 SessionManager 文件，不能当作核对。继续写入前须 `switchSession`/resume 同一 session 文件，使内存与磁盘一致。`budget` 使用当前模型/F/tools/config 的 `pi-heuristic` M 规划，不可计算时 `unknown: true`；`contextLayout` 给出 slot 数、活动原文条目和最新 checkpoint id。`replace(ctx, revision, slotId, text)` / `delete(ctx, revision, slotId)` 经公开 `pi.appendEntry()` 写入私有 `nunc.memory` CustomEntry，结果为成功或 `invalid` / `conflict` / `occupied` / `overbudget` / `unknown-budget` / `unconfirmed`。
+
+`contextSurface.read(ctx)` 返回 `{current, lastMain?, lastMaintenance?}`，消费同一 `memorySurface` 的 revision/M/budget/occupied/unconfirmed，不另做记忆投影。`current` 是选定路径上已交付的 F（system/tools 分项）、M、R 与消息/内容块计数、tool 关联、`pi-heuristic` 分项和包装开销；它不声称包含之后才运行的 context/payload hooks。模型窗口、H、记忆规划上限、主请求准入上限、M 预算、输出预留与 extraction cap（uncapped 为 `null`）分项给出；主请求序列化 cap 仅在已观察时已知。`lastMain` 是最近一次主请求在 Nunc 观察点的组成（模型/时点/范围/`delegate` 或 `reject`、estimator、planned vs enforced、payload 追加或无法映射的增量）；本地拒绝不是发送，委托不是 HTTP 成功。`lastMaintenance` 冻结当时的 B/K 原文与结果；`engine` 成功只说明有 candidate，`native: saved` 才是 Pi 提交。失败/取消没有 `after`。观察保留在当前 session/路径的内存中，模型切换保留原模型标签；session/路径切换或 reload 后没有适用记录。只读 `read` 不写 session、不触发模型或 compaction；观察失败不得改变分类、委托或 payload。`nunc:admission` / `nunc:maintenance` / 诊断通知仍不携带正文、headers 或凭据。footer、两个 tab 与 `/nunc` overlay 仍待下一 producer。
 
 UI 的只读观察不应阻止合法调用，未知数据留空并标注。保留已交付的合作 Provider 链、独立调用透明委托、一次性维护绑定、多块末条 user 文本追加、取消与工具/媒体/输出保护；不恢复旧 main-request tickets、全量 payload 修改禁令或扩展名白名单。
 
