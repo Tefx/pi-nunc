@@ -1744,7 +1744,7 @@ phases:
       execute. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
   - id: nunc.ui-panel
     name: 紧凑状态栏、Slots/Context 双 tab 与整合交付
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/ui/**\", \"src/pi/**\", \"src/engine/**\"\
       , \"tests/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
@@ -1799,3 +1799,5 @@ phases:
     depends_on:
     - nunc.ui-context
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-08T03:58:25.715202Z'
