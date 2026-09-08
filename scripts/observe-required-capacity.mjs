@@ -49,14 +49,6 @@ try {
         await p.prompt('BOUND-' + mode);
       }
 
-      const events = f.log
-        .filter(e => e.type === 'maintenance')
-        .map(e => ({
-          reason: e.data.reason,
-          code: e.data.result.code,
-          required: e.data.result.observations.required,
-        }));
-
       stage = 'recovery';
       await p.prompt('RECOVER-' + mode);
       await p.send('/fixture-inspect');
@@ -65,15 +57,46 @@ try {
       const snapshot = f.log.filter(e => e.type === 'snapshot').at(-1).data;
       const compactions = snapshot.entries.filter(e => e.type === 'compaction').length;
       assert.equal(compactions, 0, `${mode}: required-capacity failure must not commit any compaction`);
-      assert(events.length >= 1, `${mode}: must emit maintenance failure event`);
-      assert(events.every(e => e.code === 'CAPACITY' && e.required?.failed), `${mode}: events must be required CAPACITY failure`);
+
+      // Capture full failure + recovery sequence through terminal
+      const maintenanceEvents = f.log
+        .filter(e => e.type === 'maintenance')
+        .map(e => ({
+          reason: e.data.reason,
+          code: e.data.result.code,
+          required: e.data.result.observations.required,
+        }));
+
+      const expectedEvents = 1;
+      const expectedMainDelta = mode === 'manual' ? 1 : 2;
+      assert.equal(maintenanceEvents.length, expectedEvents, `${mode}: expected exactly ${expectedEvents} maintenance event across full sequence`);
+      assert.equal(maintenanceEvents[0].reason, mode, `${mode}: maintenance reason must be ${mode}`);
+      assert.equal(maintenanceEvents[0].code, 'CAPACITY', `${mode}: maintenance must fail with CAPACITY`);
+      assert.equal(maintenanceEvents[0].required?.failed, true, `${mode}: required items must fail`);
+      assert.deepEqual(maintenanceEvents[0].required?.declared, ['oversizedReq'], `${mode}: declared required items must match`);
+
+      const actualMainDelta = mainCalls - beforeMain;
+      assert.equal(actualMainDelta, expectedMainDelta, `${mode}: expected ${expectedMainDelta} main calls from bound through recovery`);
+
+      // Verify each user prompt was delivered once without duplication
+      const userEntries = snapshot.entries.filter(e => e.type === 'message' && e.message.role === 'user');
+      const expectedPrompts = mode === 'manual'
+        ? ['old:', 'recent:', 'RECOVER-manual']
+        : ['old:', 'recent:', 'BOUND-' + mode, 'RECOVER-' + mode];
+      assert.equal(userEntries.length, expectedPrompts.length, `${mode}: expected ${expectedPrompts.length} delivered user prompts`);
+      for (const [idx, prefix] of expectedPrompts.entries()) {
+        const text = typeof userEntries[idx].message.content === 'string'
+          ? userEntries[idx].message.content
+          : JSON.stringify(userEntries[idx].message.content);
+        assert(text.includes(prefix), `${mode}: prompt ${idx} must contain ${prefix}`);
+      }
 
       await p.quit();
       summary = {
         mode,
-        events: events.length,
+        events: maintenanceEvents.length,
         compactions,
-        mainDelta: mainCalls - beforeMain,
+        mainDelta: actualMainDelta,
         exit: p.exit,
       };
       results.push(summary);

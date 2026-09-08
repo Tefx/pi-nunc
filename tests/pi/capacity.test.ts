@@ -124,9 +124,11 @@ test("required-capacity failure on pre-prompt threshold: cancels compaction, no 
   });
 
   await f.runtime.session.prompt("Prompt requiring execution after threshold failure");
-  // Stock Pi has two native threshold opportunities: pre-prompt (_compactBeforeNextAssistantResponse)
-  // on prior history, and post-turn (_checkCompaction) on updated context with the newly delivered turn.
-  assert.equal(maintCalls, 2, "exactly two native threshold opportunities: pre-prompt on prior prefix, then post-turn on newly delivered context");
+  // In this fixture, prompt() invokes _checkCompaction(lastAssistant, false) before appending
+  // the new prompt; post-run completion also invokes _checkCompaction(assistantMessage) when
+  // the completed turn leaves context above threshold. (_compactBeforeNextAssistantResponse is
+  // subsequent agent-loop-turn preparation, not this initial check).
+  assert.equal(maintCalls, 2, "exactly two native threshold opportunities in this fixture: pre-prompt _checkCompaction on prior prefix, then post-run _checkCompaction on updated context with newly delivered turn");
   assert.equal(mainCalls, 1, "prompt dispatched to main model once");
   assert.equal(f.events.length, 2, "both native threshold opportunities recorded");
   assert.equal(f.events[0]?.reason, "threshold");
@@ -211,12 +213,17 @@ test("host tool execution across required-capacity cancellations: tools execute 
       f.respond(c => {
         if (sourceRecords(c).length) {
           maintenance++;
-          return fauxAssistantMessage(JSON.stringify({
+          const m = fauxAssistantMessage(JSON.stringify({
             add: [{ key: "req", text: "Necessary constraint ".repeat(400) }],
             remove: [],
             priority: ["req"],
             required: ["req"],
           }));
+          m.api = f.faux.getModel().api;
+          m.provider = f.faux.getModel().provider;
+          m.model = f.faux.getModel().id;
+          m.usage = { input: 1000, output: 3500, cacheRead: 0, cacheWrite: 0, totalTokens: 4500, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+          return m;
         }
         main++;
         if (main === 1) {
@@ -240,6 +247,22 @@ test("host tool execution across required-capacity cancellations: tools execute 
       recovery = true;
       await f.runtime.session.prompt("Continue " + mode);
       assert.equal(executions, 1, `${mode}: tool not duplicated during recovery`);
+
+      const expectedMaintEvents = mode === "overflow" ? 2 : 1;
+      assert.equal(f.events.length, expectedMaintEvents, `${mode}: expected exactly ${expectedMaintEvents} maintenance events`);
+      assert.equal(f.events[0]?.reason, mode, `${mode}: first maintenance reason must be ${mode}`);
+      assert.equal(f.events[0]?.result.ok, false, `${mode}: maintenance must fail`);
+      assert.equal(f.events[0]?.result.code, "CAPACITY", `${mode}: failure code must be CAPACITY`);
+      assert.equal(f.events[0]?.result.observations.required?.failed, true, `${mode}: required items must fail`);
+      assert.deepEqual(f.events[0]?.result.observations.required?.declared, ["req"], `${mode}: declared required items must match`);
+
+      if (mode === "overflow") {
+        assert.equal(f.events[1]?.reason, "threshold", `${mode}: recovery prompt pre-check triggers threshold`);
+        assert.equal(f.events[1]?.result.ok, false);
+        assert.equal(f.events[1]?.result.code, "CAPACITY");
+        assert.equal(f.events[1]?.result.observations.required?.failed, true);
+      }
+
       assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0, `${mode}: no compaction saved`);
       assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "message" && e.message.role === "toolResult").length, 1, `${mode}: exactly one toolResult recorded`);
     } finally {
