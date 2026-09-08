@@ -19,7 +19,7 @@ const write = (path, content) => [{ tool: { name: "write", input: { path, conten
 const steps = ["Pending.", ...write("sum.json", { sum: 46 }), ...write("product.json", { product: 104 }), ...write("difference.json", { difference: 63 }), ...write("retry.json", { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })];
 let firstMain = true;
 f.response = (_row, source) => {
-  if (source) return JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id) });
+  if (source) return JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id), required: [] });
   if (firstMain) { firstMain = false; return { status: 429, message: "Controlled rate-limit response" }; }
   return steps.shift() ?? "Continue.";
 };

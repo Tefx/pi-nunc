@@ -8,7 +8,7 @@ export const model: Model<Api> = {
   baseUrl: "https://invalid.example", reasoning: false, input: ["text", "image"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 60000, maxTokens: 8192,
 };
-export const noChange = { add: [], remove: [], priority: [] };
+export const noChange = { add: [], remove: [], priority: [], required: [] };
 export const usage = { input: 100, cacheRead: 50, cacheWrite: 25, output: 40, reasoning: 10, totalTokens: 215, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 export function answer(patch: unknown = noChange, requestModel = model): AssistantMessage {
   return { role: "assistant", api: requestModel.api, model: requestModel.id, provider: requestModel.provider, content: [{ type: "text", text: JSON.stringify(patch) }], timestamp: 0, stopReason: "stop", usage: structuredClone(usage) };

@@ -119,7 +119,7 @@ try {
   await p.prompt('Large delivered ' + 'b'.repeat(68000));
   assert.equal(f.requests.length, beforeReject + 1); assert.equal(count('compact'), disabled);
   // Extraction failure returns cancel:true; native default summary is never run.
-  f.response = row => row.kind === 'maintenance' ? { text: '{"add":[],"remove":[],"priority":[]}', finish: 'length' } : undefined;
+  f.response = row => row.kind === 'maintenance' ? { text: '{"add":[],"remove":[],"priority":[],"required":[]}', finish: 'length' } : undefined;
   const old = (await p.command('get_entries')).entries.filter(e => e.type === 'compaction');
   await assert.rejects(p.command('compact')); assert.deepEqual((await p.command('get_entries')).entries.filter(e => e.type === 'compaction'), old);
   f.response = undefined;

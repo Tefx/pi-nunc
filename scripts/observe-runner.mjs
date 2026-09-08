@@ -19,7 +19,7 @@ await writeFile(join(f.state, 'agent/settings.json'), JSON.stringify(settings));
 const selection = { target: { repository: root, stateRoot, cleanup: 'retain' }, limits: { maxCalls: 20, maxTotalTokens: 8000000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 128000 }, scenarios: [{ id: 'c2' }], overrides: [{ requirement: 'c2-retiring-constraints', reason: 'Establish each observer-only legal rollover placement', config: { retentionCalibration: { minFraction: 0.0001, maxFraction: 0.95 } } }] };
 const write = (path, content) => [{ tool: { name: 'write', input: { path, content: JSON.stringify(content) } } }, 'Saved.'];
 const steps = ['Pending.', ...write('sum.json', { sum: 46 }), ...write('product.json', { product: 104 }), ...write('difference.json', { difference: 63 }), ...write('retry.json', { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })];
-f.response = (_row, source) => source ? JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id) }) : (() => { assert(steps.length); return steps.shift(); })();
+f.response = (_row, source) => source ? JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id), required: [] }) : (() => { assert(steps.length); return steps.shift(); })();
 const env = { PATH: '/opt/homebrew/bin:/usr/bin:/bin', HOME: join(f.state, 'home'), PI_CODING_AGENT_DIR: join(f.state, 'agent'), TMPDIR: systemTemp ? originalTemp : join(f.state, 'tmp'), PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0' };
 async function run(flags = []) {
   const child = spawn(process.execPath, [join(root, 'scripts/verify-live.mjs'), ...flags], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });

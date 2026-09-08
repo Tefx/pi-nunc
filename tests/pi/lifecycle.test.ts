@@ -7,14 +7,14 @@ import { fixture, memoryPatch } from "./fixtures.js";
 
 for (const reason of ["length", "error", "aborted", "toolUse"] as const) test(`nonterminal ${reason} response cancels real hook with no saved candidate/default fallback`, async t => {
   const f = await fixture(); t.after(() => f.close()); f.seed();
-  f.respond(() => fauxAssistantMessage('{"add":[],"remove":[],"priority":[]}', { stopReason: reason }));
+  f.respond(() => fauxAssistantMessage('{"add":[],"remove":[],"priority":[],"required":[]}', { stopReason: reason }));
   const before = f.runtime.session.sessionManager.getEntries();
   await assert.rejects(f.runtime.session.compact(), /cancel/i);
   assert.equal(f.faux.state.callCount, 1);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
   assert.equal(f.events[0]?.result.ok, false);
 });
-for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"]}', '{"add":[{"key":"k","text":"note"}],"remove":[],"priority":[]}']) test(`invalid patch cancels once: ${bad}`, async t => {
+for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"required":[]}', '{"add":[],"remove":[],"priority":[]}', '{"add":[],"remove":[],"priority":[],"required":["unknown"]}', '{"add":[{"key":"k","text":"note"}],"remove":[],"priority":[],"required":[]}']) test(`invalid patch cancels once: ${bad}`, async t => {
   const f = await fixture(); t.after(() => f.close()); f.seed(); f.respond(() => fauxAssistantMessage(bad));
   const before = f.runtime.session.sessionManager.getEntries();
   await assert.rejects(f.runtime.session.compact(), /cancel/i);
@@ -28,7 +28,7 @@ test("public abortCompaction propagates to service and leaves saved state unchan
   f.respond(async (_context, options) => {
     started.resolve();
     await new Promise<void>(resolve => options?.signal?.addEventListener("abort", () => { aborted = true; resolve(); }, { once: true }));
-    return fauxAssistantMessage('{"add":[],"remove":[],"priority":[]}');
+    return fauxAssistantMessage('{"add":[],"remove":[],"priority":[],"required":[]}');
   });
   const before = f.runtime.session.sessionManager.getEntries();
   const compact = f.runtime.session.compact(); await started.promise;

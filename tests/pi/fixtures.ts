@@ -32,7 +32,7 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
   const errors: string[] = [];
   let responder: FauxResponseFactory = context => {
     const sources = sourceRecords(context);
-    return fauxAssistantMessage(sources.length ? JSON.stringify({ add: [{ key: "fact", text: "Preserved test constraint." }], remove: [], priority: ["fact"] }) : "Task response.");
+    return fauxAssistantMessage(sources.length ? JSON.stringify({ add: [{ key: "fact", text: "Preserved test constraint." }], remove: [], priority: ["fact"], required: ["fact"] }) : "Task response.");
   };
   faux.setResponses(Array.from({ length: 80 }, () => (context, opts, state, model) => { calls.push(structuredClone({ ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters }) => ({ name, description, parameters })) } : {}) })); return responder(context, opts, state, model); }));
   const factory: CreateAgentSessionRuntimeFactory = async target => {
@@ -81,5 +81,5 @@ export function memoryPatch(context: Parameters<FauxResponseFactory>[0]) {
   }));
   const source = records.find(r => r.M);
   const slots = (source?.M ?? []) as { id: string; text: string }[];
-  return fauxAssistantMessage(JSON.stringify(slots.length ? { add: [], remove: [], priority: slots.map(s => s.id) } : { add: [{ key: "fact", text }], remove: [], priority: ["fact"] }));
+  return fauxAssistantMessage(JSON.stringify(slots.length ? { add: [], remove: [], priority: slots.map(s => s.id), required: [] } : { add: [{ key: "fact", text }], remove: [], priority: ["fact"], required: ["fact"] }));
 }

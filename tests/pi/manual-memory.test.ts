@@ -100,7 +100,7 @@ test("next native checkpoint absorbs effective M and does not replay older manua
     }));
     const slots = ((records.find(r => r.M)?.M ?? []) as { id: string; text: string }[]);
     assert.equal(slots[0]?.text, "Manual before absorb.");
-    return fauxAssistantMessage(JSON.stringify({ add: [{ key: "absorbed", text: "Checkpoint absorbed text." }], remove: slots.map(s => s.id), priority: ["absorbed"] }));
+    return fauxAssistantMessage(JSON.stringify({ add: [{ key: "absorbed", text: "Checkpoint absorbed text." }], remove: slots.map(s => s.id), priority: ["absorbed"], required: ["absorbed"] }));
   });
   await f.runtime.session.compact();
   const projected = project(f.runtime.session.sessionManager.buildContextEntries());

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { StockFixture, records, text } from './stock-driver.mjs';
 const f = await new StockFixture().setup({ api: 'openai-codex-responses', config: { extraction: {}, budget: {} }, compaction: { reserveTokens: 16384, keepRecentTokens: 20000 } });
 let outcome = { status: 'FAIL' };
-f.response = (_row, source) => source ? { text: '{"add":[],"remove":[],"priority":[]}', outputTokens: 12000 } : 'Controlled ordinary response.';
+f.response = (_row, source) => source ? { text: '{"add":[],"remove":[],"priority":[],"required":[]}', outputTokens: 12000 } : 'Controlled ordinary response.';
 try {
   const p = f.start();
   const old = 'Original task evidence: ' + 'a'.repeat(200000);

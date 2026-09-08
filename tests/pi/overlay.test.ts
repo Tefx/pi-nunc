@@ -145,7 +145,7 @@ test("native compact during edit conflicts on original revision and keeps draft"
   overlay.handleInput(" Local draft.");
   const started = overlay.editRevision();
   f.seed("new-turn");
-  f.respond(() => fauxAssistantMessage(JSON.stringify({ add: [{ key: "new", text: "New fact added by background maintenance." }], remove: [], priority: [...before.memory.slots.map(s => s.id), "new"] })));
+  f.respond(() => fauxAssistantMessage(JSON.stringify({ add: [{ key: "new", text: "New fact added by background maintenance." }], remove: [], priority: [...before.memory.slots.map(s => s.id), "new"], required: [] })));
   await f.runtime.session.compact();
   const expected = memory().replace(ctx(), before.revision, before.memory.slots[0]!.id, overlay.draftText() ?? "");
   assert.equal(expected.ok, false);

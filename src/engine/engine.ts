@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import type { Complete, MaintenanceInput, MaintenanceResult, Observations } from "./types.js";
+import type { Complete, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
 import { chooseCut, mainContext, memoryPlan, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies } from "./request.js";
@@ -105,6 +105,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     catch (cause) { throw new EngineError("RESPONSE", "Maintenance response is not one complete JSON object", { cause }); }
     const applied = applyPatch(frozen.memory, patch, memoryLimit, slots => memoryTokens(slots, config.imageTokens));
     observations.droppedSlotIds = applied.droppedSlotIds;
+    observations.required = applied.required;
     const kept = frozen.active.slice(cut);
     const mainAfterTokens = requestTokens(mainContext(frozen.fixed, applied.memory.slots, kept), config.imageTokens) + config.main.extraInputTokens;
     const growth = effectiveTrigger - mainAfterTokens;
@@ -120,6 +121,13 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     }, observations };
   } catch (cause) {
     observations.elapsedMs = performance.now() - start;
+    const req = cause instanceof EngineError ? (cause as unknown as { required?: RequiredObservation }).required : undefined;
+    if (req !== undefined) {
+      observations.required = req;
+    } else if (observations.required) {
+      observations.required.failed = true;
+      observations.required.retainedSlotIds = [];
+    }
     const error = cause instanceof EngineError ? cause : new EngineError("MODEL", "Maintenance failed before candidate handoff", { cause });
     return { ok: false, code: signal.aborted ? "CANCELLED" : error.code, message: error.message, observations, cause };
   }

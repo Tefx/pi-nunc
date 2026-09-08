@@ -61,6 +61,11 @@ export interface Omission {
   headChars: number;
   tailChars: number;
 }
+export interface RequiredObservation {
+  declared: string[];
+  retainedSlotIds: string[];
+  failed: boolean;
+}
 export interface UsageObservation {
   input: number | null;
   cacheRead: number | null;
@@ -102,6 +107,7 @@ export interface Observations {
   accounting: Accounting | null;
   omissions: Omission[];
   droppedSlotIds: string[];
+  required?: RequiredObservation;
 }
 export type FailureCode = "CONFIG" | "INPUT" | "UNSUPPORTED_INPUT" | "CAPACITY" | "RESPONSE" | "MODEL" | "CANCELLED";
 export type MaintenanceResult = {

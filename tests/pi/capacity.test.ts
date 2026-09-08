@@ -55,3 +55,111 @@ test("a changed main model recomputes H, extraction and final memory allowance o
   assert(small.result.observations.accounting!.memoryLimit < large.result.observations.accounting!.memoryLimit);
   assert.equal(f.runtime.session.model?.id, "small");
 });
+
+function fauxMsg(text: string, outputTokens = 50, inputTokens = 1000) {
+  const m = fauxAssistantMessage(text);
+  m.usage = { input: inputTokens, output: outputTokens, cacheRead: 0, cacheWrite: 0, totalTokens: inputTokens + outputTokens, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  return m;
+}
+
+test("required-capacity failure on manual compact: cancels, no default compaction, leaves M/K unchanged, subsequent turn succeeds without repeating extraction", async t => {
+  const f = await fixture(); t.after(() => f.close()); f.seed();
+  const oversizedPatch = JSON.stringify({
+    add: [{ key: "oversizedReq", text: "Mandatory shipment constraint ".repeat(400) }],
+    remove: [],
+    priority: ["oversizedReq"],
+    required: ["oversizedReq"],
+  });
+  let maintCalls = 0;
+  f.respond(context => {
+    if (sourceRecords(context).length) {
+      maintCalls++;
+      return fauxMsg(oversizedPatch, 3500);
+    }
+    return fauxMsg("Task continued normally.");
+  });
+  const beforeEntries = f.runtime.session.sessionManager.getEntries();
+  await assert.rejects(f.runtime.session.compact(), /cancel/i);
+  assert.equal(maintCalls, 1, "exactly one maintenance call; no repair loops");
+  assert.equal(f.events.length, 1);
+  assert.equal(f.events[0]?.reason, "manual");
+  assert.equal(f.events[0]?.result.ok, false);
+  assert.equal(f.events[0]?.result.code, "CAPACITY");
+  assert.equal(f.events[0]?.result.observations.required?.failed, true);
+  assert.deepEqual(f.events[0]?.result.observations.required?.declared, ["oversizedReq"]);
+  // No compaction entry persisted (proves no fallback to default compaction)
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
+  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), beforeEntries);
+
+  // Subsequent user prompt continues against preserved history without repeating maintenance or duplicating input
+  await f.runtime.session.prompt("Next instruction after failed manual compact");
+  assert.equal(maintCalls, 1, "no extra maintenance call during subsequent prompt");
+  const callsWithPrompt = f.calls.filter(c => JSON.stringify(c.messages).includes("Next instruction after failed manual compact"));
+  assert.equal(callsWithPrompt.length, 1, "prompt delivered exactly once");
+});
+
+test("required-capacity failure on pre-prompt threshold: cancels compaction, no default fallback, prompt delivered once without duplicate input", async t => {
+  const f = await fixture({ enabled: true }); t.after(() => f.close()); f.seed();
+  // Simulate previous response with usage near threshold to trigger pre-prompt threshold maintenance
+  const previous = answer({}, f.faux.getModel()); previous.stopReason = "aborted"; previous.timestamp = Date.now();
+  previous.usage = { ...previous.usage, input: 24500, cacheRead: 0, cacheWrite: 0, totalTokens: 24540 };
+  f.runtime.session.sessionManager.appendMessage(previous);
+  f.runtime.session.agent.state.messages = f.runtime.session.sessionManager.buildSessionContext().messages;
+
+  const oversizedPatch = JSON.stringify({
+    add: [{ key: "oversizedReq", text: "Mandatory shipment constraint ".repeat(400) }],
+    remove: [],
+    priority: ["oversizedReq"],
+    required: ["oversizedReq"],
+  });
+  let maintCalls = 0;
+  let mainCalls = 0;
+  f.respond(context => {
+    if (sourceRecords(context).length) {
+      maintCalls++;
+      return fauxMsg(oversizedPatch, 3500);
+    }
+    mainCalls++;
+    return fauxMsg("Main response after threshold cancellation.", 50, 20000);
+  });
+
+  await f.runtime.session.prompt("Prompt requiring execution after threshold failure");
+  assert.equal(mainCalls, 1, "main request dispatched once");
+  assert(f.events.length >= 1, "at least one threshold event");
+  assert(f.events.every(e => e.reason === "threshold" && !e.result.ok && e.result.code === "CAPACITY" && e.result.observations.required?.failed));
+  // No compaction entry persisted (proves no fallback to default compaction)
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
+  // Verify prompt was sent once
+  const mainCallsWithPrompt = f.calls.filter(c => !sourceRecords(c).length && JSON.stringify(c.messages).includes("Prompt requiring execution after threshold failure"));
+  assert.equal(mainCallsWithPrompt.length, 1, "prompt was delivered once without duplicate inputs");
+});
+
+test("required-capacity failure on provider overflow: cancels compaction, terminates without infinite compaction loops or duplicate effects", async t => {
+  const f = await fixture({ enabled: true }); t.after(() => f.close()); f.seed();
+  const oversizedPatch = JSON.stringify({
+    add: [{ key: "oversizedReq", text: "Mandatory shipment constraint ".repeat(400) }],
+    remove: [],
+    priority: ["oversizedReq"],
+    required: ["oversizedReq"],
+  });
+  let maintCalls = 0;
+  let mainCalls = 0;
+  f.respond(context => {
+    if (sourceRecords(context).length) {
+      maintCalls++;
+      return fauxMsg(oversizedPatch, 3500);
+    }
+    mainCalls++;
+    return fauxAssistantMessage("", { stopReason: "error", errorMessage: "maximum context length exceeded" });
+  });
+
+  await f.runtime.session.prompt("Prompt that triggers overflow");
+  assert.equal(maintCalls, 1, "overflow maintenance attempted exactly once, no infinite compaction loop");
+  assert.equal(f.events.length, 1);
+  assert.equal(f.events[0]?.reason, "overflow");
+  assert.equal(f.events[0]?.result.ok, false);
+  assert.equal(f.events[0]?.result.code, "CAPACITY");
+  assert.equal(f.events[0]?.result.observations.required?.failed, true);
+  // No compaction entry persisted
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
+});

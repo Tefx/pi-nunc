@@ -77,7 +77,7 @@ export class StockFixture {
     const held = this.holds.get(kind);
     if (held) await Promise.race([held.promise, new Promise(resolve => res.once('close', resolve))]);
     if (res.destroyed) return;
-    const reply = this.response?.(row, source) ?? (source ? JSON.stringify({ add: [{ key: `addition${++this.maintenanceCount}`, text: `Controlled protocol slot ${this.maintenanceCount}; no memory-quality assertion.` }], remove: source.M.map(s => s.id), priority: [`addition${this.maintenanceCount}`] }) : 'Controlled ordinary response.');
+    const reply = this.response?.(row, source) ?? (source ? JSON.stringify({ add: [{ key: `addition${++this.maintenanceCount}`, text: `Controlled protocol slot ${this.maintenanceCount}; no memory-quality assertion.` }], remove: source.M.map(s => s.id), priority: [`addition${this.maintenanceCount}`], required: [`addition${this.maintenanceCount}`] }) : 'Controlled ordinary response.');
     if (reply.status) { res.writeHead(reply.status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: reply.message } })); return; }
     res.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' });
     // Controlled usage follows the delivered payload's scale, so usage-backed

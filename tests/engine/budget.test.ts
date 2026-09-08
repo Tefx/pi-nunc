@@ -7,7 +7,7 @@ test("accounts complete F/envelope/M/R and extraction controls, independent ceil
   const source = await input(); source.memory.slots = [{ id: "s8", text: "Exact original condition" }];
   source.config.main.extraInputTokens = 300; source.config.extraction.extraInputTokens = 400;
   source.config.main.inputLimit = 40000; source.config.extraction.inputLimit = 50000;
-  const result = await maintain(source, responder({ add: [], remove: [], priority: ["s8"] }));
+  const result = await maintain(source, responder({ add: [], remove: [], priority: ["s8"], required: ["s8"] }));
   assert(result.ok, result.ok ? "" : result.message);
   const a = result.observations.accounting!;
   assert.equal(a.mainBeforeTokens, requestTokens(mainContext(source.fixed, source.memory.slots, source.active)) + 300);

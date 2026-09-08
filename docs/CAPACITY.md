@@ -22,7 +22,7 @@ This deliberately replaces the old contract that enforced the output/safety plan
 
 Nunc checks final Context shape, associations, native media and configured overhead before delegation. Supported payload text/metadata growth is charged against the same main guard; native serialized output room is checked for text append. Unknown rewrites, altered models, output-cap expansion, unsupported media and actual admission overruns still fail before HTTP. Independent calls retain their own native behavior.
 
-Extraction retains its separate output and safety reserve, complete delivered-source projection, one configured tool-text reduction and candidate growth checks. Temporary context/payload additions never become persisted source. Only a native checkpoint establishes saved memory; `reject` does not mean `sent`, and a candidate does not mean `saved`.
+Extraction retains its separate output and safety reserve, complete delivered-source projection, one configured tool-text reduction, candidate growth checks, and joint retention of all declared required items. When the declared required set exceeds available memory or leaves insufficient growth space, extraction fails explicitly with CAPACITY; no partial candidate is admitted, no body is truncated, and no fallback summarization is triggered. Temporary context/payload additions never become persisted source. Only a native checkpoint establishes saved memory; `reject` does not mean `sent`, and a candidate does not mean `saved`.
 
 ## Recovery boundary
 
@@ -37,4 +37,6 @@ Stock Pi can return before `session_before_compact` when its default character-b
 - Fresh estimates and supported payload growth can cross the planning target while fitting main admission.
 - Explicit input limits and model-window overruns still reject before transport.
 - Repeated native threshold rollovers save checkpoints and continue, with original input/tool delivery preserved.
+- Declared required items are retained jointly; optional items are dropped by priority without skipping required items or disturbing natural order.
+- Required set exceeding memory or growth capacity yields explicit CAPACITY failure, unchanged M/K, and clean host recovery across manual, threshold, and overflow paths without repeating extractions.
 - Existing extraction, payload, cancellation, native loader/transport and persistence checks remain valid.
