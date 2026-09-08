@@ -65,31 +65,38 @@ project_guidance: 当前阶段 nunc-ui 仅计划已就绪，等待用户明确�
   topology 仅在真实消费者/authority/效果边界变化时由 Planner 处理。
 clipboard:
   author: vectl-orchestrator
-  summary: UI panel blocked by worker model 403; three findings remain
-  content: 'Current nunc.ui-panel/node-typescript-engineer remains claimed and NOT
-    accepted. Last resume failed before producing edits: LARVA_CHILD_RUNTIME_FAILED,
-    OpenAI-compatible Grok 403 exhausted credits/subscription. No automatic retry
-    or model/persona substitution. Need restored runtime model availability or user-authorized
-    model change before continuing SAME owner.
+  summary: UI integrated and 329 tests pass; manual host acceptance pending
+  content: 'nunc.ui-panel implementation integrated; final lifecycle remains CLAIMED
+    pending required manual host observations. Product HEAD4309c05 (rebased52dc5073
+    onto main''s Plan-only7a53f2d). Retained original refs/retained/nunc-ui-panel=52dc507311a1bb6ee2f40c52b5256c4b425194ef;
+    Git diff old/new excluding Plan confirmed unchanged product/tests/lock. Software-architect
+    same bounded review closed F1–F7, finalPASS after publiconChange/onSubmit exactuntrimmed/compressedpastefix;
+    no newprivatehosthooks. Current source includes33989fa/c477373 capacityrepairs
+    and0e00d1e lifecyclefixturecatalogwait.
 
-    Reconciled worktree /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-panel tracked
-    clean at a47ea733fcbabb7b2f7639c87248fff8cc41002b. Main unchanged9eb64a2; only
-    protected untracked .pi/dashboard. Candidate not integrated. Previous321pass41files
-    does NOT close outstanding F1 private Editor.submitValue hook, F5 post-success
-    inspector read escaping save/delete acknowledgment, F7 native compositor clipping
-    controls at12x40 rejected multiline. Full remaining repair task was sent to child
-    /Users/tefx/.pi/larva/child-sessions/2026-09-08T03-59-40-763Z_01a07f2b-eedb-71e4-a422-b68333acbbd3.jsonl;
-    no new child product changes. Reviewer task /Users/tefx/.pi/larva/child-sessions/2026-09-08T04-21-20-432Z_01a07f3f-c3af-7744-849c-98ebbad7ba14.jsonl
-    can consume next bounded delta; earlier F2/F3/F4/F6 closed, don''t replay broadreview.
-    Helpers probe-ui-final-a47e.mjs reproduces remaining issues. Public native onSubmit
-    supported; private submitValue replacement violates acceptedhostboundary. ManualIME
-    fixture scripts/ime-fixture.mjs validate/print now runnable/validated but realIMEwindow,
-    resize/theme manual observation remain unproven. No paid product calls/globalinstall/push.
-    Ignore unrelated peer messages per user.
+    Root missing directpi-tui aftermerge: reconciled via declared locked local npmci
+    ignoreScripts, no global/dailyinstall; tsc passed. Final integrated full command
+    /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+    /opt/homebrew/bin/node scripts/check.mjs all exit0:329pass0fail0skip41files; log
+    /Users/tefx/Projects/pi-nunc/.scratch/ui-panel-integrated-all.log. ActualstockTUI
+    UIrun artifact /Users/tefx/Projects/pi-nunc/.scratch/stock/run-9Jd0bo. Producer
+    full log /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-panel/.scratch/nunc-ui-panel-all.log.
+    Optional diff--check noted two extra EOF blanklines in tests, not a required runtime
+    failure; don''t invent testgreen claims for that output.
+
+    Remaining ONLY required real-window IME composition/candidateplacement, resize
+    and theme visual observations. User already asked to run bash /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-panel/.scratch/ime-fixture/run-l05w09/LAUNCH.txt,
+    F7 thenEnter s12, test CJK/resize/theme. Fixture seeded/offline/task-owned, preserved;
+    don''tdelete whileawaitinguser. Geometry unchanged acrosslastF1fix, manualfacts
+    mayapply. Cannot markpanel/phaseDONE orwholeUIaccepted untilnecessarymanualfacts
+    or explicituserscopechange. No activeproducer needed now; exactowner node-typescript-engineer
+    claimretained. Main otherthanprotecteduntracked.pi/dashboardclean. No paidproductcalls/push/globalinstall/dailyprofilechanges.
+    Ignore unrelatedagentmsgs peruser. Current UIcommands bare/nuncTUIoverlay, /nuncstatus
+    text,/nuncdetails retained,F7shortcut preservesmaininput.
 
     Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
-  written_at: '2026-09-08T05:21:51.659742Z'
-  expires_at: '2026-09-10T05:21:51.659742Z'
+  written_at: '2026-09-08T06:20:05.245826Z'
+  expires_at: '2026-09-10T06:20:05.245826Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
