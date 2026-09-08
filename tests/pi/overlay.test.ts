@@ -157,3 +157,26 @@ test("native compact during edit conflicts on original revision and keeps draft"
   assert.match(overlay.draftText() ?? "", /Local draft/);
   assert.equal(overlay.editRevision(), started);
 });
+
+test("inspector setStatus failure does not cancel native compact or save", async t => {
+  const { memory, ctx, f } = await prepared(t);
+  const ui = ctx().ui;
+  const original = ui.setStatus.bind(ui);
+  Object.defineProperty(ctx(), "hasUI", { configurable: true, get: () => true });
+  let throws = 0;
+  ui.setStatus = () => { throws += 1; throw new Error("inspector-status-failure"); };
+  try {
+    const before = f.runtime.session.sessionManager.getEntries().length;
+    f.seed("ui-fail");
+    f.respond(memoryPatch);
+    await f.runtime.session.compact();
+    assert(f.runtime.session.sessionManager.getEntries().length > before);
+    const view = memory().read(ctx());
+    const slot = view.memory.slots[0]!;
+    const saved = memory().replace(ctx(), view.revision, slot.id, `${slot.text} despite UI`);
+    assert.equal(saved.ok, true, JSON.stringify(saved));
+    assert(throws > 0);
+  } finally {
+    ui.setStatus = original;
+  }
+});

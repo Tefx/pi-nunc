@@ -44,6 +44,14 @@ try {
   p.keys("\x1b[17~");
   await f.wait(() => f.log.filter(e => e.type === "snapshot").length > snaps, "pre-overlay editor");
   assert.match(f.log.filter(e => e.type === "snapshot").at(-1).data.editor, /PRE_OVERLAY_DRAFT/);
+  p.keys("\x1b[18~");
+  await f.wait(() => /\[Slots\]/.test(strip(p.stdout)), "overlay via F7");
+  p.keys("\x1b");
+  await delay(150);
+  snaps = f.log.filter(e => e.type === "snapshot").length;
+  p.keys("\x1b[17~");
+  await f.wait(() => f.log.filter(e => e.type === "snapshot").length > snaps, "editor after F7 overlay");
+  assert.match(f.log.filter(e => e.type === "snapshot").at(-1).data.editor, /PRE_OVERLAY_DRAFT/);
   p.keys("\x15");
   await delay(80);
   await p.send("/nunc");
@@ -159,6 +167,7 @@ try {
     overlay: true,
     savedManual: true,
     editorKept: /KEEP_DRAFT/.test(snap.editor),
+    preExistingDraft: true,
     overlayDidNotWriteEditor: true,
     slotPaste: true,
     inflightPreserved: true,

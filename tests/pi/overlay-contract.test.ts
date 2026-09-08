@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, type TUI } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, getKeybindings, setKeybindings, type TUI } from "@earendil-works/pi-tui";
 import { NuncOverlay } from "../../src/ui/overlay.js";
 import { NuncUi } from "../../src/ui/index.js";
 import type { ContextView } from "../../src/pi/context.js";
@@ -201,4 +201,75 @@ test("unconfirmed footer is not a normal percentage", () => {
   assert.equal(f.statuses.at(-1)?.key, "nunc");
   assert.match(f.statuses.at(-1)?.value ?? "", /nunc !/);
   assert.doesNotMatch(f.statuses.at(-1)?.value ?? "", /%/);
+});
+
+test("page keys reach the last slot preview line", () => {
+  const f = fixture({ rows: 24, text: Array.from({ length: 100 }, (_, i) => `LINE_${String(i).padStart(3, "0")}`).join("\n") });
+  let visible = "";
+  for (let i = 0; i < 120; i++) {
+    visible = clean(f.overlay.render(90));
+    f.overlay.handleInput("\x1b[6~");
+  }
+  assert.match(visible, /LINE_099/);
+});
+
+test("short 12-line edit keeps cursor on the last line and rejected error", () => {
+  const f = fixture({ rows: 12, text: Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n"), failure: "overbudget" });
+  f.overlay.handleInput("\r");
+  const before = f.overlay.render(36);
+  assert.equal(before.some(line => line.includes(CURSOR_MARKER)), true);
+  f.overlay.handleInput(" draft");
+  f.overlay.handleInput("\r");
+  const failed = clean(f.overlay.render(36));
+  assert.match(failed, /REJECTED/);
+  assert.match(failed, /save/);
+  assert.equal(f.overlay.render(36).some(line => line.includes(CURSOR_MARKER)), true);
+  assert.equal(f.overlay.layerName, "edit");
+});
+
+test("native backslash-enter submit still saves when enter is newline", () => {
+  const old = getKeybindings();
+  const kb = new KeybindingsManager(TUI_KEYBINDINGS, { "tui.input.submit": "shift+enter", "tui.input.newLine": "enter" });
+  setKeybindings(kb);
+  try {
+    const f = fixture();
+    f.overlay.handleInput("\r");
+    f.overlay.handleInput(" \\");
+    const before = f.overlay.draftText();
+    assert.match(before ?? "", /\\/);
+    f.overlay.handleInput("\r");
+    assert.equal(f.saves.length, 1);
+    assert.match(f.saves[0]?.text ?? "", /original saved text/);
+    assert.equal(f.overlay.layerName, "browse");
+    assert.notEqual(before, "");
+  } finally {
+    setKeybindings(old);
+  }
+});
+
+test("refresh isolates inspector read failures", () => {
+  const f = fixture();
+  const ui = new NuncUi({
+    memory: f.memory as never,
+    context: { read() { throw new Error("inspector-read-failure"); } } as never,
+    supported() {},
+  });
+  ui.attach(f.ctx as never);
+  assert.doesNotThrow(() => ui.refresh(f.ctx as never));
+  let boom = false;
+  const overlay = new NuncOverlay({
+    ctx: f.ctx as never, memory: f.memory as never,
+    context: { read: () => {
+      if (boom) throw new Error("inspector-read-failure");
+      return { current: { scope: "current", sessionId: "s", leafId: "l", model: null, revision: "old", occupied: false, unconfirmed: false, contextLayout: { slotCount: 2, activeEntries: 0 }, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null } } };
+    } } as never,
+    tui: { requestRender() {}, terminal: { rows: 40, columns: 120 } } as TUI,
+    theme: f.ctx.ui.theme as never, keybindings: new KeybindingsManager(TUI_KEYBINDINGS),
+    done() { overlay.dispose(); },
+  });
+  overlay.handleInput("\r");
+  overlay.handleInput(" keep-draft");
+  boom = true;
+  assert.doesNotThrow(() => overlay.sync());
+  assert.match(overlay.draftText() ?? "", /keep-draft/);
 });

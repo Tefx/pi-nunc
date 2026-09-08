@@ -173,6 +173,13 @@ export default function nunc(pi: ExtensionAPI): void {
       event.signal.removeEventListener("abort", abort); running = undefined;
     }
   });
+  pi.registerShortcut("f7", { description: "Open Nunc overlay", handler: async ctx => {
+    if (ctx.mode !== "tui") return;
+    try {
+      supported(ctx);
+      await ui.openOverlay(ctx);
+    } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid configuration"); }
+  } });
   pi.registerCommand("nunc", { description: "Show memory status; /nunc status for text; /nunc details for budgets (no request)",
     getArgumentCompletions: prefix => commandCompletions(prefix),
     handler: async (args, ctx) => {

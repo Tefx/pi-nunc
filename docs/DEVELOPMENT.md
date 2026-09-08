@@ -59,15 +59,14 @@ Drivers preserve mechanical reports, native sessions, request payloads and proce
 
 ## Manual IME / visual overlay check
 
-PTY injection of CJK bytes does not prove IME candidate-window placement. Isolated, no daily credentials or live models:
+PTY CJK bytes do not prove IME candidate-window placement. Preparation is tracked and offline:
 
 ```sh
 cd /path/to/pi-nunc-worktrees/nunc-ui-panel
 /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
-  /opt/homebrew/bin/node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
-  --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-tools \
-  -e dist/src/index.js --provider groq --model nunc-native --thinking off \
-  --system-prompt 'Inspect Nunc overlay IME.' --session-dir /tmp/nunc-ime-sessions
+  /opt/homebrew/bin/node scripts/ime-fixture.mjs validate   # noninteractive: seeded s12 opens
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  /opt/homebrew/bin/node scripts/ime-fixture.mjs print      # writes LAUNCH.txt; leaves isolated state
 ```
 
-Use a loopback `models.json` / dummy key in a task-owned `PI_CODING_AGENT_DIR`. `/nunc`, Enter a slot, type with a real CJK IME. Confirm the candidate window tracks the overlay editor cursor, not the main prompt. Esc discards. Do not send a model request.
+`print` emits a task-owned `HOME` / `PI_CODING_AGENT_DIR`, dummy loopback key, and a session that already contains slot `s12`. Run the printed command in a real terminal. F7 opens the overlay without consuming the main editor; Enter `s12` and type with a host IME. Confirm the candidate window tracks the overlay cursor. Esc discards. Do not send a model request. Teardown is the `rm -rf` line in `LAUNCH.txt`. Runtime theme/resize in a real window remain unproven.

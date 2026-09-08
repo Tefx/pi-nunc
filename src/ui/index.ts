@@ -62,6 +62,12 @@ export class NuncUi {
   }
 
   refresh(ctx = this.lastCtx): void {
+    try {
+      this.paint(ctx);
+    } catch { /* UI observation never owns save/maintenance. */ }
+  }
+
+  private paint(ctx = this.lastCtx): void {
     if (!ctx?.hasUI) return;
     let view: MemoryView | undefined;
     try {
@@ -79,8 +85,8 @@ export class NuncUi {
       slotCount: view?.memory.slots.length ?? 0,
       budget: view?.budget ?? { tokens: 0, limit: null, unknown: true },
     });
-    ctx.ui.setStatus("nunc", ctx.ui.theme.fg(footer.tone, footer.text));
-    this.overlay?.sync();
+    try { ctx.ui.setStatus("nunc", ctx.ui.theme.fg(footer.tone, footer.text)); } catch { /* Footer paint only. */ }
+    try { this.overlay?.sync(); } catch { /* Inspector paint only. */ }
   }
 
   async openOverlay(ctx: ExtensionContext): Promise<void> {
@@ -93,8 +99,8 @@ export class NuncUi {
           memory: this.options.memory,
           context: this.options.context,
           done: () => done(null),
-          onFailure: message => { this.noteDiagnostic("warning", message); this.refresh(ctx); },
-          onSuccess: () => { this.recover(); this.refresh(ctx); },
+          onFailure: message => { try { this.noteDiagnostic("warning", message); } catch { /* Diagnostic only. */ } this.refresh(ctx); },
+          onSuccess: () => { try { this.recover(); } catch { /* Status only. */ } this.refresh(ctx); },
         });
         this.overlay = overlay;
         return overlay;
