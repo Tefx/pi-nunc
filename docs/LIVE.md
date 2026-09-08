@@ -65,3 +65,43 @@ Each scenario uses a fresh persistent session and task cwd. Public tools are bou
 Optional retention calibration is a named test override within its declared fraction interval. It derives legal source placement from actual F/M/R and tool units, then changes only task configuration. Impossible placement stops before maintenance. Nunc still selects its own K and Pi persists one native snapshot. Actual checks confirm candidate/summary/boundary agreement, unchanged K/order, no retired source, and only the latest summary carrier.
 
 Reports record resolved nonsecret defaults, named override differences, call/token/time and known/unknown costs, usage/cache usage, budgets/omissions, tool actions/artifacts, native session/lifecycle observations and limitations. Artifact checks require real files and setup prerequisites; semantic criteria remain independent judgments. `OBSERVED` establishes completed mechanical observations only. Real-model continuation, policy effectiveness and final integrated acceptance require downstream evidence.
+
+## Three-way extraction comparison runner
+
+`scripts/compare-extraction.mjs` consumes a bounded JSON object on stdin and runs the three groups (`native`, `current`, `candidate`) across documented modes (`defaults`, `matched`):
+
+```sh
+# Preflight without model calls, session creation, or installation:
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  /opt/homebrew/bin/node scripts/compare-extraction.mjs --preflight < comparison-selection.json
+
+# Execute the comparison after prepared targets:
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  /opt/homebrew/bin/node scripts/compare-extraction.mjs < comparison-selection.json
+```
+
+### Public schema
+
+Bounded JSON on stdin requires `target`, `limits`, `scenarios`, and `comparison`:
+
+- `target: {repository, stateRoot, cleanup: "retain" | "remove"}` with canonical absolute paths.
+- `limits: {maxCalls, maxTotalTokens, maxDurationMs, maxOutputTokens, maxCostUsd}` shared across all groups and scenarios in a single global budget ledger (`calls.jsonl`).
+- `scenarios: [{id: "e1" | "e2" | "e3" | "e4" | "c1" | "c2" | "c3" | "c4" | "c5", variant?: "fits-required" | "required-too-large" | "full" | "capacity" | "late-d"}]`. Tasks `e1`–`e4` consume `tests/scenarios/extraction-inputs.json` and `tests/scenarios/extraction-observer.json`.
+- `comparison: {modes: ("defaults" | "matched")[], targets: {native: {repository}, current: {repository}, candidate: {repository}}}`.
+
+`examples/comparison-selection.json` provides a template.
+
+### Three prepared targets
+
+1. `native`: Real stock Pi 0.85.1 with no Nunc hook. Pi's native compaction runs and produces a structured markdown summary (`## Goal`, `## Constraints`, etc.) and cumulative file operations list (`readFiles`/`modifiedFiles`).
+2. `current`: Product baseline `70dacad`, loading `70dacad`'s compiled `dist/src/index.js` (three-field protocol `add`, `remove`, `priority`).
+3. `candidate`: New candidate checkout, loading candidate `dist/src/index.js` (four-field protocol with `required` and joint capacity guard).
+
+Preflight verifies baseline identity (`git rev-parse HEAD` at `70dacad`), compiled distribution (`dist/src/index.js`), Pi 0.85.1 dependencies, and clean working tree for candidate before effects.
+
+### Comparison modes and public seam status
+
+- `defaults`: Reports actual differences in hook threshold H, cut point, retained K, summary/M size, output planning/caps, calls, tokens, latency, and native file list overhead without hiding default divergence.
+- `matched`: Verifies matching of model, exposure, cut, K, budget, wrappers, and file lists. Unmatched quantities and native structural differences (such as Pi 0.85.1's fixed 0.8 * reserveTokens formula vs Nunc memory budget) are recorded in `discrepancies` and parity is reported as `UNPROVEN`.
+- `rollover_at_tool_boundary` (in `e3`): Stock Pi 0.85.1 RPC mode has no public seam to pause mid-turn between tool execution and assistant continuation without private host mutation or session entry editing. This seam status is truthfully recorded as concrete `UNPROVEN` with `UNSUPPORTED_PUBLIC_SEAM`.
+

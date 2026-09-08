@@ -10,7 +10,9 @@ import { object, requireValue, within, type Selection } from "./contract.js";
 export interface Turn { id: string; text: string }
 export interface GeneratedFile { path: string; segments: Array<{ repeat: number; text: string }> }
 export interface ScenarioInput { id: string; files: Record<string, string>; generatedFiles?: GeneratedFile[]; turns: Turn[] }
-export interface Control { afterTurn: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string }; capacity?: string; steer?: string }
+export interface ToolExchange { occurrence: number; pathArgument: string; toolName: string; turn: string }
+export interface ToolTrigger { occurrence: number; pathArgument: string; toolName: string; when: "after_result_before_continuation" }
+export interface Control { afterTurn?: string; duringTurn?: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model" | "rollover_at_tool_boundary"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string; retireRequestOfTurn?: string; retainToolExchange?: ToolExchange }; capacity?: string; steer?: string; trigger?: ToolTrigger }
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type ArtifactCheck = { path: string; pointer: string } & ({ operator: "equal" | "contains" | "unequal"; value: JsonValue } | { operator: "semantic"; criterion: string });
 export interface ScenarioObserver { id: string; controls: Control[]; setupChecks: string[]; artifactChecks: ArtifactCheck[]; actionChecks: string[] }
@@ -45,8 +47,29 @@ export function qualifyFullGiantSource(generated: GeneratedFile[] | undefined): 
   return { check: "c4/full source exceeds native read truncation and hides the middle exception until complete exposure", status: pass ? "PROVEN" : "UNPROVEN", observed: { bytes, nativeMaxBytes: DEFAULT_MAX_BYTES, truncated: truncation.truncated, truncatedBy: truncation.truncatedBy, firstChunkLines: truncation.outputLines, exceptionInFirstChunk: inFirst } };
 }
 export function validateControl(value: unknown, turns: string[]): asserts value is Control {
-  fields(value, ["afterTurn", "action", "placement", "capacity", "steer"], "control");
-  requireValue(nonempty(value.afterTurn) && turns.includes(value.afterTurn) && ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model"].includes(String(value.action)), "SCENARIO", "Invalid control action/turn");
+  fields(value, ["afterTurn", "duringTurn", "action", "placement", "capacity", "steer", "trigger"], "control");
+  requireValue(nonempty(value.action) && ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model", "rollover_at_tool_boundary"].includes(String(value.action)), "SCENARIO", "Invalid control action");
+  if (value.action === "rollover_at_tool_boundary") {
+    requireValue(nonempty(value.duringTurn) && turns.includes(value.duringTurn), "SCENARIO", "Invalid duringTurn");
+    requireValue(value.afterTurn === undefined && value.capacity === undefined && value.steer === undefined, "SCENARIO", "Invalid rollover_at_tool_boundary fields");
+    fields(value.trigger, ["occurrence", "pathArgument", "toolName", "when"], "trigger");
+    const trig = value.trigger as Record<string, unknown>;
+    requireValue(Number.isSafeInteger(trig.occurrence) && Number(trig.occurrence) > 0, "SCENARIO", "Invalid trigger occurrence");
+    requireValue(localPath(trig.pathArgument), "SCENARIO", "Invalid trigger pathArgument");
+    requireValue(nonempty(trig.toolName), "SCENARIO", "Invalid trigger toolName");
+    requireValue(trig.when === "after_result_before_continuation", "SCENARIO", "trigger when must be after_result_before_continuation");
+    fields(value.placement, ["retireRequestOfTurn", "retainToolExchange"], "placement");
+    const p = value.placement as Record<string, unknown>;
+    requireValue(p.retireRequestOfTurn === value.duringTurn, "SCENARIO", "retireRequestOfTurn must match duringTurn");
+    fields(p.retainToolExchange, ["occurrence", "pathArgument", "toolName", "turn"], "retainToolExchange");
+    const ex = p.retainToolExchange as Record<string, unknown>;
+    requireValue(Number.isSafeInteger(ex.occurrence) && Number(ex.occurrence) > 0, "SCENARIO", "Invalid retainToolExchange occurrence");
+    requireValue(ex.pathArgument === trig.pathArgument, "SCENARIO", "retainToolExchange pathArgument must match trigger");
+    requireValue(ex.toolName === trig.toolName, "SCENARIO", "retainToolExchange toolName must match trigger");
+    requireValue(ex.turn === value.duringTurn, "SCENARIO", "retainToolExchange turn must match duringTurn");
+    return;
+  }
+  requireValue(nonempty(value.afterTurn) && turns.includes(value.afterTurn), "SCENARIO", "Invalid control afterTurn");
   const after = turns.indexOf(value.afterTurn);
   if (value.action !== "rollover") { requireValue(value.placement === undefined && value.capacity === undefined && value.steer === undefined, "SCENARIO", "Placement/capacity/steer apply only to rollover"); return; }
   requireValue(value.capacity === undefined || nonempty(value.capacity), "SCENARIO", "Invalid capacity condition");
@@ -68,7 +91,7 @@ export function validateControl(value: unknown, turns: string[]): asserts value 
 }
 export function parseScenario(source: unknown, reference: unknown, selection: Selection): { input: ScenarioInput; observer: ScenarioObserver } {
   requireValue(object(source) && source.formatVersion === 1 && Array.isArray(source.cases), "SCENARIO", "Unsupported inputs format");
-  requireValue(object(reference) && reference.formatVersion === 1 && reference.inputs === "inputs.json" && reference.visibility === "runner-and-observer-only" && Array.isArray(reference.cases), "SCENARIO", "Unsupported observer format");
+  requireValue(object(reference) && reference.formatVersion === 1 && (reference.inputs === "inputs.json" || reference.inputs === "extraction-inputs.json") && reference.visibility === "runner-and-observer-only" && Array.isArray(reference.cases), "SCENARIO", "Unsupported observer format");
   for (const cases of [source.cases, reference.cases]) requireValue(cases.length > 0 && cases.every(c => object(c) && nonempty(c.id)) && new Set(cases.map(c => c.id)).size === cases.length, "SCENARIO", "Invalid/duplicate case IDs");
   const raw: unknown = source.cases.find(c => c.id === selection.id);
   let obs: unknown = reference.cases.find(c => c.id === selection.id);
@@ -106,25 +129,45 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
     requireValue(bytes > DEFAULT_MAX_BYTES, "SCENARIO", "c4/capacity must keep a giant source above the native read threshold");
   }
   fields(obs, ["id", "covers", "controls", "setupChecks", "artifactChecks", "actionChecks", "failureExample", "variants"], "observer");
+  const obsRecord = obs as Record<string, unknown>;
   if (selection.variant) {
-    requireValue(Array.isArray(obs.variants) && obs.variants.every(v => object(v) && nonempty(v.id)) && new Set(obs.variants.map(v => v.id)).size === obs.variants.length, "SCENARIO", "Invalid/duplicate variants");
-    obs = obs.variants.find(v => v.id === selection.variant);
-    fields(obs, ["id", "controls", "setupChecks", "artifactChecks", "actionChecks"], "variant");
+    requireValue(Array.isArray(obsRecord.variants) && obsRecord.variants.every(v => object(v) && nonempty(v.id)) && new Set(obsRecord.variants.map(v => v.id)).size === obsRecord.variants.length, "SCENARIO", "Invalid/duplicate variants");
+    const variant = (obsRecord.variants as unknown[]).find(v => object(v) && v.id === selection.variant);
+    requireValue(variant !== undefined, "SCENARIO", `Variant ${selection.variant} not found in observer`);
+    fields(variant, ["id", "controls", "setupChecks", "artifactChecks", "actionChecks"], "variant");
+    const varRecord = variant as Record<string, unknown>;
+    obs = {
+      ...obsRecord,
+      id: selection.id,
+      controls: varRecord.controls ?? obsRecord.controls,
+      setupChecks: [...(Array.isArray(obsRecord.setupChecks) ? obsRecord.setupChecks : []), ...(Array.isArray(varRecord.setupChecks) ? varRecord.setupChecks : [])],
+      actionChecks: [...(Array.isArray(obsRecord.actionChecks) ? obsRecord.actionChecks : []), ...(Array.isArray(varRecord.actionChecks) ? varRecord.actionChecks : [])],
+      artifactChecks: varRecord.artifactChecks ?? obsRecord.artifactChecks ?? [],
+    };
   }
-  requireValue(Array.isArray(obs.controls) && obs.controls.length > 0, "SCENARIO", "Missing observer controls");
+  const finalObs = obs as Record<string, unknown>;
+  requireValue(Array.isArray(finalObs.controls) && finalObs.controls.length > 0, "SCENARIO", "Missing observer controls");
   let lastTurn = -1; const controls = new Set<string>(); const steered = new Set<string>();
-  for (const control of obs.controls) {
-    validateControl(control, turns); const at = turns.indexOf(control.afterTurn), key = `${at}/${control.action}`;
+  for (const control of finalObs.controls as unknown[]) {
+    validateControl(control, turns);
+    const targetTurn = (control as Control).afterTurn ?? (control as Control).duringTurn!;
+    const at = turns.indexOf(targetTurn), key = `${at}/${(control as Control).action}`;
     requireValue(at >= lastTurn && !controls.has(key), "SCENARIO", "Duplicate/out-of-order observer control"); lastTurn = at; controls.add(key);
-    if (control.steer) { requireValue(!steered.has(control.steer), "SCENARIO", "Duplicate steer turn"); steered.add(control.steer); }
-    if (control.action !== "rollover") requireValue(controls.has(`${at}/rollover`) && (control.action === "pause_resume_same_session" ? selection.id === "c3" : selection.id === "c5"), "SCENARIO", "Unsupported restart/switch placement");
+    if ((control as Control).steer) { requireValue(!steered.has((control as Control).steer!), "SCENARIO", "Duplicate steer turn"); steered.add((control as Control).steer!); }
+    if ((control as Control).action !== "rollover" && (control as Control).action !== "rollover_at_tool_boundary") {
+      const hasRollover = controls.has(`${at}/rollover`) || controls.has(`${at}/rollover_at_tool_boundary`);
+      requireValue(hasRollover && ((control as Control).action === "pause_resume_same_session" ? ["c3", "e1", "e3"].includes(selection.id) : selection.id === "c5"), "SCENARIO", "Unsupported restart/switch placement");
+    }
   }
-  requireValue(Array.isArray(obs.artifactChecks), "SCENARIO", "Missing artifact checks"); obs.artifactChecks.forEach(validateArtifactCheck);
-  requireValue(stringList(obs.setupChecks) && stringList(obs.actionChecks), "SCENARIO", "Invalid observer criteria");
-  return { input: raw as unknown as ScenarioInput, observer: { ...obs, id: selection.id } as unknown as ScenarioObserver };
+  requireValue(Array.isArray(finalObs.artifactChecks), "SCENARIO", "Missing artifact checks"); (finalObs.artifactChecks as unknown[]).forEach(validateArtifactCheck);
+  requireValue(stringList(finalObs.setupChecks) && stringList(finalObs.actionChecks), "SCENARIO", "Invalid observer criteria");
+  return { input: raw as unknown as ScenarioInput, observer: { ...finalObs, id: selection.id } as unknown as ScenarioObserver };
 }
 export async function loadScenario(repository: string, selection: Selection): Promise<{ input: ScenarioInput; observer: ScenarioObserver }> {
-  return parseScenario(JSON.parse(await readFile(join(repository, "tests/scenarios/inputs.json"), "utf8")), JSON.parse(await readFile(join(repository, "tests/scenarios/observer.json"), "utf8")), selection);
+  const isExtraction = selection.id.startsWith("e");
+  const inputsFile = isExtraction ? "tests/scenarios/extraction-inputs.json" : "tests/scenarios/inputs.json";
+  const observerFile = isExtraction ? "tests/scenarios/extraction-observer.json" : "tests/scenarios/observer.json";
+  return parseScenario(JSON.parse(await readFile(join(repository, inputsFile), "utf8")), JSON.parse(await readFile(join(repository, observerFile), "utf8")), selection);
 }
 export async function seedScenario(input: ScenarioInput, cwd: string): Promise<void> {
   await mkdir(cwd, { recursive: true });
@@ -152,7 +195,11 @@ export function checkArtifact(check: ArtifactCheck, artifact: unknown): CheckRes
   validateArtifactCheck(check);
   const observed = jsonPointer(artifact, check.pointer);
   if (check.operator === "semantic") return { check: `${check.path}${check.pointer}`, status: "UNPROVEN", observed: observed ?? null, reason: check.criterion ?? "Independent semantic review required" };
-  const passed = observed !== undefined && (check.operator === "equal" ? isDeepStrictEqual(observed, check.value) : check.operator === "unequal" ? !isDeepStrictEqual(observed, check.value) : Array.isArray(observed) && observed.some(v => isDeepStrictEqual(v, check.value)));
+  const passed = observed !== undefined && (
+    check.operator === "equal" ? isDeepStrictEqual(observed, check.value) :
+    check.operator === "unequal" ? !isDeepStrictEqual(observed, check.value) :
+    (typeof observed === "string" && typeof check.value === "string" ? observed.includes(check.value) : Array.isArray(observed) && observed.some(v => isDeepStrictEqual(v, check.value)))
+  );
   return { check: `${check.path}${check.pointer}`, status: passed ? "PROVEN" : "DISPROVEN", observed: observed ?? null };
 }
 export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[]) {

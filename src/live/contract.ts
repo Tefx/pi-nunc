@@ -42,7 +42,18 @@ function text(value: unknown): value is string { return typeof value === "string
 export interface Limits { maxCalls: number; maxTotalTokens: number; maxCostUsd: number | null; maxDurationMs: number; maxOutputTokens: number }
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5"; variant?: "full" | "capacity" | "late-d"; config: RunConfig }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large"; config: RunConfig }
+export type ComparisonMode = "defaults" | "matched";
+export type ComparisonGroup = "native" | "current" | "candidate";
+export interface ComparisonTarget { repository: string }
+export interface ComparisonConfig {
+  modes: ComparisonMode[];
+  targets: {
+    native: ComparisonTarget;
+    current: ComparisonTarget;
+    candidate: ComparisonTarget;
+  };
+}
 export interface RunInput {
   version: 1;
   effective?: { source: "invoking-runtime" | "standalone-defaults"; provider: string; model: string; thinking: string; transport: string; compaction: RunConfig["compaction"]; settings: Record<string, unknown> };
@@ -55,6 +66,7 @@ export interface RunInput {
   scenarios: Selection[];
   receipt?: Receipt;
   observations?: Array<"stock_rpc" | "stock_tui" | "continuation">;
+  comparison?: ComparisonConfig;
 }
 export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.85.1"; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
@@ -83,7 +95,7 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
   if (config.policyFile !== undefined) requireValue(text(config.policyFile) && isAbsolute(config.policyFile), "CONFIG", "Runner policyFile must be absolute and repository-local");
 }
 export function parseInput(value: unknown, execution = false): RunInput {
-  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels"], "input");
+  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison"], "input");
   requireValue(value.version === 1, "INPUT", "Expected input version 1");
   requireValue(value.mode === "controlled" || value.mode === "native", "INPUT", "Invalid internal execution mode");
   requireValue(!execution || value.mode === "native", "EXECUTION", "Controlled observations cannot dispatch native service calls");
@@ -104,12 +116,32 @@ export function parseInput(value: unknown, execution = false): RunInput {
   const ids = new Set<string>();
   for (const selection of value.scenarios) {
     keys(selection, ["id", "variant", "config"], "scenario");
-    requireValue(["c1", "c2", "c3", "c4", "c5"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
-    requireValue(selection.id === "c4" ? ["full", "capacity"].includes(String(selection.variant)) : selection.id === "c1" ? selection.variant === undefined || selection.variant === "late-d" : selection.variant === undefined, "SCENARIO", "c4 requires full/capacity; c1 may select late-d; others have no variant");
+    requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
+    if (selection.id === "c4") {
+      requireValue(["full", "capacity"].includes(String(selection.variant)), "SCENARIO", "c4 requires full/capacity");
+    } else if (selection.id === "c1") {
+      requireValue(selection.variant === undefined || selection.variant === "late-d", "SCENARIO", "c1 may select late-d; others have no variant");
+    } else if (selection.id === "e4") {
+      requireValue(["fits-required", "required-too-large"].includes(String(selection.variant)), "SCENARIO", "e4 requires fits-required or required-too-large");
+    } else {
+      requireValue(selection.variant === undefined, "SCENARIO", `${selection.id} has no variant`);
+    }
     const key = `${selection.id}/${selection.variant ?? ""}`; requireValue(!ids.has(key), "SCENARIO", "Duplicate scenario"); ids.add(key);
     validateConfig(selection.config);
     if (selection.id === "c4" && selection.variant === "full") requireValue(selection.config.nunc.extraction?.toolResults === "full", "CONFIG", "c4/full requires full extraction");
     if (selection.id === "c5") requireValue(value.models.length === 2 && Number(value.models[1].contextWindow) < Number(value.models[0].contextWindow), "MODEL", "c5 requires a distinct authorized strictly smaller model");
+  }
+  if (value.comparison !== undefined) {
+    keys(value.comparison, ["modes", "targets"], "comparison");
+    requireValue(Array.isArray(value.comparison.modes) && value.comparison.modes.length > 0 && new Set(value.comparison.modes).size === value.comparison.modes.length && value.comparison.modes.every(m => ["defaults", "matched"].includes(String(m))), "COMPARISON", "comparison.modes must be a nonempty unique array of 'defaults' and/or 'matched'");
+    keys(value.comparison.targets, ["native", "current", "candidate"], "comparison.targets");
+    for (const group of ["native", "current", "candidate"] as const) {
+      let t = value.comparison.targets[group];
+      if (typeof t === "string") t = { repository: t };
+      keys(t, ["repository"], `comparison.targets.${group}`);
+      requireValue(text(t.repository) && isAbsolute(t.repository), "TARGET", `comparison.targets.${group}.repository must be an absolute canonical path`);
+      value.comparison.targets[group] = { repository: resolve(t.repository) };
+    }
   }
   if (value.observations !== undefined) requireValue(Array.isArray(value.observations) && value.observations.length > 0 && new Set(value.observations).size === value.observations.length && value.observations.every(m => ["stock_rpc", "stock_tui", "continuation"].includes(String(m))) && (!value.observations.includes("continuation") || value.observations.length === 1), "OBSERVATION", "Select stock_rpc/stock_tui together, or continuation alone; controlled and live budgets use separate runs");
   // The supervisor generates execution binding internally; callers need no receipt ceremony.
@@ -174,6 +206,36 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   }
   const { assertBuildParity } = await import("./build.js");
   await assertBuildParity(repository);
+  if (input.comparison !== undefined) {
+    let candRepo: string;
+    try { candRepo = await realpath(input.comparison.targets.candidate.repository); }
+    catch { throw new RunnerError("TARGET", "Candidate target repository does not exist"); }
+    requireValue(candRepo === await realpath(input.target.repository), "TARGET", "Candidate target repository must match runner target repository");
+
+    let curRepo: string;
+    try { curRepo = await realpath(input.comparison.targets.current.repository); }
+    catch { throw new RunnerError("TARGET", "Current baseline target repository does not exist"); }
+    const curStat = await lstat(curRepo);
+    requireValue(curStat.isDirectory(), "TARGET", "Current baseline target must be a real directory");
+    const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    requireValue(curHead.startsWith("70dacad"), "TARGET", `Current baseline target must be at 70dacad, found ${curHead}`);
+    const curIndex = join(curRepo, "dist/src/index.js");
+    try { const stat = await lstat(curIndex); requireValue(stat.isFile(), "BUILD", "Current baseline target missing dist/src/index.js"); }
+    catch { throw new RunnerError("BUILD", "Current baseline target must have compiled dist/src/index.js"); }
+    const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
+    requireValue(curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version === "0.85.1", "DEPENDENCY", "Current baseline target requires Pi 0.85.1");
+
+    let natRepo: string;
+    try { natRepo = await realpath(input.comparison.targets.native.repository); }
+    catch { throw new RunnerError("TARGET", "Native target repository does not exist"); }
+    const natStat = await lstat(natRepo);
+    requireValue(natStat.isDirectory(), "TARGET", "Native target must be a real directory");
+    const natPiPkg = join(natRepo, "node_modules/@earendil-works/pi-coding-agent/package.json");
+    try { const stat = await lstat(natPiPkg); requireValue(stat.isFile(), "DEPENDENCY", "Native target missing Pi package.json"); }
+    catch { throw new RunnerError("DEPENDENCY", "Native target must have installed @earendil-works/pi-coding-agent"); }
+    const natPiVer = JSON.parse(await readFile(natPiPkg, "utf8")).version;
+    requireValue(natPiVer === "0.85.1", "DEPENDENCY", `Native target requires Pi 0.85.1, found ${natPiVer}`);
+  }
   const candidate = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   if (input.mode === "native") {
     const dirty = execFileSync("/usr/bin/git", ["-C", repository, "status", "--porcelain", "--untracked-files=normal", "--", "src", "scripts", "tests", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8" });

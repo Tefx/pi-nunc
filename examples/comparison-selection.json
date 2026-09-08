@@ -1,0 +1,28 @@
+{
+  "target": {
+    "repository": "__CHECKOUT__",
+    "stateRoot": "__NEW_CANONICAL_TASK_ROOT__",
+    "cleanup": "retain"
+  },
+  "limits": {
+    "maxCalls": 30,
+    "maxTotalTokens": 10000000,
+    "maxDurationMs": 300000,
+    "maxCostUsd": null
+  },
+  "scenarios": [
+    { "id": "e1" },
+    { "id": "e2" },
+    { "id": "e3" },
+    { "id": "e4", "variant": "fits-required" },
+    { "id": "e4", "variant": "required-too-large" }
+  ],
+  "comparison": {
+    "modes": ["defaults", "matched"],
+    "targets": {
+      "native": { "repository": "__CHECKOUT__" },
+      "current": { "repository": "__PREPARED_70DACAD_BASELINE__" },
+      "candidate": { "repository": "__CHECKOUT__" }
+    }
+  }
+}

@@ -6,7 +6,7 @@ import { object, parseInput, requireValue, type RunInput } from "./contract.js";
 
 /** Public stdin boundary. Native configuration is read-only; no auth API is called. */
 export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): Promise<RunInput> {
-  requireValue(object(value) && Object.keys(value).every(k => ["target", "limits", "scenarios", "overrides", "observations"].includes(k)), "INPUT", "Supply target, limits, scenarios and optional named overrides");
+  requireValue(object(value) && Object.keys(value).every(k => ["target", "limits", "scenarios", "overrides", "observations", "comparison"].includes(k)), "INPUT", "Supply target, limits, scenarios and optional named overrides");
   requireValue(object(value.target) && object(value.limits) && Array.isArray(value.scenarios), "INPUT", "Actual target, limits and scenarios are required");
   const global = SettingsManager.create(cwd, getAgentDir(), { projectTrusted: false });
   const trusted = new ProjectTrustStore(getAgentDir()).get(cwd) ?? global.getDefaultProjectTrust() === "always";
@@ -65,6 +65,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
     mode: offline ? "controlled" : "native",
     target: value.target, limits, models,
     scenarios: value.scenarios.map(s => { requireValue(object(s) && Object.keys(s).every(k => ["id", "variant"].includes(k)), "SCENARIO", "Scenario config belongs in a named override"); return { ...s, config }; }), observations,
+    ...(value.comparison ? { comparison: value.comparison } : {}),
   });
   input.effective = { source: env.PI_MODEL ? "invoking-runtime" : "standalone-defaults", provider, model: id, thinking, transport: settings.getTransport(), compaction: settings.getCompactionSettings(), settings: {
     compaction: settings.getCompactionSettings(), thinkingBudgets: settings.getThinkingBudgets(), transport: settings.getTransport(),

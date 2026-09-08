@@ -7,24 +7,33 @@ import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { object, payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
 export { toolPath } from "./tool-path.js";
-export function liveExtensionFlags(repository: string, input: RunInput): string[] {
+export function liveExtensionFlags(repository: string, input: RunInput, group?: "native" | "current" | "candidate", targetRepos?: { current?: string | undefined; candidate?: string | undefined } | undefined): string[] {
   const flags = ["-e", join(repository, "dist/src/live/observer.js")];
   if (payloadAppendEnabled(input)) flags.push("-e", join(repository, "dist/src/live/append.js"));
   if (payloadAppendBEnabled(input)) flags.push("-e", join(repository, "dist/src/live/append-b.js"));
   if (providerWrapEnabled(input)) flags.push("-e", join(repository, "dist/src/live/wrap.js"));
-  flags.push("-e", join(repository, "dist/src/index.js"));
+  if (group === "native") return flags;
+  if (group === "current") {
+    const curRepo = targetRepos?.current ?? input.comparison?.targets.current.repository ?? repository;
+    flags.push("-e", join(curRepo, "dist/src/index.js"));
+    return flags;
+  }
+  const candRepo = targetRepos?.candidate ?? input.comparison?.targets.candidate.repository ?? repository;
+  flags.push("-e", join(candRepo, "dist/src/index.js"));
   return flags;
 }
 export interface HostOptions {
   repository: string; input: RunInput; selection: Selection; caseRoot: string; modelTargets: Model<Api>[];
-  deadline: number; signal: AbortSignal; sessionFile?: string;
+  deadline: number; signal: AbortSignal; sessionFile?: string | undefined;
+  group?: "native" | "current" | "candidate" | undefined;
+  targetRepos?: { current?: string | undefined; candidate?: string | undefined } | undefined;
   /** Test-only native models.json overlay; it replaces the service endpoint, never the host or Provider. */
   controlledModels?: unknown;
   /** Test-only child replacement. Production always uses the locked stock Pi CLI. */
-  testCommand?: { command: string; args: string[] };
-  onMaintenance?: (event: unknown) => void;
-  onContext?: (model: Model<Api>, context: Context, kind: string) => void;
-  onAction?: (event: unknown) => void;
+  testCommand?: { command: string; args: string[] } | undefined;
+  onMaintenance?: ((event: unknown) => void) | undefined;
+  onContext?: ((model: Model<Api>, context: Context, kind: string) => void) | undefined;
+  onAction?: ((event: unknown) => void) | undefined;
 }
 export function childEnvironment(state: string): NodeJS.ProcessEnv {
   return { HOME: join(state, "home"), PI_CODING_AGENT_DIR: join(state, "host"), TMPDIR: join(state, "tmp"),
@@ -75,7 +84,7 @@ export class NativeHost {
     for (const path of [join(state, "tmp"), join(o.caseRoot, "sessions")]) await mkdir(path, { recursive: true });
     if (o.controlledModels) for (const path of [host, join(state, "home")]) await mkdir(path, { recursive: true });
     const config = join(o.caseRoot, "nunc-config.json"), binding = join(o.caseRoot, "observer-binding.json");
-    await writeFile(config, JSON.stringify(o.selection.config.nunc), { mode: 0o600 });
+    if (o.group !== "native") await writeFile(config, JSON.stringify(o.selection.config.nunc), { mode: 0o600 });
     const taskSettings = { ...o.input.effective?.settings, compaction: o.selection.config.compaction, retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0 } }, transport: "sse", packages: [], extensions: [], skills: [], prompts: [], themes: [], enableSkillCommands: false };
     if (o.controlledModels) await writeFile(join(host, "settings.json"), JSON.stringify(taskSettings), { mode: 0o600 });
     else if (!o.sessionFile) {
@@ -93,7 +102,7 @@ export class NativeHost {
     const packageDir = join(o.repository, "node_modules/@earendil-works/pi-coding-agent");
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
     const cli = join(packageDir, manifest.bin.pi);
-    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...liveExtensionFlags(o.repository, o.input), "--nunc-config", config, "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
+    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...liveExtensionFlags(o.repository, o.input, o.group, o.targetRepos), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
     this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
     this.child.stdin.on("error", () => this.abort());
