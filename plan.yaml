@@ -2069,7 +2069,7 @@ phases:
       preserved; no push/global install/daily configuration or protected UI changes.'
   - id: nunc.extraction-runtime
     name: 原生、当前与新版的真实续做及非退化观察
-    status: claimed
+    status: pending
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -2115,8 +2115,6 @@ phases:
     depends_on:
     - nunc.extraction-comparison-support
     agent: integration-verifier
-    claimed_by: integration-verifier
-    claimed_at: '2026-09-08T18:49:06.526968Z'
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
