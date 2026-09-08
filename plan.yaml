@@ -2076,15 +2076,27 @@ phases:
       , \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
       , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
       ]\n\nDeliver: 取得 EXTRACTION §7 真实三组 defaults/matched 观察，逐必要要求 PROVEN/DISPROVEN/UNPROVEN\
-      \ 与关闭条件，供终端接受消费。用实际维护/滚动/恢复/续做行动和产物判断焦点、义务、精确约束、真实进度、纠正、多slot及恢复入口；native 有效续做信息在新\
-      \ M/K/可靠入口缺失即退化，平均分/标题/字数不能遮盖。必要项容量失败须有实际native无循环/重放事实，guard不等于语义完整。\n\nAdmit:\
-      \ 前置 tracked runner/场景/完整离线库存可用。Orchestrator 绑定最终提取候选、准备好的 native0.85.1/current70dacad、当前有效非秘密模型/config/策略、defaults/matched差异、合法\
-      \ B/K/包装/输出预算和新任务有限总额度。遵循 LIVE 公开当前选择/defaults，不继承旧父任务模型快照、重建catalog或更换账户。新隔离session/cwd，Pi\
-      \ 原生auth解析/刷新/持久化保持既有owner；不复制profile/credentials或记录来源位置。旧targets/余额不继承；只复用源/模型/输入/命令/modality/判据/效果仍适用的事实。\n\
-      \n先无效果preflight，未来执行授权后才做必要真实调用；main/extraction/native双call/恢复共用有限call-token-time-known-cost，unknown保持未知，uncapped覆盖完整nativeallowance，失败reservation保留。不以小分区冒充模型能力或为旧错误原因重放。实际配对条件不成立不能计matchedPASS。模型不见期望/评分/未来轮次；不seed\
-      \ M、制造checkpoint、标准答案或改写K。\n\nBoundary: exact owner integration-verifier，已解析repository只读、可执行绑定真实runtime。禁止修改/安装仓库或基线、临时替代runner、选择fixer/操作Plan；仅有界新task状态、必要native模型调用与清理。日常session/settings/defaults、旧UIfixture、全局/其他项目和秘密受保护，无发布/push。报告写caller私有artifact位置，不持久化敏感正文。\n\
-      \nRecovery: 核对可能开始的调用、worker/session、usage和清理；localabort不证明remote终态/账单。无终态、超总额或不明关联效果停止后续；已核对独立失败可记录后继续无依赖且仍有额度的新场景，不重用target。缺报告修报告；缺tracked能力或产品矛盾交兼容可写owner，producer\
-      \ DONE后经正常修复依赖继续同一消费者。必要 DISPROVEN/UNPROVEN 时本步与最终接受均未完成。"
+      \ 与关闭条件，供原 nunc.extraction-acceptance 消费。用实际维护/滚动/恢复/续做行动和产物判断焦点、义务、精确约束、真实进度、纠正、多slot及恢复入口；native\
+      \ 有效续做信息在新 M/K/可靠入口缺失即退化，平均分/标题/字数不能遮盖。必要项容量失败须有实际native无循环/重放事实，guard不等于语义完整。\n\
+      \nAdmit: nunc.extraction-runner-repair 已完成执行前 command 授权修复、受控 stock E3 生命周期/非资格诊断和最终整合完整离线库存，并由\
+      \ Orchestrator 在该 producer 完成程序取得独立定向接受。此前真实消费 target 单次执行已终态核对，绝不重跑；完整保留原 report/reconciliation/isolation/evidence\
+      \ index，污染观察排除，未受影响事实按适用性复用。当前用户已授权继续执行、OpenRouter google/gemini-3.8-flash 无美元上限（maxCostUsd:null，非免费）；仍必须先绑定新\
+      \ target 与有限总 calls/tokens/time、当前有效非秘密模型/config/策略、native0.85.1/current70dacad/新候选、defaults/matched差异及合法\
+      \ B/K/包装/输出预算。历史只规划或等待真实授权文字不撤销本次授权，旧额度不可继承，不重复请求已给同模型费用授权。\n\n遵循 LIVE 公开当前选择/defaults，不继承旧父任务模型快照、重建catalog或更换账户。新隔离session/cwd，Pi\
+      \ 原生auth解析/刷新/持久化保持既有owner；不复制profile/credentials或记录来源位置。先无效果preflight，通过修复接受和新绑定后才作必要真实观察；禁止付费重试诊断\
+      \ runner。main/extraction/native双call/恢复共用有限call-token-time及适用known-cost，unknown保持未知，uncapped覆盖完整nativeallowance，失败reservation保留。不以小分区冒充模型能力或为旧错误原因重放。只复用源/模型/输入/命令/modality/判据/效果仍适用的事实。\n\
+      \n保留全部原反例和未证明项：E1 defaults 三组提前动作、matched native 早期验证和 E4 candidate 提前 final\
+      \ artifact 是实际任务违例，缺候选维护不能归因提取回归；最终正确产物不抹去提前行为。E2 必须观察自然首 M、K纠正、合法三次退休/保留、mixed-slot拆并/取消/未变项，未到纠正轮不能评分。E3\
+      \ 保留 native 合法 split/原请求/完整工具关联与重启的局部事实、低 H 的重复维护差异及 b PREPARATION 停止；current/candidate\
+      \ 完整 suffix/restart/final verification 仍需证明。E4 两个 native 污染结果排除；候选必须有本次完整响应、冻结必要集合/真实accounting与不等式、实际commit或CAPACITY不提交及\
+      \ c 一次恢复，空观察或 setup 失败不能声称 guard 成功。无 successful current/candidate maintenance、matched\
+      \ 两组缺失时不能判非退化。native rendered-memory 无等价强制上限保持该维度 UNPROVEN，不能用 realized size\
+      \ 或标签宣称配对。模型不见期望/评分/未来轮次；不seed M、制造checkpoint、标准答案或改写K。\n\nBoundary: exact owner\
+      \ integration-verifier，已解析repository只读、可执行绑定真实runtime。禁止修改/安装仓库或基线、临时替代runner、选择fixer/操作Plan；仅有界新task状态、必要native模型调用与清理。日常session/settings/defaults、已接受\
+      \ UI 及旧UIfixture、全局/其他项目和秘密受保护，无发布/push或旧证据工作树迁移。报告写caller私有artifact位置，不持久化敏感正文。既有\
+      \ UI 人工接受继续有效，真实模型效果不替代 UI 观察。\n\nRecovery: 核对可能开始的调用、worker/session、usage和清理；localabort/terminal/PID退出不证明remote终态/账单。原已核对终态观察可复用，未知\
+      \ usage/billing 不作零或免费余额。无终态、超总额、不明关联效果或执行隔离失效停止后续；已核对独立失败可记录后继续无依赖且仍有额度的新场景，不重用target。缺报告修报告；缺tracked能力或产品矛盾交兼容可写owner，producer\
+      \ DONE后经正常修复依赖继续同一消费者。修复后只重取受影响及原缺失事实，保留原反例的适用性判断。必要 DISPROVEN/UNPROVEN 时本步与同一最终接受均未完成，不新增接受节点或缩减原要求。"
     verification: "```yaml\nchecks:\n  - id: extraction-comparison-no-effect-preflight\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/compare-extraction.mjs, --preflight]\n\
@@ -2112,9 +2124,96 @@ phases:
     - tests/scenarios/observer.json
     - package.json
     - package-lock.json
+    - src/live/observer.ts
+    - src/live/preparation.ts
+    - src/live/worker.ts
+    - scripts/compare-extraction.mjs
+    - tests/scenarios/extraction-inputs.json
+    - tests/scenarios/extraction-observer.json
+    depends_on:
+    - nunc.extraction-runner-repair
+    agent: integration-verifier
+  - id: nunc.extraction-runner-repair
+    name: 修复比较执行授权、原生切轮生命周期与资格诊断
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/live/**\", \"tests/scenarios/**\"\
+      , \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\", \"docs/EXTRACTION.md\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\", \"src/engine/**\", \"src/pi/**\",\
+      \ \"src/ui/**\", \"policies/**\"]\n\nDeliver: 交付同一比较 runner 的受控可接受修复，供原只读 nunc.extraction-runtime\
+      \ 继续消费；完整处理已保留的执行授权、E3 setup/native scheduling/终态诊断及虚假资格结论问题，不把各 finding 拆成节点。模型写入或修改的\
+      \ verification script 不得仅因文件名与命令匹配而执行。实际 stock tool_call 执行前核对 fixture 授权及原脚本身份：未提供脚本、缺失或已修改均拒绝执行；原脚本正常验证、合法失败后修复任务产物再验证、模型自写普通产物/笔记的恢复能力继续可用。保护私有\
+      \ oracle、未来输入、旧 fixture 输出不被该命令读取；机制基于现有 observer binding/tool path/stock hook，不要求额外恶意同用户进程\
+      \ sandbox。\n\n从已保留真实 E3 的低 H、35 次 persisted compaction/36 次 maintenance、同 session\
+      \ 新进程 b 在 transport 前 PREPARATION，以及 current 的 F 耗尽 work budget、candidate 无合法\
+      \ placement/growth 边界定位原因。通过受控 stock fixtures 区分配置生命周期、cut/accounting 可行性、原生调度与\
+      \ provider/模型响应失败，修复有据 runner 原因。可行 setup 必须完成合法 tool batch→原生 automatic split→完整\
+      \ same-loop suffix→同 session 新进程恢复→获准最终产物及原脚本验证；不可行、维护失败或预算耗尽必须有界终结并给出真实具体诊断，不消耗全任务额度反复维护、不清掉失败冒充成功。仅用公开原生\
+      \ seam 和任务局部配置，恢复或保留配置差异需明确记录；禁止自建 scheduler、私有 host patch、abort/replay、改写 JSONL/K、seed\
+      \ M、标准答案或纠正提示。受控响应只证明机制。\n\n资格和账目必须随实际来源成立：缺当前完整维护响应/冻结 required 候选/真实成本不等式时，E4\
+      \ 保持 UNPROVEN，不生成“正确拒绝容量”的成功措辞；实际 CAPACITY、未提交及 c 一次恢复分别观察。E2 的三次合法 placement、自然\
+      \ mixed-slot、纠正/拆并/取消/未变项与 E1 接受延期保留原要求；提前动作是已观察任务违例，缺 candidate 维护不能归因为 extraction\
+      \ 回归。native rendered-memory 无等价强制上限仍为 UNPROVEN，defaults 与 matched 及实际 H/输出/包装/filelists\
+      \ 差异不得混淆。完整 call/token/time 预留、所有终态、未知 usage/billing、失败不退款与 early-stop 诊断必须真实，有限模型调用上限不等于模型能力限制。\n\
+      \nBoundary: exact owner principal-engineer。此前 fitting Node/Gemini 普通 owner 在同一\
+      \ stock 比较执行/原生续做能力上已有具体能力死路，Principal 已交付被独立接受的前置 producer；本次据该已成立能力边界选择 Principal，非按文件数或风险升级。仅本仓库可\
+      \ Git 回退的 runner/source/tests/docs 事务及新隔离合成 profile/session/loopback/stock fixtures；场景文件仅必要消费者机械调整，不改变输入语义、oracle\
+      \ 判据或缩减观察模态。保护已完成 engine/policy/UI 语义；如具体证据要求产品语义变化，交回范围判断，不能静默扩写。无真实模型/凭据、日常\
+      \ sessions/settings、旧 UI fixture、全局安装、其他项目、发布/push 或旧证据工作树迁移。新 worktree 由 Orchestrator\
+      \ claim 后按 main/.vectl/worktrees 默认准备。\n\nAdmit: 当前用户已授权继续执行；历史只规划文字不撤销该授权。Orchestrator\
+      \ 交付完整保留 verifier report、binding、reconciliation、isolation contradiction、evidence\
+      \ index 和底层终态观察；先读完整 findings，区分污染、setup/观察缺口、provider 失败与尚未证明的模型语义，禁止付费重试作诊断。原\
+      \ comparison-support 和 nunc-ui 的 DONE/人工接受保持不变，原 runtime 已 pending 且效果已核对，无活动\
+      \ writer。使用 phase 声明的 Node26.7.0/npm11.19.0/Pi0.85.1、锁定 dev 依赖、Python3/PTY 与项目\
+      \ all 库存。所有必要受控检查进入 tracked runner/测试，不能用临时可执行逻辑替代接受 seam。Orchestrator 在本步骤完成程序中取得独立定向\
+      \ stock 执行隔离与 E3 生命周期观察，连同最终整合 all 和完整修复判断接受本 producer；不另加 gate。受控接受后才允许原 runtime\
+      \ 绑定新有界真实目标。\n\nRecovery: 未完成时同 owner 修完整兼容缺口，核对所有已开始受控 worker/host/call 与清理后再诊断。保留原终态证据和污染排除，不执行旧\
+      \ target；不把 local terminal/PID 退出当远端计费证明。原真实 E1/E4 提前行为、E2/E3/E4 与 matched/nonregression\
+      \ 未证明继续由同 runtime 关闭；本修复完成不授予模型语义或项目 PASS。若可用公共 seam 无法满足必要生命周期，报告具体阻断与剩余事实，不用放宽断言或付费试错掩盖。"
+    verification: "```yaml\nchecks:\n  - id: repaired-comparison-complete-controlled-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [stock-preexecution-fixture-command-authorization, absent-and-modified-script-denial-before-effects,\
+      \ original-script-verification-and-normal-artifact-recovery, bounded-e3-native-split-suffix-restart,\
+      \ infeasible-and-maintenance-failure-no-extra-transport, actual-e4-capacity-qualification,\
+      \ truthful-diagnostics-and-call-terminal-limits, complete-existing-regression]\n\
+      check_environment:\n  node_version: 26.7.0\n  npm_version: 11.19.0\n  pi_packages_version:\
+      \ 0.85.1\n  dependency_manifest: package.json\n  dependency_lock: package-lock.json\n\
+      \  runtime_declaration: .node-version\n  tui_python_argv: [/usr/bin/python3]\n\
+      \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n  dependency_setup_argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+      \ /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n```\n独立完成观察必须经过真实 stock CLI/worker/tool\
+      \ 执行路径：受控脚本尝试访问私有合成 oracle/未来输入/旧 fixture 哨兵，证明执行前拒绝且哨兵内容未返回、脚本效果未发生；同时原脚本合法验证和普通\
+      \ note/artifact 恢复通过。E3 以能暴露低阈值持续触发和 restart 配置状态问题的受控响应检验，不能只复用恰好停止一次的 happy\
+      \ path；可行生命周期完成，非资格/失败/额度停止保留缺口且调用终态配对。检查真实 evidence 与代码因果，不以预期回答、提示词 token\
+      \ 或自报 PASS 作为行为证据。最终整合 candidate 的完整 all 可复用仍适用结果；required 检查失败或必要机制缺证保持本步骤\
+      \ incomplete。"
+    refs:
+    - docs/EXTRACTION.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - docs/POLICY.md
+    - scripts/check.mjs
+    - scripts/compare-extraction.mjs
+    - src/live/observer.ts
+    - src/live/tool-path.ts
+    - src/live/preparation.ts
+    - src/live/host.ts
+    - src/live/worker.ts
+    - src/live/budget.ts
+    - src/live/capacity-observation.ts
+    - tests/live/comparison-native.test.ts
+    - tests/live/verification.test.ts
+    - tests/scenarios/extraction-inputs.json
+    - tests/scenarios/extraction-observer.json
+    - package.json
+    - package-lock.json
+    - .node-version
     depends_on:
     - nunc.extraction-comparison-support
-    agent: integration-verifier
+    agent: principal-engineer
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
