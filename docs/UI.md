@@ -1,8 +1,8 @@
 # Nunc 状态与记忆管理界面
 
-状态：**人工 M 与只读 Context 观察已实现；footer / overlay 尚未实现**。更新于 2026-09-08。
+状态：**紧凑 footer、Slots/Context overlay 与 `/nunc` 命令已实现**。更新于 2026-09-08。
 
-本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案。§4 与 §6 的只读 Context 布局/请求/维护观察，以及 §5–§6 的有效 M、revision、预算与 `replace`/`delete`，已由 Pi adapter 提供，可在无面板的公开 host fixture 中验证。footer、两个 tab 与 TUI 交互仍待后续步骤。现有核心与兼容修复的完成历史保留。
+本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案。§1–§3 的 footer / overlay / 命令、§4 与 §6 的只读 Context 布局/请求/维护观察，以及 §5–§6 的有效 M、revision、预算与 `replace`/`delete`，均已由扩展交付。IME 候选窗口位置仍需真实终端人工观察，不能用 CJK 文本注入代替。现有核心与兼容修复的完成历史保留。
 
 本设计延续 [DESIGN.md](DESIGN.md) 的 session、来源、原文、容量与 Pi 所有权边界。人工保存按 §5 扩展原先仅在 CompactionEntry 保存 M 的合同。[PI.md](PI.md) 与 [ENGINE.md](ENGINE.md) 中当前预算及 Provider 组合合同仍适用。示意文案、尺寸起点、私有数据格式和模块文件划分是推荐；实现可以替换它们，但须保持本文明确的用户行为、状态所有权、观察边界与兼容限制。
 
@@ -13,7 +13,7 @@
 | 命令 | 当前实现 | UI 实现后的行为 |
 | --- | --- | --- |
 | `/nunc` | 三行文字概览 | TUI 打开 overlay，默认 Slots；其他模式保留文字概览 |
-| `/nunc status` | 尚未支持 | 显式文字概览，不打开面板 |
+| `/nunc status` | 显式文字概览 | 显式文字概览，不打开面板 |
 | `/nunc details` | 分组预算与最近维护详情 | 保留既有内容、千位分隔和无模型请求行为 |
 
 原生参数补全保留 `details`，新增 `status`。未知参数显示用法。只读命令不追加 session 记录；人工保存是唯一新增的持久化操作。自定义组件仅在 `ctx.mode === "tui"` 使用；RPC 的 `hasUI` 为真不表示有终端 overlay。此版不提供非 TUI 人工写入命令或新的模型工具。
@@ -165,13 +165,13 @@ Pi adapter/projection 是唯一有效 M 投影所有者：当前路径最新原�
 
 内部消费接口由 `pi-nunc/pi` 的 `memorySurface(pi)` 与 `contextSurface(pi)` 提供（同一扩展实例，经公开 event bus 绑定，不是新 SDK 或临时写命令）。`memorySurface.read(ctx)` 返回 `{revision, memory, status, budget, contextLayout}`：`revision` 标识当前 session、适用的 native checkpoint / 人工 head，以及读取时的 leaf；同路径上向前追加的无关 entry 仍适用该 revision，选定路径切到共享同一 checkpoint 的其它分支则冲突。`memory` 是唯一有效 M；`status.occupied` 为维护冻结至 Pi 提交终态；`status.unconfirmed` 表示一次原生追加已推进内存但未确认落盘，仅读当前内存 view 不能解除。资源 `/reload` 只重建扩展、不重开 SessionManager 文件，不能当作核对。继续写入前须 `switchSession`/resume 同一 session 文件，使内存与磁盘一致。`budget` 使用当前模型/F/tools/config 的 `pi-heuristic` M 规划，不可计算时 `unknown: true`；`contextLayout` 给出 slot 数、活动原文条目和最新 checkpoint id。`replace(ctx, revision, slotId, text)` / `delete(ctx, revision, slotId)` 经公开 `pi.appendEntry()` 写入私有 `nunc.memory` CustomEntry，结果为成功或 `invalid` / `conflict` / `occupied` / `overbudget` / `unknown-budget` / `unconfirmed`。
 
-`contextSurface.read(ctx)` 返回 `{current, lastMain?, lastMaintenance?}` 的**脱离快照**，消费同一 `memorySurface` 的 revision/M/budget/occupied/unconfirmed，不另做记忆投影。消费者改草稿不会写回观察器；随后事件也不会改已经返回的对象。`current` 是选定路径上已交付的 F（system 正文与**可读工具定义**/分项估算）、M、R 与消息/内容块计数、tool 关联、`pi-heuristic` 分项和包装开销；它不声称包含之后才运行的 context/payload hooks。模型窗口、H、记忆规划上限、主请求准入上限、M 预算、输出预留与 extraction cap（uncapped 为 `null`）分项给出；主请求序列化 cap 仅在已观察时已知。`lastMain` 先记录本次 `delegate`/`reject`、模型与时点，布局细节失败则 `layout.unavailable` 与 unknown，不得把上一次成功观察留作最新。payload 把 last-user 文本 token、实际计入的 growth、以及无法归入文本的 framing/metadata 开销分列；初始 `options.metadata` 在 `initialMetadataTokens`。本地拒绝不是发送，委托不是 HTTP 成功。`lastMaintenance` 冻结当时交给 engine 的 F 与已交付 R；实际 B/K 来自已发出的 extraction 观察（pending 或 RESPONSE 失败仍可有 cut），不是再算一次切分。`engine` 成功只说明有 candidate；handoff 作废记 `invalidated`；`native: saved` 才有 `after`。失败/取消/未确认写入没有 `after`。观察保留在当前 session/路径的内存中，模型切换保留原模型标签；session/路径切换或 reload 后没有适用记录。只读 `read` 不写 session、不触发模型或 compaction；观察失败不得改变分类、委托或 payload。`nunc:admission` / `nunc:maintenance` / 诊断通知仍不携带正文、headers 或凭据。footer、两个 tab 与 `/nunc` overlay 仍待下一 producer。
+`contextSurface.read(ctx)` 返回 `{current, lastMain?, lastMaintenance?}` 的**脱离快照**，消费同一 `memorySurface` 的 revision/M/budget/occupied/unconfirmed，不另做记忆投影。消费者改草稿不会写回观察器；随后事件也不会改已经返回的对象。`current` 是选定路径上已交付的 F（system 正文与**可读工具定义**/分项估算）、M、R 与消息/内容块计数、tool 关联、`pi-heuristic` 分项和包装开销；它不声称包含之后才运行的 context/payload hooks。模型窗口、H、记忆规划上限、主请求准入上限、M 预算、输出预留与 extraction cap（uncapped 为 `null`）分项给出；主请求序列化 cap 仅在已观察时已知。`lastMain` 先记录本次 `delegate`/`reject`、模型与时点，布局细节失败则 `layout.unavailable` 与 unknown，不得把上一次成功观察留作最新。payload 把 last-user 文本 token、实际计入的 growth、以及无法归入文本的 framing/metadata 开销分列；初始 `options.metadata` 在 `initialMetadataTokens`。本地拒绝不是发送，委托不是 HTTP 成功。`lastMaintenance` 冻结当时交给 engine 的 F 与已交付 R；实际 B/K 来自已发出的 extraction 观察（pending 或 RESPONSE 失败仍可有 cut），不是再算一次切分。`engine` 成功只说明有 candidate；handoff 作废记 `invalidated`；`native: saved` 才有 `after`。失败/取消/未确认写入没有 `after`。观察保留在当前 session/路径的内存中，模型切换保留原模型标签；session/路径切换或 reload 后没有适用记录。只读 `read` 不写 session、不触发模型或 compaction；观察失败不得改变分类、委托或 payload。`nunc:admission` / `nunc:maintenance` / 诊断通知仍不携带正文、headers 或凭据。footer、两个 tab 与 `/nunc` overlay 消费同一 surface。
 
 UI 的只读观察不应阻止合法调用，未知数据留空并标注。保留已交付的合作 Provider 链、独立调用透明委托、一次性维护绑定、多块末条 user 文本追加、取消与工具/媒体/输出保护；不恢复旧 main-request tickets、全量 payload 修改禁令或扩展名白名单。
 
 ## 7. 验证与证据边界
 
-实施后验证下列行为；本次文档更新不声明已运行这些 UI 检查：
+实施后验证下列行为。组件/RPC 检查不能代替 stock TUI；IME 候选窗口位置未由 PTY 证明：
 
 - 原生 TUI 的 footer 共存、两个 tab、搜索/预览/编辑/确认、合理选择恢复；窄/短终端、长文本、CJK/IME、paste、theme、resize、嵌套 focus 与 Escape。IME 候选窗口等自动化无法充分证明的行为明确补人工观察，不用输入文本断言冒充证明。
 - 当前和最近请求/维护的范围、F/M/R、消息/内容块计数、tool 关联、包装、fresh 与 usage-backed 差异、未知图片、无记录、本地拒绝、多扩展追加及尚未交付 D。主请求观察不回填维护来源。

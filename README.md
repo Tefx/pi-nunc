@@ -13,11 +13,11 @@ Memory maintenance asks: **If only the retained history K and normal working too
 
 ## Status
 
-**Core delivered; manual M and read-only Context observation delivered; footer/overlay pending** · Updated 2026-09-08.
+**Core, manual M, Context observation, compact footer and Slots/Context overlay delivered** · Updated 2026-09-08.
 
 The original core delivery and subsequent native/cooperative compatibility work have completed acceptance recorded in the managed plan. Later capacity-planning and command improvements are also in the tree; those historical acceptance records do not claim a fresh full acceptance of every later revision. Pi retains native compaction, persistence, model selection and transport, with Nunc request-capacity checks.
 
-Manual M-only edits persist through native session entries and restore along the selected path. The typed Context layout/observation surface is available without a panel. The compact footer and Slots/Context overlay in the [accepted UI design](docs/UI.md) are not implemented yet.
+Manual M-only edits persist through native session entries and restore along the selected path. The typed Context layout/observation surface feeds the compact footer and the Slots/Context overlay in the [accepted UI design](docs/UI.md). IME candidate-window placement still needs a real terminal; CJK injection does not prove it.
 
 ## Scope
 

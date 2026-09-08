@@ -15,7 +15,9 @@ import termios
 pid, fd = pty.fork()
 if pid == 0:
     os.execv(sys.argv[1], sys.argv[1:])
-fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 140, 0, 0))
+rows = int(os.environ.get("NUNC_PTY_ROWS", "40"))
+cols = int(os.environ.get("NUNC_PTY_COLS", "140"))
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 os.set_blocking(fd, False)
 
 def stop(signum, _frame):

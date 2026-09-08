@@ -52,12 +52,17 @@ test("loaded /nunc command completes details by argument prefix without side eff
     .flatMap(extension => [...extension.commands.values()]).find(command => command.name === "nunc");
   assert(command?.getArgumentCompletions);
   const entries = f.runtime.session.sessionManager.getEntries();
-  for (const prefix of ["", "d", "det", "details", " d"]) {
-    assert.deepEqual(await command.getArgumentCompletions(prefix), [
-      { value: "details", label: "details", description: "查看预算与最近维护详情" },
-    ]);
+  const details = { value: "details", label: "details", description: "查看预算与最近维护详情" };
+  const status = { value: "status", label: "status", description: "文字概览，不打开面板" };
+  assert.deepEqual(await command.getArgumentCompletions(""), [details, status]);
+  assert.deepEqual(await command.getArgumentCompletions(" d"), [details]);
+  for (const prefix of ["d", "det", "details"]) {
+    assert.deepEqual(await command.getArgumentCompletions(prefix), [details]);
   }
-  for (const prefix of ["unknown", "details ", "details x"]) {
+  for (const prefix of ["s", "st", "status"]) {
+    assert.deepEqual(await command.getArgumentCompletions(prefix), [status]);
+  }
+  for (const prefix of ["unknown", "details ", "details x", "status "]) {
     assert.equal(await command.getArgumentCompletions(prefix), null);
   }
   assert.equal(f.faux.state.callCount, 0);
@@ -82,8 +87,10 @@ test("registered /nunc renders a compact summary and opt-in budget details witho
     "  主请求：8,192", "  维护：8,192", "  维护输出 cap：8,192", "安全余量：1,024 tokens",
     "", "本上下文暂无维护记录。", "", "Pi 0.85.1 · 预算为估算值",
   ].join("\n"));
+  await f.runtime.session.prompt("/nunc status");
+  assert.equal(messages.at(-1), "记忆：0 条\n压缩触发：24,000 tokens\n预算详情：/nunc details");
   await f.runtime.session.prompt("/nunc unknown");
-  assert.equal(messages.at(-1), "用法：/nunc [details]");
+  assert.equal(messages.at(-1), "用法：/nunc [status|details]");
   assert.equal(f.faux.state.callCount, 0);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
   f.seed(); f.respond(memoryPatch);

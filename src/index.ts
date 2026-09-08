@@ -3,12 +3,13 @@ import { getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type Extensio
 import type { Accounting, FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
-import { inputLimit, mainAdmissionLimit, omitsSerializedOutputCap } from "./engine/accounting.js";
+import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig } from "./pi/config.js";
 import { eligibleStarts, project, withEffectiveMemory } from "./pi/projection.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
 import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
+import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines, statusLines } from "./ui/index.js";
 
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
 export interface HostSettingsSource { readSettings: () => { compaction: Required<CompactionSettings>; blockImages: boolean } }
@@ -50,39 +51,41 @@ export default function nunc(pi: ExtensionAPI): void {
       return { name, description: tool.description, parameters: tool.parameters };
     }) };
   };
-  const notify = (ctx: ExtensionContext, message: string, level: "warning" | "info" = "warning") => {
-    try { pi.events.emit("nunc:diagnostic", { level, message }); } catch { /* Notification only. */ }
-    try { if (ctx.hasUI) ctx.ui.notify(`Nunc: ${message}`, level); else console.error(`Nunc: ${message}`); } catch { /* Never fall through to default summary. */ }
-  };
-  const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => admission.invalidateUsage() });
+  const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => { admission.invalidateUsage(); ui.refresh(); } });
   const contextView = createContextSurface({
     pi, memory, fixed,
     config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction),
   });
+  const ui = createNuncUi({ memory, context: contextView, supported });
+  const notify = (ctx: ExtensionContext, message: string, level: "warning" | "info" = "warning") => {
+    ui.noteDiagnostic(level, message);
+    try { pi.events.emit("nunc:diagnostic", { level, message }); } catch { /* Notification only. */ }
+    try { if (ctx.hasUI) ctx.ui.notify(`Nunc: ${message}`, level); else console.error(`Nunc: ${message}`); } catch { /* Never fall through to default summary. */ }
+    if (level !== "info") ui.refresh(ctx);
+  };
   observeLayout = event => contextView.observeAdmission(event);
-  pi.on("session_compact", () => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); });
-  pi.on("session_compact_failed", () => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } });
+  pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
+  pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   pi.on("session_start", (_event, ctx) => {
     invalidate(); contextView.resetPath();
     try {
       admission.ensure(ctx); supported(ctx);
-      if (ctx.model) {
-        const selected = readConfig(pi.getFlag("nunc-config"), ctx.cwd).config;
-        engineConfig(selected, ctx.model, settings(ctx).compaction);
-        if (omitsSerializedOutputCap(ctx.model) && selected.extraction?.outputTokens === ctx.model.maxTokens) {
-          notify(ctx, `Explicit extraction.outputTokens=${ctx.model.maxTokens} still reserves the full output capability. This API has no output cap; remove the legacy override to use the 8192 planning default. Settings were not changed.`);
-        }
-      }
+      const selected = ctx.model ? readConfig(pi.getFlag("nunc-config"), ctx.cwd).config : undefined;
+      if (ctx.model && selected) engineConfig(selected, ctx.model, settings(ctx).compaction);
       project(ctx.sessionManager.buildContextEntries());
+      ui.attach(ctx);
+      if (ctx.model && selected && omitsSerializedOutputCap(ctx.model) && selected.extraction?.outputTokens === ctx.model.maxTokens) {
+        notify(ctx, `Explicit extraction.outputTokens=${ctx.model.maxTokens} still reserves the full output capability. This API has no output cap; remove the legacy override to use the 8192 planning default. Settings were not changed.`);
+      }
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid startup configuration"); }
   });
   pi.on("session_before_switch", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_before_fork", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_before_tree", () => { invalidate(); contextView.resetPath(); });
-  pi.on("session_tree", invalidate);
-  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); contextView.resetPath(); admission.close(ctx); });
-  pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); });
-  pi.on("thinking_level_select", invalidate);
+  pi.on("session_tree", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
+  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
+  pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); ui.refresh(ctx); });
+  pi.on("thinking_level_select", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("agent_settled", () => admission.settled());
   pi.on("message_end", event => {
     if (event.message.role === "assistant") {
@@ -109,6 +112,7 @@ export default function nunc(pi: ExtensionAPI): void {
   });
   pi.on("session_before_compact", async (event, ctx) => {
     if (!memory.beginFreeze()) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
+    ui.refresh(ctx);
     const controller = new AbortController(); running = controller;
     const abort = () => controller.abort();
     event.signal.addEventListener("abort", abort, { once: true });
@@ -159,37 +163,23 @@ export default function nunc(pi: ExtensionAPI): void {
       event.signal.removeEventListener("abort", abort); running = undefined;
     }
   });
-  pi.registerCommand("nunc", { description: "Show memory status; /nunc details for budget details (no request)",
-    getArgumentCompletions: prefix => "details".startsWith(prefix.trimStart())
-      ? [{ value: "details", label: "details", description: "查看预算与最近维护详情" }] : null,
+  pi.registerCommand("nunc", { description: "Show memory status; /nunc status for text; /nunc details for budgets (no request)",
+    getArgumentCompletions: prefix => commandCompletions(prefix),
     handler: async (args, ctx) => {
     try {
       const mode = args.trim();
-      if (mode && mode !== "details") { notify(ctx, "用法：/nunc [details]"); return; }
+      if (mode && mode !== "details" && mode !== "status") { notify(ctx, COMMAND_USAGE); return; }
       supported(ctx);
-      const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd), memory = project(ctx.sessionManager.buildContextEntries()).memory;
+      if (!mode && ctx.mode === "tui") { await ui.openOverlay(ctx); return; }
+      const view = memory.read(ctx);
+      const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd);
       const config = ctx.model ? engineConfig(selection.config, ctx.model, settings(ctx).compaction) : undefined;
-      const count = (n: number) => n.toLocaleString("en-US");
-      const summary = [`记忆：${memory.slots.length} 条`, `压缩触发：${config ? count(config.triggerTokens) + " tokens" : "未选择模型"}`];
-      if (!mode) { notify(ctx, [...summary, "预算详情：/nunc details"].join("\n"), "info"); return; }
-      const details = config && ctx.model ? [
-        "", "输入预算（tokens）",
-        `  主请求准入：${count(mainAdmissionLimit(ctx.model, config.main))}`,
-        `  记忆规划：${count(inputLimit(ctx.model, config.main))}`,
-        `  维护：${count(inputLimit(ctx.model, config.extraction))}`,
-        "", "输出预留（tokens）",
-        `  主请求：${count(config.main.nativeOutputReserve ?? config.main.outputTokens)}`,
-        `  维护：${count(config.extraction.outputTokens)}`,
-        `  维护输出 cap：${omitsSerializedOutputCap(ctx.model) ? "无" : count(config.extraction.outputTokens)}`,
-        `安全余量：${count(config.extraction.safetyTokens)} tokens`,
-      ] : [];
-      const last = lastAccounting ? [
-        "", "最近维护（本上下文）",
-        `  输入估算：完整 ${count(lastAccounting.fullExtractionTokens)} → 选用 ${count(lastAccounting.extractionTokens)}`,
-        `  正常触发余量：${lastAccounting.normalHeadroomSufficient ? "充足" : "不足；建议 reserveTokens ≥ " + count(lastAccounting.suggestedReserveTokens)}`,
-        `  超出规划记录：输入${lastAccounting.inputExceededPlan ? "有" : "无"} / 输出${lastAccounting.outputExceededPlan ? "有" : "无"}`,
-      ] : ["", "本上下文暂无维护记录。"];
-      notify(ctx, [...summary, ...details, ...last, "", `Pi ${VERSION} · 预算为估算值`].join("\n"), "info");
+      if (mode === "details") {
+        const configPath = pi.getFlag("nunc-config");
+        notify(ctx, detailsLines({ view, ctx, configPath: typeof configPath === "string" ? configPath : undefined, compaction: settings(ctx).compaction, lastAccounting, diagnostics: ui.recentDiagnostics().filter(note => note.level !== "info") }), "info");
+        return;
+      }
+      notify(ctx, statusLines(view, config?.triggerTokens), "info");
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid configuration"); }
   } });
 }
