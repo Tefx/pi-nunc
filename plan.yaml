@@ -1756,7 +1756,7 @@ phases:
       \ all inventory和UI.md全部必要行为的真实native TUI/状态/恢复/竞态/边界证据，核对跨结果一致与核心保护、效果清理和已接受兼容代价；相同最终输入的完整证明可复用，不以component\
       \ PASS或callback代替。IME候选窗口等自动化不充分的能力需要实际host观察；缺少必要界面能力时明确待补，不用CJK字符串断言冒充。无阻断缺陷/必要失败检查/必要未证明才完成本step并宣布此阶段交付；本接受不授权发布/安装或新付费调用。\n\
       \nRecovery: 最后producer未完成时由当前兼容owner修完整受影响实现/测试/docs批次；已完成历史保持。只缺报告修报告，只缺事实补观察，已证明底层不因报告目标变化自动重跑。出现不可吸收的已完成producer缺口或不同效果边界时由Planner处理真实依赖，不加每finding/retry/第二接受节点。用户当前只要求计划，本步骤保持待执行。\n\
-      - [ ] 人工验收证据：用户于本次对话明确确认“人工已确认nunc-ui phase成果工作正常”，并此前确认IME候选窗、resize、theme；适用于已交付70dacad\
+      - [x] 人工验收证据：用户于本次对话明确确认“人工已确认nunc-ui phase成果工作正常”，并此前确认IME候选窗、resize、theme；适用于已交付70dacad\
       \ UI成果及后续未改变UI行为的整合目标。无需重复询问；不替代自动化/整合证据，不授予安装发布权限。按用户顺序在nunc-extraction与nunc-extraction-acceptance后收尾。\n"
     verification: "```yaml\nchecks:\n  - id: ui-panel-final-integrated-offline\n \
       \   argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
