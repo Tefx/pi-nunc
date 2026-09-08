@@ -26,7 +26,7 @@ Extraction retains its separate output and safety reserve, complete delivered-so
 
 ## Recovery boundary
 
-Actual capacity errors retain native bounded overflow recovery. Automatic compaction disabled stays disabled; explicit `/compact` remains available. Nunc does not abort then resubmit a user prompt, read pending queues, force a cut, or patch Pi's recovery state.
+Actual capacity errors retain native bounded overflow and threshold recovery. Each maintenance opportunity dispatches exactly one engine extraction transaction; Nunc never initiates retries, automatic prompt resubmissions, or model repair loops. When required-capacity maintenance fails, compaction cancels cleanly: no compaction checkpoint is written, no default summary fallback runs, and saved M and K remain unchanged. Stock Pi's two native threshold opportunities (pre-prompt `_compactBeforeNextAssistantResponse` on prior history, and post-turn `_checkCompaction` when the turn completes with context still above threshold) are distinct native evaluation points with different causal inputs; each executes its single transaction and terminates without unbounded loops, duplicate prompt delivery, or duplicate tool effects. Automatic compaction disabled stays disabled; explicit `/compact` remains available. Nunc does not abort then resubmit a user prompt, read pending queues, force a cut, or patch Pi's recovery state.
 
 Stock Pi can return before `session_before_compact` when its default character-based preparation finds no summarizable prefix. This project cannot fix that host path. The repair avoids entering it merely because a request exceeds Nunc's soft planning target. A complete extraction `stop` is not discarded because reported input+cache exceeds the catalog window; that path cancelled auto-compaction and retried the same oversized turn. Explicit extraction `inputLimit`, output caps and candidate growth still bind. True oversized/unretirable input or a failed native/provider recovery can still require operator intervention; no automatic-recovery guarantee is claimed.
 
@@ -38,5 +38,5 @@ Stock Pi can return before `session_before_compact` when its default character-b
 - Explicit input limits and model-window overruns still reject before transport.
 - Repeated native threshold rollovers save checkpoints and continue, with original input/tool delivery preserved.
 - Declared required items are retained jointly; optional items are dropped by priority without skipping required items or disturbing natural order.
-- Required set exceeding memory or growth capacity yields explicit CAPACITY failure, unchanged M/K, and clean host recovery across manual, threshold, and overflow paths without repeating extractions.
+- Required set exceeding memory or growth capacity yields explicit CAPACITY failure, unchanged M/K, no default compaction fallback, single tool execution, and bounded host recovery across manual, threshold, and overflow paths with verified opportunity counts.
 - Existing extraction, payload, cancellation, native loader/transport and persistence checks remain valid.

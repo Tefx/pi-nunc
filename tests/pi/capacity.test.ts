@@ -124,9 +124,26 @@ test("required-capacity failure on pre-prompt threshold: cancels compaction, no 
   });
 
   await f.runtime.session.prompt("Prompt requiring execution after threshold failure");
-  assert.equal(mainCalls, 1, "main request dispatched once");
-  assert(f.events.length >= 1, "at least one threshold event");
-  assert(f.events.every(e => e.reason === "threshold" && !e.result.ok && e.result.code === "CAPACITY" && e.result.observations.required?.failed));
+  // Stock Pi has two native threshold opportunities: pre-prompt (_compactBeforeNextAssistantResponse)
+  // on prior history, and post-turn (_checkCompaction) on updated context with the newly delivered turn.
+  assert.equal(maintCalls, 2, "exactly two native threshold opportunities: pre-prompt on prior prefix, then post-turn on newly delivered context");
+  assert.equal(mainCalls, 1, "prompt dispatched to main model once");
+  assert.equal(f.events.length, 2, "both native threshold opportunities recorded");
+  assert.equal(f.events[0]?.reason, "threshold");
+  assert.equal(f.events[0]?.result.ok, false);
+  assert.equal(f.events[0]?.result.code, "CAPACITY");
+  assert.equal(f.events[0]?.result.observations.required?.failed, true);
+  assert.equal(f.events[1]?.reason, "threshold");
+  assert.equal(f.events[1]?.result.ok, false);
+  assert.equal(f.events[1]?.result.code, "CAPACITY");
+  assert.equal(f.events[1]?.result.observations.required?.failed, true);
+
+  // Verify causal inputs differ: first maintenance does not include the new prompt; second maintenance does
+  const firstMaintContext = f.calls[0]!;
+  assert(!JSON.stringify(sourceRecords(firstMaintContext)).includes("Prompt requiring execution after threshold failure"));
+  const secondMaintContext = f.calls[2]!;
+  assert(JSON.stringify(sourceRecords(secondMaintContext)).includes("Prompt requiring execution after threshold failure"));
+
   // No compaction entry persisted (proves no fallback to default compaction)
   assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
   // Verify prompt was sent once
@@ -162,4 +179,71 @@ test("required-capacity failure on provider overflow: cancels compaction, termin
   assert.equal(f.events[0]?.result.observations.required?.failed, true);
   // No compaction entry persisted
   assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
+});
+
+test("host tool execution across required-capacity cancellations: tools execute once without duplicate effects", async t => {
+  for (const mode of ["manual", "threshold", "overflow"] as const) {
+    let executions = 0;
+    let main = 0;
+    let maintenance = 0;
+    let recovery = false;
+    const tool = {
+      name: "probe",
+      label: "Probe",
+      description: "Count one synthetic effect",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      execute: async () => {
+        executions++;
+        return { content: [{ type: "text" as const, text: "effect observed" }], details: {} };
+      },
+    };
+    const f = await fixture({ enabled: mode !== "manual", config: { memory: { maxTokens: 100 } }, tools: [tool] });
+    try {
+      f.seed();
+      if (mode === "threshold") {
+        const previous = answer({}, f.faux.getModel());
+        previous.stopReason = "aborted";
+        previous.timestamp = Date.now();
+        previous.usage = { ...previous.usage, input: 24500, output: 40, cacheRead: 0, cacheWrite: 0, totalTokens: 24540 };
+        f.runtime.session.sessionManager.appendMessage(previous);
+        f.runtime.session.agent.state.messages = f.runtime.session.sessionManager.buildSessionContext().messages;
+      }
+      f.respond(c => {
+        if (sourceRecords(c).length) {
+          maintenance++;
+          return fauxAssistantMessage(JSON.stringify({
+            add: [{ key: "req", text: "Necessary constraint ".repeat(400) }],
+            remove: [],
+            priority: ["req"],
+            required: ["req"],
+          }));
+        }
+        main++;
+        if (main === 1) {
+          const m = fauxAssistantMessage("");
+          m.stopReason = "toolUse";
+          m.content = [{ type: "toolCall", id: "once", name: "probe", arguments: {} }];
+          if (mode === "threshold") m.usage = { ...m.usage, input: 24500, output: 50, totalTokens: 24550 };
+          return m;
+        }
+        if (mode === "overflow" && !recovery) {
+          return fauxAssistantMessage("", { stopReason: "error", errorMessage: "maximum context length exceeded" });
+        }
+        return fauxAssistantMessage("Continued.");
+      });
+      if (mode === "manual") {
+        try { await f.runtime.session.compact(); }
+        catch (e) { if (!/cancel/i.test(String(e))) throw e; }
+      }
+      await f.runtime.session.prompt("Execute once " + mode);
+      assert.equal(executions, 1, `${mode}: tool executed exactly once`);
+      recovery = true;
+      await f.runtime.session.prompt("Continue " + mode);
+      assert.equal(executions, 1, `${mode}: tool not duplicated during recovery`);
+      assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0, `${mode}: no compaction saved`);
+      assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "message" && e.message.role === "toolResult").length, 1, `${mode}: exactly one toolResult recorded`);
+    } finally {
+      await f.close();
+    }
+  }
 });

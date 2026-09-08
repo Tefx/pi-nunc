@@ -1,12 +1,12 @@
 # 面向续做的增量记忆提取
 
-状态：**用户于 2026-09-08 接受的下一版设计；内置语义策略与独立场景资产已交付，必要项引擎/runner 实施和效果验收仍待完成。**
+状态：**用户于 2026-09-08 接受的下一版设计；内置语义策略、独立场景资产及必要项引擎已实施并通过机械验证，比较 runner 与真实模型效果验收待完成。**
 
 本文是提取策略、必要项预算保护及原生 Pi 对照的实施与验收依据。它修订 [DESIGN.md](DESIGN.md) 中仅强调 F/K 差集、内容分类完全可选和普通整条优先级淘汰的部分；其他来源、容量、增量更新和原生持久化边界继续有效。运行行为以当前代码为准，不能凭本文宣称新策略已生效。
 
 ## 1. 已有能力与待交付内容
 
-产品基线 `70dacad` 已支持多项 `add`、`remove + add` 替换/拆分/合并、未变正文复用、整条容量选择，以及 Markdown slot 预览和原文编辑。现已更新实际 `policies/default.md`，要求下述焦点与续做覆盖，并交付独立的 `tests/scenarios/extraction-inputs.json` / `extraction-observer.json`。本次内容交付不证明运行 session 已加载新策略，也不改变当前 `applyPatch()`：它仍没有必要项保护，最高优先级条目放不下时仍可能被跳过。
+产品基线 `70dacad` 已支持多项 `add`、`remove + add` 替换/拆分/合并、未变正文复用、整条容量选择，以及 Markdown slot 预览和原文编辑。现已更新实际 `policies/default.md`，要求下述焦点与续做覆盖，交付独立的 `tests/scenarios/extraction-inputs.json` / `extraction-observer.json`，并在引擎候选实现中完成了 `applyPatch()` 必要项共同容纳守卫、四字段协议解析与原生失败恢复机制；下游比较 runner 与真实模型运行效果仍待完成。
 
 交付状态：
 
