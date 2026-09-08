@@ -1649,7 +1649,7 @@ phases:
       untracked .pi/ and plan-dashboard.html untouched. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
   - id: nunc.ui-context
     name: 有范围的 Context 布局与请求/维护观察
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"tests/pi/**\"\
       , \"tests/engine/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"package.json\"\
@@ -1712,6 +1712,36 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-08T02:33:05.359052Z'
+    done_at: '2026-09-08T03:58:12.141541+00:00'
+    evidence: 'Accepted and integrated Context result9b3fe8b (initial1c5dd30), preserving
+      user capacity fixes33989fa and c477373. Fresh software-architect review found
+      five observer gaps; same producer closed all, same bounded review PASS: rejection
+      outcome retained despite malformed layout; actual selected maintenance B/K available
+      pending/failure; frozen F/tool definitions; detached historical snapshots; initial
+      metadata and charged append residual overhead. Invalidated candidate/no-saved-after
+      source and tests confirmed; native write-failure-to-view link source-reviewed
+      with existing actual append failure evidence. Typed contextSurface reads canonical
+      manual M/revision/occupied/unconfirmed, current F/M/R and messages/blocks/tool
+      associations, last-main observation and native maintenance results; no rendering
+      implemented here. Planning target/enforced mainAdmissionLimit and actual extraction
+      overrun semantics preserved.
+
+      After c477373 integration full299 inventory initially failed only native-lifecycle
+      threshold (298pass1fail); isolated evidence showed resource reload/catalog refresh
+      race: unsupported API still selected when threshold prompts arrived, not product
+      capacity failure. Same owner repaired scripts/observe-lifecycle.mjs using existing
+      applyGroq/waitCatalog and asserted restored API/stop; no timeout bump or weakened
+      assertion. Candidate0e00d1ea2f0da38f75c78af431e66fb693a3765b integrated unchanged
+      FF atopc477373 after clean state and unchanged Plan checks. Final required /usr/bin/env
+      -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /opt/homebrew/bin/node
+      scripts/check.mjs all exit0:299pass0fail0skip36files, log /Users/tefx/Projects/pi-nunc-worktrees/nunc-ui-context/.scratch/ui-context-lifecycle-repair-all.log
+      read by parent. Prior uncommitted-check CANDIDATE failures retained; committed
+      final target valid. Failed fixture child processes reconciled exited, isolated
+      state removed. Parent build already passed on c477373 source; final delta only
+      runner. No source/lock/input changes invalidate final full evidence. No paid
+      services, installation/push/daily configuration or peer communication. Protected
+      .pi/dashboard preserved. User explicitly resumed; next nunc.ui-panel may now
+      execute. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/nunc-ticket-debug/helpers'
   - id: nunc.ui-panel
     name: 紧凑状态栏、Slots/Context 双 tab 与整合交付
     status: pending
