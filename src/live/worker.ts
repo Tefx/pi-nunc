@@ -126,7 +126,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     return result;
   };
   let lastBeforeActive: SessionEntry[] = [];
-  let capacityFailure: { snapshots: SessionEntry[]; maintenanceCount: number } | undefined;
+  let capacityFailure: { snapshots: SessionEntry[]; active: SessionEntry[]; maintenanceCount: number } | undefined;
   const maintenanceResponses: Array<{ model: string; stopReason: string; patch: any; text?: string }> = [];
   report.maintenanceResponses = maintenanceResponses;
   try {
@@ -211,7 +211,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           capacityFailed: capacityFailure !== undefined,
           deliveredCount: deliveredUserIds(sm.getBranch(), inputTurn.text).length,
           terminalStop: last?.role === "assistant" && last.stopReason === "stop",
-          memoryAndBoundaryUnchanged: capacityFailure !== undefined && isDeepStrictEqual(sm.getBranch().filter(e => e.type === "compaction"), capacityFailure.snapshots),
+          memoryAndBoundaryUnchanged: capacityFailure !== undefined && isDeepStrictEqual(sm.getBranch().filter(e => e.type === "compaction"), capacityFailure.snapshots) && capacityFailure.active.every(e => isDeepStrictEqual(sm.buildContextEntries().find(r => r.id === e.id), e)),
           additionalMaintenance: capacityFailure ? report.maintenance.length - capacityFailure.maintenanceCount : -1,
         }));
       }
@@ -325,13 +325,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 maintenanceResponses.slice(capacityResponseStart), capacityModel, report.rollovers!.at(-1)?.prepared?.calibration?.accounting));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
-              const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots);
+              const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots) && isDeepStrictEqual(saved.buildContextEntries(), beforeActive);
               report.prerequisites.push({ check: "failed maintenance preserved prior saved memory/boundary", status: unchanged ? "PROVEN" : "DISPROVEN" });
               if (selection.id === "e4" && selection.variant === "required-too-large") {
                 const req = result?.observations.required;
                 const reqPass = Boolean(result && !result.ok && result.code === "CAPACITY" && req?.failed);
                 if (group === "candidate" && reqPass && unchanged && report.maintenance.length === eventCount + 1) {
-                  capacityFailure = { snapshots: structuredClone(previousSnapshots), maintenanceCount: report.maintenance.length };
+                  capacityFailure = { snapshots: structuredClone(previousSnapshots), active: structuredClone(beforeActive), maintenanceCount: report.maintenance.length };
                 }
                 report.prerequisites.push({ check: "marked necessary set exceeding limit fails with CAPACITY without commit", status: reqPass ? "PROVEN" : "UNPROVEN", observed: { code: result && !result.ok ? result.code : undefined, required: req } });
                 report.rolloverQuality = { check: "successful required persisted rollover", status: "UNPROVEN", reason: "Capacity failure correctly rejected candidate; successful rollover is not claimed" };
