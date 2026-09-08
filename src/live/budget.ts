@@ -8,7 +8,7 @@ import { canonical, object, requireValue, RunnerError, type Limits } from "./con
 
 export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string }
 export interface CallDiagnostic { code: string; stage: string; transport: "started" | "not-started" | "not-observed"; httpStatus?: number; networkCode?: string }
-export interface CallEnd { kind: "terminal"; id: number; at: number; latencyMs: number; stopReason: string; usage: UsageObservation; diagnostic?: CallDiagnostic }
+export interface CallEnd { kind: "terminal"; id: number; at: number; latencyMs: number; stopReason: string; usage: UsageObservation; diagnostic?: CallDiagnostic; caseKey?: string }
 export type LedgerRecord = CallRecord | CallEnd;
 export function readLedger(path: string): LedgerRecord[] {
   if (!existsSync(path)) return [];
@@ -81,7 +81,7 @@ export class BudgetLedger {
     const usage = observeUsage(message.usage);
     requireValue((usage.contextInput === null || usage.contextInput <= record.reservedTokens - record.outputCeiling) && (usage.output === null || usage.output <= record.outputCeiling) && (usage.totalTokens === null || usage.totalTokens <= record.reservedTokens), "USAGE_LIMIT", "Observed usage exceeds the reserved native model allowance; retain and reconcile");
     if (record.reservedCostUsd === null) usage.cost = null;
-    const terminal: CallEnd = { kind: "terminal", id: record.id, at: Date.now(), latencyMs: Date.now() - record.at, stopReason: message.stopReason, usage, ...(diagnostic ? { diagnostic } : {}) };
+    const terminal: CallEnd = { kind: "terminal", id: record.id, at: Date.now(), latencyMs: Date.now() - record.at, stopReason: message.stopReason, usage, ...(record.caseKey ? { caseKey: record.caseKey } : {}), ...(diagnostic ? { diagnostic } : {}) };
     appendFileSync(this.path, `${JSON.stringify(terminal)}\n`, { mode: 0o600, flush: true }); this.active = false;
   }
 }
@@ -109,7 +109,7 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
   requireValue(prefix === "/" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`), "ENDPOINT", "Transport path is outside authorized model baseUrl");
 }
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
-export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void } = {}): Provider {
+export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void } = {}): Provider {
   function stream(model: Model<Api>, context: Context, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = new AssistantMessageEventStream();
     void (async () => {
@@ -120,6 +120,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
       const complete = (message: AssistantMessage, diagnostic?: CallDiagnostic) => {
         if (finished || !reservation) return;
         ledger.finish(reservation, message, diagnostic); finished = true;
+        options.onResponse?.(model, message, simple ? "main" : "maintenance");
       };
       try {
         const selected = models.find(m => m.id === model.id && m.provider === model.provider);

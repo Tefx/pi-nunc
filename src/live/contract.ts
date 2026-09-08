@@ -105,7 +105,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
     if (value.comparison === undefined) {
       requireValue(value.mode === "native", "EXECUTION", "Controlled observations cannot dispatch native service calls");
     } else if (value.mode === "controlled") {
-      for (const model of (value.models as any[])) {
+      for (const model of (value.models as any[] ?? [])) {
         let url: URL | undefined;
         try { url = new URL(model.baseUrl); } catch { /* handled */ }
         const isLoopback = url && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");

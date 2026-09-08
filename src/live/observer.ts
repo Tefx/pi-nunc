@@ -29,7 +29,18 @@ export default function observer(pi: ExtensionAPI): void {
     for (const id of new Set(binding.models.map(m => m.provider))) {
       const base = ctx.modelRegistry.getProvider(id);
       requireValue(base, "MODEL", "Authorized native provider unavailable");
-      pi.registerProvider(boundedProvider(base, binding.models.filter(m => m.provider === id), ledger, { checkAuth: model => { if (model.provider === "openai-codex") requireValue(ctx.modelRegistry.isUsingOAuth(model), "AUTHORIZATION", "Selected Codex route requires native OAuth in the isolated host"); }, onContext: (model, context, kind) => log("context", { model, context, kind }) }));
+      pi.registerProvider(boundedProvider(base, binding.models.filter(m => m.provider === id), ledger, {
+        checkAuth: model => { if (model.provider === "openai-codex") requireValue(ctx.modelRegistry.isUsingOAuth(model), "AUTHORIZATION", "Selected Codex route requires native OAuth in the isolated host"); },
+        onContext: (model, context, kind) => log("context", { model, context, kind }),
+        onResponse: (model, message, kind) => {
+          if (kind === "maintenance") {
+            const text = Array.isArray(message.content) ? message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("") : "";
+            let patch: unknown;
+            try { patch = JSON.parse(text); } catch {}
+            log("maintenance_response", { model: `${model.provider}/${model.id}`, stopReason: message.stopReason, patch, text });
+          }
+        },
+      }));
     }
     log("ready", { sessionId: ctx.sessionManager.getSessionId(), sessionFile: ctx.sessionManager.getSessionFile(), model: ctx.model });
   });

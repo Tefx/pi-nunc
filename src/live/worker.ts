@@ -4,9 +4,9 @@ import { isDeepStrictEqual } from "node:util";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { convertToLlm, sessionEntryToContextMessages, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { closeHost, openHost, type NativeHost } from "./host.js";
-import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput } from "./contract.js";
+import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateCapacityPredicates, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, type CheckResult } from "./scenarios.js";
-import { ledgerSummary, readLedger } from "./budget.js";
+import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
 import { loadPolicy } from "../engine/index.js";
 import { memoryTokens, requestTokens, textTokens } from "../engine/accounting.js";
 import type { MaintenanceResult } from "../engine/types.js";
@@ -32,6 +32,8 @@ export interface SegmentReport {
   maintenance: unknown[];
   actions: unknown[];
   commands?: Array<{ type: string; message?: string }> | undefined;
+  segmentUsage?: { calls: number; tokens: number | null; latencyMs: number; costUsd: number | null } | undefined;
+  maintenanceResponses?: Array<{ model: string; stopReason: string; patch: any; text?: string }> | undefined;
   calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>;
   preparationFailure?: { afterTurn: string; message: string } | undefined;
   comparisonFacts?: {
@@ -61,6 +63,56 @@ function userText(entry: SessionEntry): string | undefined {
 function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
   return branch.filter(e => userText(e) === text).map(e => e.id);
 }
+function captureComparisonFacts(
+  report: SegmentReport,
+  runtime: NativeHost | undefined,
+  selection: Selection,
+  group: ComparisonGroup,
+  firstModel: Model<Api>,
+  lastBeforeActive: SessionEntry[]
+): void {
+  const h = firstModel.contextWindow - selection.config.compaction.reserveTokens;
+  const sm = runtime?.sessionManager;
+  const branch = sm?.getBranch() ?? [];
+  const latestCompact = branch.findLast(e => e.type === "compaction");
+  const firstKeptEntryId = latestCompact?.type === "compaction" ? latestCompact.firstKeptEntryId : undefined;
+  const cutPoint = firstKeptEntryId && lastBeforeActive.length > 0 ? lastBeforeActive.findIndex((e: SessionEntry) => e.id === firstKeptEntryId) : undefined;
+  const keptEntries = firstKeptEntryId && cutPoint !== undefined && cutPoint >= 0 ? lastBeforeActive.slice(cutPoint) : [];
+  const kMessages = keptEntries.length > 0 ? (convertToLlm(keptEntries.flatMap(e => sessionEntryToContextMessages(e) as any) as any) as any) : [];
+  const kTokens = kMessages.length > 0 ? requestTokens({ systemPrompt: "", messages: kMessages }) : 0;
+  const mSlots = latestCompact?.type === "compaction" && object(latestCompact.details) && object((latestCompact.details as any).nunc) ? (latestCompact.details as any).nunc.slots : [];
+  const mTokens = group === "native"
+    ? (latestCompact?.summary ? textTokens(latestCompact.summary) : 0)
+    : memoryTokens(mSlots);
+  const mSize = group === "native" ? (latestCompact?.summary?.length ?? 0) : JSON.stringify(mSlots).length;
+  const rawSlotChars = mSlots.reduce((sum: number, s: any) => sum + (s.text?.length ?? 0), 0);
+  const wrapperOverheadTokens = group === "native" ? 0 : Math.max(0, mTokens - Math.ceil(rawSlotChars / 4));
+  const splitTurnCalls = branch.filter(e => e.type === "compaction" && (e as any).details?.turnPrefixMessages?.length > 0).length;
+  const fileListCount = latestCompact?.details && Array.isArray((latestCompact.details as any).readFiles)
+    ? (latestCompact.details as any).readFiles.length + ((latestCompact.details as any).modifiedFiles?.length ?? 0)
+    : 0;
+  const outputCap = group === "native"
+    ? Math.min(Math.floor(0.8 * selection.config.compaction.reserveTokens), firstModel.maxTokens)
+    : (selection.config.nunc.extraction?.outputTokens ?? firstModel.maxTokens);
+  const lastM = maintenanceResult(report.maintenance.at(-1));
+  report.comparisonFacts = {
+    h,
+    cutPoint,
+    firstKeptEntryId,
+    kTokens,
+    mTokens,
+    summarySize: mSize,
+    outputCap,
+    outputReserve: selection.config.compaction.reserveTokens,
+    overhead: {
+      fileListCount,
+      wrapperOverheadTokens,
+      splitTurnCalls,
+    },
+    requiredObservation: lastM?.observations?.required,
+    guardApplicability: (group === "native" || group === "current") ? "NOT_APPLICABLE" : "APPLICABLE",
+  };
+}
 export async function runSegment(job: WorkerJob, overrides: { controlledModels?: unknown; models?: Model<Api>[]; signal?: AbortSignal } = {}): Promise<SegmentReport> {
   const { input } = job, selection = input.scenarios[job.scenarioIndex];
   requireValue(selection, "SCENARIO", "Invalid worker selection");
@@ -68,20 +120,40 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   const mode: ComparisonMode = job.mode ?? "defaults";
   const caseRoot = job.caseRoot ?? join(input.target.stateRoot, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
   const checkpointPath = join(caseRoot, "checkpoint.json");
-  const { input: scenario, observer } = await loadScenario(input.target.repository, selection);
+  const { input: scenario, observer } = await loadScenario(input.target.repository, selection, input.assets);
   const local = new AbortController();
   const signal = AbortSignal.any([local.signal, AbortSignal.timeout(Math.max(1, job.deadline - Date.now())), ...(overrides.signal ? [overrides.signal] : [])]);
   const onSignal = () => local.abort(); process.once("SIGTERM", onSignal); process.once("SIGINT", onSignal);
   const report: SegmentReport = { pid: process.pid, scenario: selection.id, group, mode, status: "STOPPED", prerequisites: [], nextTurn: 0, contexts: [], maintenance: [], actions: [], commands: [], calibrations: [] };
+  const firstModel = overrides.models?.[0] ?? selectedModels(input)[0]!;
+  const startLedger = readLedger(join(input.target.stateRoot, "calls.jsonl"));
+  const startReserveIds = new Set(startLedger.filter(r => r.kind === "reserve").map(r => r.id));
+
+  // e3 public-seam spending prevention: refuse before host creation and model turns
+  if (selection.id === "e3") {
+    report.status = "UNPROVEN";
+    report.reason = "UNSUPPORTED_PUBLIC_SEAM";
+    report.diagnostic = "Exact tool-boundary split control for e3 is not supported by public RPC host without private host mutation or pre-configured threshold crossing; skipped before host creation to prevent spending";
+    report.prerequisites.push({
+      check: "public tool-boundary split control during a",
+      status: "UNPROVEN",
+      reason: report.diagnostic,
+    });
+    captureComparisonFacts(report, undefined, selection, group, firstModel, []);
+    return report;
+  }
+
   let runtime: NativeHost | undefined, turn = "startup", turns: Record<string, string[]> = {};
   const scheduledSteers = new Set<string>();
   let checkpoint: Checkpoint | undefined;
   let effectiveConfig = structuredClone(selection.config.nunc);
   let lastBeforeActive: SessionEntry[] = [];
+  const maintenanceResponses: Array<{ model: string; stopReason: string; patch: any; text?: string }> = [];
+  report.maintenanceResponses = maintenanceResponses;
   try {
     if (job.resume) {
       checkpoint = JSON.parse(await readFile(checkpointPath, "utf8")) as Checkpoint;
-      requireValue((selection.id === "c3" || selection.id === "e1" || selection.id === "e3") && checkpoint.nextTurn > 0, "RESTART", "Resume must use a new host process and existing checkpoint");
+      requireValue((selection.id === "c3" || selection.id === "e1") && checkpoint.nextTurn > 0, "RESTART", "Resume must use a new host process and existing checkpoint");
       turns = checkpoint.turnEntries; report.nextTurn = checkpoint.nextTurn; report.prerequisites = checkpoint.prerequisites;
       effectiveConfig = checkpoint.nuncConfig;
     } else { await mkdir(caseRoot, { recursive: false }); await seedScenario(scenario, join(caseRoot, "task")); }
@@ -89,24 +161,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
       onMaintenance: event => { const result = maintenanceResult(event); report.maintenance.push(result ? JSON.parse(JSON.stringify(result)) : { invalidEvent: true }); },
+      onMaintenanceResponse: data => { if (object(data)) maintenanceResponses.push(data as any); },
       onContext: (model, context, kind) => report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context }),
       onAction: event => report.actions.push({ turn, event }),
     });
     report.pid = runtime.pid ?? process.pid;
     const session = runtime.session, sm = session.sessionManager;
-
-    // e3 public-seam spending prevention: refuse before model turns when public tool-boundary control is unavailable
-    if (selection.id === "e3") {
-      report.status = "UNPROVEN";
-      report.reason = "UNSUPPORTED_PUBLIC_SEAM";
-      report.diagnostic = "Exact tool-boundary split control for e3 is not supported by public RPC host without private host mutation; skipped before task model turns to prevent spending";
-      report.prerequisites.push({
-        check: "public tool-boundary split control during a",
-        status: "UNPROVEN",
-        reason: report.diagnostic,
-      });
-      return report;
-    }
 
     if (checkpoint) {
       const restored = sm.buildContextEntries();
@@ -196,6 +256,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               const ids = turns[t] ?? [];
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
             }
+            if (selection.id === "e4") {
+              report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi 0.85.1 has no required-item guard" } });
+            }
           } else {
             const beforeActive = structuredClone(sm.buildContextEntries());
             const before = structuredClone(sm.getBranch()), previousSnapshots = before.filter(e => e.type === "compaction"), eventCount = report.maintenance.length;
@@ -244,10 +307,27 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               if (selection.id === "e4" && selection.variant === "required-too-large") {
                 const req = result?.observations.required;
                 const reqPass = Boolean(result && !result.ok && result.code === "CAPACITY" && req?.failed);
-                report.prerequisites.push({ check: "failed maintenance preserved prior saved memory/boundary", status: unchanged ? "PROVEN" : "DISPROVEN" });
+                const lastResponse = maintenanceResponses.at(-1);
+                const patch = lastResponse?.patch;
+                const preCompaction = before.filter(e => e.type === "compaction").at(-1);
+                const survivingOld = (preCompaction?.details as any)?.nunc?.slots?.filter((s: any) => !patch?.remove?.includes(s.id)) ?? [];
+                const available = firstModel.contextWindow - selection.config.compaction.reserveTokens;
+                const fraction = effectiveConfig.memory?.fraction ?? 0.1;
+                const maxTokens = effectiveConfig.memory?.maxTokens ?? Infinity;
+                const memoryLimit = Math.floor(Math.min(fraction * available, maxTokens));
+                const growthTokens = effectiveConfig.budget?.growthTokens ?? 128;
+                const measure = (slots: Array<{ key: string; text: string }>) => memoryTokens(slots.map(s => ({ id: s.key, text: s.text })));
+                const predicates = evaluateCapacityPredicates(
+                  "required-too-large",
+                  patch,
+                  memoryLimit,
+                  measure,
+                  survivingOld,
+                  growthTokens
+                );
+                report.prerequisites.push(...predicates);
                 report.prerequisites.push({ check: "marked necessary set exceeding limit fails with CAPACITY without commit", status: reqPass ? "PROVEN" : "UNPROVEN", observed: { code: result && !result.ok ? result.code : undefined, required: req } });
-                report.prerequisites.push({ check: "marked necessary set exceeds rendered memory limit or leaves insufficient growth space", status: reqPass ? "PROVEN" : "UNPROVEN" });
-                report.prerequisites.push({ check: "at least one optional candidate fits within memory limit", status: "PROVEN", observed: { optionalFits: true } });
+                report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: "Capacity failure correctly rejected candidate; successful rollover is not claimed" });
               } else {
                 report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: result && !result.ok ? `${result.code}: ${result.message}` : "Pi hook did not produce a successful Nunc snapshot" });
                 if (selection.variant === "capacity") report.prerequisites.push({ check: "full extraction demonstrably exceeds effective input capacity", status: result?.observations.accounting && result.observations.accounting.fullExtractionTokens > result.observations.accounting.extractionInputLimit ? "PROVEN" : "UNPROVEN", observed: result?.observations.accounting ?? null });
@@ -259,16 +339,20 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               if (result.observations.omissions.length === 0) report.prerequisites.push(checkFullExtraction(beforeActive, report.contexts.findLast(c => c.turn === turn && c.kind === "maintenance")?.context));
               if (selection.id === "e4") {
                 if (group === "candidate") {
+                  report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "candidate", guardApplicability: "APPLICABLE" } });
                   const req = result?.observations.required;
                   const survivingOld = (result as any)?.candidate?.memory?.slots ?? [];
+                  const lastResponse = maintenanceResponses.at(-1);
                   const patch = (result as any)?.candidate ? {
                     add: (result as any).candidate.memory.slots.map((s: any) => ({ key: s.id, text: s.text })),
                     priority: (result as any).candidate.memory.slots.map((s: any) => s.id),
                     required: req?.declared ?? [],
-                  } : undefined;
+                  } : lastResponse?.patch;
                   const accounting = result?.observations.accounting;
-                  const memoryLimit = accounting?.memoryLimit ?? 4000;
-                  const growthTokens = accounting?.growthTokens ?? 128;
+                  const fraction = effectiveConfig.memory?.fraction ?? 0.1;
+                  const maxTokens = effectiveConfig.memory?.maxTokens ?? Infinity;
+                  const memoryLimit = accounting?.memoryLimit ?? Math.floor(Math.min(fraction * (firstModel.contextWindow - selection.config.compaction.reserveTokens), maxTokens));
+                  const growthTokens = accounting?.growthTokens ?? effectiveConfig.budget?.growthTokens ?? 128;
                   const measure = (slots: Array<{ key: string; text: string }>) => memoryTokens(slots.map(s => ({ id: s.key, text: s.text })));
                   const predicates = evaluateCapacityPredicates(
                     selection.variant as "fits-required" | "required-too-large",
@@ -285,6 +369,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                   } else if (selection.variant === "required-too-large") {
                     report.prerequisites.push({ check: "required-too-large rollover eligibility", status: "DISPROVEN", reason: "Maintenance unexpectedly succeeded when marked necessary set was configured to exceed limit" });
                   }
+                } else if (group === "current") {
+                  report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "current", guardApplicability: "NOT_APPLICABLE", note: "Product baseline 70dacad has no required-item guard" } });
                 }
               } else if (selection.id === "c4") {
                 const exception = scenario.generatedFiles?.[0]?.segments.find(s => s.repeat === 1)?.text.trim();
@@ -331,47 +417,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts);
     }
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, { actions: report.actions });
-    const firstModel = session.model ?? overrides.models?.[0] ?? selectedModels(input)[0]!;
-    const h = firstModel.contextWindow - selection.config.compaction.reserveTokens;
-    const branch = sm.getBranch();
-    const latestCompact = branch.findLast(e => e.type === "compaction");
-    const firstKeptEntryId = latestCompact?.type === "compaction" ? latestCompact.firstKeptEntryId : undefined;
-    const cutPoint = firstKeptEntryId ? lastBeforeActive.findIndex((e: SessionEntry) => e.id === firstKeptEntryId) : undefined;
-    const keptEntries = firstKeptEntryId && cutPoint !== undefined && cutPoint >= 0 ? lastBeforeActive.slice(cutPoint) : [];
-    const kMessages = keptEntries.length > 0 ? (convertToLlm(keptEntries.flatMap(e => sessionEntryToContextMessages(e) as any) as any) as any) : [];
-    const kTokens = kMessages.length > 0 ? requestTokens({ systemPrompt: "", messages: kMessages }) : 0;
-    const mSlots = latestCompact?.type === "compaction" && object(latestCompact.details) && object((latestCompact.details as any).nunc) ? (latestCompact.details as any).nunc.slots : [];
-    const mTokens = group === "native"
-      ? (latestCompact?.summary ? textTokens(latestCompact.summary) : 0)
-      : memoryTokens(mSlots);
-    const mSize = group === "native" ? (latestCompact?.summary?.length ?? 0) : JSON.stringify(mSlots).length;
-    const rawSlotChars = mSlots.reduce((sum: number, s: any) => sum + (s.text?.length ?? 0), 0);
-    const wrapperOverheadTokens = group === "native" ? 0 : Math.max(0, mTokens - Math.ceil(rawSlotChars / 4));
-    const splitTurnCalls = branch.filter(e => e.type === "compaction" && (e as any).details?.turnPrefixMessages?.length > 0).length;
-    const fileListCount = latestCompact?.details && Array.isArray((latestCompact.details as any).readFiles)
-      ? (latestCompact.details as any).readFiles.length + ((latestCompact.details as any).modifiedFiles?.length ?? 0)
-      : 0;
-    const outputCap = group === "native"
-      ? Math.min(Math.floor(0.8 * selection.config.compaction.reserveTokens), firstModel.maxTokens)
-      : (selection.config.nunc.extraction?.outputTokens ?? firstModel.maxTokens);
-    const lastM = maintenanceResult(report.maintenance.at(-1));
-    report.comparisonFacts = {
-      h,
-      cutPoint,
-      firstKeptEntryId,
-      kTokens,
-      mTokens,
-      summarySize: mSize,
-      outputCap,
-      outputReserve: selection.config.compaction.reserveTokens,
-      overhead: {
-        fileListCount,
-        wrapperOverheadTokens,
-        splitTurnCalls,
-      },
-      requiredObservation: lastM?.observations?.required,
-      guardApplicability: (group === "native" || group === "current") ? "NOT_APPLICABLE" : "APPLICABLE",
-    };
+    captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);
     report.status = report.prerequisites.every(p => p.status === "PROVEN") && !report.score.checks.some(c => c.status === "DISPROVEN") ? "OBSERVED" : "UNPROVEN";
   } catch (error) {
     report.status = "UNPROVEN";
@@ -382,8 +428,23 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     if (runtime) {
       report.commands = runtime.commands.slice();
       if (runtime.session.sessionFile) report.sessionFile = runtime.session.sessionFile;
+      if (!report.comparisonFacts) {
+        captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);
+      }
       try { await closeHost(runtime); } catch { report.status = "STOPPED"; report.reason = "CLEANUP"; }
+    } else if (!report.comparisonFacts) {
+      captureComparisonFacts(report, undefined, selection, group, firstModel, lastBeforeActive);
     }
+    const endLedger = readLedger(join(input.target.stateRoot, "calls.jsonl"));
+    const segmentReserves = endLedger.filter((r): r is CallRecord => r.kind === "reserve" && !startReserveIds.has(r.id));
+    const segmentReserveIds = new Set(segmentReserves.map(r => r.id));
+    const segmentTerminals = endLedger.filter((r): r is CallEnd => r.kind === "terminal" && segmentReserveIds.has(r.id));
+    report.segmentUsage = {
+      calls: segmentReserves.length,
+      tokens: segmentTerminals.some(r => r.usage.totalTokens === null) ? null : segmentTerminals.reduce((sum, r) => sum + (r.usage.totalTokens ?? 0), 0),
+      latencyMs: segmentTerminals.reduce((sum, r) => sum + r.latencyMs, 0),
+      costUsd: segmentTerminals.some(r => r.usage.cost === null) ? null : segmentTerminals.reduce((sum, r) => sum + (r.usage.cost ?? 0), 0),
+    };
     process.removeListener("SIGTERM", onSignal); process.removeListener("SIGINT", onSignal);
     await mkdir(caseRoot, { recursive: true });
     await writeFile(join(caseRoot, job.resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(report, null, 2), { mode: 0o600 });

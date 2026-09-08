@@ -33,6 +33,7 @@ export interface HostOptions {
   /** Test-only child replacement. Production always uses the locked stock Pi CLI. */
   testCommand?: { command: string; args: string[] } | undefined;
   onMaintenance?: ((event: unknown) => void) | undefined;
+  onMaintenanceResponse?: ((event: unknown) => void) | undefined;
   onContext?: ((model: Model<Api>, context: Context, kind: string) => void) | undefined;
   onAction?: ((event: unknown) => void) | undefined;
 }
@@ -155,6 +156,7 @@ export class NativeHost {
       this.cursor += row.length + 1;
       const e: unknown = JSON.parse(row); requireValue(object(e), "OBSERVER", "Invalid observer record");
       if (e.type === "maintenance") this.options.onMaintenance?.(e.data);
+      if (e.type === "maintenance_response") this.options.onMaintenanceResponse?.(e.data);
       if (e.type === "action" || e.type === "lifecycle") this.options.onAction?.(e.data);
       if (e.type === "context") {
         requireValue(object(e.data) && object(e.data.model) && object(e.data.context) && Array.isArray(e.data.context.messages), "OBSERVER", "Invalid observed context");

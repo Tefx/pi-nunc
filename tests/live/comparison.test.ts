@@ -341,6 +341,26 @@ test("e1 and e3 fixture verification commands require successful execution recei
     const scoredInvalidated = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: invalidatedActions });
     const verifyCheckInvalidated = scoredInvalidated.actionReview.find(r => r.check.includes("python3 verify.py"));
     assert.equal(verifyCheckInvalidated?.status, "DISPROVEN");
+
+    // 5. Verification script modified
+    const scriptModifiedActions = [
+      { turn: "e", event: { type: "tool_call", toolName: "write", toolCallId: "call_6", input: { path: "verify.py", content: "exit(0)" } } },
+      { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_7", input: { command: "python3 verify.py" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_7", isError: false, content: "ok" } },
+    ];
+    const scoredScriptMod = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: scriptModifiedActions });
+    const verifyCheckScriptMod = scoredScriptMod.actionReview.find(r => r.check.includes("python3 verify.py"));
+    assert.equal(verifyCheckScriptMod?.status, "DISPROVEN");
+
+    // 6. Verification artifact authored directly by model write tool
+    const directWriteActions = [
+      { turn: "e", event: { type: "tool_call", toolName: "write", toolCallId: "call_8", input: { path: "verification.json", content: '{"passed":true}' } } },
+      { turn: "e", event: { type: "tool_call", toolName: "bash", toolCallId: "call_9", input: { command: "python3 verify.py" } } },
+      { turn: "e", event: { type: "tool_result", toolName: "bash", toolCallId: "call_9", isError: false, content: "ok" } },
+    ];
+    const scoredDirectWrite = await scoreArtifacts(taskDir, observer, [{ check: "prereq", status: "PROVEN" }], { actions: directWriteActions });
+    const verifyCheckDirectWrite = scoredDirectWrite.actionReview.find(r => r.check.includes("python3 verify.py"));
+    assert.equal(verifyCheckDirectWrite?.status, "DISPROVEN");
   } finally {
     await rm(taskDir, { recursive: true, force: true });
   }
@@ -374,6 +394,20 @@ test("e4 capacity predicates evaluate necessary fit, competition overflow, and o
   };
   const resTooLarge = evaluateCapacityPredicates("required-too-large", patchTooLarge, 40, measure);
   assert.equal(resTooLarge.every(r => r.status === "PROVEN"), true);
+
+  // Optional candidate too large: optional (45) > limit (40) -> optionalFits must be UNPROVEN
+  const patchOptTooLarge = {
+    add: [
+      { key: "nec1", text: "x".repeat(50) },
+      { key: "opt1", text: "x".repeat(45) },
+    ],
+    remove: [],
+    priority: ["nec1", "opt1"],
+    required: ["nec1"],
+  };
+  const resOptTooLarge = evaluateCapacityPredicates("required-too-large", patchOptTooLarge, 40, measure);
+  const optFitsCheck = resOptTooLarge.find(r => r.check.includes("at least one optional candidate fits"));
+  assert.equal(optFitsCheck?.status, "UNPROVEN");
 });
 
 test("comparison defaults and matched modes report truthful differences and matched parity", async () => {
@@ -393,14 +427,87 @@ test("comparison defaults and matched modes report truthful differences and matc
   assert.equal(typeof defaultsMode.records.memorySizeComparison?.native, "string");
   assert.equal(typeof defaultsMode.records.memorySizeComparison?.candidate, "string");
 
-  // Matched mode truthfully reports discrepancies and UNPROVEN parity
+  // Matched mode truthfully reports matched parity when dimensions match, and discrepancies when they diverge
   const matchedMode = report.comparison.modes.find(m => m.mode === "matched");
   assert(matchedMode);
-  assert.equal(matchedMode.records.matchedParity?.status, "UNPROVEN");
-  assert(matchedMode.records.matchedParity!.discrepancies.length > 0);
+  assert.equal(matchedMode.records.matchedParity?.status, "PROVEN");
+  assert.equal(matchedMode.records.matchedParity?.cutMatched, true);
+  assert.equal(matchedMode.records.matchedParity?.budgetMatched, true);
+  assert.deepEqual(matchedMode.records.matchedParity?.discrepancies, []);
 
   // Unsupported public seam for mid-turn boundary split control is explicitly reported
   assert(report.unsupportedPublicSeams?.includes("rollover_at_tool_boundary"));
+});
+
+test("e3 pre-spend refusal skips model turns and charges zero calls when public seam is unsupported", async () => {
+  const input = await comparisonFixture();
+  input.scenarios = [{ id: "e3", config: input.scenarios[0]!.config }];
+  const { workerMain } = await import("../../src/live/worker.js");
+  const receipt = await preflight(input, repository);
+  input.receipt = receipt;
+  const deadline = Date.now() + 10000;
+  await mkdir(input.target.stateRoot, { recursive: true });
+  await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }));
+  try {
+    const segment = await workerMain({
+      input,
+      scenarioIndex: 0,
+      deadline,
+      resume: false,
+    }, repository);
+    assert.equal(segment.status, "UNPROVEN");
+    assert.equal(segment.reason, "UNSUPPORTED_PUBLIC_SEAM");
+    assert(segment.prerequisites.some(p => p.check.includes("tool-boundary split control") && p.status === "UNPROVEN"));
+    assert.equal(segment.actions.length, 0);
+  } finally {
+    await rm(input.target.stateRoot, { recursive: true });
+  }
+});
+
+test("matched mode reports UNPROVEN parity when cut point or budget discrepancies exist", async () => {
+  const input = await comparisonFixture();
+  input.target.stateRoot = join(repository, ".scratch", `nunc-live-disc-${Date.now()}`);
+  input.scenarios = [input.scenarios[0]!];
+  input.comparison!.modes = ["matched"];
+  input.limits.maxDurationMs = 5000;
+
+  const discMockWorker = join(repository, ".scratch/test-disc-mock-worker.mjs");
+  await writeFile(discMockWorker, `#!/usr/bin/env node
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const job = JSON.parse(Buffer.concat(chunks).toString());
+const { input, scenarioIndex, resume, group, mode, caseRoot: explicitCaseRoot } = job;
+const selection = input.scenarios[scenarioIndex];
+const caseRoot = explicitCaseRoot ?? join(input.target.stateRoot, \`\${mode ?? "defaults"}-\${group ?? "candidate"}-\${selection.id}\`);
+await mkdir(caseRoot, { recursive: true });
+const base = {
+  pid: process.pid, scenario: selection.id, group: group ?? "candidate", mode: mode ?? "defaults",
+  prerequisites: [{ check: "controlled test mock prerequisite", status: "PROVEN" }],
+  nextTurn: 0, contexts: [], maintenance: [], actions: [{ type: "mock-action" }], commands: [], calibrations: [],
+  score: { artifacts: {}, checks: [{ check: "mock artifact check", status: "PROVEN" }], actionReview: [] },
+  comparisonFacts: {
+    h: 183616, summarySize: 100, kTokens: 50, mTokens: 50, outputCap: 4096,
+    outputReserve: group === "native" ? 10000 : 8000,
+    cutPoint: group === "native" ? 1 : 2,
+  },
+};
+await writeFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(base), { mode: 0o600 });
+process.exitCode = 0;
+`);
+
+  try {
+    const report = await executeComparison(input, repository, discMockWorker, new AbortController().signal);
+    const matchedMode = report.comparison.modes.find(m => m.mode === "matched");
+    assert(matchedMode);
+    assert.equal(matchedMode.records.matchedParity?.status, "UNPROVEN");
+    assert(matchedMode.records.matchedParity!.discrepancies.some(d => d.includes("cut point mismatch")));
+    assert(matchedMode.records.matchedParity!.discrepancies.some(d => d.includes("planned reserve mismatch")));
+  } finally {
+    await rm(discMockWorker, { force: true });
+    await rm(input.target.stateRoot, { recursive: true, force: true });
+  }
 });
 
 test("single finite budget ledger charges all groups; quota exhaustion and cleanup reconciled", async () => {
