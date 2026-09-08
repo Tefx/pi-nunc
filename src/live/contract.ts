@@ -228,8 +228,10 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const { observer } = await loadScenario(repository, selection, input.assets);
     if (selection.config.retentionCalibration) requireValue(observer.controls.filter(c => c.action === "rollover").every(c => c.placement !== undefined), "CONFIG", "Retention calibration requires an explicit observer placement for every rollover");
   }
-  const { assertBuildParity } = await import("./build.js");
-  await assertBuildParity(repository);
+  if (!existingOwnedWorker) {
+    const { assertBuildParity } = await import("./build.js");
+    await assertBuildParity(repository);
+  }
   if (input.comparison !== undefined) {
     let candRepo: string;
     try { candRepo = await realpath(input.comparison.targets.candidate.repository); }
@@ -251,7 +253,10 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
     requireValue(curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version === "0.85.1", "DEPENDENCY", "Current baseline target requires Pi 0.85.1");
     // Verify baseline build parity against its tracked source
-    await assertBuildParity(curRepo);
+    if (!existingOwnedWorker) {
+      const { assertBuildParity } = await import("./build.js");
+      await assertBuildParity(curRepo);
+    }
 
     let natRepo: string;
     try { natRepo = await realpath(input.comparison.targets.native.repository); }

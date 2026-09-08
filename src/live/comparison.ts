@@ -32,6 +32,8 @@ export interface ComparisonScenarioResult {
   firstKeptEntryId?: string | undefined;
   kTokens?: number | undefined;
   mTokens?: number | undefined;
+  memoryLimit?: number | undefined;
+  model?: string | undefined;
   summarySize?: number | undefined;
   outputCap?: number | undefined;
   outputReserve?: number | undefined;
@@ -43,6 +45,10 @@ export interface ComparisonScenarioResult {
     fileListCount?: number | undefined;
     wrapperOverheadTokens?: number | undefined;
     splitTurnCalls?: number | undefined;
+  } | undefined;
+  exposure?: {
+    turns: string[];
+    toolResultsCount: number;
   } | undefined;
   requiredObservation?: {
     declared: string[];
@@ -187,19 +193,6 @@ export async function executeComparison(
           requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
           const selection = input.scenarios[scenarioIndex]!;
 
-          // Same effective config + controls: reuse comparison execution rather than launch a duplicate run
-          const defaultsMode = report.comparison.modes.find(m => m.mode === "defaults");
-          const defaultsScenario = defaultsMode?.groups[group].scenarios.find(s => s.scenarioId === selection.id && s.variant === selection.variant);
-          if (mode === "matched" && defaultsScenario && defaultsScenario.status === "OBSERVED" && defaultsScenario.calls > 0) {
-            const reused: ComparisonScenarioResult = {
-              ...defaultsScenario,
-              mode: "matched",
-            };
-            modeReport.groups[group].scenarios.push(reused);
-            report.matrix.push(reused);
-            continue;
-          }
-
           const caseKey = `${mode}:${group}:${selection.id}${selection.variant ? `-${selection.variant}` : ""}`;
           const caseDirName = `${mode}-${group}-${selection.id}${selection.variant ? `-${selection.variant}` : ""}`;
           const caseRoot = join(root, caseDirName);
@@ -245,16 +238,19 @@ export async function executeComparison(
               firstKeptEntryId: facts?.firstKeptEntryId,
               kTokens: facts?.kTokens,
               mTokens: facts?.mTokens,
+              memoryLimit: facts?.memoryLimit,
+              model: facts?.model ?? `${input.models[0]!.provider}/${input.models[0]!.id}`,
               summarySize: facts?.summarySize,
               outputCap: facts?.outputCap,
               outputReserve: facts?.outputReserve,
               overhead: facts?.overhead,
+              exposure: facts?.exposure,
               requiredObservation: facts?.requiredObservation as any,
               prerequisites: segment.prerequisites,
               setupChecks: segment.setupChecks,
               score: segment.score,
               sessionFile: segment.sessionFile,
-              calls: segment.segmentUsage ? segment.segmentUsage.calls : caseReserves.length,
+              calls: segment.segmentUsage?.calls ?? (caseReserves.length > 0 ? caseReserves.length : 0),
               tokens: segment.segmentUsage ? segment.segmentUsage.tokens : totalTokens,
               latencyMs: segment.segmentUsage ? segment.segmentUsage.latencyMs : latencyMs,
               costUsd: segment.segmentUsage ? segment.segmentUsage.costUsd : costUsd,
@@ -310,6 +306,8 @@ export async function executeComparison(
         let cutMatchedAll = true;
         let kMatchedAll = true;
         let budgetMatchedAll = true;
+        let wrappersMatchedAll = true;
+        let fileListMatchedAll = true;
 
         for (const g of ALL_GROUPS) {
           const scens = modeReport.groups[g].scenarios;
@@ -331,6 +329,19 @@ export async function executeComparison(
           if (!natS || !curS || !candS) {
             discrepancies.push(`${label}: missing group scenario result`);
             continue;
+          }
+
+          if (!natS.model || !curS.model || !candS.model || natS.model !== curS.model || curS.model !== candS.model) {
+            modelsEqual = false;
+            discrepancies.push(`${label}: model mismatch (${natS.model ?? "none"} vs ${curS.model ?? "none"} vs ${candS.model ?? "none"})`);
+          }
+
+          const natExp = natS.exposure ?? { turns: [], toolResultsCount: 0 };
+          const curExp = curS.exposure ?? { turns: [], toolResultsCount: 0 };
+          const candExp = candS.exposure ?? { turns: [], toolResultsCount: 0 };
+          if (JSON.stringify(natExp) !== JSON.stringify(curExp) || JSON.stringify(curExp) !== JSON.stringify(candExp)) {
+            exposureMatchedAll = false;
+            discrepancies.push(`${label}: task exposure difference between groups`);
           }
 
           if (natS.cutPoint === undefined || curS.cutPoint === undefined || candS.cutPoint === undefined) {
@@ -356,18 +367,50 @@ export async function executeComparison(
             budgetMatchedAll = false;
             discrepancies.push(`${label}: planned reserve mismatch (native reserve ${natS.outputReserve}, current reserve ${curS.outputReserve}, candidate reserve ${candS.outputReserve})`);
           }
+
+          if (natS.memoryLimit !== undefined && curS.memoryLimit !== undefined && candS.memoryLimit !== undefined) {
+            if (natS.memoryLimit !== curS.memoryLimit || curS.memoryLimit !== candS.memoryLimit) {
+              budgetMatchedAll = false;
+              discrepancies.push(`${label}: memory budget mismatch (native limit ${natS.memoryLimit}, current limit ${curS.memoryLimit}, candidate limit ${candS.memoryLimit})`);
+            }
+          }
+
+          const natWrap = natS.overhead?.wrapperOverheadTokens ?? 0;
+          const curWrap = curS.overhead?.wrapperOverheadTokens ?? 0;
+          const candWrap = candS.overhead?.wrapperOverheadTokens ?? 0;
+          if (natWrap !== curWrap || curWrap !== candWrap) {
+            wrappersMatchedAll = false;
+            discrepancies.push(`${label}: wrapper overhead difference (native ~${natWrap} tokens vs current ~${curWrap} tokens vs candidate ~${candWrap} tokens)`);
+          }
+
+          const natFiles = natS.overhead?.fileListCount ?? 0;
+          const curFiles = curS.overhead?.fileListCount ?? 0;
+          const candFiles = candS.overhead?.fileListCount ?? 0;
+          if (natFiles !== curFiles || curFiles !== candFiles) {
+            fileListMatchedAll = false;
+            discrepancies.push(`${label}: file list tracking difference (native ${natFiles} ops vs current ${curFiles} ops vs candidate ${candFiles} ops)`);
+          }
         }
 
+        const allMatched = modelsEqual &&
+          exposureMatchedAll &&
+          cutMatchedAll &&
+          kMatchedAll &&
+          budgetMatchedAll &&
+          wrappersMatchedAll &&
+          fileListMatchedAll &&
+          discrepancies.length === 0;
+
         modeReport.records.matchedParity = {
-          modelMatched: modelsEqual && discrepancies.every(d => !d.includes("no observed model execution")),
-          exposureMatched: exposureMatchedAll,
+          modelMatched: modelsEqual && discrepancies.every(d => !d.includes("model mismatch") && !d.includes("no observed model execution")),
+          exposureMatched: exposureMatchedAll && discrepancies.every(d => !d.includes("task exposure difference")),
           cutMatched: cutMatchedAll && discrepancies.every(d => !d.includes("cut point")),
           kMatched: kMatchedAll && discrepancies.every(d => !d.includes("K budget")),
-          budgetMatched: budgetMatchedAll && discrepancies.every(d => !d.includes("reserve")),
-          wrappersMatched: false,
-          fileListMatched: false,
+          budgetMatched: budgetMatchedAll && discrepancies.every(d => !d.includes("memory budget") && !d.includes("memory limit")),
+          wrappersMatched: wrappersMatchedAll && discrepancies.every(d => !d.includes("wrapper overhead")),
+          fileListMatched: fileListMatchedAll && discrepancies.every(d => !d.includes("file list tracking")),
           discrepancies,
-          status: discrepancies.length === 0 && modelsEqual ? "PROVEN" : "UNPROVEN",
+          status: allMatched ? "PROVEN" : "UNPROVEN",
         };
       }
       modeReport.status = anyFailed ? "UNPROVEN" : "OBSERVED";

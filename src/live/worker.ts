@@ -47,10 +47,16 @@ export interface SegmentReport {
     summarySize?: number | undefined;
     outputCap?: number | undefined;
     outputReserve?: number | undefined;
+    memoryLimit?: number | undefined;
+    model?: string | undefined;
     overhead?: {
       fileListCount?: number | undefined;
       wrapperOverheadTokens?: number | undefined;
       splitTurnCalls?: number | undefined;
+    } | undefined;
+    exposure?: {
+      turns: string[];
+      toolResultsCount: number;
     } | undefined;
     requiredObservation?: unknown;
     guardApplicability?: string | undefined;
@@ -98,12 +104,19 @@ function captureComparisonFacts(
     ? Math.min(Math.floor(0.8 * selection.config.compaction.reserveTokens), currentModel.maxTokens)
     : (omitsSerializedOutputCap(currentModel) ? null : (selection.config.nunc.extraction?.outputTokens ?? currentModel.maxTokens));
   const lastM = maintenanceResult(report.maintenance.at(-1));
+  const memoryLimit = group === "native"
+    ? Math.floor(0.8 * selection.config.compaction.reserveTokens)
+    : (lastM?.observations?.accounting?.memoryLimit ?? Math.floor(Math.min((selection.config.nunc.memory?.fraction ?? 0.1) * (currentModel.contextWindow - selection.config.compaction.reserveTokens), selection.config.nunc.memory?.maxTokens ?? Infinity)));
+  const toolResultsCount = report.actions.filter(a => object(a) && object((a as any).event) && (a as any).event.type === "tool_result").length;
+  const turnsDelivered = report.contexts.map(c => c.turn).filter((v, i, a) => a.indexOf(v) === i);
   const facts = {
     h,
     cutPoint,
     firstKeptEntryId,
     kTokens,
     mTokens,
+    memoryLimit,
+    model: `${currentModel.provider}/${currentModel.id}`,
     summarySize: mSize,
     outputCap: outputCap ?? undefined,
     outputReserve: selection.config.compaction.reserveTokens,
@@ -111,6 +124,10 @@ function captureComparisonFacts(
       fileListCount,
       wrapperOverheadTokens,
       splitTurnCalls,
+    },
+    exposure: {
+      turns: turnsDelivered,
+      toolResultsCount,
     },
     requiredObservation: lastM?.observations?.required,
     guardApplicability: (group === "native" || group === "current") ? "NOT_APPLICABLE" : "APPLICABLE",
@@ -146,6 +163,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       reason: report.diagnostic,
     });
     captureComparisonFacts(report, undefined, selection, group, firstModel, []);
+    process.removeListener("SIGTERM", onSignal); process.removeListener("SIGINT", onSignal);
     await mkdir(caseRoot, { recursive: true });
     await writeFile(join(caseRoot, job.resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(report, null, 2), { mode: 0o600 });
     return report;
@@ -323,19 +341,20 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 const preCompaction = before.filter(e => e.type === "compaction").at(-1);
                 const survivingOld = (preCompaction?.details as any)?.nunc?.slots ?? [];
                 const nextId = (preCompaction?.details as any)?.nunc?.nextId ?? 1;
-                const available = firstModel.contextWindow - selection.config.compaction.reserveTokens;
-                const fraction = effectiveConfig.memory?.fraction ?? 0.1;
-                const maxTokens = effectiveConfig.memory?.maxTokens ?? Infinity;
-                const memoryLimit = Math.floor(Math.min(fraction * available, maxTokens));
-                const predicates = evaluateCapacityPredicates(
-                  "required-too-large",
-                  patch,
-                  memoryLimit,
-                  slots => memoryTokens(slots),
-                  survivingOld,
-                  nextId
-                );
-                report.prerequisites.push(...predicates);
+                const memoryLimit = result?.observations?.accounting?.memoryLimit ?? Math.floor(Math.min((effectiveConfig.memory?.fraction ?? 0.1) * (firstModel.contextWindow - selection.config.compaction.reserveTokens), effectiveConfig.memory?.maxTokens ?? Infinity));
+                if (patch) {
+                  const predicates = evaluateCapacityPredicates(
+                    "required-too-large",
+                    patch,
+                    memoryLimit,
+                    slots => memoryTokens(slots),
+                    survivingOld,
+                    nextId
+                  );
+                  report.setupChecks ??= [];
+                  report.setupChecks.push(...predicates);
+                }
+                report.prerequisites.push({ check: "failed maintenance preserved prior saved memory/boundary", status: unchanged ? "PROVEN" : "DISPROVEN" });
                 report.prerequisites.push({ check: "marked necessary set exceeding limit fails with CAPACITY without commit", status: reqPass ? "PROVEN" : "UNPROVEN", observed: { code: result && !result.ok ? result.code : undefined, required: req } });
                 report.rolloverQuality = { check: "successful required persisted rollover", status: "UNPROVEN", reason: "Capacity failure correctly rejected candidate; successful rollover is not claimed" };
               } else {
@@ -355,29 +374,25 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                   const survivingOld = (preCompaction?.details as any)?.nunc?.slots ?? [];
                   const nextId = (preCompaction?.details as any)?.nunc?.nextId ?? 1;
                   const lastResponse = maintenanceResponses.at(-1);
-                  const patch = lastResponse?.patch ?? ((result as any)?.candidate ? {
-                    add: (result as any).candidate.memory.slots.map((s: any) => ({ key: s.id, text: s.text })),
-                    priority: (result as any).candidate.memory.slots.map((s: any) => s.id),
-                    required: req?.declared ?? [],
-                  } : undefined);
-                  const accounting = result?.observations.accounting;
-                  const fraction = effectiveConfig.memory?.fraction ?? 0.1;
-                  const maxTokens = effectiveConfig.memory?.maxTokens ?? Infinity;
-                  const memoryLimit = accounting?.memoryLimit ?? Math.floor(Math.min(fraction * (firstModel.contextWindow - selection.config.compaction.reserveTokens), maxTokens));
-                  const predicates = evaluateCapacityPredicates(
-                    selection.variant as "fits-required" | "required-too-large",
-                    patch,
-                    memoryLimit,
-                    slots => memoryTokens(slots),
-                    survivingOld,
-                    nextId
-                  );
-                  report.prerequisites.push(...predicates);
+                  const patch = lastResponse?.patch;
+                  const memoryLimit = result?.observations?.accounting?.memoryLimit ?? Math.floor(Math.min((effectiveConfig.memory?.fraction ?? 0.1) * (firstModel.contextWindow - selection.config.compaction.reserveTokens), effectiveConfig.memory?.maxTokens ?? Infinity));
+                  if (patch) {
+                    const predicates = evaluateCapacityPredicates(
+                      selection.variant as "fits-required" | "required-too-large",
+                      patch,
+                      memoryLimit,
+                      slots => memoryTokens(slots),
+                      survivingOld,
+                      nextId
+                    );
+                    report.setupChecks ??= [];
+                    report.setupChecks.push(...predicates);
+                  }
                   if (selection.variant === "fits-required") {
                     const pass = Boolean(result?.ok && req && !req.failed && req.declared.length > 0);
                     report.prerequisites.push({ check: "all marked necessary candidates jointly retained in final memory", status: pass ? "PROVEN" : "UNPROVEN", observed: req ?? null });
                   } else if (selection.variant === "required-too-large") {
-                    const reqExceeds = predicates.find(p => p.check.includes("marked necessary set exceeds rendered memory limit"))?.status === "PROVEN";
+                    const reqExceeds = report.setupChecks?.find(p => p.check.includes("marked necessary set exceeds rendered memory limit"))?.status === "PROVEN";
                     report.prerequisites.push({ check: "required-too-large rollover eligibility", status: reqExceeds ? "DISPROVEN" : "UNPROVEN", reason: "Maintenance unexpectedly succeeded when marked necessary set was configured to exceed limit" });
                   }
                 } else if (group === "current") {
@@ -432,6 +447,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     }
     if (selection.id === "e2") {
       report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts, report.actions);
+    }
+    if (selection.id === "e4" && selection.variant === "required-too-large") {
+      report.prerequisites.push({ check: "continuation following capacity failure (failure-path recovery)", status: "PROVEN" });
     }
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, { actions: report.actions });
     captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);

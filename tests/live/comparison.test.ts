@@ -472,7 +472,7 @@ test("comparison defaults and matched modes report truthful differences and matc
   assert(report.unsupportedPublicSeams?.includes("rollover_at_tool_boundary"));
 });
 
-test("matched mode reports PROVEN parity when all 3 groups observe matching cuts, K and reserves", async () => {
+test("matched mode reports PROVEN parity when all 3 groups observe matching cuts, K, reserves, and zero structural discrepancies", async () => {
   const input = await comparisonFixture();
   input.target.stateRoot = join(repository, ".scratch", `nunc-live-pos-${Date.now()}`);
   input.scenarios = [input.scenarios[0]!];
@@ -500,6 +500,10 @@ const base = {
     h: 183616, summarySize: 100, kTokens: 50, mTokens: 50, outputCap: 4096,
     outputReserve: 10000,
     cutPoint: 1,
+    memoryLimit: 10000,
+    model: "test-provider/test-model",
+    exposure: { turns: ["a"], toolResultsCount: 0 },
+    overhead: { fileListCount: 0, wrapperOverheadTokens: 0, splitTurnCalls: 0 },
   },
 };
 await writeFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(base), { mode: 0o600 });
@@ -514,10 +518,127 @@ process.exitCode = 0;
     assert.equal(matchedMode.records.matchedParity?.cutMatched, true);
     assert.equal(matchedMode.records.matchedParity?.kMatched, true);
     assert.equal(matchedMode.records.matchedParity?.budgetMatched, true);
+    assert.equal(matchedMode.records.matchedParity?.wrappersMatched, true);
+    assert.equal(matchedMode.records.matchedParity?.fileListMatched, true);
     assert.deepEqual(matchedMode.records.matchedParity?.discrepancies, []);
   } finally {
     await rm(posMockWorker, { force: true });
     await rm(input.target.stateRoot, { recursive: true, force: true });
+  }
+});
+
+test("matched mode reports UNPROVEN parity when structural discrepancies (wrappers or file lists) exist", async () => {
+  const input = await comparisonFixture();
+  input.target.stateRoot = join(repository, ".scratch", `nunc-live-struct-${Date.now()}`);
+  input.scenarios = [input.scenarios[0]!];
+  input.comparison!.modes = ["matched"];
+  input.limits.maxDurationMs = 5000;
+
+  const structMockWorker = join(repository, ".scratch/test-struct-mock-worker.mjs");
+  await writeFile(structMockWorker, `#!/usr/bin/env node
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const job = JSON.parse(Buffer.concat(chunks).toString());
+const { input, scenarioIndex, resume, group, mode, caseRoot: explicitCaseRoot } = job;
+const selection = input.scenarios[scenarioIndex];
+const caseRoot = explicitCaseRoot ?? join(input.target.stateRoot, \`\${mode ?? "defaults"}-\${group ?? "candidate"}-\${selection.id}\`);
+await mkdir(caseRoot, { recursive: true });
+const base = {
+  pid: process.pid, scenario: selection.id, group: group ?? "candidate", mode: mode ?? "defaults",
+  prerequisites: [{ check: "controlled test mock prerequisite", status: "PROVEN" }],
+  nextTurn: 0, contexts: [], maintenance: [], actions: [{ type: "mock-action" }], commands: [], calibrations: [],
+  score: { artifacts: {}, checks: [{ check: "mock artifact check", status: "PROVEN" }], actionReview: [] },
+  segmentUsage: { calls: 1, tokens: 100, latencyMs: 50, costUsd: null },
+  comparisonFacts: {
+    h: 183616, summarySize: 100, kTokens: 50, mTokens: 50, outputCap: 4096,
+    outputReserve: 10000,
+    cutPoint: 1,
+    memoryLimit: 10000,
+    model: "test-provider/test-model",
+    exposure: { turns: ["a"], toolResultsCount: 0 },
+    overhead: {
+      fileListCount: group === "native" ? 2 : 0,
+      wrapperOverheadTokens: group === "candidate" ? 15 : 0,
+      splitTurnCalls: 0,
+    },
+  },
+};
+await writeFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(base), { mode: 0o600 });
+process.exitCode = 0;
+`);
+
+  try {
+    const report = await executeComparison(input, repository, structMockWorker, new AbortController().signal);
+    const matchedMode = report.comparison.modes.find(m => m.mode === "matched");
+    assert(matchedMode);
+    assert.equal(matchedMode.records.matchedParity?.status, "UNPROVEN");
+    assert.equal(matchedMode.records.matchedParity?.wrappersMatched, false);
+    assert.equal(matchedMode.records.matchedParity?.fileListMatched, false);
+    assert(matchedMode.records.matchedParity!.discrepancies.some(d => d.includes("wrapper overhead difference")));
+    assert(matchedMode.records.matchedParity!.discrepancies.some(d => d.includes("file list tracking difference")));
+  } finally {
+    await rm(structMockWorker, { force: true });
+    await rm(input.target.stateRoot, { recursive: true, force: true });
+  }
+});
+
+test("cleanup: 'remove' on OBSERVED comparison deletes stateRoot and embeds sessions and rawSegments", async () => {
+  const input = await comparisonFixture();
+  input.target.stateRoot = join(repository, ".scratch", `nunc-live-clean-rm-${Date.now()}`);
+  input.target.cleanup = "remove";
+  input.scenarios = [input.scenarios[0]!];
+  input.comparison!.modes = ["defaults"];
+  input.limits.maxDurationMs = 5000;
+
+  const rmWorker = join(repository, ".scratch/test-rm-mock-worker.mjs");
+  await writeFile(rmWorker, `#!/usr/bin/env node
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const job = JSON.parse(Buffer.concat(chunks).toString());
+const { input, scenarioIndex, resume, group, mode, caseRoot: explicitCaseRoot } = job;
+const selection = input.scenarios[scenarioIndex];
+const caseRoot = explicitCaseRoot ?? join(input.target.stateRoot, \`\${mode ?? "defaults"}-\${group ?? "candidate"}-\${selection.id}\`);
+await mkdir(caseRoot, { recursive: true });
+const sessionDir = join(caseRoot, "sessions");
+await mkdir(sessionDir, { recursive: true });
+const sessionFile = join(sessionDir, "session.jsonl");
+await writeFile(sessionFile, JSON.stringify({ type: "session_start", id: "s1" }) + "\\n");
+const base = {
+  pid: process.pid, scenario: selection.id, group: group ?? "candidate", mode: mode ?? "defaults",
+  status: "OBSERVED",
+  prerequisites: [{ check: "controlled test mock prerequisite", status: "PROVEN" }],
+  nextTurn: 0, contexts: [], maintenance: [], actions: [], commands: [], calibrations: [],
+  score: { artifacts: {}, checks: [{ check: "mock artifact check", status: "PROVEN" }], actionReview: [] },
+  sessionFile,
+  segmentUsage: { calls: 1, tokens: 100, latencyMs: 50, costUsd: null },
+  comparisonFacts: {
+    h: 183616, summarySize: 100, kTokens: 50, mTokens: 50, outputCap: 4096,
+    outputReserve: 10000,
+    cutPoint: 1,
+    memoryLimit: 10000,
+    model: "test-provider/test-model",
+    exposure: { turns: ["a"], toolResultsCount: 0 },
+    overhead: { fileListCount: 0, wrapperOverheadTokens: 0 },
+  },
+};
+await writeFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), JSON.stringify(base), { mode: 0o600 });
+process.exitCode = 0;
+`);
+
+  try {
+    const report = await executeComparison(input, repository, rmWorker, new AbortController().signal);
+    assert.equal(report.status, "OBSERVED");
+    assert.equal(report.cleanup, "removed");
+    assert.equal(existsSync(input.target.stateRoot), false);
+    assert(report.sessions && Object.keys(report.sessions).length > 0);
+    assert(report.rawSegments && report.rawSegments.length > 0);
+  } finally {
+    await rm(rmWorker, { force: true });
+    if (existsSync(input.target.stateRoot)) await rm(input.target.stateRoot, { recursive: true, force: true });
   }
 });
 
@@ -640,25 +761,25 @@ test("end-to-end comparison across native, current and candidate via public CLI,
   f.response = (row: any, source: any) => {
     const messages = row?.payload?.messages ?? row?.payload?.input ?? [];
     const firstText = messages.length > 0 ? text(messages[0]) : "";
-    if (firstText.includes("The messages above are a conversation to summarize")) {
+    if (firstText.includes("<conversation>") || firstText.includes("The messages above are a conversation to summarize")) {
       return "## Goal\nComplete investigation.\n\n## Constraints & Preferences\n- preserve conditions\n\n## Progress\nDone: turn 1\n\n## Next Steps\nContinue.";
     }
     if (source) {
-      const isCandidate = JSON.stringify(row.payload).includes("required");
+      const isCandidate = JSON.stringify(row.payload).includes("required: subset of priority") || JSON.stringify(row.payload).includes("four required fields");
       if (isCandidate) return JSON.stringify({ add: [{ key: "k1", text: "note" }], remove: [], priority: ["k1"], required: ["k1"] });
       return JSON.stringify({ add: [{ key: "k1", text: "note" }], remove: [], priority: ["k1"] });
     }
     const lastMsg = messages[messages.length - 1];
     const lastText = lastMsg ? text(lastMsg) : "";
-    const isToolOutput = lastMsg && (lastMsg.role === "toolResult" || lastMsg.type === "function_call_output" || lastText.includes("probe.json") || lastText.includes("decision.json") || lastText.includes("Saved."));
-    if (isToolOutput) {
-      return "Observed and recorded.";
-    }
     if (lastText.includes("Read probe.json")) {
       return { tool: { name: "read", input: { path: "probe.json" } } };
     }
     if (lastText.includes("Write decision.json")) {
       return { tool: { name: "write", input: { path: "decision.json", content: JSON.stringify({ route: "direct", reason: "Direct route is compatible with account isolation." }) } } };
+    }
+    const isToolOutput = lastMsg && (lastMsg.role === "toolResult" || lastMsg.type === "function_call_output" || lastText.includes("cannot preserve per-account isolation") || lastText.includes("Saved."));
+    if (isToolOutput) {
+      return "Observed and recorded.";
     }
     return "Understood. Awaiting instructions.";
   };

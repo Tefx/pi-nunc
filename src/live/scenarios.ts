@@ -416,25 +416,25 @@ export function evaluateE2SetupChecks(
   const m1 = maintenanceEvents[0];
   const maintContext1 = observedContexts.find(c => c.kind === "maintenance");
   const bRecords = maintContext1 ? readContextRecords(maintContext1.context, "B") : [];
-  const turnAIds = new Set(turnEntries["a"] ?? []);
-  const bHasTurnA = turnAIds.size > 0 && bRecords.some(r => r.messages.some(m => userTextFromMessage(m)?.includes("regional lookup configurations")));
+  const turnAIds = turnEntries["a"] ?? [];
+  const bHasTurnA = turnAIds.length > 0 && turnAIds.every(id => bRecords.some(r => (r as any).entryId === id));
   checks.push({
     check: "initial request in B at first maintenance",
     status: bHasTurnA ? "PROVEN" : "UNPROVEN",
-    observed: { bRecordsFound: bRecords.length, bHasTurnA, turnACount: turnAIds.size }
+    observed: { bRecordsFound: bRecords.length, bHasTurnA, turnACount: turnAIds.length }
   });
 
   const m2 = maintenanceEvents[1];
   const maintContext2 = observedContexts.filter(c => c.kind === "maintenance")[1];
   const kRecords = maintContext2 ? readContextRecords(maintContext2.context, "K") : [];
-  const turnCIds = new Set(turnEntries["c"] ?? []);
-  const kHasTurnC = turnCIds.size > 0 && kRecords.some(r => r.messages.some(m => userTextFromMessage(m)?.includes("Read probe.json")));
+  const turnCIds = turnEntries["c"] ?? [];
+  const kHasTurnC = turnCIds.length > 0 && turnCIds.every(id => kRecords.some(r => (r as any).entryId === id));
 
   const rawActions = actions as Array<{ turn?: string; event?: any }>;
   const probeCall = rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "read" && typeof (a.event.input as any)?.path === "string" && (a.event.input as any).path.includes("probe.json"));
   const probeCallId = probeCall?.event?.toolCallId;
   const probeResult = probeCallId ? rawActions.find(a => object(a) && object(a.event) && a.event.type === "tool_result" && a.event.toolCallId === probeCallId && !a.event.isError) : undefined;
-  const kHasProbe = Boolean(probeResult && kRecords.some(r => r.messages.some(m => m.role === "toolResult")));
+  const kHasProbe = Boolean(probeResult && kRecords.some(r => r.messages.some(m => m.role === "toolResult" && (m as any).toolCallId === probeCallId && !(m as any).isError)));
 
   const turnBIds = turnEntries["b"] ?? [];
   const bRetired = Boolean(m2?.ok && turnBIds.length > 0 && turnBIds.every(id => !rebuilt.some(e => e.id === id)));
