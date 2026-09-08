@@ -67,11 +67,15 @@ test("source accounting never uses stale/cache/unknown assistant usage as a zero
   assert.equal(cached.observations.accounting!.mainBeforeTokens, first.observations.accounting!.mainBeforeTokens);
 });
 
-test("actual cached input or thinking-inclusive output above the checked ceiling cannot produce candidate", async () => {
-  for (const supplied of [{ ...usage, cacheRead: 60000 }, { ...usage, output: 8192, reasoning: 8000 }]) {
-    const result = await maintain(await input(), async request => ({ ...answer(undefined, request.model), usage: supplied }));
-    assert(!result.ok); assert.equal(result.code, "CAPACITY"); assert(!("candidate" in result));
-  }
+test("complete extraction over the catalog window still commits; serialized output cap and explicit inputLimit still bind", async () => {
+  const overWindow = await maintain(await input(), async request => ({ ...answer(undefined, request.model), usage: { ...usage, cacheRead: 60000 } }));
+  assert(overWindow.ok, overWindow.ok ? "" : overWindow.message);
+  assert.equal(overWindow.observations.accounting!.inputExceededPlan, true);
+  const overCap = await maintain(await input(), async request => ({ ...answer(undefined, request.model), usage: { ...usage, output: 8192, reasoning: 8000 } }));
+  assert(!overCap.ok); assert.equal(overCap.code, "CAPACITY"); assert.match(overCap.message, /output/);
+  const source = await input(); source.config.extraction.inputLimit = 50000;
+  const overConfigured = await maintain(source, async request => ({ ...answer(undefined, request.model), usage: { ...usage, cacheRead: 60000 } }));
+  assert(!overConfigured.ok); assert.equal(overConfigured.code, "CAPACITY"); assert.match(overConfigured.message, /configured provider input limit/);
 });
 
 test("unknown service usage does not prevent estimate-based maintenance and is not reported as zero", async () => {

@@ -91,11 +91,13 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     const usage = observations.usage;
     observations.accounting.inputExceededPlan = usage.contextInput !== null && usage.contextInput > extractionInputLimit;
     observations.accounting.outputExceededPlan = usage.output !== null && usage.output > config.extraction.outputTokens;
-    const hardInputLimit = Math.min(frozen.model.contextWindow, config.extraction.inputLimit ?? Infinity);
+    // A complete stop already produced the candidate. Reported occupancy vs the
+    // catalog window is observational; vetoing here cancels native compaction and retries forever.
+    if (config.extraction.inputLimit !== undefined && usage.contextInput !== null) {
+      requireThat(usage.contextInput <= config.extraction.inputLimit, "CAPACITY", "Reported extraction input exceeded the configured provider input limit");
+    }
     const hardOutputLimit = Math.min(frozen.model.maxTokens, config.extraction.outputLimit ?? Infinity, outputCapTokens ?? Infinity);
-    requireThat(usage.contextInput === null || usage.contextInput <= hardInputLimit, "CAPACITY", "Reported extraction input exceeded the model/provider input limit");
     requireThat(usage.output === null || usage.output <= hardOutputLimit, "CAPACITY", "Reported output including reasoning exceeded the model/provider output limit or serialized cap");
-    requireThat((usage.totalTokens === null || usage.totalTokens <= frozen.model.contextWindow) && (usage.contextInput === null || usage.output === null || usage.contextInput + usage.output <= frozen.model.contextWindow), "CAPACITY", "Reported extraction input and output exceeded the model window");
     requireThat(Array.isArray(response.content) && response.content.every(b => record(b) && ((b.type === "text" && typeof b.text === "string") || (b.type === "thinking" && typeof b.thinking === "string"))), "RESPONSE", "Unexpected maintenance content or tool call; tools are never executed");
     const text = response.content.filter(b => b.type === "text").map(b => b.text).join("");
     let patch: unknown;

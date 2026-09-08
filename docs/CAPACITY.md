@@ -28,7 +28,7 @@ Extraction retains its separate output and safety reserve, complete delivered-so
 
 Actual capacity errors retain native bounded overflow recovery. Automatic compaction disabled stays disabled; explicit `/compact` remains available. Nunc does not abort then resubmit a user prompt, read pending queues, force a cut, or patch Pi's recovery state.
 
-Stock Pi can return before `session_before_compact` when its default character-based preparation finds no summarizable prefix. This project cannot fix that host path. The repair avoids entering it merely because a request exceeds Nunc's soft planning target. True oversized/unretirable input or a failed native/provider recovery can still require operator intervention; no automatic-recovery guarantee is claimed.
+Stock Pi can return before `session_before_compact` when its default character-based preparation finds no summarizable prefix. This project cannot fix that host path. The repair avoids entering it merely because a request exceeds Nunc's soft planning target. A complete extraction `stop` is not discarded because reported input+cache exceeds the catalog window; that path cancelled auto-compaction and retried the same oversized turn. Explicit extraction `inputLimit`, output caps and candidate growth still bind. True oversized/unretirable input or a failed native/provider recovery can still require operator intervention; no automatic-recovery guarantee is claimed.
 
 ## Regression evidence required
 
