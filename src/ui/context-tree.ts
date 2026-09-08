@@ -17,6 +17,7 @@ export function buildContextNodes(view: ContextView): Map<string, CtxNode> {
   add(scopeCurrent(view.current, add));
   add(scopeLastMain(view.lastMain, add));
   add(scopeLastMaintenance(view.lastMaintenance, add));
+  add(scopeLegend(add));
   return nodes;
 }
 
@@ -103,12 +104,16 @@ function scopeLastMaintenance(last: LastMaintenanceContext | undefined, add: (no
   if (last.cut) {
     children.push(add({
       id: "maint:cut",
-      label: "B/K",
+      label: "B/K · 切分历史",
       description: `B ${last.cut.retiredEntryIds.length} · K ${last.cut.keptEntryIds.length}`,
-      preview: `firstKept ${last.cut.firstKeptEntryId}\nB ${last.cut.retiredEntryIds.length} · K ${last.cut.keptEntryIds.length}`,
+      preview: [
+        `firstKept ${last.cut.firstKeptEntryId}`,
+        `B (Retiring): ${last.cut.retiredEntryIds.length} 项 · K (Kept): ${last.cut.keptEntryIds.length} 项`,
+        "切分在实际维护时确定，不提前预测。",
+      ].join("\n"),
       children: [
-        add({ id: "maint:cut:B", label: "B", description: String(last.cut.retiredEntryIds.length), preview: last.cut.retiredEntryIds.join("\n") || "(empty B)", children: [] }),
-        add({ id: "maint:cut:K", label: "K", description: String(last.cut.keptEntryIds.length), preview: last.cut.keptEntryIds.join("\n") || "(empty K)", children: [] }),
+        add({ id: "maint:cut:B", label: "B (Retiring)", description: String(last.cut.retiredEntryIds.length), preview: `B (选定退役的历史前段):\n${last.cut.retiredEntryIds.join("\n") || "(empty B)"}`, children: [] }),
+        add({ id: "maint:cut:K", label: "K (Kept)", description: String(last.cut.keptEntryIds.length), preview: `K (继续保留的近期历史后缀):\n${last.cut.keptEntryIds.join("\n") || "(empty K)"}`, children: [] }),
       ],
     }));
   }
@@ -155,9 +160,9 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
   return [
     add({
       id: `${prefix}:F`,
-      label: "F",
+      label: "F · Fixed",
       description: tokenLabel(layout.system.tokens + (layout.tools.tokens ?? 0), layout.tools.unknown),
-      preview: `System ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
+      preview: `F (Fixed): 有效 system prompt 与工具定义\nSystem ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
       children: [
         add({ id: `${prefix}:F:system`, label: "system", description: `${thousands(layout.system.tokens)} tok`, preview: layout.system.text || "(empty system)", children: [] }),
         add({ id: `${prefix}:F:tools`, label: "tools", description: `${layout.tools.count}`, preview: layout.tools.names.join(", ") || "(no tools)", children: toolIds }),
@@ -165,16 +170,16 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
     }),
     add({
       id: `${prefix}:M`,
-      label: "M",
+      label: "M · Memory",
       description: `${slots?.length ?? 0} slots`,
-      preview: slots ? `${slots.length} slots` : "M not in this observation",
+      preview: slots ? `M (Memory): 当前有效工作记忆 (${slots.length} slots)\n${slots.length} slots` : "M not in this observation",
       children: mIds,
     }),
     add({
       id: `${prefix}:R`,
-      label: "R",
+      label: "R · Raw history",
       description: `${layout.messageCount} messages / ${layout.blockCount} blocks`,
-      preview: `${layout.messageCount} messages / ${layout.blockCount} blocks`,
+      preview: `R (Raw history): 已交付活动原文历史\n${layout.messageCount} messages / ${layout.blockCount} blocks`,
       children: rIds,
     }),
   ];
@@ -365,3 +370,93 @@ function countsPreview(layout: ContextLayout): string {
 function nullLabel(value: number | null): string {
   return value === null ? "unknown" : thousands(value);
 }
+
+function scopeLegend(add: (node: CtxNode) => string): CtxNode {
+  const children = [
+    add({
+      id: "legend:F",
+      label: "F · Fixed (系统提示词与工具)",
+      description: "有效 system prompt 与工具定义",
+      preview: [
+        "F (Fixed): 有效 system prompt 与可用工具定义。",
+        "• 提供当前请求的基础运行环境与指令约束。",
+        "• 并非绝对不可变：切换模型、修改配置或工具集时按当时有效设置重新确定。",
+      ].join("\n"),
+      children: [],
+    }),
+    add({
+      id: "legend:M",
+      label: "M · Memory (结构化工作记忆)",
+      description: "当前有效工作记忆 slots 及预算",
+      preview: [
+        "M (Memory): 当前有效结构化工作记忆。",
+        "• 由若干具名 slot（含 id 与正文）构成，每次主请求完整携带。",
+        "• 它不是消息计数器，而是跨越近期窗口继续工作所需的关键约束与事实。",
+        "• 可通过人工编辑单条修改，或在触发维护时由模型提议增删。",
+      ].join("\n"),
+      children: [],
+    }),
+    add({
+      id: "legend:R",
+      label: "R · Raw history (活动原文历史)",
+      description: "已交付并仍在活动上下文中的原文历史",
+      preview: [
+        "R (Raw history): 已交付并保留在当前活动上下文中的历史记录。",
+        "• 包含近期对话的用户输入、助手回复与工具调用结果等。",
+        "• 普通工作时保留完整原文，维护前 R 由 B 与 K 两部分构成 (R = B | K)。",
+      ].join("\n"),
+      children: [],
+    }),
+    add({
+      id: "legend:B",
+      label: "B · Retiring (选定退役的历史)",
+      description: "维护时选定退役的较早原文前段",
+      preview: [
+        "B (Retiring): 维护时选定退出模型可见上下文的较早连续历史前段。",
+        "• 仅在实际触发维护时根据当前窗口与保留目标切分确定，不会提前预测。",
+        "• 退出上下文后仍保留在完整会话文件 (JSONL) 中，但后续模型请求不再加载。",
+      ].join("\n"),
+      children: [],
+    }),
+    add({
+      id: "legend:K",
+      label: "K · Kept (继续保留的近期历史)",
+      description: "维护后继续逐字保留的近期原文后缀",
+      preview: [
+        "K (Kept): 维护后继续保留在活跃上下文中的近期原文历史后缀。",
+        "• 保持原始输入顺序与内容，不重新生成或压缩。",
+        "• 维护模型仅从此段之后接续工作，与有效 M 共同维持当前工作状态。",
+      ].join("\n"),
+      children: [],
+    }),
+    add({
+      id: "legend:D",
+      label: "D · Queued (排队/未交付输入)",
+      description: "尚未交付给模型的后续指令",
+      preview: [
+        "D (Draft / Queued): 排队中或尚未交付给模型的用户后续输入或在途指令。",
+        "• 在正式交付前不计入当前活动布局或维护切分。",
+        "• 维护完成后作为新一轮对话的输入逐条交付。",
+      ].join("\n"),
+      children: [],
+    }),
+  ];
+  return {
+    id: "scope:legend",
+    label: "Legend · 缩写说明",
+    description: "F / M / R / B / K / D 语义",
+    preview: [
+      "Context 缩写说明 (Legend)：",
+      "• F (Fixed): 当前有效 system prompt 与可用工具定义（随模型/配置重新确定）",
+      "• M (Memory): 当前有效结构化工作记忆 slots 及预算（非消息计数器）",
+      "• R (Raw history): 已交付并保留在当前活动上下文中的原文历史 (R = B | K)",
+      "• B (Retiring): 维护时选定退役的较早历史（实际维护时确定，不提前预测）",
+      "• K (Kept): 维护后继续逐字保留的近期原文历史后缀",
+      "• D (Queued): 排队中尚未交付的输入（不计入当前活动布局）",
+      "",
+      "按 Enter 可进入查看各缩写的详细定义与设计含义。",
+    ].join("\n"),
+    children,
+  };
+}
+

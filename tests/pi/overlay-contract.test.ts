@@ -450,4 +450,87 @@ test("compressed paste with literal backslash and Ctrl+A backslash fallback pres
   }
 });
 
+test("slot preview formats Markdown while editor draft and session memory preserve raw text", () => {
+  const rawText = "## Policy\n\n- **Must** retain `Node 18`\n- Example code:\n  ```js\n  const a = 1;\n  ```";
+  const f = fixture({ text: rawText });
+  // 1. Browse mode: slot preview renders with Markdown formatting
+  const preview = clean(f.overlay.render(80));
+  assert.match(preview, /Policy/);
+  assert.match(preview, /Must retain/);
+  assert.match(preview, /const a = 1;/);
+  // 2. Enter edit mode: editor receives exact raw text, unformatted and unnormalized
+  f.overlay.handleInput("\r");
+  assert.equal(f.overlay.layerName, "edit");
+  assert.equal(f.overlay.draftText(), rawText);
+  assert.equal(f.view.memory.slots[0]?.text, rawText);
+  // 3. Save raw text: session receives exact raw text
+  f.overlay.handleInput("\r");
+  assert.equal(f.overlay.layerName, "browse");
+  assert.equal(f.saves[0]?.text, rawText);
+  assert.equal(f.view.memory.slots[0]?.text, rawText);
+});
+
+test("multiline wrapped markdown preview scrolls to the exact final line with page keys", () => {
+  const mdItems = Array.from({ length: 50 }, (_, i) => `- Item **#${i}**: code \`val_${i}\` for testing`).join("\n");
+  const f = fixture({ rows: 20, text: mdItems });
+  let visible = "";
+  for (let i = 0; i < 60; i++) {
+    visible = clean(f.overlay.render(80));
+    f.overlay.handleInput("\x1b[6~"); // PageDown
+  }
+  assert.match(visible, /Item #49/);
+});
+
+test("context abbreviations legend is reachable in panel and explains F, M, R, B, K, D", () => {
+  const f = fixture();
+  f.overlay.handleInput("\t"); // switch to Context tab
+  assert.equal(f.overlay.tabName, "context");
+
+  // Navigate down to item 3: Legend · 缩写说明
+  f.overlay.handleInput("\x1b[B"); // to last-main
+  f.overlay.handleInput("\x1b[B"); // to last-maintenance
+  f.overlay.handleInput("\x1b[B"); // to Legend
+  const legendPreview = clean(f.overlay.render(90));
+  assert.match(legendPreview, /F \(Fixed\)/);
+  assert.match(legendPreview, /M \(Memory\)/);
+  assert.match(legendPreview, /R \(Raw history\)/);
+  assert.match(legendPreview, /B \(Retiring\)/);
+  assert.match(legendPreview, /K \(Kept\)/);
+  assert.match(legendPreview, /D \(Queued\)/);
+
+  // Enter to drill down into individual abbreviation nodes
+  f.overlay.handleInput("\r");
+  const legendDrill = clean(f.overlay.render(90));
+  assert.match(legendDrill, /F · Fixed/);
+  assert.match(legendDrill, /M · Memory/);
+  assert.match(legendDrill, /R · Raw history/);
+  assert.match(legendDrill, /B · Retiring/);
+  assert.match(legendDrill, /K · Kept/);
+  assert.match(legendDrill, /D · Queued/);
+
+  // Move down to M
+  f.overlay.handleInput("\x1b[B");
+  const mPreview = clean(f.overlay.render(90));
+  assert.match(mPreview, /不是消息计数器/);
+
+  // Move down to B
+  f.overlay.handleInput("\x1b[B");
+  f.overlay.handleInput("\x1b[B");
+  const bPreview = clean(f.overlay.render(90));
+  assert.match(bPreview, /退役/);
+  assert.match(bPreview, /不会提前预测/);
+
+  // Move down to D
+  f.overlay.handleInput("\x1b[B");
+  f.overlay.handleInput("\x1b[B");
+  const dPreview = clean(f.overlay.render(90));
+  assert.match(dPreview, /排队/);
+  assert.match(dPreview, /不计入当前活动布局/);
+
+  // Esc returns to root level of Context tab
+  f.overlay.handleInput("\x1b");
+  assert.match(clean(f.overlay.render(90)), /Legend · 缩写说明/);
+});
+
+
 

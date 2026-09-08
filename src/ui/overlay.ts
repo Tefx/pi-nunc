@@ -5,6 +5,7 @@ import {
   Input,
   Key,
   KeybindingsManager,
+  Markdown,
   SelectList,
   matchesKey,
   truncateToWidth,
@@ -12,6 +13,7 @@ import {
   wrapTextWithAnsi,
   type Focusable,
   type Keybinding,
+  type MarkdownTheme,
   type SelectItem,
   type SelectListTheme,
   type TUI,
@@ -50,10 +52,30 @@ function windowEditorLines(lines: string[], budget: number): string[] {
   return lines.slice(start, start + budget);
 }
 
+function makeMarkdownTheme(t: Theme): MarkdownTheme {
+  return {
+    heading: text => t.fg("mdHeading", text),
+    link: text => t.fg("mdLink", text),
+    linkUrl: text => t.fg("mdLinkUrl", text),
+    code: text => t.fg("mdCode", text),
+    codeBlock: text => t.fg("mdCodeBlock", text),
+    codeBlockBorder: text => t.fg("mdCodeBlockBorder", text),
+    quote: text => t.fg("mdQuote", text),
+    quoteBorder: text => t.fg("mdQuoteBorder", text),
+    hr: text => t.fg("mdHr", text),
+    listBullet: text => t.fg("mdListBullet", text),
+    bold: text => t.bold(text),
+    italic: text => t.italic(text),
+    underline: text => t.underline(text),
+    strikethrough: text => t.strikethrough(text),
+  };
+}
+
 export class NuncOverlay implements Focusable {
   private readonly host: OverlayHost;
   private readonly search: Input;
   private readonly editorTui: TUI;
+  private readonly mdTheme: MarkdownTheme;
   private memoryView: MemoryView;
   private contextView: ContextView;
   private tab: OverlayTab = "slots";
@@ -65,6 +87,7 @@ export class NuncOverlay implements Focusable {
   private previousUntrimmed = "";
   private editorRows = 6;
   private preferredSlot: string | undefined;
+  private preferredContextId: string | undefined;
   private contextPath: string[] = [];
   private previewOffset = 0;
   private previewViewport = 1;
@@ -76,6 +99,7 @@ export class NuncOverlay implements Focusable {
 
   constructor(host: OverlayHost) {
     this.host = host;
+    this.mdTheme = makeMarkdownTheme(host.theme);
     this.search = new Input({ prompt: "", placeholder: "Search…", placeholderStyle: text => this.host.theme.fg("muted", text) });
     this.search.focused = true;
     this.memoryView = host.memory.read(host.ctx);
@@ -180,7 +204,8 @@ export class NuncOverlay implements Focusable {
   private handleBrowse(data: string): void {
     if (this.hit(data, "tui.select.cancel")) {
       if (this.tab === "context" && this.contextPath.length > 0) {
-        this.contextPath.pop();
+        const popped = this.contextPath.pop();
+        this.preferredContextId = popped;
         this.previewOffset = 0;
         this.rebuildList();
         this.host.tui.requestRender();
@@ -445,7 +470,10 @@ export class NuncOverlay implements Focusable {
   private rebuildList(): void {
     const items = this.tab === "slots" ? this.slotItems() : this.contextItems();
     const previous = this.list.getSelectedItem()?.value;
-    const selected = this.tab === "slots" ? (this.preferredSlot ?? previous) : previous;
+    const selected = this.tab === "slots"
+      ? (this.preferredSlot ?? previous)
+      : (this.preferredContextId ?? previous);
+    this.preferredContextId = undefined;
     this.list = this.makeList(items);
     const index = items.findIndex(item => item.value === selected);
     if (index >= 0) this.list.setSelectedIndex(index);
@@ -462,7 +490,7 @@ export class NuncOverlay implements Focusable {
   private contextItems(): SelectItem[] {
     this.nodes = buildContextNodes(this.contextView);
     const parent = this.contextPath.at(-1);
-    const ids = parent ? this.nodes.get(parent)?.children ?? [] : ["scope:current", "scope:last-main", "scope:last-maintenance"];
+    const ids = parent ? this.nodes.get(parent)?.children ?? [] : ["scope:current", "scope:last-main", "scope:last-maintenance", "scope:legend"];
     const query = this.search.getValue().trim().toLowerCase();
     return ids.map(id => this.nodes.get(id)).filter((node): node is CtxNode => {
       if (!node) return false;
@@ -598,22 +626,32 @@ export class NuncOverlay implements Focusable {
     return undefined;
   }
 
-  private previewLines(contentWidth: number, budget: number): string[] {
+  private getPreviewLines(contentWidth: number): string[] {
     const theme = this.host.theme;
-    let text = "";
     if (this.tab === "slots") {
       const id = this.list.getSelectedItem()?.value;
       const slot = this.memoryView.memory.slots.find(item => item.id === id);
-      text = slot ? `${slot.id}\n${slot.text}` : "";
-    } else {
-      const node = this.currentNode();
-      text = node?.preview ?? "";
+      if (!slot) return [theme.fg("muted", " ")];
+      const header = theme.fg("accent", theme.bold(slot.id));
+      const md = new Markdown(slot.text, 0, 0, this.mdTheme);
+      return [header, ...md.render(contentWidth)];
     }
-    const wrapped = text ? text.split(/\r?\n/).flatMap(line => wrapTextWithAnsi(line, contentWidth)) : [theme.fg("muted", " ")];
+    const node = this.currentNode();
+    if (!node || !node.preview) return [theme.fg("muted", " ")];
+    if (node.jumpSlot) {
+      const header = theme.fg("accent", theme.bold(node.jumpSlot));
+      const md = new Markdown(node.preview, 0, 0, this.mdTheme);
+      return [header, ...md.render(contentWidth)];
+    }
+    return node.preview.split(/\r?\n/).flatMap(line => wrapTextWithAnsi(line, contentWidth));
+  }
+
+  private previewLines(contentWidth: number, budget: number): string[] {
+    const lines = this.getPreviewLines(contentWidth);
     const view = Math.max(1, budget);
-    const maxOffset = Math.max(0, wrapped.length - view);
+    const maxOffset = Math.max(0, lines.length - view);
     this.previewOffset = Math.min(Math.max(0, this.previewOffset), maxOffset);
-    return wrapped.slice(this.previewOffset, this.previewOffset + view);
+    return lines.slice(this.previewOffset, this.previewOffset + view);
   }
 
   private hintLine(): string {
