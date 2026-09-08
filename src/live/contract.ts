@@ -42,7 +42,8 @@ function text(value: unknown): value is string { return typeof value === "string
 export interface Limits { maxCalls: number; maxTotalTokens: number; maxCostUsd: number | null; maxDurationMs: number; maxOutputTokens: number }
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large"; config: RunConfig }
+export interface ScenarioAssets { inputs?: string; observer?: string }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string }
@@ -67,6 +68,7 @@ export interface RunInput {
   receipt?: Receipt;
   observations?: Array<"stock_rpc" | "stock_tui" | "continuation">;
   comparison?: ComparisonConfig;
+  assets?: ScenarioAssets;
 }
 export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.85.1"; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
@@ -95,7 +97,7 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
   if (config.policyFile !== undefined) requireValue(text(config.policyFile) && isAbsolute(config.policyFile), "CONFIG", "Runner policyFile must be absolute and repository-local");
 }
 export function parseInput(value: unknown, execution = false): RunInput {
-  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison"], "input");
+  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison", "assets"], "input");
   requireValue(value.version === 1, "INPUT", "Expected input version 1");
   requireValue(value.mode === "controlled" || value.mode === "native", "INPUT", "Invalid internal execution mode");
   requireValue(!execution || value.mode === "native", "EXECUTION", "Controlled observations cannot dispatch native service calls");
@@ -115,7 +117,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
   requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0, "SCENARIO", "Nonempty scenario selection required");
   const ids = new Set<string>();
   for (const selection of value.scenarios) {
-    keys(selection, ["id", "variant", "config"], "scenario");
+    keys(selection, ["id", "variant", "config", "assets"], "scenario");
     requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
     if (selection.id === "c4") {
       requireValue(["full", "capacity"].includes(String(selection.variant)), "SCENARIO", "c4 requires full/capacity");
@@ -128,8 +130,18 @@ export function parseInput(value: unknown, execution = false): RunInput {
     }
     const key = `${selection.id}/${selection.variant ?? ""}`; requireValue(!ids.has(key), "SCENARIO", "Duplicate scenario"); ids.add(key);
     validateConfig(selection.config);
+    if (selection.assets !== undefined) {
+      keys(selection.assets, ["inputs", "observer"], "scenario.assets");
+      if (selection.assets.inputs !== undefined) requireValue(text(selection.assets.inputs), "ASSETS", "scenario.assets.inputs must be a non-empty string path");
+      if (selection.assets.observer !== undefined) requireValue(text(selection.assets.observer), "ASSETS", "scenario.assets.observer must be a non-empty string path");
+    }
     if (selection.id === "c4" && selection.variant === "full") requireValue(selection.config.nunc.extraction?.toolResults === "full", "CONFIG", "c4/full requires full extraction");
     if (selection.id === "c5") requireValue(value.models.length === 2 && Number(value.models[1].contextWindow) < Number(value.models[0].contextWindow), "MODEL", "c5 requires a distinct authorized strictly smaller model");
+  }
+  if (value.assets !== undefined) {
+    keys(value.assets, ["inputs", "observer"], "assets");
+    if (value.assets.inputs !== undefined) requireValue(text(value.assets.inputs), "ASSETS", "assets.inputs must be a non-empty string path");
+    if (value.assets.observer !== undefined) requireValue(text(value.assets.observer), "ASSETS", "assets.observer must be a non-empty string path");
   }
   if (value.comparison !== undefined) {
     keys(value.comparison, ["modes", "targets"], "comparison");
@@ -224,6 +236,8 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     catch { throw new RunnerError("BUILD", "Current baseline target must have compiled dist/src/index.js"); }
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
     requireValue(curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version === "0.85.1", "DEPENDENCY", "Current baseline target requires Pi 0.85.1");
+    // Verify baseline build parity against its tracked source
+    await assertBuildParity(curRepo);
 
     let natRepo: string;
     try { natRepo = await realpath(input.comparison.targets.native.repository); }
@@ -233,8 +247,11 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const natPiPkg = join(natRepo, "node_modules/@earendil-works/pi-coding-agent/package.json");
     try { const stat = await lstat(natPiPkg); requireValue(stat.isFile(), "DEPENDENCY", "Native target missing Pi package.json"); }
     catch { throw new RunnerError("DEPENDENCY", "Native target must have installed @earendil-works/pi-coding-agent"); }
-    const natPiVer = JSON.parse(await readFile(natPiPkg, "utf8")).version;
-    requireValue(natPiVer === "0.85.1", "DEPENDENCY", `Native target requires Pi 0.85.1, found ${natPiVer}`);
+    const natPiManifest = JSON.parse(await readFile(natPiPkg, "utf8"));
+    requireValue(natPiManifest.version === "0.85.1", "DEPENDENCY", `Native target requires Pi 0.85.1, found ${natPiManifest.version}`);
+    const natCliBin = join(natRepo, "node_modules/@earendil-works/pi-coding-agent", natPiManifest.bin?.pi ?? "dist/bundle/cli.js");
+    try { const stat = await lstat(natCliBin); requireValue(stat.isFile(), "DEPENDENCY", "Native target missing Pi CLI bin"); }
+    catch { throw new RunnerError("DEPENDENCY", "Native target must have executable Pi CLI binary"); }
   }
   const candidate = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   if (input.mode === "native") {
@@ -260,5 +277,9 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.85.1", callsMade: 0 };
   if (input.receipt !== undefined) requireValue(canonical(input.receipt) === canonical(receipt), "RECEIPT", "Preflight receipt does not match current target/config/scenarios/candidate");
   return receipt;
+}
+export function parseComparisonInput(value: unknown, execution = false): RunInput {
+  requireValue(object(value) && (value as { comparison?: unknown }).comparison !== undefined, "COMPARISON", "comparison configuration is required for compare-extraction");
+  return parseInput(value, execution);
 }
 export function publicInput(input: RunInput): RunInput { return structuredClone(input); }

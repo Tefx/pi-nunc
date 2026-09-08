@@ -163,11 +163,14 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
   requireValue(stringList(finalObs.setupChecks) && stringList(finalObs.actionChecks), "SCENARIO", "Invalid observer criteria");
   return { input: raw as unknown as ScenarioInput, observer: { ...finalObs, id: selection.id } as unknown as ScenarioObserver };
 }
-export async function loadScenario(repository: string, selection: Selection): Promise<{ input: ScenarioInput; observer: ScenarioObserver }> {
+export async function loadScenario(repository: string, selection: Selection, explicitAssets?: { inputs?: string; observer?: string }): Promise<{ input: ScenarioInput; observer: ScenarioObserver }> {
+  const assets = selection.assets ?? explicitAssets;
   const isExtraction = selection.id.startsWith("e");
-  const inputsFile = isExtraction ? "tests/scenarios/extraction-inputs.json" : "tests/scenarios/inputs.json";
-  const observerFile = isExtraction ? "tests/scenarios/extraction-observer.json" : "tests/scenarios/observer.json";
-  return parseScenario(JSON.parse(await readFile(join(repository, inputsFile), "utf8")), JSON.parse(await readFile(join(repository, observerFile), "utf8")), selection);
+  const inputsFile = assets?.inputs ?? (isExtraction ? "tests/scenarios/extraction-inputs.json" : "tests/scenarios/inputs.json");
+  const observerFile = assets?.observer ?? (isExtraction ? "tests/scenarios/extraction-observer.json" : "tests/scenarios/observer.json");
+  const inputsPath = isAbsolute(inputsFile) ? inputsFile : join(repository, inputsFile);
+  const observerPath = isAbsolute(observerFile) ? observerFile : join(repository, observerFile);
+  return parseScenario(JSON.parse(await readFile(inputsPath, "utf8")), JSON.parse(await readFile(observerPath, "utf8")), selection);
 }
 export async function seedScenario(input: ScenarioInput, cwd: string): Promise<void> {
   await mkdir(cwd, { recursive: true });
@@ -202,7 +205,7 @@ export function checkArtifact(check: ArtifactCheck, artifact: unknown): CheckRes
   );
   return { check: `${check.path}${check.pointer}`, status: passed ? "PROVEN" : "DISPROVEN", observed: observed ?? null };
 }
-export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[]) {
+export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[] }) {
   const artifacts: Record<string, unknown> = {};
   for (const check of observer.artifactChecks) {
     if (Object.hasOwn(artifacts, check.path)) continue;
@@ -212,7 +215,102 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   }
   const eligible = prerequisites.length > 0 && prerequisites.every(p => p.status === "PROVEN");
   const checks = observer.artifactChecks.map(check => eligible ? checkArtifact(check, artifacts[check.path]) : { check: `${check.path}${check.pointer}`, status: "UNPROVEN" as const, reason: "Required persisted source placement/restart/capacity prerequisites did not pass" });
-  return { artifacts, checks, actionReview: observer.actionChecks.map(check => ({ check, status: "UNPROVEN" as const, reason: "Independent observer must inspect actual session/tool actions; no judge model is called" })) };
+  const actionReview = observer.actionChecks.map(check => {
+    // Check if python3 verify.py execution is evidenced in actual tool actions
+    const hasVerifyAction = Array.isArray(context?.actions) && context.actions.some(a => object(a) && object((a as any).event) && (a as any).event.type === "tool_call" && (a as any).event.toolName === "bash" && typeof (a as any).event.input?.command === "string" && (a as any).event.input.command.includes("verify.py"));
+    if (check.includes("python3 verify.py") && hasVerifyAction) {
+      return { check, status: "PROVEN" as const, observed: { verifyCommandExecuted: true } };
+    }
+    return { check, status: "UNPROVEN" as const, reason: "Independent observer must inspect actual session/tool actions; no judge model is called" };
+  });
+  return { artifacts, checks, actionReview };
+}
+export function evaluateCapacityPredicates(
+  variant: "fits-required" | "required-too-large",
+  patch: { add?: Array<{ key: string; text: string }>; remove?: string[]; priority?: string[]; required?: string[] } | undefined,
+  memoryLimit: number,
+  measure: (slots: Array<{ key: string; text: string }>) => number
+): CheckResult[] {
+  const results: CheckResult[] = [];
+  if (!patch || !Array.isArray(patch.priority)) {
+    results.push({ check: "valid patch for capacity predicate evaluation", status: "UNPROVEN", reason: "No valid patch observed" });
+    return results;
+  }
+  const requiredKeys = new Set(patch.required ?? []);
+  const allCandidates = (patch.add ?? []);
+  const requiredCandidates = allCandidates.filter(c => requiredKeys.has(c.key));
+  const optionalCandidates = allCandidates.filter(c => !requiredKeys.has(c.key));
+
+  const reqSize = measure(requiredCandidates);
+  const totalSize = measure(allCandidates);
+
+  if (variant === "fits-required") {
+    const reqFits = reqSize <= memoryLimit;
+    results.push({
+      check: "all marked necessary candidates jointly fit within memory limit with growth space",
+      status: reqFits ? "PROVEN" : "UNPROVEN",
+      observed: { requiredTokens: reqSize, memoryLimit }
+    });
+    const totalExceeds = totalSize > memoryLimit;
+    results.push({
+      check: "all candidates together exceed memory limit (actual competition)",
+      status: totalExceeds ? "PROVEN" : "UNPROVEN",
+      observed: { totalCandidateTokens: totalSize, memoryLimit }
+    });
+    const largerFound = requiredCandidates.some(req => optionalCandidates.some(opt => measure([req]) > measure([opt])));
+    results.push({
+      check: "at least one necessary candidate is larger than an optional candidate",
+      status: optionalCandidates.length > 0 && largerFound ? "PROVEN" : "UNPROVEN",
+      observed: { requiredCount: requiredCandidates.length, optionalCount: optionalCandidates.length, largerFound }
+    });
+  } else if (variant === "required-too-large") {
+    const reqExceeds = reqSize > memoryLimit;
+    results.push({
+      check: "marked necessary set exceeds rendered memory limit or leaves insufficient growth space",
+      status: reqExceeds ? "PROVEN" : "UNPROVEN",
+      observed: { requiredTokens: reqSize, memoryLimit }
+    });
+    const optFits = optionalCandidates.length > 0 && optionalCandidates.some(opt => measure([opt]) <= memoryLimit);
+    results.push({
+      check: "at least one optional candidate fits within memory limit",
+      status: optFits ? "PROVEN" : "UNPROVEN",
+      observed: { optionalCount: optionalCandidates.length, optionalFits: optFits }
+    });
+  }
+  return results;
+}
+export function evaluateE2SetupChecks(
+  turnEntries: Record<string, string[]>,
+  branch: SessionEntry[],
+  rebuilt: SessionEntry[],
+  maintenanceEvents: MaintenanceResult[]
+): CheckResult[] {
+  const checks: CheckResult[] = [];
+  const m1 = maintenanceEvents[0];
+  checks.push({
+    check: "initial request in B at first maintenance",
+    status: m1?.ok ? "PROVEN" : "UNPROVEN"
+  });
+  const m2 = maintenanceEvents[1];
+  const bRetired = Boolean(m2?.ok && (turnEntries["b"] ?? []).every(id => !rebuilt.some(e => e.id === id)));
+  checks.push({
+    check: "correction and probe in K at second maintenance while b retires",
+    status: m2?.ok && bRetired ? "PROVEN" : "UNPROVEN",
+    observed: { bRetired }
+  });
+  const provisionalM = Boolean(m1 && m1.ok && (m1.candidate.memory.slots ?? []).some(s => s.text.includes("timeout") || s.text.includes("cache")));
+  checks.push({
+    check: "natural pre-c M carried provisional route or timeout",
+    status: provisionalM ? "PROVEN" : "UNPROVEN",
+    observed: { provisionalInM: provisionalM }
+  });
+  const hasSplit = Boolean(m2 && m2.ok && m1 && m1.ok && m2.candidate.memory.slots.length > m1.candidate.memory.slots.length);
+  checks.push({
+    check: "partial mixed-slot update or split observed",
+    status: hasSplit ? "PROVEN" : "UNPROVEN",
+    observed: { preSlots: m1 && m1.ok ? m1.candidate.memory.slots.length : 0, postSlots: m2 && m2.ok ? m2.candidate.memory.slots.length : 0 }
+  });
+  return checks;
 }
 export function maintenanceResult(event: unknown): MaintenanceResult | undefined {
   const result = object(event) && object(event.result) ? event.result : event;

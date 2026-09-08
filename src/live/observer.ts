@@ -1,4 +1,5 @@
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { boundedProvider, BudgetLedger } from "./budget.js";
@@ -7,6 +8,7 @@ import { toolPath } from "./tool-path.js";
 
 function toolBlockReason(error: unknown, aborted: boolean): string {
   if (aborted || (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) return "Tool action after deadline";
+  if (error instanceof RunnerError && error.code === "TOOL_COMMAND") return error.message;
   if (error instanceof RunnerError && error.code === "TOOL_KIND") return "Tool kind is outside authorization";
   if (error instanceof RunnerError && error.code === "WRITE_SIZE") return "Artifact write exceeds bound";
   if (error instanceof RunnerError && error.code === "TOOL_PATH") return "Tool path is outside scenario task files";
@@ -44,10 +46,21 @@ export default function observer(pi: ExtensionAPI): void {
   pi.on("tool_call", async event => {
     try {
       signal.throwIfAborted();
-      requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL_KIND", "Only scenario-local read/write/edit are authorized");
-      await toolPath(binding.cwd, "path" in event.input ? event.input.path : undefined, event.toolName as "read" | "write" | "edit");
-      if (event.toolName === "write") requireValue(typeof event.input.content === "string" && Buffer.byteLength(event.input.content) <= 1_000_000, "WRITE_SIZE", "Artifact write exceeds bound");
-      log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
+      if (event.toolName === "bash") {
+        const cmd = typeof (event.input as any)?.command === "string" ? (event.input as any).command.trim() : "";
+        requireValue(
+          cmd === "python3 verify.py" || cmd === "/usr/bin/python3 verify.py" || cmd === "python verify.py",
+          "TOOL_COMMAND",
+          "Only authorized fixture verification command 'python3 verify.py' is permitted"
+        );
+        requireValue(existsSync(join(binding.cwd, "verify.py")), "TOOL_PATH", "verify.py missing in task directory");
+        log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
+      } else {
+        requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL_KIND", "Only scenario-local read/write/edit/bash(verify.py) are authorized");
+        await toolPath(binding.cwd, "path" in event.input ? event.input.path : undefined, event.toolName as "read" | "write" | "edit");
+        if (event.toolName === "write") requireValue(typeof event.input.content === "string" && Buffer.byteLength(event.input.content) <= 1_000_000, "WRITE_SIZE", "Artifact write exceeds bound");
+        log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
+      }
     } catch (error) { return { block: true, reason: toolBlockReason(error, signal.aborted) }; }
   });
   pi.on("tool_result", event => log("action", { type: "tool_result", toolName: event.toolName, toolCallId: event.toolCallId, isError: event.isError, content: event.content }));

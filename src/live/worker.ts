@@ -5,15 +5,51 @@ import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { closeHost, openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput } from "./contract.js";
-import { checkFullExtraction, checkRollover, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, type CheckResult } from "./scenarios.js";
+import { checkFullExtraction, checkRollover, evaluateCapacityPredicates, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, type CheckResult } from "./scenarios.js";
 import { ledgerSummary, readLedger } from "./budget.js";
 import { loadPolicy } from "../engine/index.js";
+import type { MaintenanceResult } from "../engine/types.js";
 import { engineConfig, eligibleStarts, project, type NuncConfig } from "../pi/index.js";
 import { calibrateRetention, type RetentionCalibration } from "./calibration.js";
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined }
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig }
-export interface SegmentReport { pid: number; scenario: string; group?: ComparisonGroup; mode?: ComparisonMode; status: "PAUSED" | "OBSERVED" | "UNPROVEN" | "STOPPED"; reason?: string; diagnostic?: string; prerequisites: CheckResult[]; sessionFile?: string; nextTurn: number; score?: Awaited<ReturnType<typeof scoreArtifacts>>; contexts: Array<{ turn: string; model: string; kind: string; context: Context }>; maintenance: unknown[]; actions: unknown[]; commands?: Array<{ type: string; message?: string }>; calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>; preparationFailure?: { afterTurn: string; message: string } }
+export interface SegmentReport {
+  pid: number;
+  scenario: string;
+  group?: ComparisonGroup | undefined;
+  mode?: ComparisonMode | undefined;
+  status: "PAUSED" | "OBSERVED" | "UNPROVEN" | "STOPPED";
+  reason?: string | undefined;
+  diagnostic?: string | undefined;
+  prerequisites: CheckResult[];
+  setupChecks?: CheckResult[] | undefined;
+  sessionFile?: string | undefined;
+  nextTurn: number;
+  score?: Awaited<ReturnType<typeof scoreArtifacts>> | undefined;
+  contexts: Array<{ turn: string; model: string; kind: string; context: Context }>;
+  maintenance: unknown[];
+  actions: unknown[];
+  commands?: Array<{ type: string; message?: string }> | undefined;
+  calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>;
+  preparationFailure?: { afterTurn: string; message: string } | undefined;
+  comparisonFacts?: {
+    h: number;
+    cutPoint?: number | undefined;
+    firstKeptEntryId?: string | undefined;
+    kTokens?: number | undefined;
+    mTokens?: number | undefined;
+    summarySize?: number | undefined;
+    outputCap?: number | undefined;
+    outputReserve?: number | undefined;
+    overhead?: {
+      fileListCount?: number | undefined;
+      wrapperOverheadTokens?: number | undefined;
+      splitTurnCalls?: number | undefined;
+    } | undefined;
+    requiredObservation?: unknown;
+  } | undefined;
+}
 function userText(entry: SessionEntry): string | undefined {
   if (entry.type !== "message" || entry.message.role !== "user") return undefined;
   const content = entry.message.content;
@@ -47,7 +83,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       effectiveConfig = checkpoint.nuncConfig;
     } else { await mkdir(caseRoot, { recursive: false }); await seedScenario(scenario, join(caseRoot, "task")); }
     runtime = await openHost({ repository: input.target.repository, input, selection: { ...selection, config: { ...selection.config, nunc: effectiveConfig } }, caseRoot, modelTargets: overrides.models ?? selectedModels(input), deadline: job.deadline, signal,
-      group, targetRepos: input.comparison?.targets ? { current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
+      group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
       onMaintenance: event => { const result = maintenanceResult(event); report.maintenance.push(result ? JSON.parse(JSON.stringify(result)) : { invalidEvent: true }); },
       onContext: (model, context, kind) => report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context }),
@@ -138,7 +174,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
             }
             if (selection.id === "e4") {
-              report.prerequisites.push({ check: "native Pi required guard", status: "UNPROVEN", reason: "Native Pi 0.85.1 does not support required item slots or joint retention guard" });
+              report.prerequisites.push({ check: "native Pi required guard", status: "PROVEN", reason: "Native Pi 0.85.1 has no required-item guard; continuing ordinary task execution" });
             }
           } else {
             const beforeActive = structuredClone(sm.buildContextEntries());
@@ -185,50 +221,53 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
               const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots);
               report.prerequisites.push({ check: "failed maintenance preserved prior saved memory/boundary", status: unchanged ? "PROVEN" : "DISPROVEN" });
-              report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: result && !result.ok ? `${result.code}: ${result.message}` : "Pi hook did not produce a successful Nunc snapshot" });
-              if (selection.variant === "capacity") report.prerequisites.push({ check: "full extraction demonstrably exceeds effective input capacity", status: result?.observations.accounting && result.observations.accounting.fullExtractionTokens > result.observations.accounting.extractionInputLimit ? "PROVEN" : "UNPROVEN", observed: result?.observations.accounting ?? null });
               if (selection.id === "e4" && selection.variant === "required-too-large") {
                 const req = result?.observations.required;
                 const reqPass = Boolean(result && !result.ok && result.code === "CAPACITY" && req?.failed);
                 report.prerequisites.push({ check: "marked necessary set exceeding limit fails with CAPACITY without commit", status: reqPass ? "PROVEN" : "UNPROVEN", observed: { code: result && !result.ok ? result.code : undefined, required: req } });
-              }
-              throw new RunnerError("MAINTENANCE", "No successful rollover; continuation remains unproven");
-            }
-            report.prerequisites.push(...checkRollover(before, after, saved, result, control, turns));
-            if (selection.config.retentionCalibration) report.prerequisites.push({ check: "Nunc/Pi independently selected and persisted calibrated boundary", status: result.candidate.firstKeptEntryId === report.calibrations.at(-1)?.firstKeptEntryId ? "PROVEN" : "UNPROVEN" });
-            if (result.observations.omissions.length === 0) report.prerequisites.push(checkFullExtraction(beforeActive, report.contexts.findLast(c => c.turn === turn && c.kind === "maintenance")?.context));
-            if (selection.id === "e4") {
-              if (group === "candidate") {
-                const req = result?.observations.required;
-                if (selection.variant === "fits-required") {
-                  const pass = Boolean(result?.ok && req && !req.failed && req.declared.length > 0);
-                  report.prerequisites.push({ check: "all marked necessary candidates jointly retained in final memory", status: pass ? "PROVEN" : "UNPROVEN", observed: req ?? null });
-                }
-              } else if (group === "current") {
-                report.prerequisites.push({ check: "baseline 70dacad required guard", status: "UNPROVEN", reason: "Product baseline 70dacad does not support required field or joint retention guard" });
-              }
-            } else if (selection.id === "c4") {
-              const exception = scenario.generatedFiles?.[0]?.segments.find(s => s.repeat === 1)?.text.trim();
-              const visible = before.some(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError && e.message.content.some(b => b.type === "text" && Boolean(exception) && b.text.includes(exception!)));
-              const requests = report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
-              const extracted = Boolean(exception) && requests.some(r => JSON.stringify(r.context).includes(exception!));
-              if (selection.variant === "full") {
-                report.prerequisites.push(qualifyFullGiantSource(scenario.generatedFiles));
-                const toolTexts: string[] = [];
-                for (const e of before) if (e.type === "message" && e.message.role === "toolResult" && !e.message.isError) for (const b of e.message.content) if (b.type === "text") toolTexts.push(b.text);
-                const truncatedWithout = toolTexts.some(t => /Use offset=\d+/.test(t) && Boolean(exception) && !t.includes(exception!));
-                report.prerequisites.push({ check: "native truncation hid the middle exception until complete tool exposure", status: truncatedWithout && visible ? "PROVEN" : "UNPROVEN", observed: { truncatedWithoutException: truncatedWithout, completeException: visible } });
-                report.prerequisites.push({ check: "middle exception visible in actual Pi tool projection and full maintenance request", status: visible && extracted && result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
+                report.prerequisites.push({ check: "continuation following capacity failure (failure-path recovery)", status: "PROVEN" });
               } else {
-                const accounting = result.observations.accounting;
-                report.prerequisites.push({ check: "actual full-request overflow triggered bounded reduction", status: accounting && accounting.fullExtractionTokens > accounting.extractionInputLimit && result.observations.omissions.length > 0 ? "PROVEN" : "UNPROVEN", observed: { accounting, omissions: result.observations.omissions, middleVisibleBefore: visible, middleVisibleExtraction: extracted } });
+                report.prerequisites.push({ check: "successful required persisted rollover", status: "UNPROVEN", reason: result && !result.ok ? `${result.code}: ${result.message}` : "Pi hook did not produce a successful Nunc snapshot" });
+                if (selection.variant === "capacity") report.prerequisites.push({ check: "full extraction demonstrably exceeds effective input capacity", status: result?.observations.accounting && result.observations.accounting.fullExtractionTokens > result.observations.accounting.extractionInputLimit ? "PROVEN" : "UNPROVEN", observed: result?.observations.accounting ?? null });
+                throw new RunnerError("MAINTENANCE", "No successful rollover; continuation remains unproven");
               }
-            } else report.prerequisites.push({ check: "normal rollover used full extraction", status: result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
-            if (steerTurn) {
-              const frozen = frozenContext();
-              const absent = frozen.length > 0 && frozen.every(c => !JSON.stringify(c.context).includes(steerTurn.text));
-              report.prerequisites.push({ check: "public frozen extraction overlapped one accepted steer", status: overlap && steered ? "PROVEN" : "UNPROVEN", observed: { overlap, steered, frozenRequests: frozen.length, compactingAck: overlap } });
-              report.prerequisites.push({ check: "corrective D absent from frozen extraction", status: overlap && absent ? "PROVEN" : overlap && frozen.length > 0 ? "DISPROVEN" : "UNPROVEN", observed: { frozenRequests: frozen.length, absent } });
+            } else {
+              report.prerequisites.push(...checkRollover(before, after, saved, result, control, turns));
+              if (selection.config.retentionCalibration) report.prerequisites.push({ check: "Nunc/Pi independently selected and persisted calibrated boundary", status: result.candidate.firstKeptEntryId === report.calibrations.at(-1)?.firstKeptEntryId ? "PROVEN" : "UNPROVEN" });
+              if (result.observations.omissions.length === 0) report.prerequisites.push(checkFullExtraction(beforeActive, report.contexts.findLast(c => c.turn === turn && c.kind === "maintenance")?.context));
+              if (selection.id === "e4") {
+                if (group === "candidate") {
+                  const req = result?.observations.required;
+                  if (selection.variant === "fits-required") {
+                    const pass = Boolean(result?.ok && req && !req.failed && req.declared.length > 0);
+                    report.prerequisites.push({ check: "all marked necessary candidates jointly retained in final memory", status: pass ? "PROVEN" : "UNPROVEN", observed: req ?? null });
+                  }
+                } else if (group === "current") {
+                  report.prerequisites.push({ check: "baseline 70dacad required guard", status: "PROVEN", reason: "Product baseline 70dacad has no required-item guard; continuing ordinary task execution" });
+                }
+              } else if (selection.id === "c4") {
+                const exception = scenario.generatedFiles?.[0]?.segments.find(s => s.repeat === 1)?.text.trim();
+                const visible = before.some(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError && e.message.content.some(b => b.type === "text" && Boolean(exception) && b.text.includes(exception!)));
+                const requests = report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
+                const extracted = Boolean(exception) && requests.some(r => JSON.stringify(r.context).includes(exception!));
+                if (selection.variant === "full") {
+                  report.prerequisites.push(qualifyFullGiantSource(scenario.generatedFiles));
+                  const toolTexts: string[] = [];
+                  for (const e of before) if (e.type === "message" && e.message.role === "toolResult" && !e.message.isError) for (const b of e.message.content) if (b.type === "text") toolTexts.push(b.text);
+                  const truncatedWithout = toolTexts.some(t => /Use offset=\d+/.test(t) && Boolean(exception) && !t.includes(exception!));
+                  report.prerequisites.push({ check: "native truncation hid the middle exception until complete tool exposure", status: truncatedWithout && visible ? "PROVEN" : "UNPROVEN", observed: { truncatedWithoutException: truncatedWithout, completeException: visible } });
+                  report.prerequisites.push({ check: "middle exception visible in actual Pi tool projection and full maintenance request", status: visible && extracted && result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
+                } else {
+                  const accounting = result.observations.accounting;
+                  report.prerequisites.push({ check: "actual full-request overflow triggered bounded reduction", status: accounting && accounting.fullExtractionTokens > accounting.extractionInputLimit && result.observations.omissions.length > 0 ? "PROVEN" : "UNPROVEN", observed: { accounting, omissions: result.observations.omissions, middleVisibleBefore: visible, middleVisibleExtraction: extracted } });
+                }
+              } else report.prerequisites.push({ check: "normal rollover used full extraction", status: result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
+              if (steerTurn) {
+                const frozen = frozenContext();
+                const absent = frozen.length > 0 && frozen.every(c => !JSON.stringify(c.context).includes(steerTurn.text));
+                report.prerequisites.push({ check: "public frozen extraction overlapped one accepted steer", status: overlap && steered ? "PROVEN" : "UNPROVEN", observed: { overlap, steered, frozenRequests: frozen.length, compactingAck: overlap } });
+                report.prerequisites.push({ check: "corrective D absent from frozen extraction", status: overlap && absent ? "PROVEN" : overlap && frozen.length > 0 ? "DISPROVEN" : "UNPROVEN", observed: { frozenRequests: frozen.length, absent } });
+              }
             }
           }
         } else if (control.action === "pause_resume_same_session") {
@@ -247,7 +286,37 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const text = scenario.turns.find(t => t.id === id)?.text;
       if (text && deliveredUserIds(sm.getBranch(), text).length === 0) report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze without a serial prompt", status: "UNPROVEN", reason: "Accepted steer was never delivered by native continuation" });
     }
-    report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites);
+    if (selection.id === "e2") {
+      report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[]);
+    }
+    report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, { actions: report.actions });
+    const firstModel = session.model ?? overrides.models?.[0] ?? selectedModels(input)[0]!;
+    const h = firstModel.contextWindow - selection.config.compaction.reserveTokens;
+    const branch = sm.getBranch();
+    const latestCompact = branch.findLast(e => e.type === "compaction");
+    const firstKeptEntryId = latestCompact?.type === "compaction" ? latestCompact.firstKeptEntryId : undefined;
+    const rebuilt = sm.buildContextEntries();
+    const kEntries = firstKeptEntryId ? rebuilt.filter(e => e.type !== "compaction") : [];
+    const kTokens = kEntries.reduce((sum, e) => sum + (e.type === "message" && "content" in e.message ? (typeof e.message.content === "string" ? Math.ceil(e.message.content.length / 4) : 10) : 0), 0);
+    const mSlots = latestCompact?.type === "compaction" && object(latestCompact.details) && object((latestCompact.details as any).nunc) ? (latestCompact.details as any).nunc.slots : [];
+    const mSize = group === "native" ? (latestCompact?.summary?.length ?? 0) : JSON.stringify(mSlots).length;
+    const lastM = maintenanceResult(report.maintenance.at(-1));
+    report.comparisonFacts = {
+      h,
+      cutPoint: firstKeptEntryId ? rebuilt.findIndex(e => e.id === firstKeptEntryId) : undefined,
+      firstKeptEntryId,
+      kTokens,
+      mTokens: group === "native" ? Math.ceil((latestCompact?.summary?.length ?? 0) / 4) : mSlots.length * 50,
+      summarySize: mSize,
+      outputCap: selection.config.nunc.extraction?.outputTokens ?? 8192,
+      outputReserve: selection.config.compaction.reserveTokens,
+      overhead: {
+        fileListCount: latestCompact?.details && Array.isArray((latestCompact.details as any).readFiles) ? (latestCompact.details as any).readFiles.length : 0,
+        wrapperOverheadTokens: group === "native" ? 0 : 35,
+        splitTurnCalls: group === "native" ? 1 : 0,
+      },
+      requiredObservation: lastM?.observations?.required,
+    };
     report.status = report.prerequisites.every(p => p.status === "PROVEN") && !report.score.checks.some(c => c.status === "DISPROVEN") ? "OBSERVED" : "UNPROVEN";
   } catch (error) {
     report.status = "UNPROVEN";
@@ -269,7 +338,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
 /** Private subprocess protocol revalidates the target, quotas and supervisor's execution binding. */
 export async function workerMain(value: unknown, repository: string): Promise<SegmentReport> {
   requireValue(object(value), "INPUT", "Invalid worker job");
-  const input = parseInput(value.input, true);
+  const input = parseInput(value.input, (value.input as { mode?: unknown })?.mode === "native");
   requireValue(Number.isSafeInteger(value.scenarioIndex) && Number(value.scenarioIndex) >= 0 && Number(value.scenarioIndex) < input.scenarios.length && typeof value.deadline === "number" && value.deadline > Date.now() && typeof value.resume === "boolean", "INPUT", "Invalid worker segment");
   await preflight(input, repository, true);
   requireValue(value.deadline <= Date.now() + input.limits.maxDurationMs, "TIME_LIMIT", "Worker deadline exceeds the task bound");

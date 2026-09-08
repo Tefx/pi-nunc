@@ -6,9 +6,10 @@ import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseInput, preflight, type RunInput } from "../../src/live/contract.js";
 import { liveExtensionFlags } from "../../src/live/host.js";
-import { loadScenario, scoreArtifacts } from "../../src/live/scenarios.js";
+import { evaluateCapacityPredicates, loadScenario, scoreArtifacts } from "../../src/live/scenarios.js";
 import { executeComparison } from "../../src/live/comparison.js";
 import { fixture, repository } from "./fixtures.js";
+import { spawn } from "node:child_process";
 
 delete process.env.NODE_OPTIONS;
 const compareScript = join(repository, "scripts/compare-extraction.mjs");
@@ -84,6 +85,39 @@ test("public compare-extraction CLI rejects empty/malformed/oversized stdin", ()
   assert(oversized.stderr.includes("INPUT_SIZE"));
 });
 
+test("public compare-extraction --preflight rejects missing comparison with nonzero exit", () => {
+  const run = spawnSync(process.execPath, [compareScript, "--preflight"], {
+    env,
+    input: JSON.stringify({
+      target: { repository, stateRoot: join(repository, ".scratch/test-preflight-missing"), cleanup: "retain" },
+      limits: { maxCalls: 1, maxTotalTokens: 100, maxDurationMs: 100, maxOutputTokens: 100, maxCostUsd: null },
+      scenarios: [{ id: "e1" }],
+    }),
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 1);
+  assert(run.stderr.includes("COMPARISON"));
+});
+
+test("public compare-extraction --preflight with e3 exposes limitation and unsupported public seam before execution", async () => {
+  const input = await comparisonFixture();
+  const run = spawnSync(process.execPath, [compareScript, "--preflight"], {
+    env: { ...env, PI_PROVIDER: input.models[0]!.provider, PI_MODEL: input.models[0]!.id },
+    input: JSON.stringify({
+      target: input.target,
+      limits: input.limits,
+      observations: ["stock_rpc"],
+      scenarios: [{ id: "e3" }],
+      comparison: input.comparison,
+    }),
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 0);
+  const out = JSON.parse(run.stdout);
+  assert(out.unsupportedPublicSeams.includes("rollover_at_tool_boundary"));
+  assert(out.limitations.some((l: string) => l.includes("e3 exact mid-turn tool-boundary split control")));
+});
+
 test("preflight comparison rejects missing or invalid comparison configuration", async () => {
   const input = await comparisonFixture();
   const baseline = ensureBaseline70dacad(repository);
@@ -125,6 +159,18 @@ test("preflight comparison rejects missing or invalid comparison configuration",
   const candMismatch = structuredClone(input);
   candMismatch.comparison!.targets.candidate.repository = baseline;
   await assert.rejects(preflight(candMismatch, repository), /Candidate target/);
+});
+
+test("preflight comparison rejects stale baseline build", async () => {
+  const input = await comparisonFixture();
+  const baseline = ensureBaseline70dacad(repository);
+  const extraFile = join(baseline, "dist/src/stale-extra-file.js");
+  await writeFile(extraFile, "export const stale = true;");
+  try {
+    await assert.rejects(preflight(input, repository), /Stale extra JS in dist\/src|BUILD/);
+  } finally {
+    await rm(extraFile, { force: true });
+  }
 });
 
 test("preflight comparison produces effect-free receipt bound to three targets, candidate, node and scenarios", async () => {
@@ -226,6 +272,59 @@ test("scenarios e1–e4 load separately from c1–c5 and validate acceptance bou
   assert(e4ObsTooLarge.controls[0]!.capacity?.includes("marked necessary set exceeds rendered memory limit"));
 });
 
+test("explicit asset-path selection contract is honored", async () => {
+  const input = await comparisonFixture();
+  input.scenarios = [{
+    id: "e1",
+    config: input.scenarios[0]!.config,
+    assets: {
+      inputs: "tests/scenarios/extraction-inputs.json",
+      observer: "tests/scenarios/extraction-observer.json",
+    },
+  }];
+  const { input: sInput, observer: sObs } = await loadScenario(repository, input.scenarios[0]!);
+  assert.equal(sInput.id, "e1");
+  assert.equal(sObs.id, "e1");
+});
+
+test("e1 and e3 fixture verification commands are authorized through narrow bash tool", async () => {
+  const { observer } = await loadScenario(repository, { id: "e1", config: (await fixture()).scenarios[0]!.config });
+  const scored = await scoreArtifacts(repository, observer, [{ check: "prereq", status: "PROVEN" }], {
+    actions: [{ event: { type: "tool_call", toolName: "bash", input: { command: "python3 verify.py" } } }],
+  });
+  assert(scored.actionReview.some(r => r.check.includes("python3 verify.py") && r.status === "PROVEN"));
+});
+
+test("e4 capacity predicates evaluate necessary fit, competition overflow, and optional fit", () => {
+  const measure = (slots: Array<{ key: string; text: string }>) => slots.reduce((sum, s) => sum + s.text.length, 0);
+  const patchFits = {
+    add: [
+      { key: "nec1", text: "x".repeat(30) },
+      { key: "opt1", text: "x".repeat(15) },
+      { key: "opt2", text: "x".repeat(15) },
+    ],
+    remove: [],
+    priority: ["nec1", "opt1", "opt2"],
+    required: ["nec1"],
+  };
+  // Memory limit 40: necessary (30) <= 40, total (60) > 40, nec1 (30) > opt1 (15)
+  const resFits = evaluateCapacityPredicates("fits-required", patchFits, 40, measure);
+  assert.equal(resFits.every(r => r.status === "PROVEN"), true);
+
+  // Too large: necessary (50) > limit (40), optional (15) <= limit (40)
+  const patchTooLarge = {
+    add: [
+      { key: "nec1", text: "x".repeat(50) },
+      { key: "opt1", text: "x".repeat(15) },
+    ],
+    remove: [],
+    priority: ["nec1", "opt1"],
+    required: ["nec1"],
+  };
+  const resTooLarge = evaluateCapacityPredicates("required-too-large", patchTooLarge, 40, measure);
+  assert.equal(resTooLarge.every(r => r.status === "PROVEN"), true);
+});
+
 test("comparison defaults and matched modes report truthful differences and matched parity", async () => {
   const input = await comparisonFixture();
   input.scenarios = [input.scenarios[0]!]; // e1 only for fast structure test
@@ -271,4 +370,56 @@ test("single finite budget ledger charges all groups; quota exhaustion and clean
   assert(existsSync(join(input.target.stateRoot, "report.json")));
   assert(existsSync(join(input.target.stateRoot, "owner.json")));
   await rm(input.target.stateRoot, { recursive: true });
+});
+
+test("end-to-end comparison across native, current and candidate via public CLI, stock Pi and loopback", { timeout: 120000 }, async () => {
+  const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs")) as { StockFixture: any };
+  const f = await new StockFixture().setup({ api: "openai-codex-responses", compaction: { enabled: false, reserveTokens: 200000 } });
+  const baseline = ensureBaseline70dacad(repository);
+  const stateRoot = join(f.dir, "nunc-live-runner-cmp");
+
+  const settings = { ...f.settings, defaultProvider: "openai-codex", defaultModel: "gpt-6-astra" };
+  await writeFile(join(f.state, "agent/settings.json"), JSON.stringify(settings));
+
+  const selection = {
+    target: { repository, stateRoot, cleanup: "retain" },
+    limits: { maxCalls: 20, maxTotalTokens: 8000000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 128000 },
+    observations: ["stock_rpc"],
+    scenarios: [{ id: "c1" }],
+    comparison: {
+      modes: ["defaults"],
+      targets: {
+        native: { repository },
+        current: { repository: baseline },
+        candidate: { repository },
+      },
+    },
+  };
+
+  const write = (path: string, content: unknown) => [{ tool: { name: "write", input: { path, content: JSON.stringify(content) } } }, "Saved."];
+  const steps = ["Pending.", ...write("decision.json", { route: "direct", reason: "Controlled fixture reason." })];
+  f.response = (_row: unknown, source: unknown) => source ? JSON.stringify({ add: [], remove: [], priority: [], required: [] }) : (() => { return steps.length ? steps.shift() : "Done"; })();
+
+  const runEnv = { PATH: "/opt/homebrew/bin:/usr/bin:/bin", HOME: join(f.state, "home"), PI_CODING_AGENT_DIR: join(f.state, "agent"), TMPDIR: join(f.state, "tmp"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" };
+
+  try {
+    const child = spawn(process.execPath, [compareScript], { cwd: repository, env: runEnv, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", b => { stdout += b; if (stdout.length > 16000000) child.kill("SIGTERM"); });
+    child.stderr.on("data", b => { stderr += b; });
+    child.stdin.end(JSON.stringify(selection));
+    const code = await new Promise((resolve) => child.once("close", resolve));
+
+    assert.equal(code, 2); // UNPROVEN exit code
+    assert(stdout.length > 0);
+    const report = JSON.parse(stdout);
+    assert.equal(report.matrix.length, 3);
+    assert.equal(report.comparison.modes.length, 1);
+    assert.equal(report.comparison.modes[0].mode, "defaults");
+    assert(report.usage.calls >= 6);
+    assert.deepEqual(report.usage.unreconciledCallIds, []);
+    assert.equal(report.matrix.every((m: any) => m.calls > 0), true);
+  } finally {
+    await f.close();
+  }
 });

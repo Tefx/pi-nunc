@@ -14,10 +14,19 @@ try {
   if (flags[0] !== "--worker") {
     const { resolveInput } = await import("../dist/src/live/defaults.js");
     value = await resolveInput(value);
+    const { parseComparisonInput } = await import("../dist/src/live/contract.js");
+    parseComparisonInput(value);
   }
   if (flags[0] === "--preflight") {
-    const input = parseInput(value);
+    const { parseComparisonInput } = await import("../dist/src/live/contract.js");
+    const input = parseComparisonInput(value);
     const receipt = await preflight(input, repository);
+    const limitations = [
+      "No task state created, credentials resolved, or model calls made. Internal binding protects candidate/target identity; no receipt must be returned by the caller."
+    ];
+    if (input.scenarios.some(s => s.id === "e3")) {
+      limitations.push("e3 exact mid-turn tool-boundary split control requires boundary pause before continuation; manual ctx.compact() aborts without continuing, while automatic threshold compaction occurs on token threshold crossing. Reported as UNPROVEN before execution.");
+    }
     process.stdout.write(`${JSON.stringify({
       status: "PREFLIGHT",
       receipt,
@@ -28,9 +37,8 @@ try {
       overrides: input.overrides,
       limits: input.limits,
       scenarios: input.scenarios,
-      limitations: [
-        "No task state created, credentials resolved, or model calls made. Internal binding protects candidate/target identity; no receipt must be returned by the caller."
-      ]
+      limitations,
+      unsupportedPublicSeams: input.scenarios.some(s => s.id === "e3") ? ["rollover_at_tool_boundary"] : []
     })}\n`);
   } else if (flags[0] === "--worker") {
     const { workerMain } = await import("../dist/src/live/worker.js");

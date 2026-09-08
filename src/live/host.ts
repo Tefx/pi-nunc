@@ -26,7 +26,8 @@ export interface HostOptions {
   repository: string; input: RunInput; selection: Selection; caseRoot: string; modelTargets: Model<Api>[];
   deadline: number; signal: AbortSignal; sessionFile?: string | undefined;
   group?: "native" | "current" | "candidate" | undefined;
-  targetRepos?: { current?: string | undefined; candidate?: string | undefined } | undefined;
+  mode?: "defaults" | "matched" | undefined;
+  targetRepos?: { native?: string | undefined; current?: string | undefined; candidate?: string | undefined } | undefined;
   /** Test-only native models.json overlay; it replaces the service endpoint, never the host or Provider. */
   controlledModels?: unknown;
   /** Test-only child replacement. Production always uses the locked stock Pi CLI. */
@@ -96,13 +97,15 @@ export class NativeHost {
     if (o.controlledModels) await writeFile(join(host, "models.json"), JSON.stringify(o.controlledModels), { mode: 0o600 });
     const events = join(o.caseRoot, `events-${process.pid}-${Date.now()}.jsonl`);
     await writeFile(events, "", { mode: 0o600, flag: "wx" });
-    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey: `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}` }), { mode: 0o600 });
+    const caseKey = `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
+    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
-    const packageDir = join(o.repository, "node_modules/@earendil-works/pi-coding-agent");
+    const natRepo = o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository;
+    const packageDir = join(natRepo, "node_modules/@earendil-works/pi-coding-agent");
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
     const cli = join(packageDir, manifest.bin.pi);
-    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...liveExtensionFlags(o.repository, o.input, o.group, o.targetRepos), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
+    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", "read,write,edit,bash", "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...liveExtensionFlags(o.repository, o.input, o.group, o.targetRepos), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
     this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
     this.child.stdin.on("error", () => this.abort());
