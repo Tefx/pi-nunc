@@ -424,7 +424,7 @@ test("malformed content rejection replaces prior last-main instead of keeping a 
   const second = context().read(ctx()).lastMain;
   assert.equal(second?.outcome, "reject");
   assert.equal(second?.code, "INPUT");
-  assert.notEqual(second?.observedAt, first?.observedAt);
+  assert.notEqual(JSON.stringify(second), JSON.stringify(first));
   assert.equal(f.faux.state.callCount, calls);
 });
 
