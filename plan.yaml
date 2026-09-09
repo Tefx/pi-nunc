@@ -2083,11 +2083,11 @@ phases:
       \ 交付 observer 实际保存事务关联、正确比较/reference 消费和保留 E2 离线投影；其完整受控库存与独立定向完成接受后本消费者继续，之前不得作\
       \ E4 等依赖真实 acquisition。此前真实消费 target 单次执行已终态核对，绝不重跑；完整保留原 report/binding/reconciliation/isolation/evidence\
       \ index，污染观察排除，未受影响事实按适用性复用。当前用户已授权继续执行、OpenRouter google/gemini-3.8-flash 无美元上限（maxCostUsd:null，非免费）；仍必须先绑定新\
-      \ target 与有限总 calls/tokens/time、当前有效非秘密模型/config/策略、native0.85.1/current70dacad/新候选、defaults/matched差异及合法\
+      \ target 与保留的独立 time/适用 cost 约束、无总调用数及累计预留 tokens 上限、当前有效非秘密模型/config/策略、native0.85.1/current70dacad/新候选、defaults/matched差异及合法\
       \ B/K/包装/输出预算。历史只规划或等待真实授权文字不撤销本次授权，旧额度不可继承，不重复请求已给同模型费用授权；该授权不让新的只做受控修复的 producer\
       \ 调真实模型或重放。\n\n遵循 LIVE 公开当前选择/defaults，不继承旧父任务模型快照、重建catalog或更换账户。新隔离session/cwd，Pi\
       \ 原生auth解析/刷新/持久化保持既有owner；不复制profile/credentials或记录来源位置。先无效果preflight，通过修复接受和新绑定后才作必要真实观察；禁止付费重试诊断\
-      \ runner。main/extraction/native双call/恢复共用有限call-token-time及适用known-cost，unknown保持未知，uncapped覆盖完整nativeallowance，失败reservation保留。不以小分区冒充模型能力或为旧错误原因重放。只复用源/模型/输入/命令/modality/判据/效果仍适用的事实。\n\
+      \ runner。main/extraction/native双call/恢复共用真实调用/usage/reservation记账及保留的time/适用known-cost；总calls和累计预留tokens不设上限，unknown保持未知，uncapped覆盖完整nativeallowance，失败reservation保留。不以小分区冒充模型能力或为旧错误原因重放。只复用源/模型/输入/命令/modality/判据/效果仍适用的事实。\n\
       \n保留全部原反例和未证明项：E1 defaults 三组提前动作、matched native 早期验证和 E4 candidate 提前 final\
       \ artifact 是实际任务违例，缺候选维护不能归因提取回归；最终正确产物不抹去提前行为。E2 按自然首 M、K纠正、合法三次退休/保留、mixed-slot拆并/取消/未变项分维消费，未到纠正轮不能评分；现有\
       \ matched E2 已真实证明纠正、自然 mixed replacement/removal、west cancellation、unchanged\
@@ -2129,10 +2129,16 @@ phases:
       \ UI 及旧UIfixture、全局/其他项目和秘密受保护，无发布/push或旧证据工作树迁移。报告写caller私有artifact位置，不持久化敏感正文。既有\
       \ UI 人工接受继续有效，真实模型效果不替代 UI 观察。无 engine/pi/ui/policy、model/usage 或 defaults/matched\
       \ 范围变更授权。\n\nRecovery: 核对可能开始的调用、worker/session、usage和清理；localabort/terminal/PID退出不证明remote终态/账单。原已核对终态观察可复用，未知\
-      \ usage/billing 不作零或免费余额。无终态、超总额、不明关联效果或执行隔离失效停止后续；已核对独立失败可记录后继续无依赖且仍有额度的新场景，不重用target。缺报告修报告；缺tracked能力或产品矛盾交兼容可写owner，producer\
+      \ usage/billing 不作零或免费余额。无终态、超过实际配置的独立time/cost约束、不明关联效果或执行隔离失效停止后续；已核对独立失败可记录后继续无依赖且仍符合剩余有效约束的新场景，不重用target。缺报告修报告；缺tracked能力或产品矛盾交兼容可写owner，producer\
       \ DONE后经正常修复依赖继续同一消费者。修复后只重取受影响及原缺失事实，保留原反例的适用性判断。必要 DISPROVEN/UNPROVEN 时本步与同一最终接受均未完成，不新增接受节点或缩减原要求。\n\
       - [ ] 待接受意义决策（不是新实现缺陷）：ade0bc0 的新 matched E4 单次观察54calls全部终态、3hosts退出；绑定验证CONTRADICTION。证据根\
-      \ /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-real-matched-e4-jlezkfa1/。candidate完整响应/原始来源/必要引用/提交及c精确八lane产物成立，R=T237<=L572、optionalCount0，实际没有CAPACITY，失败恢复/竞争仍自然不资格。native在b提前写routing是独立的维护前任务违例，不是candidate提取失败。关联修复在三组实际快照上成立。保留此前E1/E3任务违例、E2自然split/merge缺证、native无rendered-memory强制ceiling。既定E4观察已结束；不因未出现溢出启动重复样本、第二相同变体或自调预算。原始报告/旧目标不可重放；最终接受要求未豁免，后续需要有明确证据增量的新方法或用户对接受意义的决定。\n"
+      \ /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-real-matched-e4-jlezkfa1/。candidate完整响应/原始来源/必要引用/提交及c精确八lane产物成立，R=T237<=L572、optionalCount0，实际没有CAPACITY，失败恢复/竞争仍自然不资格。native在b提前写routing是独立的维护前任务违例，不是candidate提取失败。关联修复在三组实际快照上成立。保留此前E1/E3任务违例、E2自然split/merge缺证、native无rendered-memory强制ceiling。既定E4观察已结束；不因未出现溢出启动重复样本、第二相同变体或自调预算。原始报告/旧目标不可重放；最终接受要求未豁免，后续需要有明确证据增量的新方法或用户对接受意义的决定。\n\
+      \n当前用户选择与前置交付: 用户明确要求：“把调用上限去掉，我没有要要求调用上限，这是过度设计。检查这个上限是哪里来的？plan里？” 主线git首次引入mandatory\
+      \ maxCalls/maxTotalTokens的实现为539750c；当前contract.ts强制正整数及maxCalls<=1000，budget/comparison/runner执行或传递该限制，LIVE和本pending\
+      \ runtime的有限总calls/tokens文字来自agent设计。最近选择的160 calls由父agent设置；179000000累计预留tokens按每call\
+      \ 1048576+65536推导，单独保留会形成约160次的替代计数上限。该明确用户选择同时取消两种总量门槛；模型每请求input/output/native\
+      \ context、独立time/cost、取消、无重试、故障/身份/权限/清理合同不变。 nunc.extraction-optional-quotas交付可省略/null的两个总量字段，并经完整offline库存与独立定向完成接受后，本消费者才具备新合同。未来本用户任务选择须省略两字段或传null，不得自行恢复有限call/token上限、隐式有限默认值或巨大数值哨兵；显式有限值仅作为其他调用者主动选择的兼容功能。旧selection/owner/ledger/report/binding与已消费target保持原样，不能把旧160次执行重标成功或重放。此次仅授权合同与仓库受控修复，不启动新付费批次、不增加continuation\
+      \ API或改变模型/global配置；后续真实执行仍须由Orchestrator依当前具体授权、目标绑定与未解决接受条件判断，已有同模型费用授权不重复索取。"
     verification: "```yaml\nchecks:\n  - id: extraction-comparison-no-effect-preflight\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/compare-extraction.mjs, --preflight]\n\
@@ -2141,10 +2147,10 @@ phases:
       \  - id: extraction-real-three-way-comparison\n    argv: [/usr/bin/env, -u,\
       \ NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
       \ scripts/compare-extraction.mjs]\n    stdin:\n      format: json\n      source:\
-      \ preflighted_same_selection_with_new_targets_and_finite_total_limits\n    \
-      \  required: [target, limits, scenarios, comparison]\n    observation_modalities:\
+      \ preflighted_same_selection_with_new_targets_no_call_or_aggregate_token_ceiling\n\
+      \      required: [target, limits, scenarios, comparison]\n    observation_modalities:\
       \ [stock_rpc, stock_tui, real_model_continuation]\n    exit_code: 0\n```\n上述新接口须由前置producer交付，缺失报告能力缺口，禁止临时代替。exit0只说明操作正常终结；必须读取实际来源、配对、产物/行为和逐要求事实。容量反例由跟踪runner观察真实CAPACITY、未提交和无fallback/重放，错误码本身不算证明。Orchestrator提供完整verifier\
-      \ binding后使用verifier.report.v2；必要缺口保持未完成。"
+      \ binding后使用verifier.report.v2；必要缺口保持未完成。\n当前任务stdin的maxCalls/maxTotalTokens均省略或null，由前置修复公开解析并规范化为null；时间/适用费用、每请求native容量及所有reconciliation检查仍生效。此检查定义不授权本轮启动真实调用。"
     refs:
     - docs/EXTRACTION.md
     - docs/DESIGN.md
@@ -2173,7 +2179,7 @@ phases:
     - src/live/archive-closeout.ts
     - src/live/comparison.ts
     depends_on:
-    - nunc.extraction-commit-association
+    - nunc.extraction-optional-quotas
     agent: integration-verifier
   - id: nunc.extraction-runner-repair
     name: 修复比较执行授权、原生切轮生命周期与资格诊断
@@ -2617,6 +2623,81 @@ phases:
       effects. E1/E3taskcontradictions, natural E2splitmerge nonqualification, E4capacity
       and finalNONREGRESSION remain unresolved; UIDONE unchanged. This completion
       proves observerassociation only.
+  - id: nunc.extraction-optional-quotas
+    name: 取消强制总调用与累计预留token上限
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/contract.ts\", \"src/live/defaults.ts\", \"src/live/budget.ts\"\
+      , \"src/live/comparison.ts\", \"src/live/runner.ts\", \"src/live/worker.ts\"\
+      , \"tests/live/**\", \"scripts/verify-live.mjs\", \"scripts/compare-extraction.mjs\"\
+      , \"scripts/observe-stock.mjs\", \"scripts/stock-driver.mjs\", \"scripts/observe-runner.mjs\"\
+      , \"scripts/observe-independent-cases.mjs\", \"scripts/check.mjs\", \"docs/LIVE.md\"\
+      , \"docs/DEVELOPMENT.md\", \"examples/live-selection.json\", \"examples/comparison-selection.json\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
+      .pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"src/engine/**\"\
+      , \"src/pi/**\", \"src/ui/**\", \"policies/**\", \"tests/scenarios/**\", \"\
+      node_modules/**\", \".node-version\", \"package.json\", \"package-lock.json\"\
+      ]\n\nDeliver: 为同一只读nunc.extraction-runtime交付无强制总调用/累计预留token上限的公开runner合同，相关实现、行为测试与消费者文档作为一个可Git回退仓库事务。公开limits.maxCalls/maxTotalTokens允许省略或null，内部规范化为number|null；null不执行对应总量拒绝。显式配置保留正safe-integer有限值的opt-in行为，移除强制maxCalls<=1000的agent上限；禁止Infinity、巨大整数哨兵、有限fallback或其他累计预留量替代默认计数门槛。本用户任务两项均不设限，不修改历史selection。\n\
+      \n公开stdin/default resolution/preflight到provider ledger、跨模式/组/segment共享comparison、supervisor/worker、controlled\
+      \ stock子job及reporting完整传递。null不能进入减法/比较而变成0或拒绝，省略与null一致；显式finite cap仍在相应效果前拒绝，跨组/子job不重置或绕过。没有累计token拒绝时，逐call\
+      \ reservedTokens、唯一call ID、实际terminal/usage、聚合统计及known/unknown cost仍如实记录；失败reservation保留，maxCostUsd:null不代表免费。更新消费者文档/示例，区分可选总量上限、每请求native容量和仍有限的测试编排/time约束。\n\
+      \nBoundary: exact owner node-typescript-engineer，已解析Node/TypeScript CLI/host工具可写能力适合此单一公开预算结果。Orchestrator核对writer/effect并claim后，在本仓库.vectl/worktrees建立新隔离工作树，不迁移旧证据树。仅相关live预算/公开消费及必要受控driver/test/docs；允许worktree-local锁定依赖准备和生成产物，node_modules仅可安装锁定依赖，不补丁依赖/锁/工具链。受控stock\
+      \ Pi/RPC/TUI/loopback测试自包含且保留有限fixture/超时。禁止真实模型/付费调用、真实credential读取/复制、dotfiles/persona定义/日常UI/全局配置/其他项目/push或日常安装。无continuation方法/API、group\
+      \ reserve、reference cache、通用控制框架或scenario/input/oracle/workload、模型/usage模拟语义扩展。每请求input/output/native\
+      \ context、独立time/cost、取消、未知terminal拒绝后续effects、endpoint/auth/identity/cleanup保障不变。provider\
+      \ wrapperEntries===1的无retry/auxiliary guard独立于累计调用数，必须保留；若区分错误术语，保持故障分类和拒绝效果。\n\
+      \nAdmit: 用户明确要求：“把调用上限去掉，我没有要要求调用上限，这是过度设计。检查这个上限是哪里来的？plan里？” 主线git首次引入mandatory\
+      \ maxCalls/maxTotalTokens的实现为539750c；当前contract.ts强制正整数及maxCalls<=1000，budget/comparison/runner执行或传递该限制，LIVE和本pending\
+      \ runtime的有限总calls/tokens文字来自agent设计。最近选择的160 calls由父agent设置；179000000累计预留tokens按每call\
+      \ 1048576+65536推导，单独保留会形成约160次的替代计数上限。该明确用户选择同时取消两种总量门槛；模型每请求input/output/native\
+      \ context、独立time/cost、取消、无重试、故障/身份/权限/清理合同不变。 已接受nunc.extraction-commit-association保持DONE。runtime\
+      \ pending，父Orchestrator已核对旧targets/hosts终态、只读咨询结束且无writer后进入。此任务只授权受控修复；历史账单unknown和旧失败不会由修复转为成功，不重开历史或重放，保留无关host\
+      \ phases和同一最终gate。\n\n完成程序: Orchestrator取得独立定向source/公开seam判断，消费最终整合candidate完整原生all及有可失败关系的受控证据，不新建review/gate。用小finite\
+      \ fixture与多次调用/多组对照证明省略/null两项后累计次数/预留量不再挡住下一call；分别证明显式call和aggregate-token有限配置在效果前拒绝、混合null/finite正确。实际公共stdin到worker/provider及stock子job传递/序列化/reporting须执行，不能只测私有比较表达式。证明ledger真实calls/usage/reservation累计、非法数字拒绝、每请求input/output、time/cancel、retry/auxiliary、unknownterminal和已有failure/cleanup边界保持。复用适用既有回归，无需160个真实请求或真实服务；全量all从tracked\
+      \ inventory发现全部现有和新增测试，不凭历史固定数量或预期文字PASS。\n\nRecovery: 同一unfinished owner修完整兼容缺口，核对受控worker/host终态与清理，保留候选/证据。去掉上限不能绕过故障/身份/权限/清理停止。跨出语义/效果边界时报告精确问题并继续独立授权工作。producer完成只证明可选总量合同；同一runtime/最终接受继续处理原适用反例和必要UNPROVEN，当前无新付费执行或旧证据迁移。"
+    verification: "```yaml\nchecks:\n  - id: optional-quotas-complete-controlled-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [public-omitted-null-total-quotas, cross-group-worker-stock-subjob-propagation,\
+      \ opt-in-finite-call-and-token-presend-refusal, truthful-ledger-and-unknown-usage,\
+      \ unchanged-native-per-request-capacity, time-cancel-retry-terminal-cleanup-boundaries,\
+      \ complete-existing-regression]\ncheck_environment:\n  node_version: 26.7.0\n\
+      \  npm_version: 11.19.0\n  pi_packages_version: 0.85.1\n  dependency_manifest:\
+      \ package.json\n  dependency_lock: package-lock.json\n  runtime_declaration:\
+      \ .node-version\n  tui_python_argv: [/usr/bin/python3]\n  tui_prerequisites:\
+      \ [POSIX PTY, Python 3 standard library]\n  dependency_setup_argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+      \ /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n```\nall包含已有contract/defaults/budget/comparison/comparison-native/native-delegation/verification与受影响stock检查；新增有意义回归加入自动发现库存。最终整合候选完整编译/offline\
+      \ all必须通过，独立定向完成判断消费公开入口及跨组/子job真实受控路径，禁止用真实模型代替。现有环境适用可复用，缺依赖在新工作树按锁准备；不依赖私有artifact、真实profile或未声明工具链。"
+    refs:
+    - src/live/contract.ts
+    - src/live/defaults.ts
+    - src/live/budget.ts
+    - src/live/comparison.ts
+    - src/live/runner.ts
+    - src/live/worker.ts
+    - scripts/verify-live.mjs
+    - scripts/compare-extraction.mjs
+    - scripts/stock-driver.mjs
+    - scripts/check.mjs
+    - tests/live/contract.test.ts
+    - tests/live/defaults.test.ts
+    - tests/live/budget.test.ts
+    - tests/live/comparison.test.ts
+    - tests/live/comparison-native.test.ts
+    - tests/live/native-delegation.test.ts
+    - tests/live/verification.test.ts
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - examples/live-selection.json
+    - examples/comparison-selection.json
+    - package.json
+    - package-lock.json
+    - .node-version
+    depends_on:
+    - nunc.extraction-commit-association
+    agent: node-typescript-engineer
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
@@ -2660,7 +2741,10 @@ phases:
       \ repair依赖，保持历史和同一gate。修复后Delta覆盖受影响要求/直接依赖/未解决发现/触及保护并复用其余。任一阻断缺陷、必要失败或UNPROVEN均不能接受，不降成MVP或建议。\n\
       \n新增宿主修复接受: 消费 pi-host-prompt 原生生命周期修复和 nunc-host-prompt-compat 的最终配对结果，统一判断\
       \ user/idle-custom/tool-continuation/compaction-retry 的有效提示、当前persona及临时指令生命周期；custom来源/一次投递/动态工具/身份恢复/取消和真正超限保护完整。绑定最终Nunc\
-      \ candidate与fixed Pi source/package，完整all必须确实加载此配对，并消费对应host原生完整offline checks；只看stock0.85.1的组件PASS不足。保留原五phase全部义务和原三组stock/current/new参考身份，逐项判断既有真实观察在host变化后的适用性。必要事实缺失仍阻止接受；本gate不自行调用真实模型或授权费用/安装。其只读范围增加所绑定host候选的源码、测试、原生文档与package/lock；不把候选版本标为已发布或已全局安装。"
+      \ candidate与fixed Pi source/package，完整all必须确实加载此配对，并消费对应host原生完整offline checks；只看stock0.85.1的组件PASS不足。保留原五phase全部义务和原三组stock/current/new参考身份，逐项判断既有真实观察在host变化后的适用性。必要事实缺失仍阻止接受；本gate不自行调用真实模型或授权费用/安装。其只读范围增加所绑定host候选的源码、测试、原生文档与package/lock；不把候选版本标为已发布或已全局安装。\n\
+      \n总量限制的用户更正: 消费nunc-extraction内nunc.extraction-optional-quotas的新公开选择/预算/runner交付及同一runtime的新合同。用户明确撤销agent添加的总calls及其累计预留tokens替代门槛；省略/null表示没有对应上限，显式有限值仍可主动选择且必须有效执行。本任务不得自行恢复这些总量上限；每请求模型input/output/native\
+      \ context、时间/适用费用、无重试、取消、未知terminal拒绝、身份/权限/清理和真实记账保持。最终candidate完整all须涵盖public\
+      \ stdin、跨组/子job nullable传递和显式有限quota回归；独立定向完成接受归producer程序，本gate继续唯一最终整合判断。旧报告与160次已终态批次不改写、不重放；取消上限不证明此前反例或必要UNPROVEN已消失，也不授权新付费观察、continuation方法/API、模型或全局配置变更。"
     verification: "```yaml\nchecks:\n  - id: final-extraction-integrated-complete-inventory\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
