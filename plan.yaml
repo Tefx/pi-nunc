@@ -2799,7 +2799,7 @@ phases:
     step已移除。当前Vectl无remove-phase，此空phase仅保留撤销说明，无owner/工作/交付/接受义务。实际Nunc职责由nunc.host-prompt-compat交付，不把旧host方案标成已完成或隐含阻塞。
 - id: nunc-host-prompt-compat
   name: Nunc 实际请求收据与 stock callback 兼容
-  status: pending
+  status: in_progress
   gate: 交付实际Provider Context/响应receipt适用性、完整输入计量、有限易失状态与未修改stock生命周期受控证明；唯一最终整合判断仍为nunc.extraction-acceptance，不新增接受节点。
   context: 仅pi-nunc内实际请求绑定usage与stock callback兼容，保留稳定phase/step IDs。用户禁止Pi core/其他repo/未来host能力假设，撤销fixed-host前置。使用未修改stock0.85.1与已经接受的extraction-optional-quotas集成base，原UI能力已完成；没有等待整个extraction
     runtime接受的产品依赖。step Admit记录已完成base，phase依原UI，无writer/effect交叉后派发。原native/current/new、UI与DONE事实保持，按本地source影响复用；任意扩展私有persona有效期不在原Nunc保证内，stock不一致准确披露。
@@ -2808,7 +2808,7 @@ phases:
   steps:
   - id: nunc.host-prompt-compat
     name: 实际请求绑定 usage 与 stock callback 兼容
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/admission.ts\", \"src/engine/accounting.ts\", \"\
       src/index.ts\", \"src/pi/context.ts\", \"tests/pi/**\", \"tests/live/**\", \"\
@@ -2883,3 +2883,5 @@ phases:
     - package-lock.json
     - .node-version
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-09T13:50:30.528034Z'
