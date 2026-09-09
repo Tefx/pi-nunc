@@ -2130,7 +2130,9 @@ phases:
       \ UI 人工接受继续有效，真实模型效果不替代 UI 观察。无 engine/pi/ui/policy、model/usage 或 defaults/matched\
       \ 范围变更授权。\n\nRecovery: 核对可能开始的调用、worker/session、usage和清理；localabort/terminal/PID退出不证明remote终态/账单。原已核对终态观察可复用，未知\
       \ usage/billing 不作零或免费余额。无终态、超总额、不明关联效果或执行隔离失效停止后续；已核对独立失败可记录后继续无依赖且仍有额度的新场景，不重用target。缺报告修报告；缺tracked能力或产品矛盾交兼容可写owner，producer\
-      \ DONE后经正常修复依赖继续同一消费者。修复后只重取受影响及原缺失事实，保留原反例的适用性判断。必要 DISPROVEN/UNPROVEN 时本步与同一最终接受均未完成，不新增接受节点或缩减原要求。"
+      \ DONE后经正常修复依赖继续同一消费者。修复后只重取受影响及原缺失事实，保留原反例的适用性判断。必要 DISPROVEN/UNPROVEN 时本步与同一最终接受均未完成，不新增接受节点或缩减原要求。\n\
+      - [ ] 待接受意义决策（不是新实现缺陷）：ade0bc0 的新 matched E4 单次观察54calls全部终态、3hosts退出；绑定验证CONTRADICTION。证据根\
+      \ /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-real-matched-e4-jlezkfa1/。candidate完整响应/原始来源/必要引用/提交及c精确八lane产物成立，R=T237<=L572、optionalCount0，实际没有CAPACITY，失败恢复/竞争仍自然不资格。native在b提前写routing是独立的维护前任务违例，不是candidate提取失败。关联修复在三组实际快照上成立。保留此前E1/E3任务违例、E2自然split/merge缺证、native无rendered-memory强制ceiling。既定E4观察已结束；不因未出现溢出启动重复样本、第二相同变体或自调预算。原始报告/旧目标不可重放；最终接受要求未豁免，后续需要有明确证据增量的新方法或用户对接受意义的决定。\n"
     verification: "```yaml\nchecks:\n  - id: extraction-comparison-no-effect-preflight\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/compare-extraction.mjs, --preflight]\n\
