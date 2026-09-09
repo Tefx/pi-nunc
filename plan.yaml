@@ -2974,11 +2974,11 @@ phases:
       only, runtime/wholeproject normativeacceptance stillpending.
 - id: github-publication
   name: English README and public GitHub publication
-  status: pending
+  status: in_progress
   steps:
   - id: nunc.readme-public
     name: Current English README and publication-ready documentation
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [README.md, docs/**, .gitignore]\n  blocked_paths: [plan.yaml,\
       \ plan-dashboard.html, .pi/**, .agents/**, .env, .env.*, '**/auth.json']\n\n\
@@ -3039,6 +3039,8 @@ phases:
     - docs/ENGINE.md
     - docs/DEVELOPMENT.md
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-09T18:24:31.821181Z'
   - id: nunc.github-public
     name: Create tefx/pi-nunc public repository and push reviewed main
     status: pending
