@@ -2366,14 +2366,15 @@ phases:
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
-  gate: 唯一新增最终质量决定是 nunc.extraction-acceptance。显式汇合 nunc-extraction 的四个结果和 nunc-ui
-    原有接受，消费 nunc-v1/native-compat/cooperative-root-cause 的全部适用基础结果。最终候选完整原生回归、必要真实/人工事实、语义非退化及所有保护成立且无阻断缺陷/必要未证明才能完成，不授权部署/发布。
+  gate: 唯一最终质量决定仍为nunc.extraction-acceptance，消费nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction、pi-host-prompt、nunc-host-prompt-compat七个成果phase。最终Nunc/修复host配对的完整offline回归、适用真实/UI事实及所有保护成立且无blocking/必要UNPROVEN才能接受；无安装/部署/发布授权。
   context: 此 phase 仅承载跨成果最终接受，使用 phase-level 依赖等待提取观察和原 UI 接受；不额外制造 UI 或每producer
-    gate，也不让人工UI观察阻断前面的无重叠提取工作。纳入结果范围为 nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction；本phase的决定不是自身前置证据。保护旧claim/DONE/手工fixture，复用适用历史，禁止以report/Plan变动重跑付费证明。检查环境使用
+    gate，也不让人工UI观察阻断前面的无重叠提取工作。纳入结果范围为 nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction、pi-host-prompt、nunc-host-prompt-compat；本phase的决定不是自身前置证据。保护旧claim/DONE/手工fixture，复用适用历史，禁止以report/Plan变动重跑付费证明。检查环境使用
     nunc-extraction 的锁定Node26.7.0/npm11.19.0/Pi0.85.1、package-lock和DEVELOPMENT；缺安装/观察由获准owner准备，gate只读。
+    新增pi-host-prompt与nunc-host-prompt-compat成果由同一最终gate接受，不新增串行重复gate；新host与最终Nunc配对检查及真实事实适用性是必要输入，原五phase义务不变。
   depends_on:
   - nunc-extraction
   - nunc-ui
+  - nunc-host-prompt-compat
   steps:
   - id: nunc.extraction-acceptance
     name: 提取改进与完整 Nunc 的最终整合接受
@@ -2383,7 +2384,7 @@ phases:
       examples/**\", \"README.md\", \"package.json\", \"package-lock.json\", \".node-version\"\
       , \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
       , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
-      ]\n\nDeliver: 为用户作一次明确最终整合质量决定，显式纳入 nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction\
+      ]\n\nDeliver: 为用户作一次明确最终整合质量决定，显式纳入 nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction、pi-host-prompt、nunc-host-prompt-compat\
       \ 全部适用结果与接受约束。判断新策略、必要项保护、真实三组比较与有效M/UI/容量/native生命周期的共同成立；消费先前UI接受而不重复该决定或全历史调查。Orchestrator仅在有效FULL/DELTA正向判断和全部必要要求满足后完成生命周期；不含发布/安装/部署。\n\
       \nAdmit: phase依赖已交付policy/engine/comparison-support/runtime及原UI全部接受事实，包括 comparison\
       \ runner-repair 与 observation-method 的适用受控交付。绑定最终整合不可变candidate，完整适用all（engine/Pi/live/新增比较）在该候选有效，组件PASS相加不够。真实事实须覆盖EXTRACTION全部必要要求：焦点/七维、多slot局部修订失效、Markdown原文边界、必要集合容量失败与native有界恢复、三组defaults/matched实际条件及native有效续做信息非退化。核对语义遗漏、跨结果矛盾、已标记保护vs真实覆盖、模型预算/调用差异及恢复入口可靠性。\n\
@@ -2401,14 +2402,19 @@ phases:
       \ 格式相等或任意容差。native 无 rendered-memory ceiling 的既有观察限制保持该维度 UNPROVEN，不能宣称等价约束或\
       \ blanket parity PASS。接受时披露已明示不可比维度并判断其适用性，任何必要 runtime 语义或非退化缺证仍阻止接受；本方法没有豁免。仅复用适用观察、补受影响及原缺失事实，不以再次全\
       \ modes 或更大预算代替证据。\n\nBoundary: exact owner gate-reviewer，已解析为只读gate判断者；不写源码/docs/Plan/状态、运行新模型实验、改变接受条件或选择修复owner。显式Milestone\
-      \ Gate，纳入上述五个成果phase；本接受phase仅承载判断，不构造循环证明。\n\nRecovery: 报告/绑定先修报告，缺事实给出准确modality/条件；有据仓库缺口经正常writable\
-      \ repair依赖，保持历史和同一gate。修复后Delta覆盖受影响要求/直接依赖/未解决发现/触及保护并复用其余。任一阻断缺陷、必要失败或UNPROVEN均不能接受，不降成MVP或建议。"
+      \ Gate，纳入上述七个成果phase；本接受phase仅承载判断，不构造循环证明。\n\nRecovery: 报告/绑定先修报告，缺事实给出准确modality/条件；有据仓库缺口经正常writable\
+      \ repair依赖，保持历史和同一gate。修复后Delta覆盖受影响要求/直接依赖/未解决发现/触及保护并复用其余。任一阻断缺陷、必要失败或UNPROVEN均不能接受，不降成MVP或建议。\n\
+      \n新增宿主修复接受: 消费 pi-host-prompt 原生生命周期修复和 nunc-host-prompt-compat 的最终配对结果，统一判断\
+      \ user/idle-custom/tool-continuation/compaction-retry 的有效提示、当前persona及临时指令生命周期；custom来源/一次投递/动态工具/身份恢复/取消和真正超限保护完整。绑定最终Nunc\
+      \ candidate与fixed Pi source/package，完整all必须确实加载此配对，并消费对应host原生完整offline checks；只看stock0.85.1的组件PASS不足。保留原五phase全部义务和原三组stock/current/new参考身份，逐项判断既有真实观察在host变化后的适用性。必要事实缺失仍阻止接受；本gate不自行调用真实模型或授权费用/安装。其只读范围增加所绑定host候选的源码、测试、原生文档与package/lock；不把候选版本标为已发布或已全局安装。"
     verification: "```yaml\nchecks:\n  - id: final-extraction-integrated-complete-inventory\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
       \ 0\nreview:\n  kind: MILESTONE_GATE\n  mode: FULL\n  phases: [nunc-v1, native-compat,\
-      \ cooperative-root-cause, nunc-ui, nunc-extraction]\n```\n消费最终candidate已有且适用的完整检查和runtime/UI事实；没有则保持未完成，不默认重跑昂贵效果。Orchestrator提供完整binding，validator-complete\
-      \ gate.report.v2 中每个必要要求PROVEN且无blocking findings，才支持完成。所有producer DONE或observer退出不是完整接受。"
+      \ cooperative-root-cause, nunc-ui, nunc-extraction, pi-host-prompt, nunc-host-prompt-compat]\n\
+      ```\n消费最终candidate已有且适用的完整检查和runtime/UI事实；没有则保持未完成，不默认重跑昂贵效果。Orchestrator提供完整binding，validator-complete\
+      \ gate.report.v2 中每个必要要求PROVEN且无blocking findings，才支持完成。所有producer DONE或observer退出不是完整接受。\n\
+      新增必要host证据与最终配对all须适用；范围包括pi-host-prompt及nunc-host-prompt-compat，不新增另一终端判断。"
     refs:
     - docs/EXTRACTION.md
     - docs/DESIGN.md
@@ -2425,3 +2431,121 @@ phases:
     - package-lock.json
     - .node-version
     agent: gate-reviewer
+- id: pi-host-prompt
+  name: Pi 原生有效提示生命周期修复
+  status: pending
+  gate: 交付独立可消费的修复host源码/package与原生生命周期证明；本phase不作最终Nunc项目接受。
+  context: 本次用户要求增加修复计划；不在规划回合claim/dispatch/实施/安装。目标为earendil Pi0.85.1实际宿主对应源码，不能误用本地旧mariozechner
+    pi-mono0.52.12。未来匹配源码准备属于本producer，无全局安装、发布或真实模型效果。修复两套prompt来源的生命周期，不用减小persona、放宽容量或伪造user
+    callback掩盖。core result可独立于当前extraction writer交付，最终组合交下一phase与既有唯一gate。
+  depends_on:
+  - cooperative-root-cause
+  steps:
+  - id: pi-host-prompt.lifecycle
+    name: 统一原生 user/custom/tool run 的有效 systemPrompt
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"packages/coding-agent/src/**\", \"packages/coding-agent/test/**\"\
+      , \"packages/coding-agent/docs/**\", \"packages/coding-agent/CHANGELOG.md\"\
+      , \"packages/coding-agent/package.json\", \"packages/agent/src/**\", \"packages/agent/test/**\"\
+      , \"scripts/**\", \"package.json\", \"package-lock.json\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \".git/**\", \".pi/**\", \"**/auth.json\", \".env\", \".env.*\"\
+      ]\n\nDeliver: 修复 Pi 的有效 systemPrompt 生命周期，交付独立可测试、可供 Nunc 消费的原生 host source/package\
+      \ candidate。普通用户 prompt、空闲 sendCustomMessage(triggerTurn:true) 首轮、同 run 工具续轮、自动压缩重试读取一致的当前有效提示；结束\
+      \ run 不得形成 state.systemPrompt 与 override/base 两种互相矛盾的来源。保留当前应生效的 persona/扩展指令，移除真正过期的临时指令。新用户输入、动态工具变化、persona\
+      \ 切换/借用恢复后的新运行正确更新提示。不能单纯删除 override 清理、永久缓存旧完整 prompt 或删除 persona 以使容量检查变绿。\n\
+      \n保留 custom-message 来源、队列投递顺序、一次交付、原有用户 input/command/template 语义、取消/重试/compaction\
+      \ ownership。不得把 callback 伪装成用户输入，或无条件重跑会产生持久消息/外部副作用的整个 before_agent_start。需要重新组合提示时共享仅组合提示的逻辑并定义其公开生命周期；不新建第二调度器。以可观察的实际\
+      \ provider Context、持久消息数量和事件顺序证明上述行为。新增回归必须覆盖：用户→空闲callback→真实工具续轮→第二callback、动态工具加载、临时persona恢复/当前身份切换、取消/压缩重试、下一用户run及新session无临时提示泄漏。容量边界比较采用同一完整有效提示；诊断对照中删掉persona的做法不能成为修复。\n\
+      \nBoundary: exact owner node-typescript-engineer，已解析为可写 Node/SDK/host specialist。本结果只修改\
+      \ @earendil-works/pi-coding-agent 对应的上游 host 源码和必要 agent-core 支撑，不以扩展 monkey-patch\
+      \ 私有 host 或直接编辑已安装 node_modules/dist 交付。目标上游为 https://github.com/earendil-works/pi.git\
+      \ 中与实际 0.85.1 安装对应的源码，未来在独立 /Users/tefx/Projects/pi-host-prompt-repair checkout/worktree\
+      \ 准备；本地 /Users/tefx/Projects/pi-mono 为旧 @mariozechner 0.52.12，明确排除。源代码、锁定依赖、正常构建产物和文档是一项可回退\
+      \ repository transaction；不改 Larva persona定义/注册/路由政策、不改 Nunc 产品语义、不全局安装/发布/push、不读写日常凭据/session/settings，无付费或真实模型调用。\n\
+      \nAdmit: 已确认故障源是 idle custom 首轮读取残留扩展 state.systemPrompt，而 prepareNextTurnWithContext\
+      \ 在 override 清空后读取 base，下一callback恢复大前缀并使Nunc重新估算。已用真实Pi/Nunc加离线fake provider完成因果对照；复用该机制证据但不能当作修复后PASS。当前\
+      \ matching source checkout 尚未准备，不能把旧仓库或诊断脚本冒充目标。owner在本步骤内取得匹配源码、阅读其AGENTS/lock/native测试配置、确认源码与待交付package的对应关系；无需另加环境准备步骤。下面\
+      \ npm package test/build:unbundled 是已安装0.85.1 manifest中实见入口；若matching source的权威规则、依赖构建顺序或完整离线检查库存要求补充最终argv，先提供新现场事实供原步骤检查合同修正，不静默跳过检查或使用旧仓库规则。保持当前提取worker及其它repository不受影响。\n\
+      \n完成程序: 在隔离profile/session、无继承凭据/无真实网络的真实Host入口执行行为测试，native模型响应可控但不得mock掉session/queue/tool\
+      \ continuation seam。取得独立定向source/contract与实际callback/tool-loop观察，消费原生源码要求的完整适用offline\
+      \ regression/check库存及构建结果；这属于本producer完成程序，不另立gate。输出可重复消费的source/package版本及构建方法，明确它与stock0.85.1的区别，不能把修复包标作未修改stock。只有本host结果和必要证明完整才完成，Nunc组合接受交下一phase。\n\
+      \nRecovery: unfinished同owner修完整兼容缺口；先核对并停止隔离进程/工作状态，再进行新假设验证。遇到真实生命周期/公开接口不足提供具体缺口，不绕过source\
+      \ authority。环境、源码获取、原生构建准备留在本step；新repo/persona-policy/全局安装/真实模型效果须另行范围判断。保留DONE历史及旧观察，失效证据只补受影响部分。"
+    verification: "```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version:\
+      \ 11.19.0\n  source_package: \"@earendil-works/pi-coding-agent@0.85.1\"\n  source_repository:\
+      \ \"https://github.com/earendil-works/pi.git\"\n  dependency_manifest: package.json\n\
+      \  dependency_lock: package-lock.json\n  dependency_setup_argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+      \ /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\nchecks:\n  - id: pi-host-native-unbundled-build\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ --prefix, packages/coding-agent, run, build:unbundled]\n    exit_code: 0\n\
+      \  - id: pi-host-native-offline-tests\n    argv: [/bin/bash, -c, 'exec /usr/bin/env\
+      \ -i HOME=\"$PWD/.scratch/offline-home\" PI_CODING_AGENT_DIR=\"$PWD/.scratch/offline-agent\"\
+      \ PATH=/opt/homebrew/bin:/usr/bin:/bin PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1\
+      \ PI_TELEMETRY=0 /opt/homebrew/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js\
+      \ --prefix packages/coding-agent run test']\n    exit_code: 0\n```\nargv在matching\
+      \ host源码工作树根运行。owner先按该源码锁定工作区依赖并准备必要依赖产物及隔离目录；checks不下载依赖或使用日常profile。源码准入必须核对native\
+      \ test配置是否全部offline；不得为了运行此argv放行真实网络/模型，若不匹配则在原step修正显式offline inventory后执行。必要源码原生root\
+      \ checks、受影响agent-core checks和完整本包offline库存不能被两条入口名称替代。独立观察以实际发送提示、persona切换、消息来源/次数、cancel/retry终态判断，不用prompt\
+      \ token存在的静态断言或自报PASS代替运行证据。"
+    refs:
+    - /opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/package.json
+    - /opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md
+    - /opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session.js
+    agent: node-typescript-engineer
+- id: nunc-host-prompt-compat
+  name: Nunc 与修复宿主的隔离集成
+  status: locked
+  gate: 交付最终提取候选与修复host的受控组合及可复现依赖消费；唯一最终质量判断仍是nunc.extraction-acceptance。
+  context: 等待匹配宿主修复及当前提取phase全部交付，避免与正在claimed的观察方法writer交叉整合。只在独立工作树消费上游包，不修改全局Pi或日常profile。保持旧native/current/new真实比较目标身份；新host影响的事实需要适用性判断，缺必要真实事实不能凭受控测试通过最终gate，未影响证据不重复付费。
+  depends_on:
+  - pi-host-prompt
+  - nunc-extraction
+  steps:
+  - id: nunc.host-prompt-compat
+    name: 锁定修复宿主并验证 Nunc callback 容量与 persona 连续性
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"scripts/**\", \"tests/pi/**\"\
+      , \"tests/live/**\", \"docs/PI.md\", \"docs/CAPACITY.md\", \"docs/DEVELOPMENT.md\"\
+      , \"docs/LIVE.md\", \"README.md\", \"package.json\", \"package-lock.json\",\
+      \ \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      , \"policies/**\", \"src/engine/**\"]\n\nDeliver: 在最终提取成果上交付 Nunc 对修复Pi host的可重复消费与真实本地集成证明，包括必要的明确host来源/版本兼容声明、锁定依赖或隔离包准备支持、行为测试及操作文档。消费pi-host-prompt的完成source/package，而非全局node_modules热补丁或工作目录偶然覆盖。stock0.85.1与fixed\
+      \ host作为两个明确target，历史native/current/new比较不得重标或偷偷更换reference。\n\n新增受控真实SDK及stock\
+      \ CLI/RPC callback→工具→下一callback回归进入现有tracked all库存：完整persona/有效systemPrompt在同一run持续且正确更新，custom消息只交付一次，不伪造user，不重复before_agent_start持久消息；新输入、动态工具、persona借用恢复、cancel、native一次压缩/重试和session切换保持原合同。测试必须调用真实host生命周期，不能mock相同入口或通过删除persona恢复PASS。验证前缀实际不变且usage适用时可复用；合法前缀变化仍重新估算，完整输入真实/估算超限仍有界拒绝并恢复。保留mainAdmissionLimit与planning区分、payload输入/metadata归属保护、输出保留、取消优先及Provider包装，不取消或放宽Nunc容量与usage验证。不是承诺以后永无CAPACITY。\n\
+      \nBoundary: exact owner node-typescript-engineer；仅pi-nunc可Git回退source/tests/docs/声明依赖事务及新隔离stock\
+      \ profile/loopback/进程。上游host只读消费，不顺带修改其源码或Larva persona-policy。如果正确persona发布需新的Larva源码交付而host公共机制不足，提出具体独立生产边界，不用跨repo暗改。禁止全局CLI/日常extension安装、发布/push、真实模型/费用/credential或日常session/settings改动；不改变提取语义、既有oracle/UI人工要求或完成历史。\n\
+      \nAdmit: phase依赖等待pi-host-prompt和nunc-extraction完成，故不碰当前claimed observation-method及正在修复的比较writer。Orchestrator核对源码/lock/package\
+      \ target和共享整合writer静止后派发。最后组合为明确Nunc candidate + fixed Pi package/source，所有main/full\
+      \ checks需实际消费此配对；不能靠指向stock安装的all证明新host。实现者交付缺失的tracked、可离线重建的候选包选择/测试支持，普通环境准备留在本step。若需要改变原0.85.1限定或接受新公开hook，文档和行为兼容同一提交覆盖；不臆造已发布版本或进行发布。\n\
+      \n完成程序: Orchestrator在本step取得独立定向原生callback/工具续轮、persona恢复及Nunc容量/取消观察，结合完整all和上游仍适用native证明接受此兼容结果。评估原EXTRACTION\
+      \ runtime观察在新host上的适用性，保留原target事实；若host变化触及某项必要真实续做/恢复结论，不得以受控provider替代该模型语义，也不得自动重跑付费实验。准确列出受影响范围与缺失modality供原接受/执行权限处理。未受影响的真实/UI事实继续复用；本producer完成不代表整个项目接受。\n\
+      \nRecovery: 同owner修本步骤完整兼容问题；只读上游候选发现缺陷则经正常producer repair保持DONE不变。缺数据先修观察，缺宿主能力不得绕过检查。保持原有限模型预算/权限、历史报告、callback和runtime状态；新增真实效果或日常安装不在本step默认权限内。"
+    verification: "```yaml\nchecks:\n  - id: fixed-host-nunc-complete-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\ncheck_environment:\n  node_version: 26.7.0\n  npm_version: 11.19.0\n  dependency_manifest:\
+      \ package.json\n  dependency_lock: package-lock.json\n  runtime_declaration:\
+      \ .node-version\n  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache,\
+      \ npm_config_ignore_scripts=true, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n```\n保留既有完整engine/Pi/live/比较库存；新增host配对回归由all自动发现。source/locked\
+      \ package安装准备和loopback-profile隔离由producer承担，all运行期间无安装/下载。必须证明fixture确实加载已修复host而非stock0.85.1，并在同一受控provider条件下覆盖旧失效流程和保持persona的修复流程。实际模型历史按其target/inputs/method分别判断，不强行重跑也不伪称适用。"
+    refs:
+    - docs/PI.md
+    - docs/CAPACITY.md
+    - docs/DEVELOPMENT.md
+    - docs/LIVE.md
+    - docs/EXTRACTION.md
+    - src/pi/admission.ts
+    - src/index.ts
+    - scripts/check.mjs
+    - tests/pi/admission.test.ts
+    - tests/pi/fixtures.ts
+    - package.json
+    - package-lock.json
+    - .node-version
+    agent: node-typescript-engineer
