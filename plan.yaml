@@ -2257,7 +2257,7 @@ phases:
       acceptance.
   - id: nunc.extraction-observation-method
     name: 实质历史 E3 变体与分维资格观察支持
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/live/**\", \"tests/scenarios/extraction-inputs.json\"\
       , \"tests/scenarios/extraction-observer.json\", \"docs/LIVE.md\", \"docs/POLICY.md\"\
@@ -2361,6 +2361,8 @@ phases:
     depends_on:
     - nunc.extraction-runner-repair
     agent: principal-engineer
+    claimed_by: principal-engineer
+    claimed_at: '2026-09-09T01:52:31.012041Z'
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
