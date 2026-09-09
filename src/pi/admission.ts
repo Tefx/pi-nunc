@@ -16,9 +16,18 @@ interface MainReceipt {
   tools: unknown;
   messages: unknown;
   messageCount: number;
+  response: unknown;
 }
-interface MainSnapshot extends MainReceipt { generation: number; payloadBound: boolean }
-/** In-process bound for ephemeral receipts; not a call or token cap. */
+interface MainSnapshot {
+  model: Model<Api>;
+  systemPrompt: string | undefined;
+  tools: unknown;
+  messages: unknown;
+  messageCount: number;
+  generation: number;
+  payloadBound: boolean;
+}
+/** In-process bound for completed receipts; not a call or token cap. */
 const MAIN_RECEIPT_LIMIT = 8;
 export type AdmissionEstimateReason = "matching-receipt" | "no-receipt" | "model-mismatch" | "system-mismatch" | "tools-mismatch" | "messages-mismatch" | "payload-unbound" | "usage-unusable" | "lifecycle-reset";
 export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; plannedInputLimit?: number; inputExceededPlan?: boolean; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; estimateReason?: AdmissionEstimateReason; hostPromptMatchesRequest?: boolean; anchorTrailingMessages?: number; code?: string; payload?: PayloadObservation }
@@ -47,8 +56,7 @@ export class Admission {
   private cancelledRun = false;
   private generation = 0;
   private receipts: MainReceipt[] = [];
-  private pending: MainSnapshot[] = [];
-  invalidateUsage(): void { this.receipts = []; this.pending = []; this.generation++; }
+  invalidateUsage(): void { this.receipts = []; this.generation++; }
   private readonly rejected = new Map<string, AbortSignal>();
   constructor(private readonly pi: ExtensionAPI, private readonly config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig, private readonly onLayout?: (event: AdmissionLayoutEvent) => void) {}
 
@@ -107,21 +115,18 @@ export class Admission {
       : (usage.input as number) + (usage.output as number) + (usage.cacheRead as number) + (usage.cacheWrite as number);
     return integer(tokens, 1);
   }
-  private harvest(context: Context): void {
-    const pending = this.pending;
-    this.pending = [];
-    for (const snapshot of pending) {
-      if (snapshot.generation !== this.generation || !snapshot.payloadBound) continue;
-      if (context.messages.length <= snapshot.messageCount) { this.pending.push(snapshot); continue; }
-      if (!isDeepStrictEqual(jsonView(context.messages.slice(0, snapshot.messageCount)), snapshot.messages)) continue;
-      const anchor = context.messages[snapshot.messageCount];
-      if (anchor && this.assistantUsageUsable(anchor, snapshot.model)) {
-        this.remember({ model: snapshot.model, systemPrompt: snapshot.systemPrompt, tools: snapshot.tools, messages: snapshot.messages, messageCount: snapshot.messageCount });
-      }
-    }
+  private responseView(message: { role?: string; content?: unknown; stopReason?: string; model?: string; provider?: string; api?: string; usage?: unknown }): unknown {
+    return jsonView({
+      role: message.role,
+      content: message.content,
+      stopReason: message.stopReason,
+      model: message.model,
+      provider: message.provider,
+      api: message.api,
+      usage: message.usage,
+    });
   }
   private selectReceipt(context: Context, model: Model<Api>): { reason: AdmissionEstimateReason; receipt?: MainReceipt } {
-    this.harvest(context);
     if (!this.receipts.length) return { reason: "no-receipt" };
     let reason: AdmissionEstimateReason = "messages-mismatch";
     let best: MainReceipt | undefined;
@@ -134,6 +139,7 @@ export class Admission {
       if (!isDeepStrictEqual(jsonView(context.messages.slice(0, receipt.messageCount)), receipt.messages)) { if (!best) reason = "messages-mismatch"; continue; }
       const anchor = context.messages[receipt.messageCount];
       if (!anchor || !this.assistantUsageUsable(anchor, model)) { if (!best) reason = "usage-unusable"; continue; }
+      if (!isDeepStrictEqual(this.responseView(anchor), receipt.response)) { if (!best) reason = "messages-mismatch"; continue; }
       if (!best || receipt.messageCount >= best.messageCount) best = receipt;
     }
     return best ? { reason: "matching-receipt", receipt: best } : { reason };
@@ -143,6 +149,20 @@ export class Admission {
     if (dup >= 0) this.receipts.splice(dup, 1);
     this.receipts.push(receipt);
     while (this.receipts.length > MAIN_RECEIPT_LIMIT) this.receipts.shift();
+  }
+  private watchCompletion(stream: { result: () => Promise<AssistantMessage> }, snapshot: MainSnapshot): void {
+    void stream.result().then(message => {
+      if (snapshot.generation !== this.generation || !snapshot.payloadBound) return;
+      if (!this.assistantUsageUsable(message, snapshot.model)) return;
+      this.remember({
+        model: snapshot.model,
+        systemPrompt: snapshot.systemPrompt,
+        tools: snapshot.tools,
+        messages: snapshot.messages,
+        messageCount: snapshot.messageCount,
+        response: this.responseView(message),
+      });
+    }, () => { /* Failed stream; no receipt. */ });
   }
   private observe(value: AdmissionObservation, detail?: Omit<AdmissionLayoutEvent, "observation">): void {
     try { this.pi.events.emit("nunc:admission", value); } catch { /* Notification-only consumers. */ }
@@ -292,10 +312,11 @@ export class Admission {
         }
       } };
       this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context, initialMetadataTokens });
-      if (snapshot) this.pending.push(snapshot);
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
-      return simple ? delegate.streamSimple(model, context, forwarded as SimpleStreamOptions) : delegate.stream(model, context, forwarded);
+      const stream = simple ? delegate.streamSimple(model, context, forwarded as SimpleStreamOptions) : delegate.stream(model, context, forwarded);
+      if (snapshot) this.watchCompletion(stream, snapshot);
+      return stream;
     } catch (error) {
       const aborted = options?.signal?.aborted === true || error instanceof EngineError && error.code === "CANCELLED";
       const code = error instanceof EngineError ? error.code : aborted ? "CANCELLED" : "INPUT";

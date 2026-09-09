@@ -263,6 +263,59 @@ test("payload non-output change does not authorize that request or destroy an ea
   assert.equal(reuse?.estimateReason, "matching-receipt");
 });
 
+test("public context rewrite of returned usage cannot reuse that receipt", async t => {
+  let rewrite = false;
+  const observations: AdmissionObservation[] = [];
+  const f = await fixture({ extras: [{ name: "anchor-usage-rewrite", factory(pi) {
+    pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
+    pi.on("context", event => {
+      if (!rewrite) return;
+      const messages = structuredClone(event.messages);
+      const assistant = messages.find(message => message.role === "assistant");
+      assert(assistant && assistant.role === "assistant");
+      assistant.usage = { ...assistant.usage, input: 1, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 1 };
+      return { messages };
+    });
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("Establish response");
+  const original = f.runtime.session.messages.find(message => message.role === "assistant");
+  assert(original?.role === "assistant");
+  assert(original.usage.totalTokens > 1);
+  rewrite = true;
+  await f.runtime.session.prompt("Follow-up");
+  const last = mains(observations).at(-1);
+  assert.notEqual(last?.estimateReason, "matching-receipt", JSON.stringify(last));
+  assert.notEqual(last?.estimator, "pi-usage-backed");
+  assert(last?.inputTokens === undefined || last.inputTokens > 20, JSON.stringify(last));
+});
+
+test("public context rewrite of the response anchor over limit sends zero additional transport", async t => {
+  let rewrite = false;
+  const observations: AdmissionObservation[] = [];
+  const f = await fixture({ extras: [{ name: "anchor-content-rewrite", factory(pi) {
+    pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
+    pi.on("context", event => {
+      if (!rewrite) return;
+      const messages = structuredClone(event.messages);
+      const assistant = messages.find(message => message.role === "assistant");
+      assert(assistant && assistant.role === "assistant");
+      assistant.content = [{ type: "text", text: "x".repeat(280000) }];
+      return { messages };
+    });
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("Establish response");
+  const before = f.calls.length;
+  rewrite = true;
+  await f.runtime.session.prompt("Follow-up");
+  const last = mains(observations).at(-1);
+  assert.equal(last?.outcome, "reject", JSON.stringify(last));
+  assert.equal(last?.code, "CAPACITY");
+  assert.notEqual(last?.estimator, "pi-usage-backed");
+  assert.equal(f.calls.length, before);
+});
+
 test("model, tools, compaction and manual M invalidate every receipt", async t => {
   const env = await receiptsFixture(t);
   await env.f.runtime.session.prompt("On large");

@@ -129,6 +129,32 @@ test("held older wrapper oversize from inside the native callback still runs mai
   assert.equal(e.faux.state.callCount, 1);
 });
 
+test("repeated same-length completed calls keep a bounded receipt and bind the actual response", async () => {
+  const e = await env();
+  const provider = e.registry.getProvider(e.model.provider);
+  assert(provider);
+  let completed = await provider.streamSimple(e.model, e.context, e.options).result();
+  assert.equal(completed.stopReason, "stop", completed.errorMessage ?? "");
+  for (let i = 0; i < 11; i++) {
+    completed = await provider.streamSimple(e.model, e.context, e.options).result();
+    assert.equal(completed.stopReason, "stop", completed.errorMessage ?? "");
+  }
+  await Promise.resolve();
+  e.observations.length = 0;
+  const follow: Context = { messages: [e.context.messages[0]!, completed, { role: "user", content: "next synthetic turn", timestamp: 2 }] };
+  const next = await provider.streamSimple(e.model, follow, e.options).result();
+  assert.equal(next.stopReason, "stop", next.errorMessage ?? "");
+  const reused = e.observations.filter(o => o.kind === "main").at(-1) as { estimator?: string } | undefined;
+  assert.equal(reused?.estimator, "pi-usage-backed");
+  e.admission.invalidateUsage();
+  e.observations.length = 0;
+  const after = await provider.streamSimple(e.model, follow, e.options).result();
+  assert.equal(after.stopReason, "stop", after.errorMessage ?? "");
+  const fresh = e.observations.filter(o => o.kind === "main").at(-1) as { estimator?: string } | undefined;
+  assert.equal(fresh?.estimator, "pi-heuristic");
+  e.admission.close(e.ctx);
+});
+
 test("after close, leftover wrappers stay transparent; a different signal stays independent", async () => {
   const e = await env();
   const latest = e.rewrap();
