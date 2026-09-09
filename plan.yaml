@@ -1824,7 +1824,7 @@ phases:
       only and made no topology mutation.
 - id: nunc-extraction
   name: 面向续做的提取策略、必要项保护与原生对照
-  status: in_progress
+  status: done
   gate: 交付策略、引擎、可复用比较能力及真实观察四个结果；本阶段不重复作项目接受。唯一新增最终整合决定由依赖本阶段和 nunc-ui 的 nunc.extraction-acceptance
     承担。必要观察仍未证明时保持未完成，不把 producer 或 runner 退出当成效果接受。
   context: "当前授权为用户先更新文档再创建实施计划，文档已提交；本次不 claim/dispatch/实施/安装或调用真实模型。未来执行以各记录 owner\
@@ -2069,7 +2069,7 @@ phases:
       preserved; no push/global install/daily configuration or protected UI changes.'
   - id: nunc.extraction-runtime
     name: 原生、当前与新版的真实续做及非退化观察
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -2183,6 +2183,52 @@ phases:
     agent: integration-verifier
     claimed_by: integration-verifier
     claimed_at: '2026-09-09T17:49:34.303931Z'
+    done_at: '2026-09-09T17:50:28.289148+00:00'
+    evidence: 'User 2026-09-10 explicit acceptance of remaining disclosed limitations,
+      plus separate statement that host-prompt compatibility is being handled by Larva
+      and is not a Nunc delivery prerequisite. No new model/host execution.
+
+
+      Integrated product 4f1f668c80437f03837a051555c82fda116a83f7 (lifecycle HEAD
+      later). Consolidated exact-binding report /private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-runtime-consolidated-ibphevyb/verifier-report.json
+      validated CONTRADICTION against original 10-row binding; map runtime-acceptance-evidence-map.md.
+      Historical DISPROVEN/UNPROVEN reports remain unchanged facts.
+
+
+      Accepted disclosed limitations (do not re-ask, do not replay, do not convert
+      to source defects):
+
+      1. Whole-task early actions: candidate/native/current E1/E3/E4 premature verify/export/handoff/routing
+      before first maintenance remain task-quality negatives; no extraction-loss chain
+      (condition→exposure→M/K/recovery entry→action) was established.
+
+      2. Incomplete comparative continuation: archive defaults-native and matched-current
+      stopped on independent write-before-read; missing qualified later trajectories
+      stay missing; no manufactured success layouts.
+
+      3. Strict matched rendered-memory/budget equivalence UNPROVEN because native
+      has no enforced ceiling; logical placement/own-K/source measurements remain
+      usable.
+
+      4. Conditional natural nonqualification: E2 one-to-many split/merge and E4 required
+      overflow/optional competition did not occur; engine/slot ops and real-host CAPACITY+once-c
+      recovery remain separately proven.
+
+
+      Proven and retained: latest matched E1 candidate two-roll/same-session restart/exact
+      export/ordered original e verify/fresh handoff/normal stop; E2 correction/mixed
+      replacement/west cancel/unchanged survivor + 3-row projection; E3 candidate
+      post-a split/suffix/restart/original-script; E4 required set+exact c and controlled
+      native-host CAPACITY/saved-state/once-c; optional quotas null totals; request-receipt
+      provenance 6/6 PROVEN, 423/52 all reused. 1514 unique terminal calls across
+      eight batches; unknown usage/invoices remain unknown. UI human acceptance unchanged.
+      Stock Pi 0.85.1 unmodified.
+
+
+      This step is complete as the original EXTRACTION §7 observation consumer with
+      those user-accepted disclosed limits. Same final gate remains the project-acceptance
+      decision; no waiver of unpublished/install/deploy, no Pi-core work, no further
+      paid matrix.'
   - id: nunc.extraction-runner-repair
     name: 修复比较执行授权、原生切轮生命周期与资格诊断
     status: done
@@ -2721,7 +2767,7 @@ phases:
       ref refs/retained/nunc-extraction-optional-quotas.
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
-  status: locked
+  status: pending
   gate: 唯一最终质量决定nunc.extraction-acceptance消费nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction、nunc-host-prompt-compat六个成果phase。最终Nunc与未修改stock0.85.1完整offline库存、适用真实/UI事实与原必要保护成立且无blocking/必要UNPROVEN才接受；不要求fixed-host交付或任意扩展私有persona重建，准确披露stock限制。无安装/部署/发布或新付费采样授权。
   context: 唯一跨成果最终接受，等待nunc-extraction、原nunc-ui及Nunc本地stock兼容交付。纳入nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction、nunc-host-prompt-compat六个成果phase；撤销的Pi
     core方案没有交付/接受义务。保留原五phase全部必要要求、人工UI及DONE，不重复UI决定或另造producer gates。最终Nunc candidate与未修改stock
