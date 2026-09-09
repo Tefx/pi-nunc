@@ -3058,7 +3058,7 @@ phases:
       or license grant yet.'
   - id: nunc.github-public
     name: Create tefx/pi-nunc public repository and push reviewed main
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [.git/config]\n  blocked_paths: [plan.yaml, plan-dashboard.html,\
       \ .pi/**, .agents/**, .env, .env.*, '**/auth.json']\ntarget:\n  provider: github.com\n\
@@ -3111,3 +3111,5 @@ phases:
     depends_on:
     - nunc.readme-public
     agent: devops-engineer
+    claimed_by: devops-engineer
+    claimed_at: '2026-09-09T19:21:41.306593Z'
