@@ -2257,7 +2257,7 @@ phases:
       acceptance.
   - id: nunc.extraction-observation-method
     name: 实质历史 E3 变体与分维资格观察支持
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/live/**\", \"tests/scenarios/extraction-inputs.json\"\
       , \"tests/scenarios/extraction-observer.json\", \"docs/LIVE.md\", \"docs/POLICY.md\"\
@@ -2363,6 +2363,27 @@ phases:
     agent: principal-engineer
     claimed_by: principal-engineer
     claimed_at: '2026-09-09T01:52:31.012041Z'
+    done_at: '2026-09-09T02:57:08.587928+00:00'
+    evidence: 'Integrated accepted candidate9c58846c7b2af36c0e75782118921d2013ffb04c
+      by fast-forward over0776eb0. Originalf183349 retained refs/retained/nunc-extraction-observation-method;
+      clean rebase changed only Plan input, not product/test/lock. Principal delivered
+      e3/archive-closeout useful monthly/combined finance history, originala/b/oracles
+      preserved with appended variant checks, public lifecycle and bounded actual-accounting
+      qualification, positive native no-work ordinary continuation vs unproven roll,
+      logical placement/source/K integrity separate from generated indices/content/token
+      differences. Independent integration-verifier full8requirements PROVEN/no findings;
+      validator valid/binding_checked true POSITIVE_EVIDENCE: /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-observation-method-acceptance-obcxzkz7/{review-binding.json,verifier-report.json}.
+      Fresh17 controlled tests actualstockCLI/worker completebatch/split/restore/suffix/restart,
+      failure/no-work/source/cut negatives;23fixtures closed48PIDs absent with pairedcalls.
+      Complete390/48 inventory reused explicitly across Plan-only rebase from .vectl/worktrees/nunc-extraction-observation-method/.scratch/observation-method/required-all.log;
+      independent evidence /tmp/larva-agent-artifacts/nunc-observation-method-verifier-9c588/{evidence-index.md,observations.json,observation-method.log,boundaries.log}.
+      Native archive body truncation8409/8423→2000 each remains exposureUNPROVEN;
+      originala/permission in prefix and complete investigation siblingsK retained.
+      Native rendered-memory parityUNPROVEN. Conditional controlled usage proves mechanism
+      only, no realGeminiqualification/semantics/nonregression. Original short cases/real
+      task violations/consumed targets and UI DONE remain preserved. No real-model
+      calls, productengine/pi/ui/policy implementation edits, global/daily effects
+      or push. Same runtime/finalacceptance retain all remaining obligations.'
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
