@@ -2078,8 +2078,9 @@ phases:
       ]\n\nDeliver: 取得 EXTRACTION §7 真实三组 defaults/matched 观察，逐必要要求 PROVEN/DISPROVEN/UNPROVEN\
       \ 与关闭条件，供原 nunc.extraction-acceptance 消费。用实际维护/滚动/恢复/续做行动和产物判断焦点、义务、精确约束、真实进度、纠正、多slot及恢复入口；native\
       \ 有效续做信息在新 M/K/可靠入口缺失即退化，平均分/标题/字数不能遮盖。必要项容量失败须有实际native无循环/重放事实，guard不等于语义完整。\n\
-      \nAdmit: nunc.extraction-runner-repair 已完成执行前 command 授权修复、受控 stock E3 生命周期/非资格诊断和最终整合完整离线库存，并由\
-      \ Orchestrator 在该 producer 完成程序取得独立定向接受。此前真实消费 target 单次执行已终态核对，绝不重跑；完整保留原 report/reconciliation/isolation/evidence\
+      \nAdmit: nunc.extraction-runner-repair 与 nunc.extraction-observation-method\
+      \ 的已接受机械成果保持 DONE；新的 nunc.extraction-source-qualification 仅修复 archive-closeout\
+      \ 分页来源暴露判据，受控完整库存及独立定向完成接受后由本消费者继续。此前真实消费 target 单次执行已终态核对，绝不重跑；完整保留原 report/binding/reconciliation/isolation/evidence\
       \ index，污染观察排除，未受影响事实按适用性复用。当前用户已授权继续执行、OpenRouter google/gemini-3.8-flash 无美元上限（maxCostUsd:null，非免费）；仍必须先绑定新\
       \ target 与有限总 calls/tokens/time、当前有效非秘密模型/config/策略、native0.85.1/current70dacad/新候选、defaults/matched差异及合法\
       \ B/K/包装/输出预算。历史只规划或等待真实授权文字不撤销本次授权，旧额度不可继承，不重复请求已给同模型费用授权。\n\n遵循 LIVE 公开当前选择/defaults，不继承旧父任务模型快照、重建catalog或更换账户。新隔离session/cwd，Pi\
@@ -2087,27 +2088,35 @@ phases:
       \ runner。main/extraction/native双call/恢复共用有限call-token-time及适用known-cost，unknown保持未知，uncapped覆盖完整nativeallowance，失败reservation保留。不以小分区冒充模型能力或为旧错误原因重放。只复用源/模型/输入/命令/modality/判据/效果仍适用的事实。\n\
       \n保留全部原反例和未证明项：E1 defaults 三组提前动作、matched native 早期验证和 E4 candidate 提前 final\
       \ artifact 是实际任务违例，缺候选维护不能归因提取回归；最终正确产物不抹去提前行为。E2 必须观察自然首 M、K纠正、合法三次退休/保留、mixed-slot拆并/取消/未变项，未到纠正轮不能评分。E3\
-      \ 保留 native 合法 split/原请求/完整工具关联与重启的局部事实、低 H 的重复维护差异及 b PREPARATION 停止；current/candidate\
-      \ 完整 suffix/restart/final verification 仍需证明。E4 两个 native 污染结果排除；候选必须有本次完整响应、冻结必要集合/真实accounting与不等式、实际commit或CAPACITY不提交及\
-      \ c 一次恢复，空观察或 setup 失败不能声称 guard 成功。无 successful current/candidate maintenance、matched\
-      \ 两组缺失时不能判非退化。native rendered-memory 无等价强制上限保持该维度 UNPROVEN，不能用 realized size\
-      \ 或标签宣称配对。模型不见期望/评分/未来轮次；不seed M、制造checkpoint、标准答案或改写K。\n\n本次获准的方法由前置 nunc.extraction-observation-method\
-      \ 交付并受控独立接受后消费：E3 采用有真实工作用途/可观察后果的更长可退休历史具名变体，三组同一输入与原逻辑 placement，保留原短 E3 的\
-      \ UNPROVEN/数学拒绝及原反例。正常具体场景设计已授权，无需再次批准。新 source 必须建立该变体的新 matched native reference，不能把旧短\
-      \ E3 native 成功重标；尚缺完整 current/candidate automatic/suffix/restore/restart/b 原脚本与语义证明不因\
-      \ runner PASS 消失。真实工具批次后的 U 必须同时满足 U>H、目标自身 F+R_M+完整K+G<=min(H,mainInputLimit)\
+      \ 原短源 native 合法 split/原请求/完整工具关联与重启的局部事实、低 H 的重复维护差异、数学拒绝及 b PREPARATION 停止保持原适用范围，不替代新变体。E4\
+      \ 两个 native 污染结果排除；候选必须有本次完整响应、冻结必要集合/真实accounting与不等式、实际commit或CAPACITY不提交及\
+      \ c 一次恢复，空观察或 setup 失败不能声称 guard 成功。native rendered-memory 无等价强制上限保持该维度 UNPROVEN，不能用\
+      \ realized size 或标签宣称配对。模型不见期望/评分/未来轮次；不seed M、制造checkpoint、标准答案或改写K。\n\n当前真实\
+      \ archive-closeout 的适用事实应由原 exact-binding 报告消费：defaults current/candidate 与\
+      \ matched native/candidate 已成功 automatic split/restore/同-loop suffix/同 session\
+      \ restart/b 原脚本，局部机制已证明。defaults native 与 matched current 因 combined write 先于要求的\
+      \ closeout 月度读取而正确停止；全部六组 maintenance 前提前执行 verify 是任务违例，尚无提取回归因果证明。matched\
+      \ current February 已由真实正确分页完整暴露，旧 single-result-equals-entire-fixture 判据错误地报告\
+      \ missing exposure。消费前置 producer 对保留页的离线重分析，区分来源暴露修正与仍失败的独立 write-before-read\
+      \ 条件；不能让该 case 因 page 修复成为合格，也不能治愈提前动作或宣称 NONREGRESSION。完整保留 source/accounting/终态事实与旧报告，报告目标变化另作适用性绑定，不重新调用模型仅为改写报告，不重放已消费\
+      \ E3 target。E1 接受延期、E2 自然纠正/多slot、E4 必要项容量恢复、未合格组与更广 matched/NONREGRESSION 仍由本消费者关闭。\n\
+      \n具名 E3 archive-closeout 采用有真实工作用途/可观察后果的可退休历史，三组同一输入与原逻辑 placement；本分页修复不授权改变原\
+      \ input/oracle/task 语义或继续加长 workload。新变体 reference 使用其自身真实 matched native 事实，不能把旧短\
+      \ E3 native 成功重标。真实工具批次后的 U 必须同时满足 U>H、目标自身 F+R_M+完整K+G<=min(H,mainInputLimit)\
       \ 和合法 native cut；无非空区间即下一 transport 前有界拒绝。原请求在 B、investigation 首次 read 的完整 call/result\
-      \ 与全部 sibling 在 K、真实自动同-loop suffix、恢复、同 session restart 与 b 原脚本仍是必要条件。禁止 fake\
-      \ usage/capacity/model、填充/无关任务、答案或摘要注入、私有 hooks、abort/replay、JSONL/K 改写和自动扩\
-      \ workload 直到合格。\n\n按 EXTRACTION §7.1–7.3 与 POLICY/LIVE 的分维合同报告：defaults 正向识别无退休历史/no-work\
-      \ 且无未决效果后可续做普通任务，普通结果与无-roll continuity UNPROVEN 分列；未知 RPC 和真实维护失败不能普遍放行，旧未捕获错误正文不得倒填。matched\
-      \ 证明每组实际 IDs 对应的共同 named-turn/完整工具 placement、必要任务与工具来源暴露和各自 K 完整未改写；独立模型正文、工具次数、raw\
-      \ indices/K tokens 差异不构成必需的精确轨迹 matcher，也不能隐藏真实规模/来源差异或宣称等量 K。包装格式无需相同，无 arbitrary\
-      \ tolerance/blanket parity PASS；native rendered ceiling 缺失仍明确 UNPROVEN。方法只改变观察资格和记录方式，不豁免任何\
-      \ runtime 语义要求。受影响和原缺失事实才作新有界观察，适用旧证据复用；再次比较全部 modes 或增加预算均不是自动证明。\n\nBoundary:\
-      \ exact owner integration-verifier，已解析repository只读、可执行绑定真实runtime。禁止修改/安装仓库或基线、临时替代runner、选择fixer/操作Plan；仅有界新task状态、必要native模型调用与清理。日常session/settings/defaults、已接受\
+      \ 与全部实际 sibling 在 K、真实自动同-loop suffix、恢复、同 session restart 与 b 原脚本仍是必要条件；已观测批次没有\
+      \ sibling 时不可声称存在受控 fixture 的 sibling。禁止 fake usage/capacity/model、填充/无关任务、答案或摘要注入、私有\
+      \ hooks、abort/replay、JSONL/K 改写和自动扩 workload 直到合格。\n\n按 EXTRACTION §7.1–7.3\
+      \ 与 POLICY/LIVE 的分维合同报告：defaults 正向识别无退休历史/no-work 且无未决效果后可续做普通任务，普通结果与无-roll\
+      \ continuity UNPROVEN 分列；未知 RPC 和真实维护失败不能普遍放行，旧未捕获错误正文不得倒填。matched 证明每组实际 IDs\
+      \ 对应的共同 named-turn/完整工具 placement、必要任务与工具来源暴露和各自 K 完整未改写；独立模型正文、工具次数、raw indices/K\
+      \ tokens 差异不构成必需的精确轨迹 matcher，也不能隐藏真实规模/来源差异或宣称等量 K。包装格式无需相同，无 arbitrary tolerance/blanket\
+      \ parity PASS；native rendered ceiling 缺失仍明确 UNPROVEN。方法只改变观察资格和记录方式，不豁免任何 runtime\
+      \ 语义要求。受影响和原缺失事实才作新有界观察，适用旧证据复用；再次比较全部 modes 或增加预算均不是自动证明。\n\nBoundary: exact\
+      \ owner integration-verifier，已解析repository只读、可执行绑定真实runtime。禁止修改/安装仓库或基线、临时替代runner、选择fixer/操作Plan；仅有界新task状态、必要native模型调用与清理。日常session/settings/defaults、已接受\
       \ UI 及旧UIfixture、全局/其他项目和秘密受保护，无发布/push或旧证据工作树迁移。报告写caller私有artifact位置，不持久化敏感正文。既有\
-      \ UI 人工接受继续有效，真实模型效果不替代 UI 观察。\n\nRecovery: 核对可能开始的调用、worker/session、usage和清理；localabort/terminal/PID退出不证明remote终态/账单。原已核对终态观察可复用，未知\
+      \ UI 人工接受继续有效，真实模型效果不替代 UI 观察。无 engine/pi/ui/policy、model/usage 或 defaults/matched\
+      \ 范围变更授权。\n\nRecovery: 核对可能开始的调用、worker/session、usage和清理；localabort/terminal/PID退出不证明remote终态/账单。原已核对终态观察可复用，未知\
       \ usage/billing 不作零或免费余额。无终态、超总额、不明关联效果或执行隔离失效停止后续；已核对独立失败可记录后继续无依赖且仍有额度的新场景，不重用target。缺报告修报告；缺tracked能力或产品矛盾交兼容可写owner，producer\
       \ DONE后经正常修复依赖继续同一消费者。修复后只重取受影响及原缺失事实，保留原反例的适用性判断。必要 DISPROVEN/UNPROVEN 时本步与同一最终接受均未完成，不新增接受节点或缩减原要求。"
     verification: "```yaml\nchecks:\n  - id: extraction-comparison-no-effect-preflight\n\
@@ -2147,8 +2156,9 @@ phases:
     - src/live/comparison-observation.ts
     - src/live/scenarios.ts
     - src/live/host.ts
+    - src/live/archive-closeout.ts
     depends_on:
-    - nunc.extraction-observation-method
+    - nunc.extraction-source-qualification
     agent: integration-verifier
   - id: nunc.extraction-runner-repair
     name: 修复比较执行授权、原生切轮生命周期与资格诊断
@@ -2384,6 +2394,82 @@ phases:
       task violations/consumed targets and UI DONE remain preserved. No real-model
       calls, productengine/pi/ui/policy implementation edits, global/daily effects
       or push. Same runtime/finalacceptance retain all remaining obligations.'
+  - id: nunc.extraction-source-qualification
+    name: 分页读取来源暴露与有序 closeout 资格修复
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/archive-closeout.ts\", \"src/live/worker.ts\"\
+      , \"tests/live/**\", \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\", \"src/engine/**\", \"src/pi/**\",\
+      \ \"src/ui/**\", \"policies/**\", \"tests/scenarios/**\"]\n\nDeliver: 修复同一比较\
+      \ runner 的 archive-closeout 来源资格判据，交付可由原只读 nunc.extraction-runtime 独立消费的 tracked/tested\
+      \ 有序成功分页暴露 accounting。完整来源可以由一次全文件读取或多个真实成功分页共同提供；以实际目标路径、offset/limit、返回内容及工具\
+      \ call/result 顺序证明完整 union 在相关 write 开始前已完成。重叠页只能贡献其实际正确区间，不能靠累计行数补缺口；缺页、失败、错误来源、错误或过期正文、错误时序必须诚实拒绝或保留未证明，不能用\
+      \ basename、任意容差或文件最终存在替代实际暴露。保留原全文件正例、成功 read-before-write 和独立 closeout 两个月产物\
+      \ read-before-combined-write 判据；报告可定位贡献页及完成时点，不把 page reporting 修正变成任务资格放宽。\n\
+      \n实现、行为测试、必要消费者文档及保留数据的离线重分析是一个可 Git 回退仓库事务。对原真实分页数据使用修正后的 tracked 判据重分析，保留原始\
+      \ report/binding/source/accounting 不覆盖；不得重新调用模型仅为修复证据格式。原 matched current February\
+      \ 的 offset 1/101/201/190/280 与返回 100/100/100/25/119 行完整覆盖 399 行，应识别为真实完整暴露；其独立\
+      \ combined-write-before-monthly-read 失败仍必须保留，修正不能使该 case 合格。\n\nBoundary: exact\
+      \ owner node-typescript-engineer，已解析可写 Node/TypeScript CLI、runtime 与测试能力。此前\
+      \ Principal 升级针对 stock 公共 scheduling/比较续做的具体能力死路；本结果是有界 TypeScript 来源判据及测试，未见该死路适用于此结果，不继承广泛\
+      \ Principal 责任。仅本仓库 source/tests/docs 及新隔离合成 profile/session/loopback/stock\
+      \ fixtures；Orchestrator claim 后在 main/.vectl/worktrees 创建新工作树。无真实模型调用、付费 producer、凭据读取/复制、全局安装、日常\
+      \ profile/settings/session、旧 UI fixture、其他仓库、发布/push 或旧证据工作树迁移。原 input/oracle/task、workload\
+      \ 长度、usage、model、engine/pi/UI/policy 语义、defaults/matched 范围不变；single-use target、私有\
+      \ oracle/未来输入及原授权脚本执行保护不变。\n\nAdmit: 用户授权此窄修复；当前 runtime pending 且真实效果已终态核对，作用域无\
+      \ writer/evidence producer 后进入。Orchestrator 交付 exact-binding 的已验证 CONTRADICTION\
+      \ 报告、source-accounting 与底层页事件，并保留相应原始目标绑定。当前源码只接受单次结果等于全 fixture，不能证明分页来源缺失。适用真实事实继续有效：defaults\
+      \ current/candidate、matched native/candidate 已成功 automatic split/restore/suffix/restart/b；另外两组因独立\
+      \ combined 写早于 closeout 月度读取而正确停止。全部六组 maintenance 前提前执行 verify 是任务违例，不能归因为提取回归；真实\
+      \ E2/E4/E1、未合格组及 NONREGRESSION 仍归原 runtime，不因本修复消失。Gemini 既有费用授权无需重复请求，本 producer\
+      \ 不执行真实调用，也不重放任何 consumed E3 target。\n\nOrchestrator 在本 producer 完成程序取得独立定向\
+      \ source/contract 与受控分页观察判断，验证实际读取返回内容、路径/页范围、成功终态和 write 顺序的因果关系，并消费最终整合候选完整项目原生离线\
+      \ inventory；不另建 review/gate。控制正例实际经过 stock read 的分页返回 seam，负例执行 tracked predicate/公开消费者相关路径，有可失败回归关系；不以文档\
+      \ token、自报 PASS 或教给模型答案作为证明。原 whole-file、script-authorization、isolation 和完整现有回归随\
+      \ all 保留。底层未变证明按适用性复用，历史 390 数量不是库存上限。\n\nRecovery: 同一 unfinished owner 修完整兼容缺口，核对受控\
+      \ host/worker 和清理，保留原证据。缺页/内容/时序未知不得补造，必要机制检查失败保持 producer incomplete。若必须改变受保护任务或产品语义，暂停依赖动作交回范围判断。完成只证明观察来源资格正确，不治愈模型任务违例、不建立\
+      \ NONREGRESSION；随后继续同一 runtime 的受影响证据与原缺失义务，不新增 retry/每 finding/接受链。"
+    verification: "```yaml\nchecks:\n  - id: source-qualification-complete-controlled-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [successful-stock-pagination-complete-union, whole-file-positive-preserved,\
+      \ exact-source-and-returned-content, correct-overlap-without-double-counting,\
+      \ omitted-range-and-overlap-only-negatives, failed-read-and-wrong-stale-content-negatives,\
+      \ wrong-path-and-invalid-page-negatives, complete-exposure-before-monthly-write,\
+      \ monthly-reads-before-combined-write, retained-pages-reanalysis-with-order-failure-preserved,\
+      \ single-use-private-oracle-original-script-safeguards, complete-existing-regression]\n\
+      check_environment:\n  node_version: 26.7.0\n  npm_version: 11.19.0\n  pi_packages_version:\
+      \ 0.85.1\n  dependency_manifest: package.json\n  dependency_lock: package-lock.json\n\
+      \  runtime_declaration: .node-version\n  tui_python_argv: [/usr/bin/python3]\n\
+      \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n  dependency_setup_argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+      \ /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n```\n所有新接受判据进入 tracked source/tests，不能用临时\
+      \ helper 替代 material predicate。完整 all 绑定最终整合候选；独立定向完成审查与保留分页离线重分析补充源码/实际返回语义证明，无真实模型重放。受控成功分页含重叠完整覆盖，负例包含遗漏、仅重叠未完整、失败结果、错误/过期正文、同\
+      \ basename 不同 source、无效 offset/limit、完整暴露晚于相关 write 以及 combined write 早于月度 read。原结果和重新解释分列，matched\
+      \ current 仍 UNPROVEN；不能把机械来源修复记为真实任务或项目接受。"
+    refs:
+    - src/live/archive-closeout.ts
+    - src/live/worker.ts
+    - tests/live/observation-method.test.ts
+    - tests/live/comparison-native-fixture.ts
+    - tests/live/script-authorization.test.ts
+    - tests/scenarios/extraction-inputs.json
+    - tests/scenarios/extraction-observer.json
+    - docs/EXTRACTION.md
+    - docs/POLICY.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - scripts/check.mjs
+    - scripts/compare-extraction.mjs
+    - package.json
+    - package-lock.json
+    - .node-version
+    depends_on:
+    - nunc.extraction-observation-method
+    agent: node-typescript-engineer
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
