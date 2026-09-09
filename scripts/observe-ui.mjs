@@ -18,9 +18,9 @@ try {
     version: 1,
     nextId: 20,
     slots: [
-      { id: "s12", text: "必须兼容 Node 18 UNIQUE_SLOT_TOKEN" },
-      { id: "s15", text: "上传成功后不得自动重试" },
-      { id: "s19", text: "尚未验证 Windows 路径处理" },
+      { id: "s12", text: "Must stay compatible with Node 18 UNIQUE_SLOT_TOKEN" },
+      { id: "s15", text: "Do not auto-retry after a successful upload" },
+      { id: "s19", text: "Windows path handling is not verified yet" },
     ],
   };
   const sessions = f.env.PI_CODING_AGENT_DIR.replace(/agent$/, "sessions");
@@ -62,7 +62,7 @@ try {
   p.keys("\x15");
   await delay(100);
   p.keys("\r");
-  await f.wait(() => strip(p.stdout).includes("尚未纳入下一次原生 compaction"), "edit unload notice");
+  await f.wait(() => strip(p.stdout).includes("Manual edits not yet absorbed"), "edit unload notice");
   p.keys("\x1b[200~中文粘贴\x1b[201~");
   await delay(150);
   assert.match(strip(p.stdout), /中文粘贴/);
@@ -100,7 +100,7 @@ try {
   p.keys("\x1b[17~");
   await f.wait(() => f.log.filter(e => e.type === "snapshot").length > snaps, "editor after overlay");
   const afterOverlay = f.log.filter(e => e.type === "snapshot").at(-1).data.editor;
-  assert.doesNotMatch(afterOverlay, /UNIQUE_SLOT_TOKEN|Edited via native TUI|必须兼容/);
+  assert.doesNotMatch(afterOverlay, /UNIQUE_SLOT_TOKEN|Edited via native TUI|Must stay compatible/);
   p.keys("KEEP_DRAFT");
   await delay(80);
   const n = f.log.filter(e => e.type === "snapshot").length;
@@ -122,11 +122,11 @@ try {
   f.release("main");
   await f.wait(() => f.log.some(e => e.type === "settled"), "inflight settled");
   await p.send("/nunc status");
-  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("记忆：")), "status text");
+  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Memory:")), "status text");
   await p.send("/nunc details");
-  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("主请求准入")), "details text");
+  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Main admission")), "details text");
   await p.send("/nunc nope");
-  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("用法：/nunc [status|details]")), "unknown usage");
+  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Usage: /nunc [status|details]")), "unknown usage");
   p.keys("\x1b[200~中文粘贴\x1b[201~");
   await delay(150);
   await p.send("/nunc");

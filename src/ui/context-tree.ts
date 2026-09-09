@@ -42,7 +42,7 @@ function scopeCurrent(current: CurrentContext, add: (node: CtxNode) => string): 
 }
 
 function scopeLastMain(last: LastMainContext | undefined, add: (node: CtxNode) => string): CtxNode {
-  if (!last) return { id: "scope:last-main", label: "Last main request", description: "none", preview: "暂无记录", children: [] };
+  if (!last) return { id: "scope:last-main", label: "Last main request", description: "none", preview: "No records", children: [] };
   const children: string[] = [];
   children.push(add({
     id: "last-main:summary",
@@ -90,7 +90,7 @@ function scopeLastMain(last: LastMainContext | undefined, add: (node: CtxNode) =
 }
 
 function scopeLastMaintenance(last: LastMaintenanceContext | undefined, add: (node: CtxNode) => string): CtxNode {
-  if (!last) return { id: "scope:last-maintenance", label: "Last maintenance", description: "none", preview: "暂无记录", children: [] };
+  if (!last) return { id: "scope:last-maintenance", label: "Last maintenance", description: "none", preview: "No records", children: [] };
   const children: string[] = [
     add({ id: "maint:summary", label: "Observation", preview: maintenanceSummary(last), children: [] }),
     add({
@@ -104,16 +104,16 @@ function scopeLastMaintenance(last: LastMaintenanceContext | undefined, add: (no
   if (last.cut) {
     children.push(add({
       id: "maint:cut",
-      label: "B/K · 切分历史",
+      label: "B/K · cut history",
       description: `B ${last.cut.retiredEntryIds.length} · K ${last.cut.keptEntryIds.length}`,
       preview: [
         `firstKept ${last.cut.firstKeptEntryId}`,
-        `B (Retiring): ${last.cut.retiredEntryIds.length} 项 · K (Kept): ${last.cut.keptEntryIds.length} 项`,
-        "切分在实际维护时确定，不提前预测。",
+        `B (Retiring): ${last.cut.retiredEntryIds.length} items · K (Kept): ${last.cut.keptEntryIds.length} items`,
+        "The cut is determined at actual maintenance, not predicted in advance.",
       ].join("\n"),
       children: [
-        add({ id: "maint:cut:B", label: "B (Retiring)", description: String(last.cut.retiredEntryIds.length), preview: `B (选定退役的历史前段):\n${last.cut.retiredEntryIds.join("\n") || "(empty B)"}`, children: [] }),
-        add({ id: "maint:cut:K", label: "K (Kept)", description: String(last.cut.keptEntryIds.length), preview: `K (继续保留的近期历史后缀):\n${last.cut.keptEntryIds.join("\n") || "(empty K)"}`, children: [] }),
+        add({ id: "maint:cut:B", label: "B (Retiring)", description: String(last.cut.retiredEntryIds.length), preview: `B (selected retiring prefix):\n${last.cut.retiredEntryIds.join("\n") || "(empty B)"}`, children: [] }),
+        add({ id: "maint:cut:K", label: "K (Kept)", description: String(last.cut.keptEntryIds.length), preview: `K (kept recent suffix):\n${last.cut.keptEntryIds.join("\n") || "(empty K)"}`, children: [] }),
       ],
     }));
   }
@@ -162,7 +162,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
       id: `${prefix}:F`,
       label: "F · Fixed",
       description: tokenLabel(layout.system.tokens + (layout.tools.tokens ?? 0), layout.tools.unknown),
-      preview: `F (Fixed): 有效 system prompt 与工具定义\nSystem ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
+      preview: `F (Fixed): effective system prompt and tool definitions\nSystem ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
       children: [
         add({ id: `${prefix}:F:system`, label: "system", description: `${thousands(layout.system.tokens)} tok`, preview: layout.system.text || "(empty system)", children: [] }),
         add({ id: `${prefix}:F:tools`, label: "tools", description: `${layout.tools.count}`, preview: layout.tools.names.join(", ") || "(no tools)", children: toolIds }),
@@ -172,14 +172,14 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
       id: `${prefix}:M`,
       label: "M · Memory",
       description: `${slots?.length ?? 0} slots`,
-      preview: slots ? `M (Memory): 当前有效工作记忆 (${slots.length} slots)\n${slots.length} slots` : "M not in this observation",
+      preview: slots ? `M (Memory): current working memory (${slots.length} slots)\n${slots.length} slots` : "M not in this observation",
       children: mIds,
     }),
     add({
       id: `${prefix}:R`,
       label: "R · Raw history",
       description: `${layout.messageCount} messages / ${layout.blockCount} blocks`,
-      preview: `R (Raw history): 已交付活动原文历史\n${layout.messageCount} messages / ${layout.blockCount} blocks`,
+      preview: `R (Raw history): delivered active verbatim history\n${layout.messageCount} messages / ${layout.blockCount} blocks`,
       children: rIds,
     }),
   ];
@@ -375,86 +375,86 @@ function scopeLegend(add: (node: CtxNode) => string): CtxNode {
   const children = [
     add({
       id: "legend:F",
-      label: "F · Fixed (系统提示词与工具)",
-      description: "有效 system prompt 与工具定义",
+      label: "F · Fixed (system prompt and tools)",
+      description: "Effective system prompt and tool definitions",
       preview: [
-        "F (Fixed): 有效 system prompt 与可用工具定义。",
-        "• 提供当前请求的基础运行环境与指令约束。",
-        "• 并非绝对不可变：切换模型、修改配置或工具集时按当时有效设置重新确定。",
+        "F (Fixed): effective system prompt and available tool definitions.",
+        "• Provides the request's base runtime and instruction constraints.",
+        "• Redetermined from the current model, config, or tool set.",
       ].join("\n"),
       children: [],
     }),
     add({
       id: "legend:M",
-      label: "M · Memory (结构化工作记忆)",
-      description: "当前有效工作记忆 slots 及预算",
+      label: "M · Memory (structured working memory)",
+      description: "Current working-memory slots and budget",
       preview: [
-        "M (Memory): 当前有效结构化工作记忆。",
-        "• 由若干具名 slot（含 id 与正文）构成，每次主请求完整携带。",
-        "• 承载跨越近期窗口继续工作所需的关键约束与事实，独立于消息条数。",
-        "• 可通过人工编辑单条修改，或在触发维护时由模型提议增删。",
+        "M (Memory): current structured working memory.",
+        "• Named slots (id + body) carried in full on every main request.",
+        "• Holds constraints and facts needed beyond the recent window.",
+        "• Editable by hand per slot, or proposed add/remove during maintenance.",
       ].join("\n"),
       children: [],
     }),
     add({
       id: "legend:R",
-      label: "R · Raw history (活动原文历史)",
-      description: "已交付并仍在活动上下文中的原文历史",
+      label: "R · Raw history (active verbatim history)",
+      description: "Delivered history still in the active context",
       preview: [
-        "R (Raw history): 已交付并保留在当前活动上下文中的历史记录。",
-        "• 包含近期对话的用户输入、助手回复与工具调用结果等。",
-        "• 普通工作时保留完整原文，维护前 R 由 B 与 K 两部分构成 (R = B | K)。",
+        "R (Raw history): delivered records still kept in the active context.",
+        "• Includes recent user input, assistant replies, and tool results.",
+        "• Ordinary work keeps the full verbatim text; before maintenance, R is B | K.",
       ].join("\n"),
       children: [],
     }),
     add({
       id: "legend:B",
-      label: "B · Retiring (选定退役的历史)",
-      description: "维护时选定退役的较早原文前段",
+      label: "B · Retiring (selected retiring history)",
+      description: "Earlier verbatim prefix selected to leave at maintenance",
       preview: [
-        "B (Retiring): 维护时选定退出模型可见上下文的较早连续历史前段。",
-        "• 仅在实际触发维护时根据当前窗口与保留目标切分确定，不会提前预测。",
-        "• 退出上下文后仍保留在完整会话文件 (JSONL) 中，但后续模型请求不再加载。",
+        "B (Retiring): earlier history selected to leave model-visible context.",
+        "• Determined only when maintenance actually runs; not predicted in advance.",
+        "• Remains in the session file (JSONL); later model requests do not load it.",
       ].join("\n"),
       children: [],
     }),
     add({
       id: "legend:K",
-      label: "K · Kept (继续保留的近期历史)",
-      description: "维护后继续逐字保留的近期原文后缀",
+      label: "K · Kept (kept recent history)",
+      description: "Recent verbatim suffix kept after maintenance",
       preview: [
-        "K (Kept): 维护后继续保留在活跃上下文中的近期原文历史后缀。",
-        "• 保持原始输入顺序与内容，不重新生成或压缩。",
-        "• 后续主请求携带有效 M 与保留的 K，继续处理新交付输入。",
+        "K (Kept): recent verbatim history suffix kept after maintenance.",
+        "• Original order and content are preserved; not regenerated or compressed.",
+        "• Later main requests carry effective M and kept K with new input.",
       ].join("\n"),
       children: [],
     }),
     add({
       id: "legend:D",
-      label: "D · 未交付输入",
-      description: "排队中或尚未交付给模型的输入",
+      label: "D · Queued input",
+      description: "Queued or not-yet-delivered input",
       preview: [
-        "D (Queued): 排队中或尚未交付给模型的后续输入或在途指令。",
-        "• 由 Pi 按原生队列与调度规则交付；交付前不进入 R 或维护来源。",
-        "• 正式交付前不计入当前活动布局或维护切分。",
+        "D (Queued): queued or not-yet-delivered later input or in-flight instructions.",
+        "• Pi delivers it under native queue and scheduling rules.",
+        "• Not part of R or the maintenance source before delivery.",
       ].join("\n"),
       children: [],
     }),
   ];
   return {
     id: "scope:legend",
-    label: "Legend · 缩写说明",
-    description: "F / M / R / B / K / D 语义",
+    label: "Legend · abbreviations",
+    description: "F / M / R / B / K / D meanings",
     preview: [
-      "Context 缩写说明 (Legend)：",
-      "• F (Fixed): 当前有效 system prompt 与可用工具定义（随模型/配置重新确定）",
-      "• M (Memory): 当前有效结构化工作记忆 slots 及预算（独立于消息条数）",
-      "• R (Raw history): 已交付并保留在当前活动上下文中的原文历史 (R = B | K)",
-      "• B (Retiring): 维护时选定退役的较早历史（实际维护时确定，不提前预测）",
-      "• K (Kept): 维护后继续逐字保留的近期原文历史后缀（后续主请求协同处理新输入）",
-      "• D (Queued): 排队中尚未交付的输入（交付前不进入 R 或维护来源）",
+      "Context abbreviations (Legend):",
+      "• F (Fixed): current effective system prompt and available tool definitions (redetermined with model/config)",
+      "• M (Memory): current structured working-memory slots and budget (independent of message count)",
+      "• R (Raw history): delivered verbatim history still in the active context (R = B | K)",
+      "• B (Retiring): earlier history selected to leave at maintenance (determined at actual maintenance, not predicted)",
+      "• K (Kept): recent verbatim suffix kept after maintenance (later main requests continue with new input)",
+      "• D (Queued): queued not-yet-delivered input (not part of R or the maintenance source before delivery)",
       "",
-      "按 Enter 可进入查看各缩写的详细定义与设计含义。",
+      "Press Enter to open each abbreviation's definition.",
     ].join("\n"),
     children,
   };

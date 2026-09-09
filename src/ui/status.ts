@@ -15,12 +15,12 @@ export interface CompactFooterInput {
 }
 export interface DiagnosticNote { level: "warning" | "error" | "info"; message: string }
 
-export const COMMAND_USAGE = "用法：/nunc [status|details]";
-export const UNLOAD_LIMIT = "尚未纳入下一次原生 compaction 的人工修改需要新版 Nunc 解读；卸载或旧版仍读取上一次原生摘要。";
+export const COMMAND_USAGE = "Usage: /nunc [status|details]";
+export const UNLOAD_LIMIT = "Manual edits not yet absorbed by the next native compaction need a current Nunc to interpret; unload or older Nunc still reads the last native summary.";
 
 const COMPLETIONS = [
-  { value: "details", label: "details", description: "查看预算与最近维护详情" },
-  { value: "status", label: "status", description: "文字概览，不打开面板" },
+  { value: "details", label: "details", description: "Show budget and last maintenance details" },
+  { value: "status", label: "status", description: "Text overview without opening the panel" },
 ] as const;
 
 export function commandCompletions(prefix: string): { value: string; label: string; description: string }[] | null {
@@ -46,9 +46,9 @@ export function thousands(n: number): string {
 
 export function statusLines(view: MemoryView, triggerTokens: number | undefined): string {
   return [
-    `记忆：${view.memory.slots.length} 条`,
-    `压缩触发：${triggerTokens === undefined ? "未选择模型" : `${thousands(triggerTokens)} tokens`}`,
-    "预算详情：/nunc details",
+    `Memory: ${view.memory.slots.length} slots`,
+    `Compaction trigger: ${triggerTokens === undefined ? "no model selected" : `${thousands(triggerTokens)} tokens`}`,
+    "Budget details: /nunc details",
   ].join("\n");
 }
 
@@ -63,31 +63,31 @@ export function detailsLines(input: {
   const selection = readConfig(input.configPath, input.ctx.cwd);
   const config = input.ctx.model ? engineConfig(selection.config, input.ctx.model, input.compaction) : undefined;
   const summary = [
-    `记忆：${input.view.memory.slots.length} 条`,
-    `压缩触发：${config ? thousands(config.triggerTokens) + " tokens" : "未选择模型"}`,
+    `Memory: ${input.view.memory.slots.length} slots`,
+    `Compaction trigger: ${config ? thousands(config.triggerTokens) + " tokens" : "no model selected"}`,
   ];
   const details = config && input.ctx.model ? [
-    "", "输入预算（tokens）",
-    `  主请求准入：${thousands(mainAdmissionLimit(input.ctx.model, config.main))}`,
-    `  记忆规划：${thousands(inputLimit(input.ctx.model, config.main))}`,
-    `  维护：${thousands(inputLimit(input.ctx.model, config.extraction))}`,
-    "", "输出预留（tokens）",
-    `  主请求：${thousands(config.main.nativeOutputReserve ?? config.main.outputTokens)}`,
-    `  维护：${thousands(config.extraction.outputTokens)}`,
-    `  维护输出 cap：${omitsSerializedOutputCap(input.ctx.model) ? "无" : thousands(config.extraction.outputTokens)}`,
-    `安全余量：${thousands(config.extraction.safetyTokens)} tokens`,
+    "", "Input budget (tokens)",
+    `  Main admission: ${thousands(mainAdmissionLimit(input.ctx.model, config.main))}`,
+    `  Memory plan: ${thousands(inputLimit(input.ctx.model, config.main))}`,
+    `  Maintenance: ${thousands(inputLimit(input.ctx.model, config.extraction))}`,
+    "", "Output reserve (tokens)",
+    `  Main: ${thousands(config.main.nativeOutputReserve ?? config.main.outputTokens)}`,
+    `  Maintenance: ${thousands(config.extraction.outputTokens)}`,
+    `  Maintenance output cap: ${omitsSerializedOutputCap(input.ctx.model) ? "none" : thousands(config.extraction.outputTokens)}`,
+    `Safety margin: ${thousands(config.extraction.safetyTokens)} tokens`,
   ] : [];
   const last = input.lastAccounting ? [
-    "", "最近维护（本上下文）",
-    `  输入估算：完整 ${thousands(input.lastAccounting.fullExtractionTokens)} → 选用 ${thousands(input.lastAccounting.extractionTokens)}`,
-    `  正常触发余量：${input.lastAccounting.normalHeadroomSufficient ? "充足" : "不足；建议 reserveTokens ≥ " + thousands(input.lastAccounting.suggestedReserveTokens)}`,
-    `  超出规划记录：输入${input.lastAccounting.inputExceededPlan ? "有" : "无"} / 输出${input.lastAccounting.outputExceededPlan ? "有" : "无"}`,
-  ] : ["", "本上下文暂无维护记录。"];
+    "", "Last maintenance (this context)",
+    `  Input estimate: full ${thousands(input.lastAccounting.fullExtractionTokens)} → selected ${thousands(input.lastAccounting.extractionTokens)}`,
+    `  Normal-trigger headroom: ${input.lastAccounting.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(input.lastAccounting.suggestedReserveTokens)}`,
+    `  Over-plan records: input ${input.lastAccounting.inputExceededPlan ? "yes" : "no"} / output ${input.lastAccounting.outputExceededPlan ? "yes" : "no"}`,
+  ] : ["", "No maintenance record in this context."];
   const notes = input.diagnostics.length === 0 ? [] : [
-    "", "最近诊断",
+    "", "Recent diagnostics",
     ...input.diagnostics.slice(-5).map(note => `  ${note.level}: ${firstLine(note.message)}`),
   ];
-  return [...summary, ...details, ...last, ...notes, "", `Pi ${VERSION} · 预算为估算值`].join("\n");
+  return [...summary, ...details, ...last, ...notes, "", `Pi ${VERSION} · budgets are estimates`].join("\n");
 }
 
 function firstLine(message: string): string {

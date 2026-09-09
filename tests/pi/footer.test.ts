@@ -17,16 +17,16 @@ test("compact footer keeps unknown, zero-budget, and over-100 honest", () => {
 
 test("/nunc completions add status without dropping details", () => {
   assert.deepEqual(commandCompletions(""), [
-    { value: "details", label: "details", description: "查看预算与最近维护详情" },
-    { value: "status", label: "status", description: "文字概览，不打开面板" },
+    { value: "details", label: "details", description: "Show budget and last maintenance details" },
+    { value: "status", label: "status", description: "Text overview without opening the panel" },
   ]);
   assert.deepEqual(commandCompletions("d"), [
-    { value: "details", label: "details", description: "查看预算与最近维护详情" },
+    { value: "details", label: "details", description: "Show budget and last maintenance details" },
   ]);
   assert.deepEqual(commandCompletions("st"), [
-    { value: "status", label: "status", description: "文字概览，不打开面板" },
+    { value: "status", label: "status", description: "Text overview without opening the panel" },
   ]);
   assert.equal(commandCompletions("unknown"), null);
   assert.equal(commandCompletions("details "), null);
-  assert.equal(COMMAND_USAGE, "用法：/nunc [status|details]");
+  assert.equal(COMMAND_USAGE, "Usage: /nunc [status|details]");
 });

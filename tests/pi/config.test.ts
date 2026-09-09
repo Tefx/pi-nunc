@@ -52,8 +52,8 @@ test("loaded /nunc command completes details by argument prefix without side eff
     .flatMap(extension => [...extension.commands.values()]).find(command => command.name === "nunc");
   assert(command?.getArgumentCompletions);
   const entries = f.runtime.session.sessionManager.getEntries();
-  const details = { value: "details", label: "details", description: "查看预算与最近维护详情" };
-  const status = { value: "status", label: "status", description: "文字概览，不打开面板" };
+  const details = { value: "details", label: "details", description: "Show budget and last maintenance details" };
+  const status = { value: "status", label: "status", description: "Text overview without opening the panel" };
   assert.deepEqual(await command.getArgumentCompletions(""), [details, status]);
   assert.deepEqual(await command.getArgumentCompletions(" d"), [details]);
   for (const prefix of ["d", "det", "details"]) {
@@ -79,18 +79,18 @@ test("registered /nunc renders a compact summary and opt-in budget details witho
   t.after(() => f.close());
   const entries = f.runtime.session.sessionManager.getEntries();
   await f.runtime.session.prompt("/nunc");
-  assert.equal(messages.at(-1), "记忆：0 条\n压缩触发：24,000 tokens\n预算详情：/nunc details");
+  assert.equal(messages.at(-1), "Memory: 0 slots\nCompaction trigger: 24,000 tokens\nBudget details: /nunc details");
   await f.runtime.session.prompt("/nunc details");
   assert.equal(messages.at(-1), [
-    "记忆：0 条", "压缩触发：24,000 tokens", "", "输入预算（tokens）",
-    "  主请求准入：59,999", "  记忆规划：50,784", "  维护：50,784", "", "输出预留（tokens）",
-    "  主请求：8,192", "  维护：8,192", "  维护输出 cap：8,192", "安全余量：1,024 tokens",
-    "", "本上下文暂无维护记录。", "", "Pi 0.85.1 · 预算为估算值",
+    "Memory: 0 slots", "Compaction trigger: 24,000 tokens", "", "Input budget (tokens)",
+    "  Main admission: 59,999", "  Memory plan: 50,784", "  Maintenance: 50,784", "", "Output reserve (tokens)",
+    "  Main: 8,192", "  Maintenance: 8,192", "  Maintenance output cap: 8,192", "Safety margin: 1,024 tokens",
+    "", "No maintenance record in this context.", "", "Pi 0.85.1 · budgets are estimates",
   ].join("\n"));
   await f.runtime.session.prompt("/nunc status");
-  assert.equal(messages.at(-1), "记忆：0 条\n压缩触发：24,000 tokens\n预算详情：/nunc details");
+  assert.equal(messages.at(-1), "Memory: 0 slots\nCompaction trigger: 24,000 tokens\nBudget details: /nunc details");
   await f.runtime.session.prompt("/nunc unknown");
-  assert.equal(messages.at(-1), "用法：/nunc [status|details]");
+  assert.equal(messages.at(-1), "Usage: /nunc [status|details]");
   assert.equal(f.faux.state.callCount, 0);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
   f.seed(); f.respond(memoryPatch);
@@ -98,10 +98,10 @@ test("registered /nunc renders a compact summary and opt-in budget details witho
   const saved = f.runtime.session.sessionManager.getEntries();
   const calls = f.faux.state.callCount;
   await f.runtime.session.prompt("/nunc");
-  assert.equal(messages.at(-1), "记忆：1 条\n压缩触发：24,000 tokens\n预算详情：/nunc details");
+  assert.equal(messages.at(-1), "Memory: 1 slots\nCompaction trigger: 24,000 tokens\nBudget details: /nunc details");
   await f.runtime.session.prompt("/nunc details");
   const accounting = f.events.at(-1)!.result.observations.accounting!;
-  assert(messages.at(-1)!.includes(`最近维护（本上下文）\n  输入估算：完整 ${accounting.fullExtractionTokens.toLocaleString("en-US")} → 选用 ${accounting.extractionTokens.toLocaleString("en-US")}`));
+  assert(messages.at(-1)!.includes(`Last maintenance (this context)\n  Input estimate: full ${accounting.fullExtractionTokens.toLocaleString("en-US")} → selected ${accounting.extractionTokens.toLocaleString("en-US")}`));
   assert.equal(f.faux.state.callCount, calls);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), saved);
 });

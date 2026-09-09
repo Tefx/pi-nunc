@@ -486,7 +486,7 @@ test("context abbreviations legend is reachable in panel and explains F, M, R, B
   f.overlay.handleInput("\t"); // switch to Context tab
   assert.equal(f.overlay.tabName, "context");
 
-  // Navigate down to item 3: Legend · 缩写说明
+  // Navigate down to item 3: Legend · abbreviations
   f.overlay.handleInput("\x1b[B"); // to last-main
   f.overlay.handleInput("\x1b[B"); // to last-maintenance
   f.overlay.handleInput("\x1b[B"); // to Legend
@@ -506,36 +506,36 @@ test("context abbreviations legend is reachable in panel and explains F, M, R, B
   assert.match(legendDrill, /R · Raw history/);
   assert.match(legendDrill, /B · Retiring/);
   assert.match(legendDrill, /K · Kept/);
-  assert.match(legendDrill, /D · 未交付输入/);
+  assert.match(legendDrill, /D · Queued input/);
 
   // Move down to M
   f.overlay.handleInput("\x1b[B");
   const mPreview = clean(f.overlay.render(90));
-  assert.match(mPreview, /工作记忆/);
-  assert.match(mPreview, /关键约束/);
+  assert.match(mPreview, /structured working memory/);
+  assert.match(mPreview, /constraints and facts/);
 
   // Move down to B
   f.overlay.handleInput("\x1b[B");
   f.overlay.handleInput("\x1b[B");
   const bPreview = clean(f.overlay.render(90));
-  assert.match(bPreview, /退役/);
-  assert.match(bPreview, /不会提前预测/);
+  assert.match(bPreview, /leave model-visible context/);
+  assert.match(bPreview, /not predicted in advance/);
 
   // Move down to K
   f.overlay.handleInput("\x1b[B");
   const kPreview = clean(f.overlay.render(90));
-  assert.match(kPreview, /保留/);
-  assert.match(kPreview, /继续处理/);
+  assert.match(kPreview, /verbatim history suffix/);
+  assert.match(kPreview, /with new input/);
 
   // Move down to D
   f.overlay.handleInput("\x1b[B");
   const dPreview = clean(f.overlay.render(90));
-  assert.match(dPreview, /未交付/);
-  assert.match(dPreview, /调度规则/);
+  assert.match(dPreview, /Queued/);
+  assert.match(dPreview, /scheduling rules/);
 
   // Esc returns to root level of Context tab
   f.overlay.handleInput("\x1b");
-  assert.match(clean(f.overlay.render(90)), /Legend · 缩写说明/);
+  assert.match(clean(f.overlay.render(90)), /Legend · abbreviations/);
 });
 
 

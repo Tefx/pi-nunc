@@ -63,7 +63,7 @@ test("overlay browse lists slots, searches id/text, and keeps empty-match distin
   assert.match(start, /\[Slots\]/);
   assert.match(start, /s\d+/);
   overlay.handleInput("zzzz-no-match");
-  assert.match(visible(overlay.render(90)), /无匹配 slots/);
+  assert.match(visible(overlay.render(90)), /No matching slots/);
 });
 
 test("overlay enter edits, empty save stays in draft, successful save writes unique M", async t => {

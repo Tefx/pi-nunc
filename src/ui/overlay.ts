@@ -377,7 +377,7 @@ export class NuncOverlay implements Focusable {
       return;
     }
     if (this.memoryView.status.occupied) {
-      this.fail("维护尚未完成原生提交，草稿未保存。", untrimmed);
+      this.fail("Maintenance has not finished native commit; draft was not saved.", untrimmed);
       return;
     }
     const result = this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed);
@@ -608,8 +608,8 @@ export class NuncOverlay implements Focusable {
         ? `M ${thousands(view.budget.tokens)} / 0`
         : `M ≈${thousands(view.budget.tokens)} / ${thousands(view.budget.limit)}`;
     const flags = [
-      view.status.occupied ? "维护中" : undefined,
-      view.status.unconfirmed ? "保存未确认" : undefined,
+      view.status.occupied ? "maintenance" : undefined,
+      view.status.unconfirmed ? "save unconfirmed" : undefined,
       this.editBasis && view.revision !== this.editBasis.revision ? "revision changed" : undefined,
     ].filter(Boolean).join(" · ");
     const base = `Ready · ${view.memory.slots.length} slots · ${m}`;
@@ -618,11 +618,11 @@ export class NuncOverlay implements Focusable {
 
   private emptyLine(): string | undefined {
     if (this.tab === "slots") {
-      if (this.memoryView.memory.slots.length === 0) return "空记忆";
-      if (this.slotItems().length === 0) return "无匹配 slots";
+      if (this.memoryView.memory.slots.length === 0) return "Empty memory";
+      if (this.slotItems().length === 0) return "No matching slots";
       return undefined;
     }
-    if (this.contextItems().length === 0) return this.search.getValue().trim() ? "无匹配" : "暂无记录";
+    if (this.contextItems().length === 0) return this.search.getValue().trim() ? "No matches" : "No records";
     return undefined;
   }
 
