@@ -2091,8 +2091,21 @@ phases:
       \ 完整 suffix/restart/final verification 仍需证明。E4 两个 native 污染结果排除；候选必须有本次完整响应、冻结必要集合/真实accounting与不等式、实际commit或CAPACITY不提交及\
       \ c 一次恢复，空观察或 setup 失败不能声称 guard 成功。无 successful current/candidate maintenance、matched\
       \ 两组缺失时不能判非退化。native rendered-memory 无等价强制上限保持该维度 UNPROVEN，不能用 realized size\
-      \ 或标签宣称配对。模型不见期望/评分/未来轮次；不seed M、制造checkpoint、标准答案或改写K。\n\nBoundary: exact owner\
-      \ integration-verifier，已解析repository只读、可执行绑定真实runtime。禁止修改/安装仓库或基线、临时替代runner、选择fixer/操作Plan；仅有界新task状态、必要native模型调用与清理。日常session/settings/defaults、已接受\
+      \ 或标签宣称配对。模型不见期望/评分/未来轮次；不seed M、制造checkpoint、标准答案或改写K。\n\n本次获准的方法由前置 nunc.extraction-observation-method\
+      \ 交付并受控独立接受后消费：E3 采用有真实工作用途/可观察后果的更长可退休历史具名变体，三组同一输入与原逻辑 placement，保留原短 E3 的\
+      \ UNPROVEN/数学拒绝及原反例。正常具体场景设计已授权，无需再次批准。新 source 必须建立该变体的新 matched native reference，不能把旧短\
+      \ E3 native 成功重标；尚缺完整 current/candidate automatic/suffix/restore/restart/b 原脚本与语义证明不因\
+      \ runner PASS 消失。真实工具批次后的 U 必须同时满足 U>H、目标自身 F+R_M+完整K+G<=min(H,mainInputLimit)\
+      \ 和合法 native cut；无非空区间即下一 transport 前有界拒绝。原请求在 B、investigation 首次 read 的完整 call/result\
+      \ 与全部 sibling 在 K、真实自动同-loop suffix、恢复、同 session restart 与 b 原脚本仍是必要条件。禁止 fake\
+      \ usage/capacity/model、填充/无关任务、答案或摘要注入、私有 hooks、abort/replay、JSONL/K 改写和自动扩\
+      \ workload 直到合格。\n\n按 EXTRACTION §7.1–7.3 与 POLICY/LIVE 的分维合同报告：defaults 正向识别无退休历史/no-work\
+      \ 且无未决效果后可续做普通任务，普通结果与无-roll continuity UNPROVEN 分列；未知 RPC 和真实维护失败不能普遍放行，旧未捕获错误正文不得倒填。matched\
+      \ 证明每组实际 IDs 对应的共同 named-turn/完整工具 placement、必要任务与工具来源暴露和各自 K 完整未改写；独立模型正文、工具次数、raw\
+      \ indices/K tokens 差异不构成必需的精确轨迹 matcher，也不能隐藏真实规模/来源差异或宣称等量 K。包装格式无需相同，无 arbitrary\
+      \ tolerance/blanket parity PASS；native rendered ceiling 缺失仍明确 UNPROVEN。方法只改变观察资格和记录方式，不豁免任何\
+      \ runtime 语义要求。受影响和原缺失事实才作新有界观察，适用旧证据复用；再次比较全部 modes 或增加预算均不是自动证明。\n\nBoundary:\
+      \ exact owner integration-verifier，已解析repository只读、可执行绑定真实runtime。禁止修改/安装仓库或基线、临时替代runner、选择fixer/操作Plan；仅有界新task状态、必要native模型调用与清理。日常session/settings/defaults、已接受\
       \ UI 及旧UIfixture、全局/其他项目和秘密受保护，无发布/push或旧证据工作树迁移。报告写caller私有artifact位置，不持久化敏感正文。既有\
       \ UI 人工接受继续有效，真实模型效果不替代 UI 观察。\n\nRecovery: 核对可能开始的调用、worker/session、usage和清理；localabort/terminal/PID退出不证明remote终态/账单。原已核对终态观察可复用，未知\
       \ usage/billing 不作零或免费余额。无终态、超总额、不明关联效果或执行隔离失效停止后续；已核对独立失败可记录后继续无依赖且仍有额度的新场景，不重用target。缺报告修报告；缺tracked能力或产品矛盾交兼容可写owner，producer\
@@ -2130,8 +2143,12 @@ phases:
     - scripts/compare-extraction.mjs
     - tests/scenarios/extraction-inputs.json
     - tests/scenarios/extraction-observer.json
+    - docs/POLICY.md
+    - src/live/comparison-observation.ts
+    - src/live/scenarios.ts
+    - src/live/host.ts
     depends_on:
-    - nunc.extraction-runner-repair
+    - nunc.extraction-observation-method
     agent: integration-verifier
   - id: nunc.extraction-runner-repair
     name: 修复比较执行授权、原生切轮生命周期与资格诊断
@@ -2238,6 +2255,112 @@ phases:
       rendered-memory parity remain unresolved for original runtime consumer; this
       completion proves runner capability only, not real-model quality or final project
       acceptance.
+  - id: nunc.extraction-observation-method
+    name: 实质历史 E3 变体与分维资格观察支持
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/live/**\", \"tests/scenarios/extraction-inputs.json\"\
+      , \"tests/scenarios/extraction-observer.json\", \"docs/LIVE.md\", \"docs/POLICY.md\"\
+      , \"docs/EXTRACTION.md\", \"docs/DEVELOPMENT.md\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\"\
+      , \".env.*\", \"**/auth.json\", \"src/engine/**\", \"src/pi/**\", \"src/ui/**\"\
+      , \"policies/**\"]\n\nDeliver: 交付一个可由原只读 nunc.extraction-runtime 消费的 tracked\
+      \ 比较观察能力：用户已明确接受的实质任务历史 E3 变体，以及同一 runner 必需的 defaults no-work 分类和 matched 分维判断。实现、场景资产、行为测试、受控\
+      \ native 观察与消费者文档构成同一可回退仓库结果；不按 finding 或内部 helper 分节点，不新增全局协议、账本或接受 gate。\n\
+      \nE3 变体采用在原请求之前真正执行、可退休的普通任务历史。新增内容必须有具体工作用途和可观察产物或后果；owner 自主选择符合该意义的有限具体历史，无须再请求常规场景设计批准。三组共享同一预先选定输入/变体和逻辑放置规则。优先完整保留原\
+      \ a 请求、原 fixture、investigation 首次 read 的 after-result-before-continuation 时间、b\
+      \ 授权及原脚本核验；原请求实际在 B，investigation 的完整 read call/result 及同批全部 sibling 关联在 K，真实\
+      \ native automatic 维护后同一 agent loop 完成完整 suffix，再恢复后的同 session 新进程 b 续做与最终原脚本验证。任务局部\
+      \ H/keep/fraction 的 prepare→commit→restore 使用现有公开 command/reload 和 native lifecycle；不新增\
+      \ M/K 或调度所有者。\n\n新增历史不是资格保证。实际工具批次后的 native U 必须留下同时满足 U>H、目标自身 F+R_M+完整K+G<=min(H,mainInputLimit)\
+      \ 及合法 native cut 的非空区间，完整 extraction/输出/最终候选仍满足自身预算。记录实际 U、来源、完整 sibling、各 accounting\
+      \ 项和配置前后差异；无可行区间在下一 transport 前有界拒绝，保留原因和 UNPROVEN。禁止 fake usage、无关任务/重复填充、虚构\
+      \ capacity/model、seed M、预置摘要/答案、JSONL/K 改写、私有 hook、abort/replay、降低接受标准或自动扩大\
+      \ workload 直到合格。维护后的真实 suffix 不得提前写 ready 或执行 check；原权限等待、v2/obsolete v1、已排除路线和恢复义务不变。\n\
+      \n沿用现有 version1 inputs/observer、case variants、files/generatedFiles/turns、controls/placement\
+      \ 与 selection 的消费边界，添加具名 E3 variant 及必要校验/报告支持，记录公开选择语法和新增历史工作用途。保留原短 E3 与 E1/E2/E4\
+      \ 的原输入、脚本、case-level oracle/控制和反例；只允许显式新增变体与必要机械消费支持，不能覆盖原 fixture 抹去失败。新变体的私有补充\
+      \ checks 保留原全部行为要求；注意现有 variant artifactChecks 可替换基项，必须防止原要求被覆盖。只向模型交付普通文件和当前\
+      \ turn，oracle、未来输入、评分及观察结论保持隐藏；正常模型笔记/恢复产物可用并计费，不能由 runner 注入记忆。\n\nDefaults：只在正向识别\
+      \ native 无可退休历史/no-work 且无未决效果时，允许继续后续普通任务输入；普通行动/产物与无 roll 连续性分开记录，后者 UNPROVEN，绝不冒充成功维护。安全\
+      \ prehook 诊断保留阶段与已知原因的粒度，不保存原始秘密、错误正文、header 或 credentials。未知 RPC、认证/transport\
+      \ 或实际 maintenance/preparation/restoration 失败不能归入普遍放行；既有真实 required CAPACITY\
+      \ 恢复条件保持专属。原报告缺原文时只能保留其算术推导与观察限制，不倒填曾捕获的错误。\n\nMatched：从每组实际 entry IDs、原任务/必要工具证据暴露、完整工具单元和\
+      \ named-turn retirement/retention 判断逻辑 placement，分别证明各自 K 未改写且关联完整。独立生成正文、工具次数、raw\
+      \ indices、K tokens 和实际规模差异另行展示，不能要求逐字轨迹或 wrapper 格式相等，也不能隐去有意义的来源遗漏或差异。保持真实\
+      \ H、M/上下文、output planning/caps、wrapper/filelists/split 双调用差异；无任意数值容差或 blanket\
+      \ parity PASS。native 无 rendered-memory 强制 ceiling 仍为该维度 UNPROVEN，realized envelope\
+      \ 不创造等价约束。\n\nBoundary: exact owner principal-engineer。已有 fitting Node/Gemini\
+      \ 普通 owner 在同一 stock 公共 scheduling/比较续做边界的具体能力死路，且前置 Principal producer 已被独立接受；沿用该有据能力资格，非以复杂度或文件数升级。仅\
+      \ runner/scripts/tests 与明确新 scenario variant/必要文档，保护 DONE engine/pi/UI/policy\
+      \ 语义与原 oracle；需要改变这些产品语义时返回范围判断。无真实产品模型调用、凭据、日常 settings/session、旧 UI fixture、全局安装、发布/push、其他仓库或旧证据工作树迁移。仅新隔离合成\
+      \ profile/session/loopback/stock fixtures；Orchestrator 在 claim 后于 main/.vectl/worktrees\
+      \ 创建新 worktree。\n\nAdmit: 当前用户已批准先实施并受控验证上述方法，再作必要真实观察；既有 runner-repair/comparison-support/engine/policy/UI\
+      \ DONE 和原 runtime/最终 gate 保留。原 runtime pending、真实效果已终态核对、无活动 writer/evidence\
+      \ producer 才进入本仓库事务。规范为 EXTRACTION §7.1–7.3、POLICY Scenario consumer interface/Exact\
+      \ additions/Finite comparison、LIVE public seam/qualification；更长历史是本次获准的方法改变，严格跨\
+      \ session 内容/index/token 相等没有规范依据。原短 E3 算术拒绝、原成功 native 局部证据、E1/E4 提前行为、candidate\
+      \ 缺成功维护/matched、E2 自然 mixed-slot、E4 实际 required/capacity 与全部 NONREGRESSION 义务保留。新变体改变\
+      \ source，必须给后续真实 matched 观察建立新 native reference，不能重标旧短 E3 native 成功。\n\nOrchestrator\
+      \ 在本 producer 完成程序取得独立定向 stock CLI/worker 观察及 source/contract 判断，覆盖完整新变体生命周期、no-work/failure\
+      \ 分类与 matched 逻辑/数值区分；连同最终整合候选的完整项目 native controlled inventory 接受本结果，不另建验证节点。使用声明锁定环境，所有必要接受逻辑在\
+      \ tracked/tested source，临时 helper 不能替代 material runner。受控 usage 明示且仅证明满足条件时机制，不能用孤立高\
+      \ usage 常数宣称真实短任务或变体已可达。真实模型 U 和语义仍交原 runtime。\n\nRecovery: 同 owner 在 unfinished\
+      \ step 修完整兼容缺口，先核对已开始受控 host/worker/调用和清理，保留原证据。公共 seam/实际 accounting 不满足时诚实报告有界拒绝，不付费诊断或扩大\
+      \ workload。复用适用且相关输入未变的证据；新变体/报告变化仅重取受影响证明，不自动重跑所有 modes 或增大预算。producer 完成只证明观察能力，必要\
+      \ runtime 语义缺口和同一最终接受仍 pending。"
+    verification: "```yaml\nchecks:\n  - id: observation-method-complete-controlled-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [e3-variant-public-selection-and-private-oracle-isolation,\
+      \ substantive-history-task-effects, original-e3-case-and-oracle-preservation,\
+      \ complete-batch-automatic-split-restore-suffix-restart-original-verification,\
+      \ short-low-usage-and-infeasible-accounting-refusal, missing-request-sibling-or-late-suffix-rejection,\
+      \ positive-native-no-work-ordinary-continuation-with-no-roll-unproven, unknown-rpc-and-actual-maintenance-failure-not-allowed,\
+      \ safe-prehook-reason-granularity, logical-placement-versus-content-index-token-differences,\
+      \ illegal-cut-or-split-tool-unit-rejection, native-rendered-ceiling-unproven,\
+      \ existing-isolation-capacity-and-complete-regression]\ncheck_environment:\n\
+      \  node_version: 26.7.0\n  npm_version: 11.19.0\n  pi_packages_version: 0.85.1\n\
+      \  dependency_manifest: package.json\n  dependency_lock: package-lock.json\n\
+      \  runtime_declaration: .node-version\n  tui_python_argv: [/usr/bin/python3]\n\
+      \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n  dependency_setup_argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+      \ /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n```\n新检查进入现有 tracked all 库存。独立定向完成观察实际经过\
+      \ stock CLI/worker/tool 执行：新历史产生所声明工作效果；原 investigation 边界完整 batch→公开 reload→automatic→commit→restore→same-loop\
+      \ 完整 suffix→同 session restart→b 原脚本核验；缺 request/sibling、迟到 suffix、原短低 U 与不可行\
+      \ F/R_M/K/G 均不得变成功。正向 fixture 记录提供的 usage 和目标 accounting，仅证明机制。defaults 已识别无退休历史可继续普通工作、无\
+      \ roll 连续性仍未证明；未知 RPC/真实维护失败保持停止及安全分类。两条工具次数不同但共同退休 a/保留完整 b 的轨迹可证明逻辑 placement，实际\
+      \ K 内容/tokens/index 仍显示差异；切入 b 或拆开工具单元必须拒绝。保留 native 无 rendered ceiling 限制及所有原\
+      \ script-authorization/E2/E4/capacity/nonregression 检查。不能以文档 tokens、教给模型的答案或自报\
+      \ PASS 代替行为。最终整合完整 all 和独立受影响证据可复用明确适用结果；必要受控检查失败或机制缺证保持 producer incomplete，不要求\
+      \ producer 执行真实产品模型调用。"
+    refs:
+    - docs/EXTRACTION.md
+    - docs/POLICY.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - scripts/check.mjs
+    - scripts/compare-extraction.mjs
+    - src/live/contract.ts
+    - src/live/scenarios.ts
+    - src/live/host.ts
+    - src/live/worker.ts
+    - src/live/observer.ts
+    - src/live/preparation.ts
+    - src/live/calibration.ts
+    - src/live/comparison-observation.ts
+    - src/live/capacity-observation.ts
+    - tests/live/comparison-native.test.ts
+    - tests/live/script-authorization.test.ts
+    - tests/scenarios/extraction-inputs.json
+    - tests/scenarios/extraction-observer.json
+    - package.json
+    - package-lock.json
+    - .node-version
+    depends_on:
+    - nunc.extraction-runner-repair
+    agent: principal-engineer
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
@@ -2260,10 +2383,22 @@ phases:
       , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
       ]\n\nDeliver: 为用户作一次明确最终整合质量决定，显式纳入 nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction\
       \ 全部适用结果与接受约束。判断新策略、必要项保护、真实三组比较与有效M/UI/容量/native生命周期的共同成立；消费先前UI接受而不重复该决定或全历史调查。Orchestrator仅在有效FULL/DELTA正向判断和全部必要要求满足后完成生命周期；不含发布/安装/部署。\n\
-      \nAdmit: phase依赖已交付policy/engine/comparison-support/runtime及原UI全部接受事实。绑定最终整合不可变candidate，完整适用all（engine/Pi/live/新增比较）在该候选有效，组件PASS相加不够。真实事实须覆盖EXTRACTION全部必要要求：焦点/七维、多slot局部修订失效、Markdown原文边界、必要集合容量失败与native有界恢复、三组defaults/matched实际条件及native有效续做信息非退化。核对语义遗漏、跨结果矛盾、已标记保护vs真实覆盖、模型预算/调用差异及恢复入口可靠性。\n\
+      \nAdmit: phase依赖已交付policy/engine/comparison-support/runtime及原UI全部接受事实，包括 comparison\
+      \ runner-repair 与 observation-method 的适用受控交付。绑定最终整合不可变candidate，完整适用all（engine/Pi/live/新增比较）在该候选有效，组件PASS相加不够。真实事实须覆盖EXTRACTION全部必要要求：焦点/七维、多slot局部修订失效、Markdown原文边界、必要集合容量失败与native有界恢复、三组defaults/matched实际条件及native有效续做信息非退化。核对语义遗漏、跨结果矛盾、已标记保护vs真实覆盖、模型预算/调用差异及恢复入口可靠性。\n\
       \n保留主admission/planning、complete stop usage/catalog、Provider链/多追加/媒体、D/队列/取消/一次维护/nativeJSONL、manual\
-      \ version1/effectiveM/冻结互斥及UI原生编辑/短屏/IME等适用保护。原UI必要人工事实必须成立；UI完成不证明新提取，模型效果也不替代UI观察。按源/lock/config/方法/输入/要求影响复用既有事实，不因报告重绑重复昂贵效果。当前只创建计划，没有新的比较结果，不预先授予PASS。\n\
-      \nBoundary: exact owner gate-reviewer，已解析为只读gate判断者；不写源码/docs/Plan/状态、运行新模型实验、改变接受条件或选择修复owner。显式Milestone\
+      \ version1/effectiveM/冻结互斥及UI原生编辑/短屏/IME等适用保护。原UI必要人工事实必须成立；UI完成不证明新提取，模型效果也不替代UI观察。按源/lock/config/方法/输入/要求影响复用既有事实，不因报告重绑重复昂贵效果。方法批准和\
+      \ producer 受控结果不预先授予真实语义 PASS。\n\n用户已接受用有真实任务用途/可观察后果的更长可退休历史 E3 具名变体承担必要 automatic\
+      \ split/recovery 观察，三组同一新输入与逻辑 placement，保留原请求 B、完整 investigation/sibling K、same-loop\
+      \ suffix、restore、同 session restart/b 原脚本及原权限/语义。该 source 改变需要新 matched native\
+      \ reference，旧短 E3 仍按其原范围保留 UNPROVEN/拒绝和成功局部事实；受控高 usage 不能证明真实 U 可行。原 E1/E4\
+      \ 提前行为、candidate 缺成功维护/matched、E2 自然 mixed-slot 与 E4 实际完整 required/capacity/恢复资格以及全部\
+      \ NONREGRESSION 仍须逐项判断，不能被新方法或最终产物覆盖。\n\n按 EXTRACTION §7.1–7.3、POLICY placement\
+      \ 和 LIVE 包装/qualification 合同分别消费事实：defaults 已正向识别 no-work 可继续普通输入，无-roll continuity\
+      \ 仍 UNPROVEN；未知/实际 maintenance 失败无放行。matched 依据必要来源与各组 named-turn/完整工具 placement\
+      \ 及 K 完整性，独立生成内容/raw indices/K tokens 和真实尺寸/预算差异另列，不能要求跨 session 精确轨迹/wrapper\
+      \ 格式相等或任意容差。native 无 rendered-memory ceiling 的既有观察限制保持该维度 UNPROVEN，不能宣称等价约束或\
+      \ blanket parity PASS。接受时披露已明示不可比维度并判断其适用性，任何必要 runtime 语义或非退化缺证仍阻止接受；本方法没有豁免。仅复用适用观察、补受影响及原缺失事实，不以再次全\
+      \ modes 或更大预算代替证据。\n\nBoundary: exact owner gate-reviewer，已解析为只读gate判断者；不写源码/docs/Plan/状态、运行新模型实验、改变接受条件或选择修复owner。显式Milestone\
       \ Gate，纳入上述五个成果phase；本接受phase仅承载判断，不构造循环证明。\n\nRecovery: 报告/绑定先修报告，缺事实给出准确modality/条件；有据仓库缺口经正常writable\
       \ repair依赖，保持历史和同一gate。修复后Delta覆盖受影响要求/直接依赖/未解决发现/触及保护并复用其余。任一阻断缺陷、必要失败或UNPROVEN均不能接受，不降成MVP或建议。"
     verification: "```yaml\nchecks:\n  - id: final-extraction-integrated-complete-inventory\n\
