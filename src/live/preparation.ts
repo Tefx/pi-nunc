@@ -9,7 +9,7 @@ import { calibrateRetention } from "./calibration.js";
 export interface PreparedBoundary {
   firstKeptEntryId: string;
   config: RunConfig;
-  native: { keepRecentTokens: number; cut: ReturnType<typeof findCutPoint>; contextTokens: number | null; trigger: number };
+  native: { keepRecentTokens: number; cut: ReturnType<typeof findCutPoint>; contextTokens: number | null; trigger: number; contextTokensSource: "public turn_end getContextUsage().tokens" | "not a threshold observation" };
   calibration?: ReturnType<typeof calibrateRetention>;
   matching?: { referenceSnapshot: string; requestedMemoryLimit: number | null; requestedOutputCap: number | null; limitations: string[] };
 }
@@ -40,8 +40,10 @@ export async function prepareBoundary(input: {
     retired.add(req.id);
     const call = branch[toolIndex]!;
     const siblings = call.type === "message" && call.message.role === "assistant" ? call.message.content.filter(b => b.type === "toolCall") : [];
-    const results = branch.slice(toolIndex + 1).filter(e => e.type === "message" && e.message.role === "toolResult");
-    requireValue(siblings.length > 0 && siblings.every(c => results.filter(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === c.id).length === 1), "PREPARATION", "Incomplete persisted sibling tool batch");
+    const tail = branch.slice(toolIndex + 1).filter(e => sessionEntryToContextMessages(e).length > 0);
+    requireValue(tail.every(e => e.type === "message" && e.message.role === "toolResult"), "PREPARATION", "Assistant suffix already ran after the requested tool batch");
+    const results = tail;
+    requireValue(siblings.length > 0 && new Set(siblings.map(c => c.id)).size === siblings.length && results.length === siblings.length && siblings.every(c => results.filter(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === c.id && e.message.toolName === c.name).length === 1), "PREPARATION", "Incomplete persisted sibling tool batch");
     const result = results.find(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === t.callId);
     requireValue(result?.type === "message" && result.message.role === "toolResult" && !result.message.isError && result.message.content.filter(b => b.type === "text").map(b => b.text).join("").trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was unsuccessful or incomplete");
     [call, ...results].forEach(e => retained.add(e.id));
@@ -64,7 +66,7 @@ export async function prepareBoundary(input: {
   requireValue(chosen, "CALIBRATION", "No native legal cut retains the complete requested suffix and retires its source");
   config.compaction.keepRecentTokens = chosen.keep;
   const firstKeptEntryId = branch[chosen.cut.firstKeptEntryIndex]!.id;
-  const prepared: PreparedBoundary = { firstKeptEntryId, config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens } };
+  const prepared: PreparedBoundary = { firstKeptEntryId, config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens, contextTokensSource: input.trigger ? "public turn_end getContextUsage().tokens" : "not a threshold observation" } };
   if (input.repository) {
     // Arithmetic comes from the actually loaded product target, including its policy and wire contract.
     const load = (file: string) => import(pathToFileURL(join(input.repository!, `dist/src/${file}.js`)).href);

@@ -9,6 +9,7 @@ import { createReadToolDefinition, type ExtensionAPI } from "@earendil-works/pi-
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
 import observer from "../../src/live/observer.js";
 import { openHost } from "../../src/live/host.js";
+import { NativeRpcError } from "../../src/live/native-no-work.js";
 import { execute } from "../../src/live/runner.js";
 import { fixture, repository } from "./fixtures.js";
 
@@ -262,6 +263,22 @@ async function hostFixture() {
   await mkdir(join(caseRoot, "sessions"), { recursive: true });
   return { input, caseRoot };
 }
+
+test("host RPC compaction responses retain only exact known prehook reasons; unknown auth/error text stays private", { timeout: 40000 }, async () => {
+  for (const [body, reason] of [["Nothing to compact (session too small)", "no-retirable-prefix"], ["Already compacted", "already-compacted"], ["Compaction cancelled", "compaction-cancelled"], [`AUTH ${SECRET}`, "unknown"], [`Nothing to compact (session too small) ${SECRET}`, "unknown"]]) {
+    const { input, caseRoot } = await hostFixture();
+    try {
+      const host = await openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: input.resolvedModels!, deadline: Date.now() + 5000, signal: new AbortController().signal, testCommand: { command: process.execPath, args: [hostChild, "compact-error", body!] } });
+      try {
+        await assert.rejects(host.compact(), error => {
+          assert(error instanceof NativeRpcError); assert.equal(error.diagnostic.reason, reason);
+          leak(error); leak(error.message);
+          return true;
+        });
+      } finally { await host.close(); }
+    } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+  }
+});
 
 test("host malformed RPC, output limit and observer drain keep distinct failure codes", { timeout: 40000 }, async () => {
   for (const mode of ["malformed", "overflow", "drain"] as const) {

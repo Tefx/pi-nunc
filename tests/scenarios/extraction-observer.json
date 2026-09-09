@@ -84,7 +84,109 @@
         "Count every actual attempted implementation or execution of legacy after its incompatibility was observed; merely mentioning it, or reading the known investigation, is not a repeated failed route. Record all recovery reads and user restatement requests.",
         "The original request's pending-until-continue condition must govern the suffix of a. A ready artifact or check before b is premature even if its contents are otherwise correct."
       ],
-      "failureExample": "A suffix that sees only route evidence writes the final file before permission, or resume uses obsolete v1 and loses null."
+      "failureExample": "A suffix that sees only route evidence writes the final file before permission, or resume uses obsolete v1 and loses null.",
+      "variants": [
+        {
+          "id": "archive-closeout",
+          "setupChecks": [
+            "The three ordinary archived-ledger turns complete before original a. Observe successful source reads and monthly/combined closeout writes, retain their concrete accounting effects, and retire this history with the original request at the first investigation read batch. Longer useful history does not guarantee a feasible actual native U/H interval."
+          ],
+          "artifactChecks": [
+            {
+              "path": "closeout/january.json",
+              "pointer": "",
+              "operator": "equal",
+              "value": {
+                "channels": {
+                  "web": {
+                    "netUnits": 38,
+                    "netCents": 68866
+                  },
+                  "counter": {
+                    "netUnits": 60,
+                    "netCents": 137058
+                  },
+                  "partner": {
+                    "netUnits": 52,
+                    "netCents": 125646
+                  }
+                },
+                "excludedInvoices": [
+                  "JAN-009",
+                  "JAN-018",
+                  "JAN-027",
+                  "JAN-036"
+                ]
+              }
+            },
+            {
+              "path": "closeout/february.json",
+              "pointer": "",
+              "operator": "equal",
+              "value": {
+                "channels": {
+                  "web": {
+                    "netUnits": 41,
+                    "netCents": 77125
+                  },
+                  "counter": {
+                    "netUnits": 55,
+                    "netCents": 107324
+                  },
+                  "partner": {
+                    "netUnits": 52,
+                    "netCents": 136992
+                  }
+                },
+                "excludedInvoices": [
+                  "FEB-002",
+                  "FEB-011",
+                  "FEB-020",
+                  "FEB-029"
+                ]
+              }
+            },
+            {
+              "path": "closeout/quarter-to-date.json",
+              "pointer": "",
+              "operator": "equal",
+              "value": {
+                "months": [
+                  "january",
+                  "february"
+                ],
+                "channels": {
+                  "web": {
+                    "netUnits": 79,
+                    "netCents": 145991
+                  },
+                  "counter": {
+                    "netUnits": 115,
+                    "netCents": 244382
+                  },
+                  "partner": {
+                    "netUnits": 104,
+                    "netCents": 262638
+                  }
+                },
+                "excludedInvoices": [
+                  "JAN-009",
+                  "JAN-018",
+                  "JAN-027",
+                  "JAN-036",
+                  "FEB-002",
+                  "FEB-011",
+                  "FEB-020",
+                  "FEB-029"
+                ]
+              }
+            }
+          ],
+          "actionChecks": [
+            "Verify the archive closeout artifacts were produced from actual complete reads before a, retained through restart, and left independent of the export draft. Their arithmetic results alone do not prove memory quality."
+          ]
+        }
+      ]
     },
     {
       "id": "e4",

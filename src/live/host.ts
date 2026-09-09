@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
+import { nativeRpcError } from "./native-no-work.js";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { object, payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
@@ -70,7 +71,7 @@ export class NativeHost {
   pid: number | undefined;
   private child!: ChildProcessWithoutNullStreams;
   private readonly changed = new EventEmitter();
-  private readonly pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  private readonly pending = new Map<string, { command: string; resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   private readonly events: Array<Record<string, unknown>> = [];
   private cursor = 0;
   private output = "";
@@ -129,7 +130,7 @@ export class NativeHost {
           const e: unknown = JSON.parse(line); if (!object(e)) continue;
           if (e.type === "response" && typeof e.id === "string") {
             const pending = this.pending.get(e.id); this.pending.delete(e.id);
-            if (e.success === false) pending?.reject(new RunnerError("RPC", "Native RPC command failed")); else pending?.resolve(e.data);
+            if (e.success === false && pending) pending.reject(nativeRpcError(pending.command, e.error)); else pending?.resolve(e.data);
           } else this.events.push(e);
           this.changed.emit("event");
         } catch { this.fail("HOST_RPC", "Native host RPC output was not valid JSON"); }
@@ -183,7 +184,7 @@ export class NativeHost {
     this.options.signal.throwIfAborted(); requireValue(!this.exited, this.failure?.code ?? "HOST_EXIT", this.failure?.message ?? "Native host unavailable");
     if (["prompt", "steer", "compact", "clear_queue", "abort"].includes(type)) this.commands.push({ type, ...(typeof values.message === "string" ? { message: values.message } : {}) });
     const id = String(++this.serial);
-    const result = new Promise<unknown>((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    const result = new Promise<unknown>((resolve, reject) => this.pending.set(id, { command: type, resolve, reject }));
     this.child.stdin.write(JSON.stringify({ id, type, ...values }) + "\n");
     return result;
   }

@@ -4,19 +4,20 @@ import { spawn } from "node:child_process";
 import { repository } from "./fixtures.js";
 
 /** Protocol fixtures execute tools and native scheduling; generated content makes no model-quality claim. */
-export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure" | "long-suffix" | "low-native" | "repeat-threshold" | "restart-threshold"; tooLarge?: boolean; earlyVerify?: boolean; invalidCapacity?: boolean } = {}) {
+export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure" | "long-suffix" | "low-native" | "repeat-threshold" | "restart-threshold" | "archive"; tooLarge?: boolean; earlyVerify?: boolean; invalidCapacity?: boolean; variedTools?: boolean; failMaintenance?: boolean } = {}) {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, timeoutMs: 300000 });
   f.limits = { ...f.limits, maxCalls: 300, maxTotalTokens: 24000000 }; // Five selections × three groups × two modes, including tool continuations.
   const suite = JSON.parse(await readFile(join(repository, "tests/scenarios/extraction-inputs.json"), "utf8"));
-  const turns = suite.cases.flatMap((c: any) => c.turns.map((t: any) => ({ scenario: c.id, ...t })));
-  let current: { scenario: string; id: string } | undefined, step = 0;
+  const turns = suite.cases.flatMap((c: any) => [...c.turns, ...(c.variants ?? []).flatMap((v: any) => v.turns ?? [])].map((t: any) => ({ scenario: c.id, ...t })));
+  let current: { scenario: string; id: string } | undefined, step = 0, session = 0;
   const write = (path: string, value: unknown) => ({ tool: { name: "write", input: { path, content: typeof value === "string" ? value : JSON.stringify(value) } } });
   const verify = { tool: { name: "bash", input: { command: "python3 verify.py" } } };
   const lanes = Object.fromEntries([...suite.cases.find((c: any) => c.id === "e4").turns[0].text.matchAll(/(amber|birch|cedar|dune|elm|fir|grove|heath): (-?\d+), (\d+), (true|false), '([^']+)'/g)].map((m: any) => [m[1], { maxC: Number(m[2]), holdMinutes: Number(m[3]), fallbackAllowed: m[4] === "true", condition: m[5] }]));
   f.response = (row: any, source: any) => {
     const messages = row.payload.messages ?? row.payload.input ?? [], last = messages.at(-1);
     const serialized = messages.some((m: any) => text(m).includes("<conversation>"));
+    if ((serialized || source) && options.failMaintenance) return { status: 503, message: "Controlled maintenance failure" };
     if (serialized && current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
     if (serialized) return "## Goal\nContinue the authorized local task.\n\n## Progress\nThe preceding ordinary turns completed. Preserve the remaining work and original restrictions.\n\n## Next Steps\nContinue only when the ordinary user turn authorizes it.\n\n## Critical Context\nThe task files remain available through the ordinary file tools. This controlled summary exercises the stock serializer and carries no quality claim.";
     if (source) {
@@ -29,8 +30,32 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
     }
     if (last?.role === "user") { const selected = turns.find((t: any) => t.text === text(last)); if (selected) { current = selected; step = 0; } }
     const key = `${current?.scenario}:${current?.id}`, n = step++;
-    if (key === "e1:a") return n === 0 ? { tool: { name: "read", input: { path: "rows.json" } } } : "Input inspected.";
-    if (key === "e1:b") return n === 0 ? write("units.txt", "KiB is 1024 bytes; kB is 1000 bytes.") : "Written.";
+    if (current?.scenario === "e3" && ["january", "february"].includes(current.id)) {
+      if (n === 0) return { tool: { name: "read", input: { path: `archive/${current.id}.json` } } };
+      if (n === 1) {
+        const invoices = JSON.parse(text(last));
+        const channels: Record<string, { netUnits: number; netCents: number }> = Object.fromEntries(["web", "counter", "partner"].map(c => [c, { netUnits: 0, netCents: 0 }]));
+        const excludedInvoices = [];
+        for (const invoice of invoices) if (invoice.state === "void") excludedInvoices.push(invoice.invoice);
+        else { const c = channels[invoice.channel]!; c.netUnits += invoice.quantity - invoice.refundedUnits; c.netCents += (invoice.quantity - invoice.refundedUnits) * invoice.unitCents; }
+        return write(`closeout/${current.id}.json`, { channels, excludedInvoices });
+      }
+      return "Archived ledger closed; source preserved.";
+    }
+    if (key === "e3:closeout") {
+      if (n === 0) return { tools: ["january", "february"].map(m => ({ name: "read", input: { path: `closeout/${m}.json` } })) };
+      if (n === 1) {
+        const [a, b] = messages.slice(-2).map((m: any) => JSON.parse(text(m)));
+        const channels = Object.fromEntries(Object.keys(a.channels).map(c => [c, { netUnits: a.channels[c].netUnits + b.channels[c].netUnits, netCents: a.channels[c].netCents + b.channels[c].netCents }]));
+        return write("closeout/quarter-to-date.json", { months: ["january", "february"], channels, excludedInvoices: [...a.excludedInvoices, ...b.excludedInvoices] });
+      }
+      return "Finance handoff complete; monthly audits retained.";
+    }
+    if (key === "e1:a") {
+      if (n === 0) session++;
+      return n === 0 || options.variedTools && session % 3 === 2 && n === 1 ? { tool: { name: "read", input: { path: "rows.json" } } } : "Input inspected.";
+    }
+    if (key === "e1:b") return n === 0 ? write("units.txt", "KiB is 1024 bytes; kB is 1000 bytes.") : options.variedTools && session % 3 === 2 && n === 1 ? { tool: { name: "read", input: { path: "units.txt" } } } : "Written.";
     if (key === "e1:c") return n === 0 ? write("export.json", { records: [1, null, 3], retryLimit: 2, retryAfterCommit: false }) : n === 1 && options.earlyVerify ? verify : "Draft only.";
     if (key === "e1:d") return n === 0 ? write("seconds.json", 420) : "Written.";
     if (key === "e1:e") return n === 0 ? verify : n === 1 ? write("handoff.json", { implemented: true, verified: true, accepted: false, publishAllowed: false, artifact: "export.json", wait: "User acceptance pending" }) : "Handoff written.";
@@ -40,16 +65,16 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
     if (key === "e2:e") return n === 0 ? write("east.json", { route: "direct", timeoutMs: 650, crossTenantSharing: false, reason: "Probe excludes cache sharing." }) : "Written.";
     if (key === "e3:a") {
       if (n > 0) {
-        if (["long-suffix", "low-native", "repeat-threshold"].includes(options.e3 ?? "")) {
+        if (["long-suffix", "low-native", "repeat-threshold", "archive"].includes(options.e3 ?? "")) {
           const response = n === 1 ? { tool: { name: "read", input: { path: "drafts/export-v2.json" } } } : n === 2 ? write("notes.txt", "Draft inspected; awaiting permission.") : n === 3 ? { tool: { name: "read", input: { path: "notes.txt" } } } : { text: "Draft remains pending." };
-          return { ...response, input: options.e3 === "repeat-threshold" ? 30000 : 20000 };
+          return { ...response, ...(options.e3 === "archive" ? {} : { input: options.e3 === "repeat-threshold" ? 30000 : 20000 }) };
         }
         return { text: "Draft remains pending.", input: 2000 };
       }
       const input = options.e3 === "failed" ? { path: "investigation.json", offset: 100 } : { path: options.e3 === "wrong" ? "drafts/export-v2.json" : "investigation.json" };
-      return { input: options.e3 === "small" ? 200 : options.e3 === "low-native" ? 900 : 15000, tools: [{ name: "read", input }, ...(options.e3 === "siblings" ? [{ name: "read", input: { path: "drafts/export-v2.json" } }] : [])] };
+      return { ...(options.e3 === "archive" ? {} : { input: options.e3 === "small" ? 200 : options.e3 === "low-native" ? 900 : 15000 }), tools: [{ name: "read", input }, ...(["siblings", "archive"].includes(options.e3 ?? "") ? [{ name: "read", input: { path: options.e3 === "archive" ? "verify.py" : "drafts/export-v2.json" } }] : [])] };
     }
-    if (key === "e3:b") return n === 0 ? write("ready.json", { route: "stream", records: [9, null, 4], status: "ready" }) : n === 1 ? verify : { text: "Ready checked.", input: options.e3 === "restart-threshold" ? 30000 : 2000 };
+    if (key === "e3:b") return n === 0 ? write("ready.json", { route: "stream", records: [9, null, 4], status: "ready" }) : n === 1 ? verify : { text: "Ready checked.", ...(options.e3 === "archive" ? {} : { input: options.e3 === "restart-threshold" ? 30000 : 2000 }) };
     if (key === "e4:b") return n === 0 ? write("sum.json", 42) : "Written.";
     if (key === "e4:c") return n === 0 ? write("routing.json", lanes) : "Written.";
     return "Understood; awaiting continuation.";
@@ -57,10 +82,10 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
   await writeFile(join(f.state, "agent/settings.json"), JSON.stringify({ ...f.settings, defaultProvider: f.provider, defaultModel: f.modelId }));
   return f;
 }
-export async function compareCli(f: any, scenarios: unknown[], modes: string[], tag: string) {
+export async function compareCli(f: any, scenarios: unknown[], modes: string[], tag: string, automatic = false) {
   const stateRoot = join(f.dir, `nunc-live-${tag}`);
   const selection = { target: { repository, stateRoot, cleanup: "remove" }, limits: { maxCalls: 300, maxTotalTokens: 24000000, maxDurationMs: 240000, maxOutputTokens: 20000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios,
-    overrides: [{ requirement: "controlled-extraction-observation", reason: "Named isolated loopback native scheduling and measured retention", config: { nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } }, compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
+    overrides: [{ requirement: "controlled-extraction-observation", reason: "Named isolated loopback native scheduling and measured retention", config: { nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } }, compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
     comparison: { modes, targets: { native: { repository }, current: { repository: join(repository, ".scratch/baseline-70dacad") }, candidate: { repository } } } };
   const child = spawn(process.execPath, [join(repository, "scripts/compare-extraction.mjs")], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"] });
   let stdout = "", stderr = "";

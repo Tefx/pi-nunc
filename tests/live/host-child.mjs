@@ -13,7 +13,7 @@ if (mode === "malformed") {
 } else if (mode === "overflow") {
   process.stdout.write(`${"x".repeat(33_000_000)}\n`);
   setInterval(() => {}, 1000);
-} else if (mode === "rpc") {
+} else if (mode === "rpc" || mode === "compact-error") {
   const binding = process.env.NUNC_LIVE_OBSERVER ? JSON.parse(readFileSync(process.env.NUNC_LIVE_OBSERVER, "utf8")) : { models: [{ provider: "groq", id: "nunc-native" }] };
   const model = binding.models[0];
   const sessionFile = join(process.cwd(), "../sessions/s.jsonl");
@@ -24,6 +24,10 @@ if (mode === "malformed") {
       try { message = JSON.parse(line); } catch { continue; }
       if (message.message === "/nunc-observer-quit") { process.exit(0); return; }
       if (typeof message.id === "string") {
+        if (message.type === "compact" && mode === "compact-error") {
+          process.stdout.write(`${JSON.stringify({ type: "response", id: message.id, command: "compact", success: false, error: process.argv[3] })}\n`);
+          continue;
+        }
         const data = message.type === "get_state" ? { sessionId: "fixture-session", sessionFile, model: { provider: model.provider, id: model.id } } : {};
         process.stdout.write(`${JSON.stringify({ type: "response", id: message.id, success: true, data })}\n`);
       }

@@ -97,7 +97,7 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
   requireValue(object(source) && source.formatVersion === 1 && Array.isArray(source.cases), "SCENARIO", "Unsupported inputs format");
   requireValue(object(reference) && reference.formatVersion === 1 && (reference.inputs === "inputs.json" || reference.inputs === "extraction-inputs.json") && reference.visibility === "runner-and-observer-only" && Array.isArray(reference.cases), "SCENARIO", "Unsupported observer format");
   for (const cases of [source.cases, reference.cases]) requireValue(cases.length > 0 && cases.every(c => object(c) && nonempty(c.id)) && new Set(cases.map(c => c.id)).size === cases.length, "SCENARIO", "Invalid/duplicate case IDs");
-  const raw: unknown = source.cases.find(c => c.id === selection.id);
+  const raw: unknown = structuredClone(source.cases.find(c => c.id === selection.id));
   let obs: unknown = reference.cases.find(c => c.id === selection.id);
   fields(raw, ["id", "files", "generatedFiles", "turns", "variants"], "scenario input");
   if (raw.variants !== undefined) {
@@ -140,13 +140,18 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
     requireValue(variant !== undefined, "SCENARIO", `Variant ${selection.variant} not found in observer`);
     fields(variant, ["id", "controls", "setupChecks", "artifactChecks", "actionChecks"], "variant");
     const varRecord = variant as Record<string, unknown>;
+    requireValue(varRecord.artifactChecks === undefined || Array.isArray(varRecord.artifactChecks), "SCENARIO", "Invalid variant artifact checks");
     obs = {
       ...obsRecord,
       id: selection.id,
       controls: varRecord.controls ?? obsRecord.controls,
       setupChecks: [...(Array.isArray(obsRecord.setupChecks) ? obsRecord.setupChecks : []), ...(Array.isArray(varRecord.setupChecks) ? varRecord.setupChecks : [])],
       actionChecks: [...(Array.isArray(obsRecord.actionChecks) ? obsRecord.actionChecks : []), ...(Array.isArray(varRecord.actionChecks) ? varRecord.actionChecks : [])],
-      artifactChecks: varRecord.artifactChecks ?? obsRecord.artifactChecks ?? [],
+      // Extraction variants add obligations. Legacy c1/late-d deliberately substitutes
+      // its source/route oracle and retains its existing replacement semantics.
+      artifactChecks: selection.id.startsWith("e")
+        ? [...(Array.isArray(obsRecord.artifactChecks) ? obsRecord.artifactChecks : []), ...(Array.isArray(varRecord.artifactChecks) ? varRecord.artifactChecks : [])]
+        : varRecord.artifactChecks ?? obsRecord.artifactChecks ?? [],
     };
   }
   const finalObs = obs as Record<string, unknown>;
@@ -240,7 +245,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   const checks = observer.artifactChecks.map(check => eligible ? checkArtifact(check, artifacts[check.path]) : { check: `${check.path}${check.pointer}`, status: "UNPROVEN" as const, reason: "Required persisted source placement/restart/capacity prerequisites did not pass" });
 
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
-  const actionReview = observer.actionChecks.map(check => {
+  const actionReview: CheckResult[] = observer.actionChecks.map(check => {
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;
       const verifyCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && ((a.event.input as any).command as string).includes("verify.py"));
@@ -297,6 +302,10 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
     return { check, status: "UNPROVEN" as const, reason: "Independent observer must inspect actual session/tool actions; no judge model is called" };
   });
 
+  if (observer.id === "e3") {
+    const premature = rawActions.find((a, i) => a.turn !== "b" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && typeof a.event.input?.path === "string" && resolve(cwd, a.event.input.path) === resolve(cwd, "ready.json") && rawActions.slice(i + 1).some(r => r.turn === a.turn && r.event?.type === "tool_result" && r.event.toolCallId === a.event.toolCallId && r.event.isError === false));
+    actionReview.push({ check: "ready artifact remains pending until b", status: premature ? "DISPROVEN" : rawActions.length > 0 ? "PROVEN" : "UNPROVEN", reason: premature ? `Premature ready artifact during ${premature.turn}` : rawActions.length > 0 ? "No successful ready write/edit before authorization in recorded effects" : "No action trace available" });
+  }
   return { artifacts, checks, actionReview };
 }
 export function evaluateCapacityPredicates(

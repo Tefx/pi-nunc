@@ -13,6 +13,7 @@ export interface ComparisonScenarioResult {
   mode: ComparisonMode; group: ComparisonGroup; scenarioId: string; variant?: string | undefined;
   status: SegmentReport["status"]; reason?: string | undefined; sessionFile?: string | undefined;
   prerequisites: SegmentReport["prerequisites"]; setupChecks?: SegmentReport["setupChecks"]; score?: SegmentReport["score"];
+  ordinaryScore?: SegmentReport["ordinaryScore"]; noWork?: SegmentReport["noWork"]; rolloverQuality?: SegmentReport["rolloverQuality"];
   calls: number; tokens: number | null; latencyMs: number; costUsd: number | null; callIds: number[];
   rollovers: RolloverFacts[];
   timing?: WallClockInterval | undefined;
@@ -127,6 +128,7 @@ export async function executeComparison(value: unknown, repository: string, scri
           const ids = new Set(records.filter(r => r.kind === "reserve" && r.caseKey === caseKey && !beforeIds.has(r.id)).map(r => r.id));
           const result: ComparisonScenarioResult = { mode, group, scenarioId: selection.id, variant: selection.variant, status: segment.status, reason: segment.reason,
             prerequisites: segment.prerequisites, setupChecks: segment.setupChecks, score: segment.score, sessionFile: segment.sessionFile,
+            ordinaryScore: segment.ordinaryScore, noWork: segment.noWork, rolloverQuality: segment.rolloverQuality,
             timing: child.timing, ...scopedUsage(records, ids), rollovers: (segment.rollovers ?? []).map(row => rolloverFacts(row, segment.requests ?? [], group)) };
           modeReport.groups[group].scenarios.push(result); report.matrix.push(result);
           requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");

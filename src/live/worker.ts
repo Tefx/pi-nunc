@@ -1,3 +1,5 @@
+import { archiveCloseoutEffects } from "./archive-closeout.js";
+import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
 import { qualifyCapacity, checkCapacityRecovery } from "./capacity-observation.js";
 import { elapsedInterval, type WallClockInterval } from "./timing.js";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -16,7 +18,7 @@ import { prepareBoundary, type PreparedBoundary, type MatchReference } from "./p
 import { rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined; matchReferences?: MatchReference[] | undefined }
-interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig; actions?: unknown[]; lastBeforeActive?: SessionEntry[]; rollovers?: RolloverObservation[]; requests?: RequestObservation[]; runConfig?: Selection["config"] }
+interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig; actions?: unknown[]; lastBeforeActive?: SessionEntry[]; rollovers?: RolloverObservation[]; requests?: RequestObservation[]; runConfig?: Selection["config"]; noWork?: NonNullable<SegmentReport["noWork"]> }
 export interface SegmentReport {
   pid: number;
   timing?: WallClockInterval;
@@ -45,6 +47,9 @@ export interface SegmentReport {
   callIds?: number[];
   calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>;
   preparationFailure?: { afterTurn: string; message: string } | undefined;
+  compactionDiagnostics?: Array<{ turn: string; phase: "prehook" | "maintenance"; diagnostic: NativeRpcDiagnostic }>;
+  noWork?: Array<{ turn: string; diagnostic: NativeRpcDiagnostic; entryIds: string[]; settings: Selection["config"]["compaction"] }>;
+  ordinaryScore?: Awaited<ReturnType<typeof scoreArtifacts>>;
   observedFacts?: RolloverFacts;
   comparisonFacts?: {
     h: number;
@@ -133,6 +138,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     return result;
   };
   let lastBeforeActive: SessionEntry[] = [];
+  let turnBeforeIds = new Set<string>();
   let capacityFailure: { snapshots: SessionEntry[]; active: SessionEntry[]; maintenanceCount: number } | undefined;
   const maintenanceResponses: Array<{ model: string; stopReason: string; patch: any; text?: string }> = [];
   report.maintenanceResponses = maintenanceResponses;
@@ -142,6 +148,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       requireValue((selection.id === "c3" || selection.id === "e1" || selection.id === "e3") && checkpoint.nextTurn > 0, "RESTART", "Resume must use a new host process and existing checkpoint");
       turns = checkpoint.turnEntries; report.nextTurn = checkpoint.nextTurn; report.prerequisites = checkpoint.prerequisites;
       runConfig = checkpoint.runConfig ?? { ...runConfig, nunc: checkpoint.nuncConfig }; effectiveConfig = runConfig.nunc;
+      if (checkpoint.noWork) {
+        report.noWork = checkpoint.noWork.slice();
+        report.rolloverQuality = { check: "successful required persisted rollover", status: "UNPROVEN", reason: "Native no-work occurred before restart; ordinary continuation does not prove rollover continuity" };
+      }
       if (checkpoint.requests) report.requests = checkpoint.requests.slice();
       if (Array.isArray(checkpoint.actions)) report.actions = checkpoint.actions.slice();
       lastBeforeActive = checkpoint.lastBeforeActive ? checkpoint.lastBeforeActive.slice() : checkpoint.rebuilt.slice();
@@ -185,7 +195,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           if (data.phase === "maintenance-failed") boundaryFailure ??= "Automatic boundary maintenance failed; suffix is unproven";
         }
         if (type === "preparation") {
-          report.rollovers!.push({ ...data, turn, config: structuredClone(runConfig), ...(prepared ? { prepared } : {}), callIds: [] });
+          const control = observer.controls.find(c => c.action === "rollover_at_tool_boundary" ? c.duringTurn === turn : c.action === "rollover" && c.afterTurn === turn);
+          report.rollovers!.push({ ...data, turn, config: structuredClone(runConfig), ...(prepared ? { prepared } : {}),
+            ...(control ? { placement: { control, turns: scenario.turns.slice(0, scenario.turns.findIndex(t => t.id === turn) + 1), files: scenario.files,
+              turnEntries: { ...structuredClone(turns), [turn]: data.branch.filter((e: SessionEntry) => e.type === "message" && !turnBeforeIds.has(e.id)).map((e: SessionEntry) => e.id) },
+              requiredReads: control.placement?.retainToolExchange ? [{ turn: control.placement.retainToolExchange.turn, path: control.placement.retainToolExchange.pathArgument }]
+                : selection.id === "e1" && turn === "b" ? [{ turn: "a", path: "rows.json" }]
+                : selection.id === "e2" && ["c", "d"].includes(turn) ? [{ turn: "c", path: "probe.json" }] : [] } } : {}), callIds: [] });
           prepared = undefined;
         }
         const row = report.rollovers!.at(-1);
@@ -226,6 +242,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         continue;
       }
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
+      turnBeforeIds = beforeIds;
       await session.prompt(inputTurn.text, { expandPromptTemplates: false });
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
@@ -264,6 +281,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         const visible = sm.buildContextEntries().some(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError && e.message.content.some(b => b.type === "text" && Boolean(probe) && b.text.includes(probe!)));
         report.prerequisites.push({ check: "complete probe result actually visible before rollover", status: visible ? "PROVEN" : "UNPROVEN" });
       }
+      if (selection.id === "e3" && selection.variant === "archive-closeout" && turn === "closeout") report.prerequisites.push(archiveCloseoutEffects(scenario, report.actions, join(caseRoot, "task")));
       for (const control of observer.controls.filter(c => c.afterTurn === turn || c.duringTurn === turn)) {
         if (control.action === "rollover_at_tool_boundary") {
           const row = report.rollovers!.find(r => r.turn === turn && r.reason === "threshold");
@@ -286,6 +304,22 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           report.prerequisites.push({ check: "public session model switch recorded distinct smaller real catalog target", status: session.model?.id === next.id && sm.getBranch().some(e => e.type === "model_change" && e.provider === next.provider && e.modelId === next.id) ? "PROVEN" : "UNPROVEN", observed: { from: { provider: before.provider, id: before.id, capacity: before.contextWindow }, to: { provider: next.provider, id: next.id, capacity: next.contextWindow }, controlledProvider: Boolean(overrides.controlledModels) } });
         } else if (control.action === "rollover") {
           lastBeforeActive = structuredClone(sm.buildContextEntries());
+          const attempt = { before: structuredClone(sm.getBranch()), preparations: report.rollovers!.length, maintenance: report.maintenance.length, requests: report.requests!.length };
+          const allowNoWork = async (error: unknown) => {
+            if (error instanceof NativeRpcError) (report.compactionDiagnostics ??= []).push({ turn,
+              phase: report.rollovers!.length > attempt.preparations ? "maintenance" : "prehook", diagnostic: error.diagnostic });
+            if (!(error instanceof NativeRpcError) || !["no-retirable-prefix", "already-compacted"].includes(error.diagnostic.reason)) return false;
+            const state = await session.getState();
+            const pass = ordinaryNoWork(error, { defaults: mode === "defaults" && !selection.config.retentionCalibration,
+              before: attempt.before, after: sm.getBranch(), settings: runConfig.compaction,
+              newPreparations: report.rollovers!.length - attempt.preparations, newMaintenance: report.maintenance.length - attempt.maintenance,
+              newRequests: report.requests!.length - attempt.requests, unresolved: ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length, ...state });
+            if (!pass) return false;
+            (report.noWork ??= []).push({ turn, diagnostic: error.diagnostic, entryIds: attempt.before.map(e => e.id), settings: structuredClone(runConfig.compaction) });
+            report.prerequisites.push({ check: `native no-work after ${turn} reconciled; ordinary inputs may continue`, status: "PROVEN", observed: error.diagnostic });
+            report.rolloverQuality = { check: "successful required persisted rollover", status: "UNPROVEN", reason: "Native no-work observed; ordinary continuation does not prove rollover continuity or capacity recovery" };
+            return true;
+          };
           if (mode === "matched" || selection.config.retentionCalibration) {
             try { await prepare(structuredClone(sm.getBranch()), lastBeforeActive, control); }
             catch (error) { const failure = error instanceof Error ? error.message : "Placement preparation failed"; report.preparations!.push({ failure, turn }); report.preparationFailure = { afterTurn: turn, message: failure }; report.prerequisites.push({ check: "authorized retention calibration before maintenance", status: "UNPROVEN", reason: failure }); throw new RunnerError("CALIBRATION", failure); }
@@ -293,7 +327,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           if (group === "native") {
             const before = structuredClone(sm.getBranch());
             let failed = false;
-            try { await session.compact(); } catch { failed = true; }
+            let compactError: unknown;
+            try { await session.compact(); } catch (error) { failed = true; compactError = error; }
+            if (await allowNoWork(compactError)) continue;
             const file = session.sessionFile; requireValue(file, "PERSISTENCE", "No persistent session file");
             const saved = SessionManager.open(file, join(caseRoot, "sessions"));
             const after = saved.getBranch();
@@ -329,7 +365,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             const steerTurn = control.steer ? scenario.turns.find(t => t.id === control.steer) : undefined;
             let steered = false, overlap = false;
             const frozenContext = () => report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
-            let failed = false;
+            let failed = false, compactError: unknown;
             try {
               await session.compact(steerTurn ? async steerSignal => {
                 while (!steerSignal.aborted && frozenContext().length === 0) await new Promise(resolve => setTimeout(resolve, 25));
@@ -340,7 +376,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 scheduledSteers.add(steerTurn.id);
                 overlap = (await session.getState()).isCompacting && frozenContext().length > 0;
               } : undefined);
-            } catch { failed = true; }
+            } catch (error) { failed = true; compactError = error; }
+            if (await allowNoWork(compactError)) continue;
             const result = maintenanceResult(report.maintenance.at(-1));
             const file = session.sessionFile; requireValue(file, "PERSISTENCE", "No persistent session file");
             const saved = SessionManager.open(file, join(caseRoot, "sessions"));
@@ -420,6 +457,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             pid: report.pid, sessionFile, sessionId: saved.getSessionId(), leafId: saved.getLeafId(),
             nextTurn: index + 1, turnEntries: turns, rebuilt: saved.buildContextEntries(),
             prerequisites: report.prerequisites, nuncConfig: effectiveConfig, runConfig, requests: report.requests,
+            ...(report.noWork ? { noWork: report.noWork } : {}),
             actions: report.actions.slice(), lastBeforeActive: lastBeforeActive.slice(),
             ...(report.rollovers ? { rollovers: report.rollovers.slice() } : {})
           };
@@ -437,11 +475,14 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     if (selection.id === "e2") {
       report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts, report.actions, join(caseRoot, "task"), scenario.files["probe.json"], group === "native" ? report.rollovers : undefined);
     }
-    report.score = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, { actions: report.actions, requireVerificationReceipt: true });
+    const scoreContext = { actions: report.actions, requireVerificationReceipt: true };
+    if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);
+    report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...report.prerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);
     captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);
     report.status = report.prerequisites.every(p => p.status === "PROVEN") &&
       !report.score.checks.some(c => c.status === "DISPROVEN") &&
       !report.score.actionReview.some(r => r.status === "DISPROVEN") &&
+      !report.ordinaryScore?.checks.some(r => r.status === "DISPROVEN") &&
       !report.setupChecks?.some(r => r.status === "DISPROVEN") ? "OBSERVED" : "UNPROVEN";
   } catch (error) {
     report.status = "UNPROVEN";

@@ -99,20 +99,23 @@ test("E3 restored configuration that still triggers maintenance stops before a s
   } finally { await f.close(); }
 });
 
-test("E4 absent native preparation/response does not become a correctly-rejected capacity result", { timeout: 60000 }, async () => {
+test("E4 defaults positive native no-work continues ordinary c without claiming capacity failure or rollover", { timeout: 60000 }, async () => {
   const f = await comparisonStock();
   try {
     const { first, ledger } = await actualWorker(f, { id: "e4", variant: "required-too-large" }, "candidate", false,
       { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 20000 }, nunc: {} });
-    assert.equal(first.status, "UNPROVEN");
-    assert.equal(first.reason, "MAINTENANCE");
-    assert.match(first.diagnostic!, /No current maintenance result or complete response/);
-    assert.match(first.rolloverQuality!.reason!, /No observed required CAPACITY failure/);
+    assert.equal(first.status, "OBSERVED", JSON.stringify(first));
+    assert.equal(first.noWork?.[0]?.diagnostic.reason, "no-retirable-prefix");
+    assert.equal(first.rolloverQuality!.status, "UNPROVEN");
+    assert.match(first.rolloverQuality!.reason!, /does not prove rollover continuity or capacity recovery/);
+    assert(first.ordinaryScore?.checks.every(c => c.status === "PROVEN"));
+    assert(first.score?.checks.every(c => c.status === "UNPROVEN"));
+    assert(!first.prerequisites.some(c => c.check.includes("failure-path recovery")));
     assert.equal(first.maintenanceResponses?.length, 0);
     assert.equal(first.maintenance.length, 0);
     assert.equal(first.rollovers?.length, 0);
     assert.equal(first.setupChecks?.[0]?.status, "UNPROVEN");
-    assert.equal(f.requests.length, 3);
+    assert.equal(f.requests.length, 5);
     assert.deepEqual(ledgerSummary(ledger).unreconciledCallIds, []);
   } finally { await f.close(); }
 });
@@ -207,6 +210,39 @@ test("E3 failed read, infeasible accounting and failed maintenance stop subseque
       if (shape === "maintenance-failure") assert.match(first.diagnostic!, /Automatic boundary maintenance failed/);
     } finally { await f.close({ shape }); }
   }
+});
+
+test("defaults known no-work continues all ordinary E1 turns and restart in three groups; no roll stays unproven", { timeout: 60000 }, async () => {
+  for (const group of ["native", "current", "candidate"] as const) {
+    const f = await comparisonStock();
+    try {
+      const { first, second, ledger } = await actualWorker(f, { id: "e1" }, group, false, { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 20000 }, nunc: {} });
+      assert.equal(first.status, "PAUSED", JSON.stringify(first));
+      assert.equal(second?.status, "OBSERVED", JSON.stringify(second));
+      assert.equal(second.noWork?.length, 2);
+      assert(second.noWork.every(r => r.diagnostic.reason === "no-retirable-prefix"));
+      assert.equal(second.rollovers?.length, 0);
+      assert(second.score?.checks.every(c => c.status === "UNPROVEN"));
+      assert(second.ordinaryScore?.checks.slice(0, 7).every(c => c.status === "PROVEN"));
+      assert.equal(second.ordinaryScore?.actionReview[0]?.status, "PROVEN");
+      assert.deepEqual(ledgerSummary(ledger).unreconciledCallIds, []);
+      assert(!first.configurationChanges?.length);
+    } finally { await f.close({ group }); }
+  }
+});
+
+test("defaults actual maintenance failure remains terminal with sanitized phase/reason", { timeout: 60000 }, async () => {
+  const f = await comparisonStock({ failMaintenance: true });
+  try {
+    const { first, second, ledger } = await actualWorker(f, { id: "e1" }, "native", false, { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: {} });
+    assert.equal(first.status, "UNPROVEN"); assert.equal(second, undefined);
+    assert.equal(first.noWork, undefined);
+    assert.equal(first.compactionDiagnostics?.[0]?.phase, "maintenance");
+    assert.equal(first.compactionDiagnostics?.[0]?.diagnostic.reason, "unknown");
+    assert.equal(first.nextTurn, 2, "c and later inputs were never delivered");
+    assert.deepEqual(ledgerSummary(ledger).unreconciledCallIds, []);
+    assert.equal(first.rollovers?.filter(r => r.snapshot).length, 0);
+  } finally { await f.close(); }
 });
 
 test("E4 actual required-capacity failure delivers c once, preserves state and terminates without repeated maintenance", { timeout: 60000 }, async () => {

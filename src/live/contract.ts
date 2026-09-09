@@ -44,7 +44,7 @@ export interface Limits { maxCalls: number; maxTotalTokens: number; maxCostUsd: 
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large"; config: RunConfig; assets?: ScenarioAssets }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string }
@@ -135,6 +135,8 @@ export function parseInput(value: unknown, execution = false): RunInput {
       requireValue(["full", "capacity"].includes(String(selection.variant)), "SCENARIO", "c4 requires full/capacity");
     } else if (selection.id === "c1") {
       requireValue(selection.variant === undefined || selection.variant === "late-d", "SCENARIO", "c1 may select late-d; others have no variant");
+    } else if (selection.id === "e3") {
+      requireValue(selection.variant === undefined || selection.variant === "archive-closeout", "SCENARIO", "e3 may select archive-closeout");
     } else if (selection.id === "e4") {
       requireValue(["fits-required", "required-too-large"].includes(String(selection.variant)), "SCENARIO", "e4 requires fits-required or required-too-large");
     } else {

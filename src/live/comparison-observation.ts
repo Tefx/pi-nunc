@@ -4,7 +4,8 @@ import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { memoryTokens, messageTokens, requestTokens, textTokens } from "../engine/accounting.js";
 import { memoryMessage } from "../engine/memory.js";
 import type { AdmissionObservation } from "../pi/admission.js";
-import { semanticEvidence } from "./scenarios.js";
+import { checkFullExtraction, semanticEvidence } from "./scenarios.js";
+import { fixtureExposure, logicalPlacement, type PlacementContract } from "./placement-observation.js";
 import type { MaintenanceResult } from "../engine/types.js";
 import type { RunConfig } from "./contract.js";
 import type { PreparedBoundary } from "./preparation.js";
@@ -15,6 +16,7 @@ export interface RequestObservation {
 }
 export interface RolloverObservation {
   turn: string; reason: string; model: Model<Api>; thinking: string | null;
+  placement?: PlacementContract;
   preparation: { firstKeptEntryId: string; settings: RunConfig["compaction"]; isSplitTurn: boolean; messagesToSummarize: unknown[]; turnPrefixMessages: unknown[]; tokensBefore: number; [key: string]: unknown };
   branch: SessionEntry[]; active: SessionEntry[]; config: RunConfig; prepared?: PreparedBoundary;
   snapshot?: Extract<SessionEntry, { type: "compaction" }>; rebuilt?: SessionEntry[];
@@ -94,16 +96,28 @@ export function matchedParity(cases: Array<{ label: string; groups: Array<{ grou
       const f = g.map((x, n) => rolloverFacts(rows[n]!, x.requests, x.group));
       const same = (values: unknown[]) => values.every(v => v !== null && v !== undefined && isDeepStrictEqual(v, values[0]));
       if (!same(f.map(x => ({ model: x.modelConfig, thinking: x.thinking }))) || f.some(x => x.thinking === null || !x.callIds.length)) fail("modelMatched", `${label}: actual model/thinking unobserved or different`);
-      if (!same(f.map((x, n) => evidence(x.source.active, g[n]!.cwd))) || f.some((x, n) => x.source.extractionContexts.length === 0 || (g[n]!.group === "native" ? !x.source.nativeSourceObserved || x.source.nativeTruncatedTools !== 0 : x.source.omissions === null || x.source.omissions.length > 0))) fail("exposureMatched", `${label}: actual delivered/extraction source exposure differs, is omitted or unobserved`);
-      if (!same(f.map(x => x.cutPoint)) || f.some(x => x.snapshotId === null)) fail("cutMatched", `${label}: actual cut point unobserved or different`);
-      if (!same(f.map((x, n) => evidence(x.source.kept, g[n]!.cwd))) || !same(f.map(x => x.kTokens))) fail("kMatched", `${label}: whole K content/association/accounting unobserved or different`);
+      const placements = rows.map((r, n) => logicalPlacement(r, g[n]!.cwd));
+      const reads = rows.map((r, n) => fixtureExposure(r, g[n]!.cwd));
+      const requiredReads = [...new Set([...reads.flat(), ...rows.flatMap(r => r.placement?.requiredReads ?? [])].map(r => `${r.turn}:${r.path}`))];
+      const missingReads = reads.map(rs => requiredReads.filter(key => !rs.some(r => `${r.turn}:${r.path}` === key && r.complete)));
+      const contractsMatch = same(rows.map(r => r.placement ? { control: r.placement.control, turns: r.placement.turns, files: r.placement.files, requiredReads: r.placement.requiredReads } : null));
+      const extractionObserved = f.every((x, n) => x.source.extractionContexts.length > 0 && (g[n]!.group === "native"
+        ? x.source.nativeSourceObserved && x.source.nativeTruncatedTools === 0
+        : x.source.omissions?.length === 0 && x.source.extractionContexts.some(ctx => checkFullExtraction(rows[n]!.active, ctx).status === "PROVEN")));
+      if (!contractsMatch || placements.some(p => p.issues.some(i => i.includes("request"))) || missingReads.some(rs => rs.length > 0) || !extractionObserved) fail("exposureMatched", `${label}: necessary task/file source is missing, different, truncated or unobserved`);
+      if (!contractsMatch || placements.some(p => p.status !== "PROVEN")) fail("cutMatched", `${label}: own legal cut or common named placement is unproven`);
+      if (!contractsMatch || placements.some(p => p.status !== "PROVEN")) fail("kMatched", `${label}: own unchanged complete K/tool units or common named retention is unproven`);
       // Native output caps constrain provider tokens; Pi appends file lists and wrappers after generation.
       // That does not establish a rendered-memory ceiling in the engine's estimator units.
       if (!same(f.map(x => x.memoryLimit)) || !same(f.map(x => x.mainInputLimit)) || !same(f.map(x => x.outputCaps)) || f.some(x => x.outputCaps.some(c => c === null) || x.finalContextTokens === null)) fail("budgetMatched", `${label}: rendered-memory, final-context or enforced-output constraints differ or are unobserved`);
       if (f.some(x => x.overhead.wrapperOverheadTokens === null)) fail("wrappersMeasured", `${label}: wrapper overhead unobserved`);
       if (f.some(x => x.overhead.fileLists === null)) fail("fileListsMeasured", `${label}: file-list overhead unobserved`);
       if (rows.some(r => !r.prepared)) fail("budgetMatched", `${label}: actual matched preparation missing`);
-      differences.push({ label, groups: f.map((x, n) => ({ group: g[n]!.group, ...x, source: undefined })) });
+      differences.push({ label,
+        exactTrajectory: { activeContentEqual: same(f.map((x, n) => evidence(x.source.active, g[n]!.cwd))), rawCutIndicesEqual: same(f.map(x => x.cutPoint)),
+          kContentEqual: same(f.map((x, n) => evidence(x.source.kept, g[n]!.cwd))), kTokensEqual: same(f.map(x => x.kTokens)) },
+        groups: f.map((x, n) => ({ group: g[n]!.group, ...x, source: undefined, placement: placements[n], fixtureReads: reads[n], missingNecessaryReads: missingReads[n],
+          nativeTruncatedTools: x.source.nativeTruncatedTools, toolResults: x.source.active.filter(e => e.type === "message" && e.message.role === "toolResult").length })) });
     }
   }
   return { ...dimensions, differences, discrepancies, status: Object.values(dimensions).every(Boolean) ? "PROVEN" as const : "UNPROVEN" as const };

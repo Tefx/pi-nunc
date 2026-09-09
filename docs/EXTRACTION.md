@@ -178,6 +178,10 @@ Markdown 是生成风格约定。没有标题或列表不能成为拒绝有效�
 
 已交付跟踪比较入口 `scripts/compare-extraction.mjs`，支持 `--preflight` 与默认执行。入口消费非秘密 JSON，明确输入、三组（native Pi 0.85.1、baseline 70dacad、candidate）与两种预算口径（defaults、matched）。e3 使用 awaited `turn_end` 观察完整工具批次，经公共 command reload 更新隔离任务配置，再由原生 automatic compaction 继续当前 agent loop；完整匹配结果、切点和容量不满足时，在后续 transport 前停止并记录 `UNPROVEN`。不使用 SDK 替代宿主、私有 hook、abort/replay 或手工拼接 JSONL。matched 逐轮准备实际合法切点和目标自身 accounting，并分别记录输出 cap、实现后的完整记忆包装与原生文件清单。原生没有与 Nunc 相同的 rendered-memory 强制上限，按原生实际产出准备 Nunc 容量仍不能证明预算约束相同，该维度保持 `UNPROVEN`。
 
+用户另已批准具名 `e3/archive-closeout`：原 a 之前完成两个归档月度账本及合并财务交接产物，三组采用相同输入及逻辑放置；原短 E3、a/b 与原脚本/fixture 保持不变。该历史承担普通工作并产生可核对后果，不保证真实 usage 能形成可行 H 区间；实际不等式失败仍在下一 transport 前拒绝。选择与产物定义见 [LIVE](LIVE.md#e3-archive-closeout-variant)。新来源需要新的 native reference，不能重标旧短任务证据。
+
+观察按维度呈现：defaults 仅在正向识别 native no-work 且状态/调用均已核对时继续普通输入，普通产物与无滚动连续性分开；未知 RPC/auth 或真实维护失败仍停止。matched 按本组 exact entry IDs、完整命名轮/工具单元和未改写 K 判断逻辑放置，另列独立生成正文、工具次数、raw index、K tokens 与实际预算差异。必要来源缺失继续失败；逻辑匹配不证明数值相等，也不消除 native 无 rendered-memory ceiling 的限制。
+
 机械检查覆盖真实 parser、必要集合预算、未变正文、多 slot 操作、原生提交/失败/恢复、比较 runner CLI/preflight/三组隔离及完整现有库存；真实模型运行验证覆盖与续做效果。只缺证据时补观察，不因报告或 Plan 变化重跑仍适用的底层行为。
 
 本设计最初以文档与实施计划获授权，随后用户授权继续调度剩余实施。本次策略 owner 仅交付语义资产与独立场景，未执行引擎/runner 或真实模型比较。未来真实比较仍须绑定新任务 target、有效模型配置和有界调用/token/时间/可知费用范围；历史付费观察和未用额度不自动授权重放。没有新的比较结果前，不宣称已达到原生覆盖或已经改善续做。
