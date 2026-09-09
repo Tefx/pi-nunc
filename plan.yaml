@@ -2396,7 +2396,7 @@ phases:
       or push. Same runtime/finalacceptance retain all remaining obligations.'
   - id: nunc.extraction-source-qualification
     name: 分页读取来源暴露与有序 closeout 资格修复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/archive-closeout.ts\", \"src/live/worker.ts\"\
       , \"tests/live/**\", \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\"]\n  blocked_paths:\
@@ -2472,6 +2472,25 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-09T03:48:54.300057Z'
+    done_at: '2026-09-09T06:02:25.994726+00:00'
+    evidence: Accepted and fast-forward integrated exact3c1c232e88fc81a9741be2c9b1c69780ece64d1a
+      from4c05b708896839ffd7c4c3e9e4d733915a876967; repair retainedref refs/retained/nunc-extraction-source-qualification-repair,
+      prior56fc0b1 DISPROVEN history preserved. Independent complete6requirements
+      PROVEN/no findings; validator valid:true binding_checked:true POSITIVE_EVIDENCE
+      against /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-source-qualification-acceptance-w5j13j7_/repair-binding.json,
+      full report /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-09T05-58-33-877Z-2026-09-09T05-39-33-114Z_01a084ad-ba79-75a3-a7e2-a26a77e2cdcb.js-67d2576f5da1e859.txt.
+      Fresh stockread/compiledpredicate probes close398of399 overcredit, fullbody
+      invalidrange bypass, delayednecessarypageresult earlywrite; four self-contained
+      targetedtests pass. Evidence /tmp/larva-agent-artifacts/nunc-source-qualification-3c1c232/{evidence-index.md,probe.jsonl,targeted-tests.log,reanalysis.json}.
+      Applicable final394/39449file inventory and tsc reused from /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/pi-bash-d5e5c13d4f8cd141.log.
+      Genuine wholefile/overlappedstockpages retain emptyfinal-line399 correctly;
+      coverage completes when results available, not calls issued. Offline retained
+      reanalysis fixes February exposure while retaining two independent combined-order
+      failures, four qualifiedcloseoutcases; originalreports untouched. Controlledfixture
+      removed, candidateclean before integration. No paidcalls/replay/defaultprivate-artifactdependency/protectedstate
+      changes; UI DONE/manual confirmation remains. Eight pre-maintenance Januaryverify
+      violations and runtimeE1/E2/E4/NONREGRESSION remain unresolved. Completion accepts
+      predicate correctness only, not realtaskquality/finalacceptance.
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
