@@ -87,3 +87,21 @@ test("planning uses Pi text scale and ignores opaque signature size; usage needs
   Object.assign(message, { usage: undefined }); // Untyped extension/history boundary.
   assert.equal(admissionEstimate(context, source.model, undefined, true).estimator, "pi-heuristic");
 });
+
+test("explicit usage index is not replaced by a later incompatible low usage", async () => {
+  const source = await input();
+  const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+  const early = { ...answer(), timestamp: 1, usage: { input: 20000, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20010, cost } };
+  const later = { ...answer(), timestamp: 3, usage: { input: 40, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 45, cost } };
+  const mid = user("mid", "incompatible-F-turn").messages[0]!;
+  const tail = user("tail", "Continue").messages[0]!;
+  const context = { ...source.fixed, messages: [early, mid, later, tail] };
+  const latest = admissionEstimate(context, source.model, undefined, true);
+  assert.equal(latest.estimator, "pi-usage-backed");
+  assert(latest.tokens < 1000, String(latest.tokens));
+  const pinned = admissionEstimate(context, source.model, undefined, true, 0, 0);
+  assert.equal(pinned.estimator, "pi-usage-backed");
+  assert(pinned.tokens > 20000);
+  assert.equal(admissionEstimate(context, source.model, undefined, true, 0, 1).estimator, "pi-heuristic");
+  assert.equal(admissionEstimate(context, source.model, undefined, false, 0, 0).estimator, "pi-heuristic");
+});

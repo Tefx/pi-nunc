@@ -5,12 +5,23 @@ import { createAssistantMessageEventStream, type Api, type AssistantMessage, typ
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Complete, EngineConfig } from "../engine/index.js";
 import { admissionEstimate, inputLimit, mainAdmissionLimit, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
-import { EngineError, legalCuts } from "../engine/validation.js";
+import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = { context: Context; model: Model<Api>; signal: AbortSignal | undefined; simple: boolean; seen: WeakSet<Provider> };
-export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; plannedInputLimit?: number; inputExceededPlan?: boolean; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; code?: string; payload?: PayloadObservation }
+interface MainReceipt {
+  model: Model<Api>;
+  systemPrompt: string | undefined;
+  tools: unknown;
+  messages: unknown;
+  messageCount: number;
+}
+interface MainSnapshot extends MainReceipt { generation: number; payloadBound: boolean }
+/** In-process bound for ephemeral receipts; not a call or token cap. */
+const MAIN_RECEIPT_LIMIT = 8;
+export type AdmissionEstimateReason = "matching-receipt" | "no-receipt" | "model-mismatch" | "system-mismatch" | "tools-mismatch" | "messages-mismatch" | "payload-unbound" | "usage-unusable" | "lifecycle-reset";
+export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; plannedInputLimit?: number; inputExceededPlan?: boolean; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; estimateReason?: AdmissionEstimateReason; hostPromptMatchesRequest?: boolean; anchorTrailingMessages?: number; code?: string; payload?: PayloadObservation }
 export interface AdmissionLayoutEvent {
   ctx: ExtensionContext;
   model: Model<Api>;
@@ -34,8 +45,10 @@ export class Admission {
   private readonly call = new AsyncLocalStorage<CallRecord>();
   private readonly installed = new Map<string, Installation>();
   private cancelledRun = false;
-  private previousMain: { model: Model<Api>; systemPrompt: string | undefined; tools: unknown; messages: unknown; messageCount: number } | undefined;
-  invalidateUsage(): void { this.previousMain = undefined; }
+  private generation = 0;
+  private receipts: MainReceipt[] = [];
+  private pending: MainSnapshot[] = [];
+  invalidateUsage(): void { this.receipts = []; this.pending = []; this.generation++; }
   private readonly rejected = new Map<string, AbortSignal>();
   constructor(private readonly pi: ExtensionAPI, private readonly config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig, private readonly onLayout?: (event: AdmissionLayoutEvent) => void) {}
 
@@ -81,6 +94,56 @@ export class Admission {
   recoveryCancelled(): boolean { return [...this.rejected.values()].some(signal => signal.aborted); }
   cancelRun(): void { this.cancelledRun = true; }
   settled(): void { this.rejected.clear(); this.cancelledRun = false; }
+  private hostPromptMatches(ctx: ExtensionContext, context: Context): boolean | undefined {
+    try { return ctx.getSystemPrompt() === context.systemPrompt; } catch { return undefined; }
+  }
+  private assistantUsageUsable(message: { role?: string; stopReason?: string; model?: string; provider?: string; api?: string; usage?: unknown }, model: Model<Api>): boolean {
+    if (message.role !== "assistant" || message.stopReason === "aborted" || message.stopReason === "error") return false;
+    if (message.model !== model.id || message.provider !== model.provider || message.api !== model.api) return false;
+    const usage = message.usage;
+    if (!record(usage) || ![usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.totalTokens].every(n => integer(n))) return false;
+    const tokens = typeof usage.totalTokens === "number" && usage.totalTokens > 0
+      ? usage.totalTokens
+      : (usage.input as number) + (usage.output as number) + (usage.cacheRead as number) + (usage.cacheWrite as number);
+    return integer(tokens, 1);
+  }
+  private harvest(context: Context): void {
+    const pending = this.pending;
+    this.pending = [];
+    for (const snapshot of pending) {
+      if (snapshot.generation !== this.generation || !snapshot.payloadBound) continue;
+      if (context.messages.length <= snapshot.messageCount) { this.pending.push(snapshot); continue; }
+      if (!isDeepStrictEqual(jsonView(context.messages.slice(0, snapshot.messageCount)), snapshot.messages)) continue;
+      const anchor = context.messages[snapshot.messageCount];
+      if (anchor && this.assistantUsageUsable(anchor, snapshot.model)) {
+        this.remember({ model: snapshot.model, systemPrompt: snapshot.systemPrompt, tools: snapshot.tools, messages: snapshot.messages, messageCount: snapshot.messageCount });
+      }
+    }
+  }
+  private selectReceipt(context: Context, model: Model<Api>): { reason: AdmissionEstimateReason; receipt?: MainReceipt } {
+    this.harvest(context);
+    if (!this.receipts.length) return { reason: "no-receipt" };
+    let reason: AdmissionEstimateReason = "messages-mismatch";
+    let best: MainReceipt | undefined;
+    const tools = jsonView(context.tools ?? []);
+    for (const receipt of this.receipts) {
+      if (!isDeepStrictEqual(receipt.model, model)) { if (!best) reason = "model-mismatch"; continue; }
+      if (receipt.systemPrompt !== context.systemPrompt) { if (!best) reason = "system-mismatch"; continue; }
+      if (!isDeepStrictEqual(receipt.tools, tools)) { if (!best) reason = "tools-mismatch"; continue; }
+      if (context.messages.length <= receipt.messageCount) { if (!best) reason = "messages-mismatch"; continue; }
+      if (!isDeepStrictEqual(jsonView(context.messages.slice(0, receipt.messageCount)), receipt.messages)) { if (!best) reason = "messages-mismatch"; continue; }
+      const anchor = context.messages[receipt.messageCount];
+      if (!anchor || !this.assistantUsageUsable(anchor, model)) { if (!best) reason = "usage-unusable"; continue; }
+      if (!best || receipt.messageCount >= best.messageCount) best = receipt;
+    }
+    return best ? { reason: "matching-receipt", receipt: best } : { reason };
+  }
+  private remember(receipt: MainReceipt): void {
+    const dup = this.receipts.findIndex(existing => existing.messageCount === receipt.messageCount && existing.systemPrompt === receipt.systemPrompt && isDeepStrictEqual(existing.model, receipt.model) && isDeepStrictEqual(existing.tools, receipt.tools));
+    if (dup >= 0) this.receipts.splice(dup, 1);
+    this.receipts.push(receipt);
+    while (this.receipts.length > MAIN_RECEIPT_LIMIT) this.receipts.shift();
+  }
   private observe(value: AdmissionObservation, detail?: Omit<AdmissionLayoutEvent, "observation">): void {
     try { this.pi.events.emit("nunc:admission", value); } catch { /* Notification-only consumers. */ }
     if (!detail || (value.kind !== "main" && value.kind !== "maintenance")) return;
@@ -121,7 +184,8 @@ export class Admission {
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
     let initialMetadataTokens = 0;
-    let budgetObservation: Pick<AdmissionObservation, "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan"> = {};
+    let budgetObservation: Pick<AdmissionObservation, "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages"> = {};
+    let snapshot: MainSnapshot | undefined;
     try {
       if (kind === "unknown") {
         this.observe({ kind, outcome: "delegate" });
@@ -147,17 +211,34 @@ export class Admission {
         // Validate projected media/blocks/associations, without inventing source IDs.
         if (context.messages.length) legalCuts(context.messages.map((m, i) => ({ entryId: String(i), sourceRole: m.role, messages: [m] })));
         if (!model.input.includes("image") && context.messages.some(m => Array.isArray(m.content) && m.content.some(b => b.type === "image"))) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
-        const previous = this.previousMain;
-        const usageApplies = previous !== undefined && isDeepStrictEqual(previous.model, model) &&
-          previous.systemPrompt === context.systemPrompt && isDeepStrictEqual(previous.tools, jsonView(context.tools ?? [])) &&
-          context.messages.length > previous.messageCount &&
-          isDeepStrictEqual(jsonView(context.messages.slice(0, previous.messageCount)), previous.messages);
-        const estimate = admissionEstimate(context, model, config.imageTokens, usageApplies, previous?.messageCount ?? 0);
+        const selected = this.selectReceipt(context, model);
+        const estimate = selected.receipt
+          ? admissionEstimate(context, model, config.imageTokens, true, selected.receipt.messageCount, selected.receipt.messageCount)
+          : admissionEstimate(context, model, config.imageTokens);
         inputTokens = estimate.tokens + config.main.extraInputTokens + initialMetadataTokens;
         const plannedInputLimit = inputLimit(model, config.main);
-        budgetObservation = { estimator: estimate.estimator, plannedInputLimit, inputExceededPlan: inputTokens > plannedInputLimit, outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens, ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}) };
+        const hostPromptMatchesRequest = this.hostPromptMatches(ctx, context);
+        budgetObservation = {
+          estimator: estimate.estimator,
+          plannedInputLimit,
+          inputExceededPlan: inputTokens > plannedInputLimit,
+          outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens,
+          estimateReason: selected.reason,
+          ...(selected.receipt ? { anchorTrailingMessages: context.messages.length - selected.receipt.messageCount - 1 } : {}),
+          ...(hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest }),
+          ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}),
+        };
         limit = mainAdmissionLimit(model, config.main);
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimate.estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
+        snapshot = {
+          model: structuredClone(model),
+          systemPrompt: context.systemPrompt,
+          tools: jsonView(context.tools ?? []),
+          messages: jsonView(context.messages),
+          messageCount: context.messages.length,
+          generation: this.generation,
+          payloadBound: true,
+        };
       }
       if (kind === "maintenance") {
         const config = this.config(ctx, model);
@@ -180,7 +261,7 @@ export class Admission {
         const cap = outputCapState(after);
         budgetObservation.outputCapTokens = cap.kind === "value" ? cap.value : null;
         const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload));
-        if (kind === "main" && delta.categories.some(c => c !== "output")) this.invalidateUsage();
+        if (snapshot && delta.categories.some(c => c !== "output")) snapshot.payloadBound = false;
         const append = lastUserTextAppend(before, after);
         const observation: PayloadObservation = append.ok
           ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
@@ -211,7 +292,7 @@ export class Admission {
         }
       } };
       this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context, initialMetadataTokens });
-      if (kind === "main") this.previousMain = { model: structuredClone(model), systemPrompt: context.systemPrompt, tools: jsonView(context.tools ?? []), messages: jsonView(context.messages), messageCount: context.messages.length };
+      if (snapshot) this.pending.push(snapshot);
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
       return simple ? delegate.streamSimple(model, context, forwarded as SimpleStreamOptions) : delegate.stream(model, context, forwarded);

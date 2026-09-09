@@ -113,6 +113,9 @@ export interface LastMainContext {
   outcome: "delegate" | "reject";
   code?: string;
   estimator?: AdmissionObservation["estimator"];
+  estimateReason?: AdmissionObservation["estimateReason"];
+  hostPromptMatchesRequest?: boolean;
+  anchorTrailingMessages?: number;
   inputTokens?: number;
   inputLimit?: number;
   plannedInputLimit?: number;
@@ -232,6 +235,9 @@ export function createContextSurface(options: {
           layout: unavailableLayout(),
           ...(observation.code ? { code: observation.code } : {}),
           ...(observation.estimator ? { estimator: observation.estimator } : {}),
+          ...(observation.estimateReason ? { estimateReason: observation.estimateReason } : {}),
+          ...(observation.hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest: observation.hostPromptMatchesRequest }),
+          ...(observation.anchorTrailingMessages === undefined ? {} : { anchorTrailingMessages: observation.anchorTrailingMessages }),
           ...(observation.inputTokens === undefined ? {} : { inputTokens: observation.inputTokens }),
           ...(observation.inputLimit === undefined ? {} : { inputLimit: observation.inputLimit }),
           ...(observation.plannedInputLimit === undefined ? {} : { plannedInputLimit: observation.plannedInputLimit }),

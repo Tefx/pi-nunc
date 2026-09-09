@@ -1,4 +1,4 @@
-import { estimateTextTokens, estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { calculateContextTokens, estimateTextTokens, estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import type { Api, Context, Message, Model } from "@earendil-works/pi-ai";
 import type { ActiveEntry, EngineConfig, FixedContext, RequestBudget, Slot, UsageObservation } from "./types.js";
 import { memoryMessage } from "./memory.js";
@@ -27,15 +27,34 @@ export function requestTokens(context: Context, imageTokens?: number): number {
   return 64 + textTokens(context.systemPrompt ?? "") + textTokens(JSON.stringify(context.tools ?? []))
     + context.messages.reduce((sum, m) => sum + messageTokens(m, imageTokens), 0);
 }
-/** Caller must establish unchanged model/prefix before allowing historical usage. */
-export function admissionEstimate(context: Context, model: Model<Api>, imageTokens?: number, allowUsage = false, minimumUsageIndex = 0): { tokens: number; estimator: "pi-heuristic" | "pi-usage-backed" } {
+function usageFields(message: Message): number | undefined {
+  if (message.role !== "assistant") return;
+  if (message.stopReason === "aborted" || message.stopReason === "error") return;
+  const usage = message.usage;
+  if (!record(usage) || ![usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.totalTokens].every(n => integer(n))) return;
+  const tokens = calculateContextTokens(usage);
+  return integer(tokens, 1) ? tokens : undefined;
+}
+/** Caller must establish unchanged model/prefix before allowing historical usage.
+ * Pass usageIndex to pin that assistant; omitting it keeps Pi's latest applicable usage. */
+export function admissionEstimate(context: Context, model: Model<Api>, imageTokens?: number, allowUsage = false, minimumUsageIndex = 0, usageIndex?: number): { tokens: number; estimator: "pi-heuristic" | "pi-usage-backed" } {
   // Validate every native image even when a usage receipt covers its token cost.
   const fresh = requestTokens(context, imageTokens);
-  if (allowUsage && context.messages.every(m => m.role !== "assistant" || record(m.usage) && [m.usage.input, m.usage.output, m.usage.cacheRead, m.usage.cacheWrite, m.usage.totalTokens].every(n => integer(n)))) {
+  if (!allowUsage) return { tokens: fresh, estimator: "pi-heuristic" };
+  if (usageIndex !== undefined) {
+    const anchor = context.messages[usageIndex];
+    const usageTokens = anchor ? usageFields(anchor) : undefined;
+    if (anchor?.role === "assistant" && usageTokens !== undefined && usageIndex >= minimumUsageIndex && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
+      const trailing = context.messages.slice(usageIndex + 1);
+      return { tokens: usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
+    }
+    return { tokens: fresh, estimator: "pi-heuristic" };
+  }
+  if (context.messages.every(m => m.role !== "assistant" || record(m.usage) && [m.usage.input, m.usage.output, m.usage.cacheRead, m.usage.cacheWrite, m.usage.totalTokens].every(n => integer(n)))) {
     const estimate = estimateContextTokens(context);
     const anchor = estimate.lastUsageIndex === null ? undefined : context.messages[estimate.lastUsageIndex];
     if (estimate.lastUsageIndex !== null && estimate.lastUsageIndex >= minimumUsageIndex && anchor?.role === "assistant" && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
-      const trailing = context.messages.slice(estimate.lastUsageIndex! + 1);
+      const trailing = context.messages.slice(estimate.lastUsageIndex + 1);
       // Pi's usage includes F and earlier messages. Add our explicit framing/media
       // estimate only for new messages, without charging the prefix twice.
       return { tokens: estimate.usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
