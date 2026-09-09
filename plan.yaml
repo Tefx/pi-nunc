@@ -2767,7 +2767,7 @@ phases:
       ref refs/retained/nunc-extraction-optional-quotas.
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
-  status: in_progress
+  status: done
   gate: 唯一最终质量决定nunc.extraction-acceptance消费nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction、nunc-host-prompt-compat六个成果phase。最终Nunc与未修改stock0.85.1完整offline库存、适用真实/UI事实与原必要保护成立且无blocking/必要UNPROVEN才接受；不要求fixed-host交付或任意扩展私有persona重建，准确披露stock限制。无安装/部署/发布或新付费采样授权。
   context: 唯一跨成果最终接受，等待nunc-extraction、原nunc-ui及Nunc本地stock兼容交付。纳入nunc-v1、native-compat、cooperative-root-cause、nunc-ui、nunc-extraction、nunc-host-prompt-compat六个成果phase；撤销的Pi
     core方案没有交付/接受义务。保留原五phase全部必要要求、人工UI及DONE，不重复UI决定或另造producer gates。最终Nunc candidate与未修改stock
@@ -2780,7 +2780,7 @@ phases:
   steps:
   - id: nunc.extraction-acceptance
     name: 提取改进与完整 Nunc 的最终整合接受
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       examples/**\", \"README.md\", \"package.json\", \"package-lock.json\", \".node-version\"\
@@ -2841,6 +2841,18 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-09-09T17:50:41.647795Z'
+    done_at: '2026-09-09T17:55:44.179462+00:00'
+    evidence: FULL MILESTONE_GATE PASS, validator valid/binding_checked POSITIVE_GATE_EVIDENCE.
+      Binding /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-final-gate-kbh5c941/review-binding.json.
+      Report /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-09T17-54-36-448Z-2026-09-09T17-51-18-961Z_01a0874b-adb0-724f-b1f2-5ef6b9ac39e9.js-1558c0cfccde7c55.txt.
+      Target git:b311c3dfb892e901792c24a9903c21d9e8c16673 equals current HEAD; product
+      4f1f668 plus Plan-only commits. All eight bound requirements PROVEN, findings
+      empty. Phases nunc-v1, native-compat, cooperative-root-cause, nunc-ui, nunc-extraction,
+      nunc-host-prompt-compat. User 2026-09-10 accepted disclosed limits; host persona/systemPrompt
+      remains Larva-owned, not a Nunc blocker. Historical 10-row runtime CONTRADICTION
+      preserved. Complete 423/52 all reused from 4f1f668 log, no replay. UI human
+      IME/resize/theme unchanged. No install/publish/deploy, no Pi-core change, no
+      new paid run. PASS grants no publication authority.
 - id: pi-host-prompt
   name: 已撤销的跨仓库 Pi 宿主方案
   status: pending
