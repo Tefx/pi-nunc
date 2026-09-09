@@ -2625,7 +2625,7 @@ phases:
       proves observerassociation only.
   - id: nunc.extraction-optional-quotas
     name: 取消强制总调用与累计预留token上限
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/contract.ts\", \"src/live/defaults.ts\", \"src/live/budget.ts\"\
       , \"src/live/comparison.ts\", \"src/live/runner.ts\", \"src/live/worker.ts\"\
@@ -2700,6 +2700,23 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-09T12:10:17.603016Z'
+    done_at: '2026-09-09T12:46:40.826042+00:00'
+    evidence: Integrated4829a1e2763a1e86a73154f69edb10ebbfaf98e7 by clean ff from7715c9298c292b9e3f32027cc2d3f3443d696055.
+      User-directed maxCalls/maxTotalTokens omitted/null disable cumulativegates,
+      explicitpositive safeinteger opt-in remains, arbitrary1000 removed, no surrogatetokencap.
+      Independent6requirementsPROVEN nofindings; validatorvalid/bindingchecked POSITIVE_EVIDENCE
+      against /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-optional-quotas-acceptance-50qjvpoh/review-binding.json.
+      Report /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-09T12-45-24-809Z-2026-09-09T12-35-28-965Z_01a0862a-8645-7068-b954-00acd712c6e7.js-2602e4cf46cc4a32.txt.
+      Independent63focusedtests; full412/51 applicableallreused .vectl/worktrees/nunc-extraction-optional-quotas/.scratch/optional-quotas/check-all.log.
+      Synthetic ledgerworkerproves scheduler groups/modescaps only; separate actualpublicstocksubjob+nativeworker/provider13calls
+      evidence proves unlimitedtotalscontinuity/accounting. Finitecaps presendrefuse;
+      perrequestcapacity, time/cost/cancel/unknownterminal/auth/identity/cleanup/noauxretry
+      unchanged. Isolatedeffects reconciled; no paidmodel/daily/oldtargeteffects.
+      Originalprobe costfixturemistake corrected only maxCostUsdnull, failedprobe
+      retained. Stale finite-ledger reportphrase recorded as nonblocking warning,
+      no numericenforcement. Main productsourceintegration complete; no E1completionclaim/acceptancewaiver,
+      historical160batch remainsincomplete withearlya violations. Retainedcandidate
+      ref refs/retained/nunc-extraction-optional-quotas.
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
