@@ -20,6 +20,8 @@ export interface RolloverObservation {
   preparation: { firstKeptEntryId: string; settings: RunConfig["compaction"]; isSplitTurn: boolean; messagesToSummarize: unknown[]; turnPrefixMessages: unknown[]; tokensBefore: number; [key: string]: unknown };
   branch: SessionEntry[]; active: SessionEntry[]; config: RunConfig; prepared?: PreparedBoundary;
   snapshot?: Extract<SessionEntry, { type: "compaction" }>; rebuilt?: SessionEntry[];
+  reported?: Extract<SessionEntry, { type: "compaction" }>;
+  association?: { status: "resolved" | "UNPROVEN"; reason?: string; reportedId?: string | null };
   result?: MaintenanceResult; callIds: number[]; continuationCallId?: number;
 }
 export function rolloverFacts(row: RolloverObservation, requests: RequestObservation[], group: string) {

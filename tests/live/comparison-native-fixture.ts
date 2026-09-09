@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { repository } from "./fixtures.js";
 
 /** Protocol fixtures execute tools and native scheduling; generated content makes no model-quality claim. */
-export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure" | "long-suffix" | "low-native" | "repeat-threshold" | "restart-threshold" | "archive"; tooLarge?: boolean; earlyVerify?: boolean; invalidCapacity?: boolean; variedTools?: boolean; failMaintenance?: boolean } = {}) {
+export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure" | "long-suffix" | "low-native" | "repeat-threshold" | "restart-threshold" | "archive"; tooLarge?: boolean; earlyVerify?: boolean; invalidCapacity?: boolean; variedTools?: boolean; failMaintenance?: boolean; sameMemory?: boolean } = {}) {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, timeoutMs: 300000 });
   f.limits = { ...f.limits, maxCalls: 300, maxTotalTokens: 24000000 }; // Five selections × three groups × two modes, including tool continuations.
@@ -21,6 +21,9 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
     if (serialized && current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
     if (serialized) return "## Goal\nContinue the authorized local task.\n\n## Progress\nThe preceding ordinary turns completed. Preserve the remaining work and original restrictions.\n\n## Next Steps\nContinue only when the ordinary user turn authorizes it.\n\n## Critical Context\nThe task files remain available through the ordinary file tools. This controlled summary exercises the stock serializer and carries no quality claim.";
     if (source) {
+      if (options.sameMemory && Array.isArray(source.M) && source.M.length) {
+        return JSON.stringify({ add: [], remove: [], priority: source.M.map((s: any) => s.id), required: [] });
+      }
       if (current?.scenario === "e4" && options.invalidCapacity) return "Incomplete capacity response";
       if (current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
       const required = JSON.stringify(row.payload).includes("four required fields");

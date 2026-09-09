@@ -14,6 +14,7 @@ import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budg
 import type { MaintenanceResult } from "../engine/types.js";
 import { project, type NuncConfig } from "../pi/index.js";
 import type { RetentionCalibration } from "./calibration.js";
+import { compactionAssociationError } from "./compaction-identity.js";
 import { prepareBoundary, type PreparedBoundary, type MatchReference } from "./preparation.js";
 import { rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
 
@@ -217,7 +218,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           if (row?.snapshot && data.kind === "main" && row.continuationCallId === undefined) row.continuationCallId = data.callId;
         }
         if (type === "request-cap") { const req = report.requests!.find(r => r.callId === data.callId); if (req) req.cap = data.cap; }
-        if (type === "commit" && row) { row.snapshot = data.snapshot; row.rebuilt = data.rebuilt; }
+        if (type === "commit" && row) {
+          row.reported = data.reported;
+          row.association = data.association;
+          row.rebuilt = data.rebuilt;
+          if (data.association?.status === "UNPROVEN") delete row.snapshot;
+          else if (data.snapshot) row.snapshot = data.snapshot;
+        }
       },
       onMaintenance: event => { const result = maintenanceResult(event); report.maintenance.push(result ? JSON.parse(JSON.stringify(result)) : { invalidEvent: true });
         const row = report.rollovers!.at(-1); if (row && result) row.result = JSON.parse(JSON.stringify(result)); },
@@ -285,6 +292,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       for (const control of observer.controls.filter(c => c.afterTurn === turn || c.duringTurn === turn)) {
         if (control.action === "rollover_at_tool_boundary") {
           const row = report.rollovers!.find(r => r.turn === turn && r.reason === "threshold");
+          if (row?.association?.status === "UNPROVEN") {
+            const e3Assoc = compactionAssociationError(row)!;
+            report.prerequisites.push({ check: "actual compaction transaction identity", status: "UNPROVEN", reason: e3Assoc });
+            throw new RunnerError("ASSOCIATION", e3Assoc);
+          }
           const snap = row?.snapshot, expected = row?.prepared?.firstKeptEntryId;
           const next = report.requests!.find(r => r.callId === row?.continuationCallId);
           const retained = snap && row ? row.active.slice(row.active.findIndex(e => e.id === snap.firstKeptEntryId)).filter(e => e.type !== "compaction") : [];
@@ -340,6 +352,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             if (!pass || !snapshot) {
               report.prerequisites.push({ check: "successful native rollover", status: "UNPROVEN", reason: "Native Pi compact did not produce a valid snapshot" });
               throw new RunnerError("MAINTENANCE", "No successful native rollover; continuation remains unproven");
+            }
+            const nativeAssoc = compactionAssociationError(report.rollovers!.at(-1));
+            if (nativeAssoc) {
+              report.prerequisites.push({ check: "actual compaction transaction identity", status: "UNPROVEN", reason: nativeAssoc });
+              throw new RunnerError("ASSOCIATION", nativeAssoc);
             }
             const rebuilt = saved.buildContextEntries();
             report.prerequisites.push({ check: "native rebuild selects compaction snapshot", status: rebuilt.some(e => e.id === snapshot.id) ? "PROVEN" : "UNPROVEN" });
@@ -407,6 +424,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 throw new RunnerError("MAINTENANCE", "No successful rollover; continuation remains unproven");
               }
             } else {
+              const nuncAssoc = compactionAssociationError(report.rollovers!.at(-1));
+              if (nuncAssoc) {
+                report.prerequisites.push({ check: "actual compaction transaction identity", status: "UNPROVEN", reason: nuncAssoc });
+                throw new RunnerError("ASSOCIATION", nuncAssoc);
+              }
               report.prerequisites.push(...checkRollover(before, after, saved, result, control, turns));
               if (selection.config.retentionCalibration || mode === "matched") report.prerequisites.push({ check: "Nunc/Pi independently selected and persisted calibrated boundary", status: result.candidate.firstKeptEntryId === report.rollovers!.at(-1)?.prepared?.firstKeptEntryId ? "PROVEN" : "UNPROVEN" });
               if (result.observations.omissions.length === 0) report.prerequisites.push(checkFullExtraction(beforeActive, report.contexts.findLast(c => c.turn === turn && c.kind === "maintenance")?.context));

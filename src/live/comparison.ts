@@ -60,7 +60,7 @@ export function scopedUsage(records: LedgerRecord[], ids: Set<number>) {
   return { callIds: [...ids], calls: summary.calls, tokens: summary.totalTokens, costUsd: summary.costUsd,
     latencyMs: scoped.filter(r => r.kind === "terminal").reduce((n, r) => n + r.latencyMs, 0) };
 }
-function joined(segments: SegmentReport[]) {
+export function joinedObservations(segments: SegmentReport[]) {
   const rows = new Map<string, RolloverObservation>(), requests = new Map<number, RequestObservation>();
   for (const segment of segments) {
     for (const row of segment.rollovers ?? []) rows.set(row.snapshot?.id ?? `${row.branch.at(-1)?.id}:${row.callIds.join(",")}`, row);
@@ -116,7 +116,7 @@ export async function executeComparison(value: unknown, repository: string, scri
           requireValue(report.usage.reservedTokens + smallestReservation <= input.limits.maxTotalTokens, "TOKEN_LIMIT", "Shared token ceiling cannot reserve another task request");
           if (input.limits.maxCostUsd !== null) requireValue(report.usage.reservedCostUsd !== null && report.usage.reservedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
           const beforeIds = new Set(readLedger(join(root, "calls.jsonl")).filter(r => r.kind === "reserve").map(r => r.id));
-          const native = joined(completed.get(`native:${label}`) ?? []);
+          const native = joinedObservations(completed.get(`native:${label}`) ?? []);
           const matchReferences: MatchReference[] = native.rows.map(row => { const f = rolloverFacts(row, native.requests, "native"); return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps }; });
           const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences }, signal);
           report.children.push(child);
@@ -142,7 +142,7 @@ export async function executeComparison(value: unknown, repository: string, scri
         } finally { modeReport.groups[group].timing = elapsedInterval(groupStarted); }
       }
       const groupRecords = (pick: (facts: RolloverFacts) => unknown) => Object.fromEntries(ALL_GROUPS.map(group => [group, input.scenarios.map(s => {
-        const label = `${s.id}${s.variant ? `-${s.variant}` : ""}`, j = joined(completed.get(`${group}:${label}`) ?? []);
+        const label = `${s.id}${s.variant ? `-${s.variant}` : ""}`, j = joinedObservations(completed.get(`${group}:${label}`) ?? []);
         return { selection: label, rollovers: j.rows.map(row => pick(rolloverFacts(row, j.requests, group))) };
       })]));
       modeReport.records.hComparison = groupRecords(f => f.h);
@@ -153,7 +153,7 @@ export async function executeComparison(value: unknown, repository: string, scri
       if (mode === "matched") modeReport.records.matchedParity = matchedParity(input.scenarios.map(s => {
         const label = `${s.id}${s.variant ? `-${s.variant}` : ""}`;
         return { label, groups: ALL_GROUPS.map(group => { const key = `${group}:${label}`, segments = completed.get(key) ?? []; return {
-          group, complete: segments.at(-1)?.status === "OBSERVED", cwd: roots.get(key)!, ...joined(segments),
+          group, complete: segments.at(-1)?.status === "OBSERVED", cwd: roots.get(key)!, ...joinedObservations(segments),
         }; }) };
       }));
       // Observation completion and parity are independent: measured inequality is a valid observation.

@@ -5,11 +5,12 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { Control } from "./scenarios.js";
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean }
+export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
 export function observerState(source: string): ObserverState | undefined { return states.get(source); }
 import { boundedProvider, BudgetLedger } from "./budget.js";
+import { compactionAssociationStop, resolveCompactionIdentity } from "./compaction-identity.js";
 import { RunnerError, requireValue, type RunInput } from "./contract.js";
 import { authorizeVerification, toolPath } from "./tool-path.js";
 
@@ -85,16 +86,34 @@ export default function observer(pi: ExtensionAPI): void {
     if (binding.boundary && (!state.boundaryDone || state.expectedFirst && state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select the eligible tool boundary";
     log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryDone: state.boundaryDone, expectedFirst: state.expectedFirst, stopped: state.stop });
     if (state.stop) return { cancel: true };
+    state.preBranchIds = event.branchEntries.map(e => e.id);
+    state.identityCut = event.preparation.firstKeptEntryId;
   });
   pi.on("session_compact", (event, ctx) => {
     state.compacting = false;
-    log("commit", { reason: event.reason, snapshot: event.compactionEntry, rebuilt: ctx.sessionManager.buildContextEntries() });
+    const preBranchIds = state.preBranchIds, identityCut = state.identityCut;
+    delete state.preBranchIds; delete state.identityCut;
+    const rebuilt = ctx.sessionManager.buildContextEntries();
+    const identity = resolveCompactionIdentity({
+      preBranchIds, branch: ctx.sessionManager.getBranch(), rebuilt, reported: event.compactionEntry,
+      ...(event.compactionEntry?.fromHook === true || identityCut === undefined ? {} : { expectedCut: identityCut }),
+    });
+    const association = identity.status === "resolved"
+      ? { status: "resolved" as const, reportedId: identity.reportedId }
+      : { status: "UNPROVEN" as const, reason: identity.reason, reportedId: identity.reportedId };
+    log("commit", { reason: event.reason, reported: event.compactionEntry, rebuilt, association,
+      ...(identity.status === "resolved" ? { snapshot: identity.snapshot } : {}) });
+    if (identity.status !== "resolved") {
+      state.stop ??= compactionAssociationStop(identity.reason);
+      log("stopped", { code: "ASSOCIATION", message: state.stop });
+    }
     if (state.expectedFirst) { state.boundaryCommitted = true; state.restorePending = true; }
     delete state.expectedFirst;
     log("lifecycle", { phase: "maintenance-end", reason: event.reason, willRetry: event.willRetry });
   });
   pi.on("session_compact_failed", event => {
     state.compacting = false;
+    delete state.preBranchIds; delete state.identityCut;
     if (binding.boundary) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
     log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry });
   });
