@@ -2799,7 +2799,7 @@ phases:
     step已移除。当前Vectl无remove-phase，此空phase仅保留撤销说明，无owner/工作/交付/接受义务。实际Nunc职责由nunc.host-prompt-compat交付，不把旧host方案标成已完成或隐含阻塞。
 - id: nunc-host-prompt-compat
   name: Nunc 实际请求收据与 stock callback 兼容
-  status: in_progress
+  status: done
   gate: 交付实际Provider Context/响应receipt适用性、完整输入计量、有限易失状态与未修改stock生命周期受控证明；唯一最终整合判断仍为nunc.extraction-acceptance，不新增接受节点。
   context: 仅pi-nunc内实际请求绑定usage与stock callback兼容，保留稳定phase/step IDs。用户禁止Pi core/其他repo/未来host能力假设，撤销fixed-host前置。使用未修改stock0.85.1与已经接受的extraction-optional-quotas集成base，原UI能力已完成；没有等待整个extraction
     runtime接受的产品依赖。step Admit记录已完成base，phase依原UI，无writer/effect交叉后派发。原native/current/new、UI与DONE事实保持，按本地source影响复用；任意扩展私有persona有效期不在原Nunc保证内，stock不一致准确披露。
@@ -2808,7 +2808,7 @@ phases:
   steps:
   - id: nunc.host-prompt-compat
     name: 实际请求绑定 usage 与 stock callback 兼容
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/admission.ts\", \"src/engine/accounting.ts\", \"\
       src/index.ts\", \"src/pi/context.ts\", \"tests/pi/**\", \"tests/live/**\", \"\
@@ -2885,3 +2885,21 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-09T13:50:30.528034Z'
+    done_at: '2026-09-09T14:44:13.550089+00:00'
+    evidence: Accepted and ff-integrated4f1f668c80437f03837a051555c82fda116a83f7 from5d849e4005f29a6c1a3dd5de029e86823ce531da.
+      Exact6requirement independentPROVEN/no findings; validatorvalid bindingchecked
+      POSITIVE_EVIDENCE. Binding /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-request-receipts-acceptance-sq4fkk2m/repair-binding.json;
+      report /Users/tefx/.pi/larva/subagent-output-artifacts/2026-09-09T14-43-19-082Z-2026-09-09T14-20-42-140Z_01a0868a-db1b-7015-9a38-260868937bff.js-f7a4c2aa66356fd2.txt.
+      Evidence /tmp/larva-agent-artifacts/nunc-request-receipts-repair-verifier/.
+      Fresh16focused pluspublicanchor/pending/completionprobes exit0. Realdelegatedstream.result
+      completion boundto responsecontentusage/model and requestprefix; oldcompatibleanchor
+      explicitnotlatestlowincompatibleusage. Publicanchor280000charsnow70260>59999
+      rejects0extraHTTP; mutatedusagefresh264.12fixedcalls0pending1dedupreceipt; completedcap8,
+      lateinvalidate/close can'trepopulate. StockpublicSDK callbacktool once-only/sourceownership
+      proved; nativeCLI/RPC/TUI inventory reused withsharedimplementation limitationstated.
+      Actualfull423/52 exit0 log .vectl/worktrees/nunc-host-prompt-compat/.scratch/stock-request-receipts/4f1f668-all.log
+      inspected/reused. Originale33a952 negatives/recovered420log remainhistorical.
+      Allcontrolled effectsreconciled; onlyNuncsource/tests/docs, NO Pi-core/dependency/otherrepo/global/persona/realmodelchanges.
+      StockactualFvariation remains; no universalpersona recomposition orzeroCAPACITYpromise.
+      Optionaltotalquotasremainnull; UIhumanacceptance unchanged. Producercomplete
+      only, runtime/wholeproject normativeacceptance stillpending.
