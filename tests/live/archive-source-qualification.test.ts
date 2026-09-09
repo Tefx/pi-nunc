@@ -8,7 +8,6 @@ import { fixture, repository } from "./fixtures.js";
 import { parseScenario, type ScenarioInput } from "../../src/live/scenarios.js";
 import { archiveCloseoutEffects } from "../../src/live/archive-closeout.js";
 
-const RETAINED = "/private/var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-real-archive-eagj_a0w";
 const FEBRUARY_PAGES = [
   { offset: 1, limit: 100 },
   { offset: 101, limit: 100 },
@@ -45,6 +44,11 @@ function result(turn: string, toolName: string, toolCallId: string, content: unk
   return { turn, event: { type: "tool_result", toolName, toolCallId, isError, content } };
 }
 function jsonContent(value: unknown) { return [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }]; }
+function stockLines(text: string) { return text.split("\n"); }
+function nonemptyLines(text: string) {
+  const lines = stockLines(text);
+  return text.endsWith("\n") && lines.at(-1) === "" ? lines.slice(0, -1) : lines;
+}
 
 async function stockRead(cwd: string, path: string, offset?: number, limit?: number) {
   const tool = createReadToolDefinition(cwd);
@@ -119,22 +123,29 @@ test("stock paginated february reads with overlap expose the archive before mont
   try {
     const january = await stockRead(cwd, "archive/january.json");
     const pages = await februaryStockPages(cwd);
+    const fixture = input.files["archive/february.json"]!;
+    assert.equal(stockLines(fixture).length, 399);
+    assert.equal(nonemptyLines(fixture).length, 398);
+    assert.equal(stockLines(fixture).at(-1), "");
     assert.match(pages[0]!.text, /more lines in file\. Use offset=101 to continue/);
     assert.match(pages[3]!.text, /more lines in file\. Use offset=215 to continue/);
     assert.equal(/more lines in file|Showing lines /.test(pages[4]!.text), false);
+    assert.equal(stockLines(pages[4]!.text).length, 120);
+    assert.equal(nonemptyLines(pages[4]!.text).length, 119);
+    assert.equal(stockLines(pages[4]!.text).at(-1), "");
     const actions = closeoutTrace(input, { id: "jan-read", content: january.content }, pages.map(p => ({ id: p.id, content: p.executed.content, offset: p.page.offset, limit: p.page.limit })));
     const check = archiveCloseoutEffects(input, actions, cwd);
     assert.equal(check.status, "PROVEN", JSON.stringify(check.observed));
     const february = (check.observed as any).monthly[1];
     assert.equal(february.pages.length, 5);
-    assert.deepEqual(february.pages.map((p: any) => [p.offset, p.limit, p.returnedLines]), [
-      [1, 100, 100],
-      [101, 100, 100],
-      [201, 100, 100],
-      [190, 25, 25],
-      [280, 120, 120],
+    assert.deepEqual(february.pages.map((p: any) => [p.offset, p.limit, p.returnedLines, p.from, p.to]), [
+      [1, 100, 100, 1, 100],
+      [101, 100, 100, 101, 200],
+      [201, 100, 100, 201, 300],
+      [190, 25, 25, 190, 214],
+      [280, 120, 120, 280, 399],
     ]);
-    assert.equal(february.totalLines, input.files["archive/february.json"]!.split("\n").length);
+    assert.equal(february.totalLines, 399);
     assert.equal(february.write, "feb-write");
     assert.equal((check.observed as any).combinedWrite, "q-write");
   } finally { await rm(cwd, { recursive: true, force: true }); }
@@ -211,38 +222,4 @@ test("tracked source predicate rejects missing, overlap-only, failed, wrong-sour
     assert.equal((earlyCombined.observed as any).monthly[1].write, "feb-write");
     assert.equal((earlyCombined.observed as any).combinedWrite, null);
   } finally { await rm(cwd, { recursive: true, force: true }); }
-});
-
-test("retained matched-current pages complete under the tracked predicate; combined write before monthly reads stays UNPROVEN", async () => {
-  const originalAccounting = JSON.parse(await readFile(join(RETAINED, "source-accounting.json"), "utf8"));
-  const originalReport = JSON.parse(await readFile(join(RETAINED, "verifier-report.json"), "utf8"));
-  const raw = JSON.parse(await readFile(join(RETAINED, "raw-report.json"), "utf8"));
-  const input = await archiveInput();
-  const segment = raw.rawSegments[7];
-  assert.equal(segment.mode, "matched");
-  assert.equal(segment.group, "current");
-  const cwd = join(raw.selection.target.stateRoot, "matched-current-e3-archive-closeout", "task");
-  const original = segment.prerequisites[0];
-  assert.equal(original.status, "UNPROVEN");
-  assert.equal(original.observed.monthly[1].read, null);
-  assert.equal(original.observed.combinedWrite, null);
-  const reanalysis = archiveCloseoutEffects(input, segment.actions, cwd);
-  assert.equal(reanalysis.status, "UNPROVEN");
-  const february = (reanalysis.observed as any).monthly[1];
-  assert.deepEqual(february.pages.map((p: any) => [p.callId, p.offset, p.limit, p.returnedLines]), [
-    ["call_12162887", 1, 100, 100],
-    ["call_8386960", 101, 100, 100],
-    ["call_9813020", 201, 100, 100],
-    ["call_30131", 190, 25, 25],
-    ["call_2576307", 280, 120, 120],
-  ]);
-  assert.equal(february.completeAt.toolCallId, "call_2576307");
-  assert.equal(february.write, "call_3902943");
-  assert.equal((reanalysis.observed as any).combinedWrite, null);
-  assert.deepEqual((reanalysis.observed as any).combinedReads, ["call_2034285", "call_3335274"]);
-  const stillOriginal = JSON.parse(await readFile(join(RETAINED, "source-accounting.json"), "utf8"));
-  const stillReport = JSON.parse(await readFile(join(RETAINED, "verifier-report.json"), "utf8"));
-  assert.deepEqual(stillOriginal, originalAccounting);
-  assert.deepEqual(stillReport, originalReport);
-  assert.equal(originalReport.requirement_results.find((r: any) => r.requirement_id === "RT-MATCHED-SOURCE-BUDGET").outcome, "UNPROVEN");
 });
