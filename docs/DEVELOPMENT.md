@@ -6,7 +6,9 @@ Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **0.85.1**, TypeScr
 
 ## Explicit installation
 
-Inside the authorized checkout, use its isolated environment and selected toolchain:
+Ordinary clone, install, build and load use Node **26.7.0** and npm **11.19.0** on `PATH`. See the README quick start: `git clone https://github.com/tefx/pi-nunc.git`, `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, then `node node_modules/@earendil-works/pi-coding-agent/dist/cli.js`. Those commands do not require a Homebrew-only Node or npm path.
+
+`scripts/check.mjs` is stricter. It checks `process.versions.node` against `.node-version` and runs this exact npm CLI for `npm --version`:
 
 ```sh
 /usr/bin/env -u NODE_OPTIONS \
@@ -17,7 +19,7 @@ Inside the authorized checkout, use its isolated environment and selected toolch
 
 Installation requires the corresponding effect authorization and runs separately from checks. Dependency lifecycle scripts remain disabled. No check installs, downloads, updates packages, refreshes a live model catalog, or changes daily Pi settings. `node_modules/`, `dist/`, `.npm-cache/` and `.scratch/` are ignored local working state. Offline fixtures use dummy task-owned authentication only; do not copy daily credentials into fixtures or reports.
 
-`scripts/check.mjs` hardcodes `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js` and does not search `PATH` for npm. That path is the selected macOS Homebrew npm 11.19.0 CLI. Other platforms cannot run the tracked inventory as written without an equivalent npm at that location.
+`scripts/check.mjs` hardcodes `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js` and does not search `PATH` for npm. That path is the selected macOS Homebrew npm 11.19.0 CLI. Other platforms cannot run the tracked inventory as written without an equivalent npm at that location. Product load with `node` on `PATH` does not use that hardcoded path.
 
 ## Required checks
 
@@ -31,6 +33,34 @@ Use `engine` instead of `all` for the narrower engine inventory. Missing, multip
 The runner checks the selected Node/npm versions and installed direct development packages against the lock. Child processes receive constructed offline environments. `npm run build` emits JavaScript/declarations for `pi-nunc`, `pi-nunc/pi` and `pi-nunc/engine`; it performs no tests. `npm run check` and `npm run check:engine` are aliases when the shell selects the declared Node.
 
 Real TUI tests require POSIX PTYs and `/usr/bin/python3` with its standard library. `scripts/pty-driver.py` creates an actual terminal for the pinned stock CLI, sends real input bytes, forwards termination and waits for child exit. Missing prerequisites fail explicitly; the runner never installs Python or substitutes an RPC/SDK test for the TUI.
+
+`all` is not complete after only the candidate `npm ci` / `npm run build`. Live comparison tests load `.scratch/baseline-70dacad` as the `current` group. Prepare that tree first.
+
+## Comparison baseline for all
+
+Tracked tests hardcode `$PWD/.scratch/baseline-70dacad` (`tests/live/comparison.test.ts`, `tests/live/comparison-native.test.ts`, `tests/live/comparison-native-fixture.ts`, `tests/live/optional-quotas.test.ts`). `src/live/contract.ts` preflight then requires:
+
+- `git rev-parse HEAD` starts with `70dacad` (product baseline `70dacad1f065a70b29f565b5bfcf02d31cec2bdc`)
+- `git status --porcelain` clean for `src`, `policies`, `package.json`, `package-lock.json`, and `tsconfig.json`
+- compiled `dist/src/index.js`
+- that tree’s lock pins `@earendil-works/pi-coding-agent` **0.85.1**, with matching `node_modules`
+- build parity against that baseline’s tracked source
+
+The candidate checkout remains the `native` and `candidate` repositories; it must already have Pi 0.85.1 installed. `.scratch/` is gitignored. Create an isolated detached worktree so this checkout’s branch does not move:
+
+```sh
+git rev-parse --verify 70dacad1f065a70b29f565b5bfcf02d31cec2bdc
+git worktree add --detach .scratch/baseline-70dacad 70dacad1f065a70b29f565b5bfcf02d31cec2bdc
+(
+  cd .scratch/baseline-70dacad
+  npm ci --ignore-scripts --no-audit --no-fund
+  npm run build
+  git rev-parse HEAD   # must start with 70dacad
+  test -f dist/src/index.js
+)
+```
+
+If `.scratch/baseline-70dacad` already exists, reuse it when `HEAD` and the clean/build checks still hold. Do not point `current` at this candidate checkout: preflight rejects a baseline whose HEAD is not `70dacad…`. `engine` checks do not load this tree; `all` does. Missing baseline fails comparison preflight with `TARGET` / `BUILD` rather than skipping those tests.
 
 ## Default inheritance and test isolation
 

@@ -34,40 +34,30 @@ A different global `pi` binary is unsupported unless it reports exactly `0.85.1`
 
 ## Quick start
 
-From a clone of this repository:
+Requires Node **26.7.0** and npm **11.19.0** on `PATH` (`node -v`, `npm -v`). Runtime and ordinary install do not use a Homebrew-only Node or npm path.
 
 ```sh
-cd /path/to/pi-nunc
+git clone https://github.com/tefx/pi-nunc.git
+cd pi-nunc
+npm ci --ignore-scripts --no-audit --no-fund
+npm run build
 
-/usr/bin/env -u NODE_OPTIONS \
-  npm_config_cache="$PWD/.npm-cache" npm_config_ignore_scripts=true \
-  /opt/homebrew/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js \
-  ci --include=dev --no-audit --no-fund
-
-/opt/homebrew/bin/node node_modules/typescript/bin/tsc --project tsconfig.json
-```
-
-`npm run build` is the same TypeScript emit when the shell already uses Node 26.7.0.
-
-Load the compiled entry with the locked Pi CLI. `--no-extensions` skips discovery; `-e` loads this extension for one invocation:
-
-```sh
-/opt/homebrew/bin/node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
   --offline --no-extensions -e dist/src/index.js
 ```
 
 Optional JSON (path is relative to Pi’s cwd):
 
 ```sh
-/opt/homebrew/bin/node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
   --offline --no-extensions -e dist/src/index.js --nunc-config ./nunc.json
 ```
 
-`package.json` declares `"pi": { "extensions": ["./dist/src/index.js"] }`. That path is used when this directory is loaded as a **local** Pi package after `dist/` exists. It is not an npm install target.
-
-The install command and `scripts/check.mjs` call `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js`. That is a macOS Homebrew npm 11.19.0 path. The check runner does not search `PATH` for npm. Other platforms need an equivalent npm 11.19.0 at that location, or they cannot run the tracked inventory as written.
+`--no-extensions` skips discovery; `-e` loads this compiled entry for one invocation. `package.json` declares `"pi": { "extensions": ["./dist/src/index.js"] }`. That path is used when this directory is loaded as a **local** Pi package after `dist/` exists. It is not an npm registry install target.
 
 `/reload` rebuilds extensions in the current process. It does not reopen the session file.
+
+The tracked `scripts/check.mjs` inventory is a separate development check with extra prerequisites, including a Homebrew npm CLI path and a comparison baseline checkout. See [local development](docs/DEVELOPMENT.md).
 
 ## Commands and UI
 
@@ -150,21 +140,16 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 - Supported host is stock Pi **0.85.1** with persistent sessions. No minimum-version or all-provider claim.
 - Images need model image input **and** `budget.imageTokens`. PDF, audio, and unknown blocks fail explicitly.
 - Unload or downgrade without a later native compaction: stock Pi reads the last native summary, not unabsorbed manual edits.
-- `scripts/check.mjs` requires the pinned Node and the Homebrew npm CLI path above. Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.
+- `scripts/check.mjs` requires the pinned Node and a hardcoded Homebrew npm CLI path. It also needs a local comparison baseline before `all`. See [local development](docs/DEVELOPMENT.md). Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.
 - Historical extraction acceptance recorded product `4f1f668` (423 tests / 52 files), UI human confirmation of IME/resize/theme, and disclosed comparison limits. That record is not proof of later source.
 
 Long-term work belongs in code, documents, and other artifacts. Forgetting is how the working context stays finite.
 
 ## Development
 
-Tracked offline inventory (after the locked `npm ci` above):
+`npm ci` and `npm run build` are not enough for `scripts/check.mjs all`. Prepare the [comparison baseline](docs/DEVELOPMENT.md#comparison-baseline-for-all), then run the inventory with the check runner’s Node/npm constraints in [local development](docs/DEVELOPMENT.md).
 
-```sh
-/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
-  /opt/homebrew/bin/node scripts/check.mjs all
-```
-
-See [local development](docs/DEVELOPMENT.md) and [bounded observations](docs/LIVE.md).
+See also [bounded observations](docs/LIVE.md).
 
 ## Further documentation
 
