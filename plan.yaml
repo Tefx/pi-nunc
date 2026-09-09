@@ -2855,7 +2855,7 @@ phases:
       new paid run. PASS grants no publication authority.
 - id: pi-host-prompt
   name: 已撤销的跨仓库 Pi 宿主方案
-  status: pending
+  status: done
   gate: 无执行或接受工作；已撤销，禁止建立host checkout、修复包、上游构建或全局安装。
   context: 用户明确限定pi-nunc，禁止Pi core/其他repo/臆造未来宿主能力。0776eb0的agent跨仓库方案撤销，未claimed/执行的lifecycle
     step已移除。当前Vectl无remove-phase，此空phase仅保留撤销说明，无owner/工作/交付/接受义务。实际Nunc职责由nunc.host-prompt-compat交付，不把旧host方案标成已完成或隐含阻塞。
