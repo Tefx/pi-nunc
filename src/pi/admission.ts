@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-wo
 import type { Complete, EngineConfig } from "../engine/index.js";
 import { admissionEstimate, inputLimit, mainAdmissionLimit, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
-import { authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
+import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = { context: Context; model: Model<Api>; signal: AbortSignal | undefined; simple: boolean; seen: WeakSet<Provider> };
@@ -282,11 +282,13 @@ export class Admission {
         budgetObservation.outputCapTokens = cap.kind === "value" ? cap.value : null;
         const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload));
         if (snapshot && delta.categories.some(c => c !== "output")) snapshot.payloadBound = false;
-        const append = lastUserTextAppend(before, after);
-        const observation: PayloadObservation = append.ok
-          ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
+        const rewrite = kind === "main" ? codexSystemInstructionRewrite(selected, before, after) : { ok: false } as const;
+        const append = rewrite.ok ? rewrite.append : lastUserTextAppend(before, after);
+        const observation: PayloadObservation = rewrite.ok
+          ? { mode: delta.mode, categories: delta.categories, transform: "codex-system-instructions" }
+          : append.ok ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
           : { mode: delta.mode, categories: delta.categories };
-        const chargedTokens = Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0);
+        const chargedTokens = Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0, rewrite.ok ? rewrite.addedTokens : 0);
         const payloadGrowth = {
           grewTokens: delta.grewTokens,
           inputGrewTokens: delta.inputGrewTokens,
@@ -298,7 +300,7 @@ export class Admission {
         if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
         const layout = { ctx, model, context, payloadGrowth, initialMetadataTokens };
         try {
-          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context });
+          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context, allowSystemInstructionRewrite: kind === "main" });
           this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
           return replacement;
         } catch (error) {

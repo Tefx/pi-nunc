@@ -5,7 +5,7 @@ import { EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
 export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "control" | "metadata" | "unsupported";
-export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[]; transform?: "last-user-text-append" }
+export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[]; transform?: "last-user-text-append" | "codex-system-instructions" }
 export interface PayloadDelta {
   mode: PayloadMode;
   categories: PayloadCategory[];
@@ -274,6 +274,25 @@ export function lastUserTextAppend(before: unknown, after: unknown): { ok: true;
   return { ok: true, addedTokens: textTokens(added), addedText: added };
 }
 
+/** Codex's separate instructions string is a mapped system field, never conversation history.
+ * Main requests may replace it and optionally append last-user text. Shrinkage
+ * cannot pay for growth in another field; no usage receipt describes this rewrite. */
+export function codexSystemInstructionRewrite(model: Pick<Model<Api>, "api">, before: unknown, after: unknown):
+  | { ok: true; addedTokens: number; append: ReturnType<typeof lastUserTextAppend> }
+  | { ok: false } {
+  if (model.api !== "openai-codex-responses" || !record(before) || !record(after) ||
+      typeof before.instructions !== "string" || typeof after.instructions !== "string" ||
+      !after.instructions.trim() || before.instructions === after.instructions ||
+      !Array.isArray(before.input) || !Array.isArray(after.input)) return { ok: false };
+  const aligned: Record<string, unknown> = { ...before, instructions: after.instructions };
+  const append = lastUserTextAppend(aligned, after);
+  if (!append.ok && [...INPUT_KEYS].some(key => canonical(aligned[key]) !== canonical(after[key]))) return { ok: false };
+  const fieldGrowth = [...new Set([...Object.keys(before), ...Object.keys(after)])].reduce((sum, key) =>
+    sum + Math.max(0, textTokens(canonical(after[key])) - textTokens(canonical(before[key]))), 0);
+  const textGrowth = Math.max(0, textTokens(after.instructions) - textTokens(before.instructions)) + (append.ok ? append.addedTokens : 0);
+  return { ok: true, addedTokens: Math.max(fieldGrowth, textGrowth), append };
+}
+
 function outputFloor(model: Model<Api>): number {
   return ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
 }
@@ -287,6 +306,8 @@ export function authorizePayload(args: {
   inputLimit: number;
   authorizedOutput: number;
   context: Context;
+  /** Explicit main-session authorization; maintenance keeps its fixed instructions. */
+  allowSystemInstructionRewrite?: boolean;
 }): void {
   const prior = jsonView(args.before);
   const body = jsonView(args.after);
@@ -319,18 +340,19 @@ export function authorizePayload(args: {
   if (args.delta.unsupportedAdded.length) throw new EngineError("UNSUPPORTED_INPUT", "Nunc: payload contains unsupported media; request was not sent");
   if (args.delta.imagesAdded > 0 && !args.model.input.includes("image")) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
   if (args.delta.categories.includes("unsupported")) throw new EngineError("CONFIG", "Nunc: unrecognized payload field change; request was not sent");
-  const append = lastUserTextAppend(prior, body);
+  const rewrite = args.allowSystemInstructionRewrite ? codexSystemInstructionRewrite(args.model, prior, body) : { ok: false } as const;
+  const append = rewrite.ok ? rewrite.append : lastUserTextAppend(prior, body);
   const structural = args.delta.categories.filter(c => UNVALIDATED.has(c));
-  if (append.ok) {
+  if (append.ok || rewrite.ok) {
     if (structural.some(c => c !== "input")) throw new EngineError("CONFIG", `Nunc: unvalidated payload ${structural.join(",")} rewrite; request was not sent`);
-    const added = Math.max(args.delta.grewTokens, args.delta.inputGrewTokens, append.addedTokens);
+    const added = Math.max(args.delta.grewTokens, args.delta.inputGrewTokens, append.ok ? append.addedTokens : 0, rewrite.ok ? rewrite.addedTokens : 0);
     if (args.inputTokens + added > args.inputLimit) {
       throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining safe input; request was not sent`);
     }
     const serializedOutput = args.delta.outputAfter ?? args.delta.outputBefore;
     if (serializedOutput !== undefined) {
       const nativeOccupied = estimateContextTokens(args.context).tokens;
-      const nativeAdded = Math.max(estimateTextTokens(append.addedText), added);
+      const nativeAdded = Math.max(append.ok ? estimateTextTokens(append.addedText) : 0, added);
       if (nativeOccupied + nativeAdded + serializedOutput > args.model.contextWindow) {
         throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining context after native output clamp; request was not sent`);
       }

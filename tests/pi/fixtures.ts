@@ -25,7 +25,8 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
     process.env.PI_CODING_AGENT_DIR = agentDir; // Process-local isolated CLI settings selection.
   }
   const faux = fauxProvider({ api: "openai-completions", provider: "nunc-pi-fixture", models: [{ id: "large", reasoning: true, input: ["text", "image"], contextWindow: 60000, maxTokens: 8192 }, { id: "small", contextWindow: 45000, maxTokens: 8192 }] });
-  const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
+  const credentials = new InMemoryCredentialStore();
+  const modelRuntime = await ModelRuntime.create({ credentials, modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
   new ModelRegistry(modelRuntime).registerProvider(faux.provider);
   const calls: Parameters<FauxResponseFactory>[0][] = [];
   const events: MaintenanceEvent[] = [];
@@ -50,7 +51,7 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
     return { ...created, services, diagnostics: services.diagnostics };
   };
   const runtime = await createAgentSessionRuntime(factory, { cwd, agentDir, sessionManager: options.ephemeral ? SessionManager.inMemory(cwd) : SessionManager.create(cwd, sessionDir) });
-  return { dir, cwd, agentDir, sessionDir, configFile, config, settings, faux, runtime, modelRuntime, events, calls, errors,
+  return { dir, cwd, agentDir, sessionDir, configFile, config, settings, faux, runtime, modelRuntime, credentials, events, calls, errors,
     respond(fn: FauxResponseFactory) { responder = fn; },
     seed(label = "old") {
       const manager = runtime.session.sessionManager;
