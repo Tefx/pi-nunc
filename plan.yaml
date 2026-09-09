@@ -2974,7 +2974,7 @@ phases:
       only, runtime/wholeproject normativeacceptance stillpending.
 - id: github-publication
   name: English README and public GitHub publication
-  status: in_progress
+  status: done
   steps:
   - id: nunc.readme-public
     name: Current English README and publication-ready documentation
@@ -3058,7 +3058,7 @@ phases:
       or license grant yet.'
   - id: nunc.github-public
     name: Create tefx/pi-nunc public repository and push reviewed main
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [.git/config]\n  blocked_paths: [plan.yaml, plan-dashboard.html,\
       \ .pi/**, .agents/**, .env, .env.*, '**/auth.json']\ntarget:\n  provider: github.com\n\
@@ -3113,3 +3113,15 @@ phases:
     agent: devops-engineer
     claimed_by: devops-engineer
     claimed_at: '2026-09-09T19:21:41.306593Z'
+    done_at: '2026-09-09T19:27:54.107165+00:00'
+    evidence: Published https://github.com/Tefx/pi-nunc public main at reviewed 7a6b589b6c812bdc5bc8d2efa40f077308bc955d.
+      Exact DevOps owner inspected reachable 224 commits/838 unique blobs and found
+      no concrete sensitive-content blocker; created repository, configured origin/main
+      tracking, pushed only reviewed main and checked remote README. Parent independently
+      read gh repo view (PUBLIC, Tefx/pi-nunc, default main), git ls-remote exact
+      commit, local HEAD same, tracking origin refs/heads/main. README predecessor
+      accepted with 423/52 applicable offline tests and actual no-model build/load
+      proof. No unknown remote effects. Concurrent docs/PI.md, src/pi/admission.ts,
+      src/pi/payload.ts, tests/pi/fixtures.ts edits and untracked tests/pi/payload-instructions.test.ts
+      preserved and excluded. Final lifecycle-only commit may be synchronized separately;
+      no product changes or broader branch/tag publication authorized by completion.
