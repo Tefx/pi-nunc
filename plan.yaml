@@ -2625,7 +2625,7 @@ phases:
       proves observerassociation only.
   - id: nunc.extraction-optional-quotas
     name: 取消强制总调用与累计预留token上限
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/contract.ts\", \"src/live/defaults.ts\", \"src/live/budget.ts\"\
       , \"src/live/comparison.ts\", \"src/live/runner.ts\", \"src/live/worker.ts\"\
@@ -2698,6 +2698,8 @@ phases:
     depends_on:
     - nunc.extraction-commit-association
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-09T12:10:17.603016Z'
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
