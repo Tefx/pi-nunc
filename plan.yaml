@@ -2396,7 +2396,7 @@ phases:
       or push. Same runtime/finalacceptance retain all remaining obligations.'
   - id: nunc.extraction-source-qualification
     name: 分页读取来源暴露与有序 closeout 资格修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/archive-closeout.ts\", \"src/live/worker.ts\"\
       , \"tests/live/**\", \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\"]\n  blocked_paths:\
@@ -2470,6 +2470,8 @@ phases:
     depends_on:
     - nunc.extraction-observation-method
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-09T03:48:54.300057Z'
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
