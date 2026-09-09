@@ -2,72 +2,175 @@
 
 **A bounded, rolling present for Pi.**
 
-Nunc is a Pi extension project for continuing work within a finite context. It combines an overlapping window of recent verbatim history with bounded working-memory slots for the current session.
+Nunc is a [Pi](https://pi.dev) **0.85.1** extension for continuing one session inside a finite context. Recent work stays as verbatim history. Information still needed after that window leaves is kept in a small set of working-memory slots. Pi keeps the full JSONL log; Nunc does not search memory, write documents, or carry state across sessions.
 
 ```text
-Before rollover: host instructions/tools | memory M      | retiring B | retained K
-After rollover:  host instructions/tools | updated M     | retained K | new messages
+Before compaction: host instructions/tools | memory M      | retiring B | retained K
+After compaction:  host instructions/tools | updated M     | retained K | new messages
 ```
 
-Current memory maintenance asks what would still be needed with effective host instructions F, retained history K and normal working tools. Existing memory fills those gaps; later evidence in K helps determine which parts of B remain useful. The accepted [next extraction design](docs/EXTRACTION.md) makes active-task focus and continuation coverage explicit and protects declared necessary items during budget selection; it is not implemented yet.
+Maintenance asks what would still be needed with effective host instructions **F**, retained history **K**, and normal working tools. Existing memory **M** fills those gaps. Later evidence in K helps decide which parts of retiring prefix **B** remain useful. Declared necessary items are retained together, or maintenance fails without changing the saved session.
 
-## Status
+This package is `"private": true`. It is not published to npm. There is no license file in this repository.
 
-**Core, manual M, Context observation, compact footer and Slots/Context overlay implemented; manual UI acceptance pending** · Updated 2026-09-08.
+## Requirements
 
-The original core delivery and subsequent native/cooperative compatibility work have completed acceptance recorded in the managed plan. Later capacity-planning and command improvements are also in the tree; those historical acceptance records do not claim a fresh full acceptance of every later revision. Pi retains native compaction, persistence, model selection and transport, with Nunc request-capacity checks.
+Checked environment:
 
-Manual M-only edits persist through native session entries and restore along the selected path. The typed Context layout/observation surface feeds the compact footer and the Slots/Context overlay in the [accepted UI design](docs/UI.md). IME candidate-window placement, real-window resize and theme appearance still need manual confirmation; CJK injection does not prove those observations.
+| Tool | Version |
+| --- | --- |
+| Node | 26.7.0 (`.node-version`) |
+| npm | 11.19.0 |
+| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | 0.85.1 |
 
-## Scope
+Runtime limits:
 
-- An independent Pi extension; no Codex CLI/App integration, replacement launcher, core patch or dependency on another extension.
-- One continuing session, with same-session resume through Pi's existing JSONL.
-- All current memory is included automatically; no proactive memory search.
-- No automatic cross-session memory, memory database or document-writing service.
-- Ordinary turns perform normal work without memory-tool requirements or usage counters.
-- One normal maintenance request at rollover, using the main agent's current model.
-- Pi retains the full session log; Nunc does not automatically retrieve retired history.
+- Persistent Pi sessions only. Do not start with `--no-session`.
+- Leave `images.blockImages` off. Nunc refuses image-blocking conversion.
+- One custom compaction owner. If another compaction extension is also enabled, keep exactly one writer.
+- Nunc uses Pi’s current model, thinking level, authentication, compaction settings, and transport. It does not log in, copy credentials, or select another account.
 
-Long-term work belongs in normal code, documents and other external artifacts. Forgetting controls the working context; preserving every historical detail is not the product goal.
+A different global `pi` binary is unsupported unless it reports exactly `0.85.1`. Nunc checks `VERSION` at session start.
 
-## Design choices
+## Quick start
 
-**Extract from delivered history.** Maintenance freezes the current active path and sees complete M, B and K together. Messages delivered later remain verbatim input to subsequent requests; they are not predicted, consumed early or replayed. This follows Pi's native timing, at the cost of not using those later messages to guide the current memory selection.
+From a clone of this repository:
 
-**Keep continuity.** Recent work remains verbatim in K. Unchanged memory slots retain their text. Local correction, replacement and merging remain possible; obsolete text does not gain protection merely by surviving earlier rollovers.
+```sh
+cd /path/to/pi-nunc
 
-**Roll in batches.** A configurable working threshold and retained-history target control context size and maintenance frequency. Pi's lifecycle handles triggering and persistence; its default threshold is not a fixed product choice.
+/usr/bin/env -u NODE_OPTIONS \
+  npm_config_cache="$PWD/.npm-cache" npm_config_ignore_scripts=true \
+  /opt/homebrew/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js \
+  ci --include=dev --no-audit --no-fund
 
-**Check each request separately.** New input can exceed the space left by earlier maintenance. A queue-preserving admission check rejects requests exceeding supported main input capacity or an explicit input limit, while Pi owns native compaction/retry. Crossing Nunc's softer memory-planning target alone does not reject a main request. See [capacity ownership and host limitations](docs/CAPACITY.md). It does not replay user input, turn user cancellation into capacity recovery, or use the TUI stop action to withdraw queued instructions. Oversized indivisible input and unsupported accounting receive explicit diagnostics.
+/opt/homebrew/bin/node node_modules/typescript/bin/tsc --project tsconfig.json
+```
 
-**Let the model judge content.** The model proposes changes and retention choices. Code validates references, enforces token budgets and preserves complete slots. The next policy requires task-focus and continuation-dimension checks while leaving slot organization flexible. Required-item retention needs an engine change; a prompt or priority order alone does not guarantee it. No weight language or routine whole-memory rewrite is introduced.
+`npm run build` is the same TypeScript emit when the shell already uses Node 26.7.0.
 
-**Keep tool evidence.** Ordinary requests retain active tool-result bodies. Maintenance uses the complete source available at its frozen delivered-history boundary, with explicit extraction-only reduction when capacity requires it. Cache reuse depends on the actual request prefix and provider behavior.
+Load the compiled entry with the locked Pi CLI. `--no-extensions` skips discovery; `-e` loads this extension for one invocation:
 
-**Submit one maintenance snapshot.** Nunc validates a complete memory snapshot and retained boundary before handing them to Pi. Failure or cancellation before handoff leaves the saved state unchanged. Once handed over, persistence, context rebuilding and their error handling belong to Pi. The implemented UI saves manual M-only revisions through native session entries, without changing K; revisions not yet folded into a compaction require the new Nunc extension to take effect.
+```sh
+/opt/homebrew/bin/node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+  --offline --no-extensions -e dist/src/index.js
+```
 
-## Pi defaults and verification
+Optional JSON (path is relative to Pi’s cwd):
 
-Nunc uses Pi's current effective model/provider/options and native authentication, including startup flags and runtime selection. It does not select another account, copy credentials or manage OAuth. Main output/thinking settings remain unchanged; APIs without a serialized output cap use planning headroom; consumption authorization remains separate. Unknown subscription billing remains unknown.
+```sh
+/opt/homebrew/bin/node node_modules/@earendil-works/pi-coding-agent/dist/cli.js \
+  --offline --no-extensions -e dist/src/index.js --nunc-config ./nunc.json
+```
 
-Verification isolates new task sessions, cwd/files and artifacts while reusing native configuration/authentication ownership. Only named test requirements justify invocation-local overrides, recorded with their reason and differences. Standalone startup resolves Pi defaults; an invoking runtime must forward its nonsecret effective selection through public context/invocation facilities to preserve unsaved choices. A separate process cannot discover those choices implicitly. Saved defaults and daily sessions remain protected; Pi owns ordinary credential refresh and persistence.
+`package.json` declares `"pi": { "extensions": ["./dist/src/index.js"] }`. That path is used when this directory is loaded as a **local** Pi package after `dist/` exists. It is not an npm install target.
 
-See [extension usage](docs/PI.md), [bounded observations](docs/LIVE.md) and [development checks](docs/DEVELOPMENT.md). Producer tests use fictional native profiles and controlled services. Reuse applicable completed evidence; new UI mechanics require their own native-host checks, without automatically repeating paid model observations.
+The install command and `scripts/check.mjs` call `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js`. That is a macOS Homebrew npm 11.19.0 path. The check runner does not search `PATH` for npm. Other platforms need an equivalent npm 11.19.0 at that location, or they cannot run the tracked inventory as written.
 
-## Delivery and acceptance
+`/reload` rebuilds extensions in the current process. It does not reopen the session file.
 
-Implementation may proceed incrementally. Final acceptance applies to the integrated project and every necessary requirement in the design: rolling and memory behavior, capacity handling, failure and cancellation, Pi persistence, same-session recovery and compatibility. A working happy path or earlier component checks alone do not establish completion.
+## Commands and UI
 
-Acceptance requires a complete regression of the final integrated version, observed behavior in the selected real Pi host, authorized real-model evidence for rollover and continued work, and a per-requirement delivery judgment. This includes actual TUI queue/cancellation behavior, request admission with native recovery, repeated overlapping rollovers, and session/path/model changes. RPC probes do not substitute for TUI behavior. Missing required behavior or evidence keeps acceptance incomplete. Existing full-delivery authorization covers bounded real verification; execution binds the new task target and call/token/time/known-cost limits without another approval ceremony.
+| Command | Behavior |
+| --- | --- |
+| `/nunc` | TUI: open the Slots/Context overlay (Slots first). Other modes: three-line text status. No model request. |
+| `/nunc status` | Text status in every mode. |
+| `/nunc details` | Grouped input/output budgets, last maintenance observations, recent warnings. |
+| `F7` | TUI shortcut for the overlay. Does not submit the main editor draft. |
 
-Historical core acceptance did not require benchmark superiority. The next extraction acceptance additionally compares native Pi, current Nunc and new Nunc under defaults and matched budgets; missing native-retained, continuation-relevant information counts as regression. No such comparative result has been established yet. The bounded session/platform scope remains unchanged.
+Unknown arguments print `Usage: /nunc [status|details]`. Native completion offers `status` and `details`. Read-only commands do not append session entries. RPC `hasUI` is not a terminal overlay; `ctx.mode === "tui"` is required for the panel.
 
-## Documentation
+Footer examples: `nunc 8·42%` (saved slots and memory-budget occupancy), `nunc ↻ 8` (maintenance, including waiting for Pi to save), `nunc ! 8` (current warning), `nunc ×` (unusable configuration). Occupancy is Nunc’s memory budget, not Pi’s whole-context meter.
 
-- [Complete design and final acceptance requirements](docs/DESIGN.md)
-- [Accepted next extraction contract and native-comparison requirements](docs/EXTRACTION.md)
-- [Accepted UI design: compact status, Slots management, Context layout](docs/UI.md)
-- [Current extension commands and UI compatibility](docs/PI.md)
+The overlay searches, previews, edits, and deletes slots. The Context tab shows the current F/M/R layout and the last main-request or maintenance observation. Viewing and editing do not call a model or compact. Saving writes a native session entry with the complete memory snapshot and leaves retained history K unchanged. Manual edits not yet absorbed by a later compaction need this Nunc to take effect; stock Pi or an older Nunc still reads the last native summary.
 
-Configuration names, protocol examples, numeric starting points and module layout remain implementation choices. Equivalent implementations may satisfy the same behavior and boundaries; optional alternatives need not all be implemented.
+Details: [extension usage](docs/PI.md), [Slots/Context UI](docs/UI.md).
+
+## Configuration
+
+Omit `--nunc-config` for Nunc defaults. All fields are optional. Unknown names or invalid types fail at load. Nunc reads the file and does not write it. `policyFile` is UTF-8 and resolves from the configuration file’s directory.
+
+Implemented defaults (`src/pi/config.ts`):
+
+| Field | Default |
+| --- | --- |
+| `policyFile` | unset (built-in `policies/default.md` only) |
+| `memory.fraction` | `0.1` (range `[0, 1)`) |
+| `memory.maxTokens` | unset (no absolute cap) |
+| `rolling.keepRecentFraction` | `0.67` (range `(0, 1)`) |
+| `extraction.toolResults` | `"auto"` (`"full"` disables tool-body reduction) |
+| `extraction.headTailChars` | `200` |
+| `extraction.outputTokens` | `min(8192, model.maxTokens)` |
+| `budget.safetyTokens` | `1024` |
+| `budget.growthTokens` | `1024` |
+| `budget.extraMainInputTokens` | `0` |
+| `budget.extraExtractionInputTokens` | `0` |
+| `budget.inputLimit` | unset |
+| `budget.imageTokens` | unset (native images need a justified per-image bound) |
+
+Optional integers are positive except the `extra*` fields, which may be zero. Example file (every key optional):
+
+```json
+{
+  "policyFile": "./preferences.md",
+  "memory": { "fraction": 0.1, "maxTokens": 2000 },
+  "rolling": { "keepRecentFraction": 0.67 },
+  "extraction": { "toolResults": "auto", "headTailChars": 200 },
+  "budget": { "safetyTokens": 1024, "growthTokens": 1024 }
+}
+```
+
+Pi compaction settings remain Pi’s (`compaction.reserveTokens` default 16384, `keepRecentTokens` default 20000, `enabled` default true). Nunc’s trigger is `H = contextWindow - reserveTokens`. Require a positive reserve and H, and `0 <= keepRecentTokens < H`. Pi uses `keepRecentTokens` for native preparation; Nunc chooses a legal retained suffix from `keepRecentFraction` independently.
+
+An explicit `extraction.outputTokens` equal to `model.maxTokens` is still honored, with a migration warning on APIs that have no serialized output cap. Remove that override to use the 8192 planning default. Nunc never rewrites Pi settings.
+
+## Compaction and maintenance
+
+Pi decides when compaction runs: automatic threshold (`contextTokens > contextWindow - reserveTokens`), overflow recovery, or `/compact [instructions]`. Nunc handles `session_before_compact` and does not add a second scheduler.
+
+Each opportunity makes **at most one** maintenance request on the **current** model. There is no repair retry and no second summarizer model. Optional `/compact` instructions append to user policy for that call only. Extraction uses the raw API defaults bounded by the extraction output reserve; it does not inherit the main turn’s thinking budget.
+
+The model returns one JSON object with `add`, `remove`, `priority`, and `required`:
+
+- `required` is a unique subset of `priority` (surviving slot IDs and addition keys). Every declared required item must fit together inside the memory limit. If it cannot, or growth space after the candidate is insufficient, maintenance fails with `CAPACITY`. Saved M and K stay unchanged. Required is for this maintenance, not a permanent pin.
+- `priority` lists every survivor and addition exactly once. Optional items use remaining budget in that order. Surviving slots keep their relative order and exact text; additions append. Priority does not reorder ordinary memory.
+
+Code validates references, whole-slot rendered budgets, and the retained-history cut. Policy text cannot keep an item that failed those checks. Empty memory and empty `required` are valid when nothing must continue.
+
+On success Nunc hands Pi one compaction result: `summary`, `firstKeptEntryId`, `tokensBefore`, and `details.nunc = { version: 1, slots, nextId }`. Failure or cancellation before that handoff returns `{ cancel: true }` so Pi does not fall through to the default summarizer. After handoff, append, rebuild, and their errors belong to Pi. A maintenance event is not a persistence receipt; watch `session_compact` and the JSONL file.
+
+Main requests are checked separately. Crossing Nunc’s softer memory-planning target does not reject a send. Oversized indivisible input still fails before HTTP. Details: [engine](docs/ENGINE.md), [capacity](docs/CAPACITY.md), [policy](docs/POLICY.md).
+
+## Limits
+
+- Same-session memory only. `/new` starts empty; `/tree`, `/fork`, and `/clone` follow Pi’s selected path.
+- No cross-session memory database, proactive search, or document-writing service.
+- Ordinary turns do not require memory tools or usage counters.
+- Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
+- Supported host is stock Pi **0.85.1** with persistent sessions. No minimum-version or all-provider claim.
+- Images need model image input **and** `budget.imageTokens`. PDF, audio, and unknown blocks fail explicitly.
+- Unload or downgrade without a later native compaction: stock Pi reads the last native summary, not unabsorbed manual edits.
+- `scripts/check.mjs` requires the pinned Node and the Homebrew npm CLI path above. Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.
+- Historical extraction acceptance recorded product `4f1f668` (423 tests / 52 files), UI human confirmation of IME/resize/theme, and disclosed comparison limits. That record is not proof of later source.
+
+Long-term work belongs in code, documents, and other artifacts. Forgetting is how the working context stays finite.
+
+## Development
+
+Tracked offline inventory (after the locked `npm ci` above):
+
+```sh
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  /opt/homebrew/bin/node scripts/check.mjs all
+```
+
+See [local development](docs/DEVELOPMENT.md) and [bounded observations](docs/LIVE.md).
+
+## Further documentation
+
+- [Core design](docs/DESIGN.md)
+- [Extraction, required items, and comparison scope](docs/EXTRACTION.md)
+- [Pi extension loading, commands, and persistence](docs/PI.md)
+- [Maintenance engine](docs/ENGINE.md)
+- [Capacity ownership](docs/CAPACITY.md)
+- [Slots/Context UI](docs/UI.md)

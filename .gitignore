@@ -10,3 +10,8 @@ coverage/
 .env.*
 !.env.example
 !.env.*.example
+
+.pi/
+.agents/
+plan-dashboard.html
+**/auth.json

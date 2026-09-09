@@ -1,12 +1,12 @@
 # 面向续做的增量记忆提取
 
-状态：**用户于 2026-09-08 接受的下一版设计；内置语义策略、独立场景资产及必要项引擎已实施并通过机械验证，比较 runner 与真实模型效果验收待完成。**
+状态：**用户于 2026-09-08 接受的下一版设计；内置语义策略、独立场景资产及必要项引擎已实施。`nunc.extraction-acceptance` 记录历史候选 `4f1f668` 的完整离线库存（423 tests / 52 files）、UI 人工验收，以及已披露的对照限制；该记录不是更新源码的证明。**
 
 本文是提取策略、必要项预算保护及原生 Pi 对照的实施与验收依据。它修订 [DESIGN.md](DESIGN.md) 中仅强调 F/K 差集、内容分类完全可选和普通整条优先级淘汰的部分；其他来源、容量、增量更新和原生持久化边界继续有效。运行行为以当前代码为准，不能凭本文宣称新策略已生效。
 
 ## 1. 已有能力与待交付内容
 
-产品基线 `70dacad` 已支持多项 `add`、`remove + add` 替换/拆分/合并、未变正文复用、整条容量选择，以及 Markdown slot 预览和原文编辑。现已更新实际 `policies/default.md`，要求下述焦点与续做覆盖，交付独立的 `tests/scenarios/extraction-inputs.json` / `extraction-observer.json`，并在引擎候选实现中完成了 `applyPatch()` 必要项共同容纳守卫、四字段协议解析与原生失败恢复机制；下游比较 runner 与真实模型运行效果仍待完成。
+产品基线 `70dacad` 已支持多项 `add`、`remove + add` 替换/拆分/合并、未变正文复用、整条容量选择，以及 Markdown slot 预览和原文编辑。现已更新实际 `policies/default.md`，要求下述焦点与续做覆盖，交付独立的 `tests/scenarios/extraction-inputs.json` / `extraction-observer.json`，并在引擎候选实现中完成了 `applyPatch()` 必要项共同容纳守卫、四字段协议解析与原生失败恢复机制。下游比较 runner 已交付；`nunc.extraction-acceptance` 消费历史 `4f1f668` 证据并披露对照限制，不证明更新源码。
 
 交付状态：
 
@@ -14,9 +14,9 @@
 - **独立场景/私有 oracle 已交付：**e1–e4 覆盖多任务与接受边界、K 纠正和局部拆分、切轮与产物恢复、必要项容量竞争；具体前提和下一消费者接口见 [POLICY.md](POLICY.md#additional-extraction-suite-consumer-handoff)。JSON 语法或内容审阅不证明模型行为。
 - **引擎已实施：**本次必要项在可提交候选中的共同保留，不足时显式失败；四字段 parser 协调接受 `required` 字段，约束唯一/有效/存活引用和完整 priority，并区分必要项容量失败与可选淘汰。
 - **runner 已交付：**`scripts/compare-extraction.mjs` 支持 `--preflight` 与默认执行，消费独立资产 `tests/scenarios/extraction-{inputs,observer}.json`（e1–e4，5 项选择），支持 `defaults` 与 `matched` 两种口径，核对原生 Pi 0.85.1、产品基线 `70dacad` 与新候选三组真实目标，统一有限总预算与终态清理，并如实报告切轮工具切点公共 seam 的真实支持状态。
-- **效果待交付：**真实模型在上述三组对照下的实际续做验证结果与非退化观察。
+- **效果记录：**`nunc.extraction-acceptance` 记录历史 `4f1f668` 的对照与 UI 人工验收，并披露不可比维度；该记录不是更新源码的证明。
 
-已交付 UI 的机械检查不证明提取质量。`nunc.ui-panel` 的实机 IME、窗口缩放和主题人工验收仍独立待完成；本文不改变该步骤状态。已有手工环境的 `LAUNCH.txt` 应保留，不能在准备新观察时清理用户正在使用的环境。
+已交付 UI 的机械检查不证明提取质量。用户已确认已交付 UI 的 IME 候选窗、窗口缩放与主题；PTY CJK 注入仍不能代替该人工观察。已有手工环境的 `LAUNCH.txt` 应保留，不能在准备新观察时清理用户正在使用的环境。
 
 ## 2. 原生 Pi 基线
 

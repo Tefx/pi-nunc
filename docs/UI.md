@@ -2,7 +2,7 @@
 
 状态：**紧凑 footer、Slots/Context overlay 与 `/nunc` 命令已实现**。更新于 2026-09-08。
 
-本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案。§1–§3 的 footer / overlay / 命令、§4 与 §6 的只读 Context 布局/请求/维护观察，以及 §5–§6 的有效 M、revision、预算与 `replace`/`delete`，均已由扩展交付。IME 候选窗口位置仍需真实终端人工观察，不能用 CJK 文本注入代替。现有核心与兼容修复的完成历史保留。
+本文记录用户确认的紧凑状态栏、Slots 管理与 Context 布局浏览方案。§1–§3 的 footer / overlay / 命令、§4 与 §6 的只读 Context 布局/请求/维护观察，以及 §5–§6 的有效 M、revision、预算与 `replace`/`delete`，均已由扩展交付。用户已确认已交付 UI 的 IME 候选窗、窗口缩放与主题；PTY CJK 注入仍不能代替该人工观察。现有核心与兼容修复的完成历史保留。
 
 本设计延续 [DESIGN.md](DESIGN.md) 的 session、来源、原文、容量与 Pi 所有权边界。人工保存按 §5 扩展原先仅在 CompactionEntry 保存 M 的合同。[PI.md](PI.md) 与 [ENGINE.md](ENGINE.md) 中当前预算及 Provider 组合合同仍适用。示意文案、尺寸起点、私有数据格式和模块文件划分是推荐；实现可以替换它们，但须保持本文明确的用户行为、状态所有权、观察边界与兼容限制。
 
