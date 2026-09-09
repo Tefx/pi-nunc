@@ -2506,7 +2506,7 @@ phases:
       predicate correctness only, not realtaskquality/finalacceptance.
   - id: nunc.extraction-commit-association
     name: 观察器实际 compaction 事务关联与比较消费修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/live/**\", \"scripts/**\", \"docs/LIVE.md\"\
       , \"docs/DEVELOPMENT.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -2591,6 +2591,8 @@ phases:
     depends_on:
     - nunc.extraction-source-qualification
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-09T07:19:15.383586Z'
 - id: nunc-extraction-acceptance
   name: 提取改进与完整 Nunc 的最终整合接受
   status: locked
