@@ -79,7 +79,7 @@ async function februaryStockPages(cwd: string, pages = FEBRUARY_PAGES) {
   return out;
 }
 
-function closeoutTrace(input: ScenarioInput, january: { id: string; content: unknown; path?: string; offset?: number; limit?: number }, february: Array<{ id: string; content: unknown; path?: string; offset?: number; limit?: number }>, options: { lateFebruaryWrite?: boolean; combinedFirst?: boolean } = {}) {
+function closeoutTrace(input: ScenarioInput, january: { id: string; content: unknown; path?: string; offset?: number; limit?: number }, february: Array<{ id: string; content: unknown; path?: string; offset?: number; limit?: number }>, options: { lateFebruaryWrite?: boolean; combinedFirst?: boolean; delayFirstFebruaryResult?: boolean } = {}) {
   const jan = totals(input, "january"), feb = totals(input, "february"), combined = combinedOf(input);
   const janInput: Record<string, unknown> = { path: january.path ?? "archive/january.json" };
   if (january.offset !== undefined) janInput.offset = january.offset;
@@ -101,6 +101,7 @@ function closeoutTrace(input: ScenarioInput, january: { id: string; content: unk
     result("february", "write", "feb-write", jsonContent("written")),
   ];
   if (options.lateFebruaryWrite) actions.push(...februaryWrite, ...februaryReads);
+  else if (options.delayFirstFebruaryResult && februaryReads.length >= 2) actions.push(februaryReads[0], ...februaryReads.slice(2), ...februaryWrite, februaryReads[1]);
   else actions.push(...februaryReads, ...februaryWrite);
   const closeoutReads = [
     call("closeout", "read", "q-jan", { path: "closeout/january.json" }),
@@ -221,5 +222,39 @@ test("tracked source predicate rejects missing, overlap-only, failed, wrong-sour
     assert.equal(earlyCombined.status, "UNPROVEN");
     assert.equal((earlyCombined.observed as any).monthly[1].write, "feb-write");
     assert.equal((earlyCombined.observed as any).combinedWrite, null);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("stock EOF-limited page, full-body invalid ranges, and delayed necessary results do not qualify", async () => {
+  const input = await archiveInput();
+  const cwd = await seededTask(input);
+  try {
+    const january = await stockRead(cwd, "archive/january.json");
+    const omitted = await stockRead(cwd, "archive/february.json", 1, 398);
+    const omittedText = omitted.content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
+    assert.match(omittedText, /\[1 more lines in file\. Use offset=399 to continue\.\]$/);
+    const omittedCheck = archiveCloseoutEffects(input, closeoutTrace(input, { id: "jan-read", content: january.content }, [{ id: "feb-398", content: omitted.content, offset: 1, limit: 398 }]), cwd);
+    assert.equal(omittedCheck.status, "UNPROVEN");
+    const omittedFeb = (omittedCheck.observed as any).monthly[1];
+    assert.equal(omittedFeb.write, null);
+    assert.equal(omittedFeb.completeAt, null);
+    assert.deepEqual(omittedFeb.pages.map((p: any) => [p.offset, p.limit, p.returnedLines, p.from, p.to]), [[1, 398, 398, 1, 398]]);
+
+    const whole = await stockRead(cwd, "archive/february.json");
+    for (const bad of [{ offset: 0, limit: 0 }, { offset: 10000, limit: 1 }, { offset: 1, limit: 1 }]) {
+      const actions = closeoutTrace(input, { id: "jan-read", content: january.content }, [{ id: "feb-read", content: whole.content, offset: bad.offset, limit: bad.limit }]);
+      const check = archiveCloseoutEffects(input, actions, cwd);
+      assert.equal(check.status, "UNPROVEN", JSON.stringify(bad));
+      assert.equal((check.observed as any).monthly[1].write, null);
+      assert.equal((check.observed as any).monthly[1].pages.length, 0);
+    }
+
+    const pages = await februaryStockPages(cwd);
+    const fullFebruary = pages.map(p => ({ id: p.id, content: p.executed.content, offset: p.page.offset, limit: p.page.limit }));
+    const delayed = archiveCloseoutEffects(input, closeoutTrace(input, { id: "jan-read", content: january.content }, fullFebruary, { delayFirstFebruaryResult: true }), cwd);
+    assert.equal(delayed.status, "UNPROVEN");
+    assert.equal((delayed.observed as any).monthly[1].write, null);
+    assert.equal((delayed.observed as any).monthly[1].completeAt.toolCallId, "feb-0");
+    assert.equal((delayed.observed as any).combinedWrite, "q-write");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

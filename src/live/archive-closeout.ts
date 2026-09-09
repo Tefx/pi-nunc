@@ -46,37 +46,29 @@ function monthlyTotals(input: ScenarioInput, month: string) {
 /** Exact path/offset/limit pages whose returned bytes match the fixture; overlap does not fill gaps. */
 function sourceExposure(effects: Effect[], turn: string, relativePath: string, cwd: string, fixture: string): { pages: SourcePage[]; completeEnd?: number | undefined; completeCallId?: string | undefined; totalLines: number } {
   const lines = fixture.split("\n");
-  const covered = new Set<number>();
   const pages: SourcePage[] = [];
-  let completeEnd: number | undefined;
-  let completeCallId: string | undefined;
-  const markComplete = (end: number, callId: string) => {
-    if (completeEnd === undefined && lines.length > 0 && covered.size === lines.length) {
-      completeEnd = end;
-      completeCallId = callId;
-    }
-  };
   for (const effect of effects) {
     if (effect.turn !== turn || effect.event.toolName !== "read" || typeof effect.event.input?.path !== "string") continue;
     if (resolve(cwd, effect.event.input.path) !== resolve(cwd, relativePath)) continue;
-    const body = textOf(effect.result).replace(STOCK_READ_FOOTER, "");
-    if (body.trim() === fixture.trim() && fixture.trim().length > 0) {
-      for (let i = 0; i < lines.length; i++) covered.add(i);
-      const args = pageArgs(effect.event.input) ?? { offset: 1 };
-      pages.push({ callId: effect.event.toolCallId, offset: args.offset, limit: args.limit ?? null, returnedLines: lines.length, from: 1, to: lines.length, end: effect.end });
-      markComplete(effect.end, effect.event.toolCallId);
-      continue;
-    }
     const args = pageArgs(effect.event.input);
     if (!args) continue;
     const startLine = args.offset - 1;
     if (startLine >= lines.length) continue;
+    const body = textOf(effect.result).replace(STOCK_READ_FOOTER, "");
     const returned = body.split("\n");
     if (returned.length === 0 || args.limit !== undefined && returned.length > args.limit) continue;
     if (!isDeepStrictEqual(returned, lines.slice(startLine, startLine + returned.length))) continue;
-    for (let i = startLine; i < startLine + returned.length; i++) covered.add(i);
     pages.push({ callId: effect.event.toolCallId, offset: args.offset, limit: args.limit ?? null, returnedLines: returned.length, from: args.offset, to: args.offset + returned.length - 1, end: effect.end });
-    markComplete(effect.end, effect.event.toolCallId);
+  }
+  const covered = new Set<number>();
+  let completeEnd: number | undefined;
+  let completeCallId: string | undefined;
+  for (const page of [...pages].sort((a, b) => a.end - b.end)) {
+    for (let i = page.from - 1; i < page.to; i++) covered.add(i);
+    if (completeEnd === undefined && lines.length > 0 && covered.size === lines.length) {
+      completeEnd = page.end;
+      completeCallId = page.callId;
+    }
   }
   return { pages, completeEnd, completeCallId, totalLines: lines.length };
 }
