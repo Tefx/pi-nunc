@@ -43,8 +43,13 @@ function keys(value: unknown, allowed: string[], label: string): asserts value i
 function positive(value: unknown, max = Number.MAX_SAFE_INTEGER): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= max;
 }
+function optionalPositive(value: unknown, key: string): number | null {
+  if (value === undefined || value === null) return null;
+  requireValue(positive(value), "LIMIT", `Positive bounded ${key} required`);
+  return value;
+}
 function text(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0 && value.length <= 4096; }
-export interface Limits { maxCalls: number; maxTotalTokens: number; maxCostUsd: number | null; maxDurationMs: number; maxOutputTokens: number }
+export interface Limits { maxCalls: number | null; maxTotalTokens: number | null; maxCostUsd: number | null; maxDurationMs: number; maxOutputTokens: number }
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
@@ -121,8 +126,10 @@ export function parseInput(value: unknown, execution = false): RunInput {
   requireValue(text(value.target.repository) && isAbsolute(value.target.repository) && text(value.target.stateRoot) && isAbsolute(value.target.stateRoot), "TARGET", "Explicit absolute repository and new stateRoot required");
   requireValue(value.target.cleanup === "retain" || value.target.cleanup === "remove", "TARGET", "Explicit cleanup disposition required");
   keys(value.limits, ["maxCalls", "maxTotalTokens", "maxCostUsd", "maxDurationMs", "maxOutputTokens"], "limits");
-  for (const key of ["maxCalls", "maxTotalTokens", "maxDurationMs", "maxOutputTokens"]) requireValue(positive(value.limits[key]), "LIMIT", `Positive bounded ${key} required`);
-  requireValue(Number(value.limits.maxCalls) <= 1000 && Number(value.limits.maxDurationMs) <= 86400000 && (value.limits.maxCostUsd === null || typeof value.limits.maxCostUsd === "number" && Number.isFinite(value.limits.maxCostUsd) && value.limits.maxCostUsd > 0), "LIMIT", "Invalid call/time/cost ceiling");
+  value.limits.maxCalls = optionalPositive(value.limits.maxCalls, "maxCalls");
+  value.limits.maxTotalTokens = optionalPositive(value.limits.maxTotalTokens, "maxTotalTokens");
+  for (const key of ["maxDurationMs", "maxOutputTokens"]) requireValue(positive(value.limits[key]), "LIMIT", `Positive bounded ${key} required`);
+  requireValue(Number(value.limits.maxDurationMs) <= 86400000 && (value.limits.maxCostUsd === null || typeof value.limits.maxCostUsd === "number" && Number.isFinite(value.limits.maxCostUsd) && value.limits.maxCostUsd > 0), "LIMIT", "Invalid time/cost ceiling");
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
   for (const model of value.models) {
@@ -201,7 +208,7 @@ export function selectedModels(input: RunInput): Model<Api>[] {
     requireValue(model.contextWindow === target.contextWindow && model.maxTokens === target.maxTokens && model.baseUrl === target.baseUrl, "MODEL", "Authorized model capacity/endpoint differs from native resolution");
     requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     requireValue(input.limits.maxOutputTokens >= model.maxTokens, "LIMIT", "Authorize the stock main model's total default output ceiling, including thinking");
-    if (model.api === "openai-codex-responses") requireValue(input.limits.maxCostUsd === null, "BILLING", "Codex OAuth subscription billing requires an explicit token/call-limited observation with unknown USD billing");
+    if (model.api === "openai-codex-responses") requireValue(input.limits.maxCostUsd === null, "BILLING", "Codex OAuth subscription billing requires unknown USD billing");
     if (input.limits.maxCostUsd !== null) requireValue([model.cost, ...(model.cost.tiers ?? [])].every(rate => [rate.input, rate.output, rate.cacheRead, rate.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && Math.max(model.cost.input, model.cost.output) > 0, "MODEL", "Known catalog pricing required for a USD reservation");
     for (const s of input.scenarios) {
       const config = engineConfig(s.config.nunc, model, s.config.compaction);

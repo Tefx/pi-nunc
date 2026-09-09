@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // purpose: Actual verify-live supervisor/worker + stock Pi loopback two-case continuation.
-// usage: node scripts/observe-independent-cases.mjs [--quota]
+// usage: node scripts/observe-independent-cases.mjs [--quota|--unlimited]
 // effects: Isolated target, two native workers, controlled HTTP only.
 // requires: Committed locked build and stock-driver.mjs. Scripted replies do not prove memory quality.
 import assert from "node:assert/strict";
@@ -11,6 +11,7 @@ import { StockFixture, root } from "./stock-driver.mjs";
 import { readLedger, ledgerSummary } from "../dist/src/live/budget.js";
 
 const quota = process.argv[2] === "--quota";
+const unlimited = process.argv[2] === "--unlimited";
 const f = await new StockFixture().setup({ compaction: { enabled: false, reserveTokens: 50000 } });
 const stateRoot = join(f.dir, "nunc-live-independent");
 const settings = { ...f.settings, defaultProvider: "groq", defaultModel: "nunc-native" };
@@ -25,7 +26,10 @@ f.response = (_row, source) => {
 };
 const selection = {
   target: { repository: root, stateRoot, cleanup: "retain" },
-  limits: { maxCalls: quota ? 1 : 20, maxTotalTokens: 8_000_000, maxCostUsd: null, maxDurationMs: 90000, maxOutputTokens: 20000 },
+  limits: {
+    ...(unlimited ? {} : { maxCalls: quota ? 1 : 20, maxTotalTokens: 8_000_000 }),
+    maxCostUsd: null, maxDurationMs: 90000, maxOutputTokens: 20000,
+  },
   scenarios: [{ id: "c1" }, { id: "c2" }],
   overrides: [{ requirement: "independent-case-continuation", reason: "First native HTTP error must not block a later authorized isolated case", config: { nunc: { memory: { fraction: 0.1 }, rolling: { keepRecentFraction: 0.2 }, extraction: { toolResults: "full", outputTokens: 2048 }, budget: { safetyTokens: 512, growthTokens: 128 } }, compaction: { enabled: false, reserveTokens: 50000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.0001, maxFraction: 0.95 } } }],
 };
@@ -41,7 +45,7 @@ function run(flags = []) {
     child.once("close", code => resolve({ code, stdout, stderr }));
   });
 }
-let result = { status: "FAIL", case: quota ? "quota" : "continue" };
+let result = { status: "FAIL", case: unlimited ? "unlimited" : quota ? "quota" : "continue" };
 try {
   const preflight = await run(["--preflight"]);
   assert.equal(preflight.code, 0, preflight.stderr);
@@ -75,8 +79,13 @@ try {
     assert(summary.calls >= 2, `second case reserved nothing: ${summary.calls}`);
     assert.equal(reserves.some(r => r.caseKey === "c2"), true);
     assert.equal(report.segments[1]?.scenario, "c2");
+    if (unlimited) {
+      assert.equal(report.selection.limits.maxCalls, null);
+      assert.equal(report.selection.limits.maxTotalTokens, null);
+      assert.doesNotMatch(`${report.reason ?? ""} ${report.segments.map(s => `${s.reason ?? ""} ${s.diagnostic ?? ""}`).join(" ")}`, /CALL_LIMIT|TOKEN_LIMIT/);
+    }
   }
-  result = { status: "PROVEN_CONTROLLED", case: quota ? "quota" : "continue", children: report.children.length, calls: summary.calls, requests: f.requests.length, memoryQuality: "UNPROVEN: scripted service", evidence: f.dir };
+  result = { status: "PROVEN_CONTROLLED", case: unlimited ? "unlimited" : quota ? "quota" : "continue", children: report.children.length, calls: summary.calls, requests: f.requests.length, memoryQuality: "UNPROVEN: scripted service", evidence: f.dir };
 } catch (error) {
   result.error = { message: error.message, stack: error.stack };
   process.exitCode = 1;

@@ -1,5 +1,5 @@
 {
   "target": { "repository": "__CHECKOUT__", "stateRoot": "__NEW_CANONICAL_TASK_ROOT__", "cleanup": "retain" },
-  "limits": { "maxCalls": 20, "maxTotalTokens": 8000000, "maxDurationMs": 180000, "maxCostUsd": null },
+  "limits": { "maxDurationMs": 180000, "maxCostUsd": null },
   "scenarios": [{ "id": "c2" }]
 }

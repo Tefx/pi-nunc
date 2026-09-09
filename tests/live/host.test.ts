@@ -17,6 +17,10 @@ test("actual supervisor/worker stops extra sends once the shared call ceiling is
   const result = spawnSync(process.execPath, [join(repository, "scripts/observe-independent-cases.mjs"), "--quota"], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: 105000, maxBuffer: 4_000_000 });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
 });
+test("actual supervisor/worker keeps later cases when public call/token totals are omitted", { timeout: 110000 }, () => {
+  const result = spawnSync(process.execPath, [join(repository, "scripts/observe-independent-cases.mjs"), "--unlimited"], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: 105000, maxBuffer: 4_000_000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
+});
 test("default-input CLI preflight and supervisor/worker delegate existing fictional native Codex without an auth copy", { timeout: 110000 }, () => {
   const result = spawnSync(process.execPath, [join(repository, "scripts/observe-runner.mjs")], { encoding: "utf8", env: childEnvironment(join(repository, ".scratch")), timeout: 105000, maxBuffer: 4_000_000 });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());

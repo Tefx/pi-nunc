@@ -47,6 +47,37 @@ test("call/token/cost/time/output and unresolved-request ceilings reject before 
     } finally { await rm(input.target.stateRoot, { recursive: true }); }
   }
 });
+test("null call/token totals allow multiple reserves; explicit finite caps refuse before dispatch", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel(); model.cost = { input: 10, output: 10, cacheRead: 5, cacheWrite: 20 };
+    const open = { ...input.limits, maxCalls: null, maxTotalTokens: null, maxOutputTokens: 4096 };
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "open.jsonl"), open, Date.now() + 10000, new AbortController().signal);
+    for (let i = 0; i < 3; i++) ledger.finish(ledger.reserve(model, context, 1000), fauxAssistantMessage("ok"));
+    const summary = ledgerSummary(readLedger(ledger.path));
+    assert.equal(summary.calls, 3);
+    assert.equal(summary.reservedTokens, 3 * (60000 + 1000));
+    assert.deepEqual(readLedger(ledger.path).filter(r => r.kind === "reserve").map(r => r.id), [1, 2, 3]);
+    const callCap = new BudgetLedger(join(input.target.stateRoot, "call.jsonl"), { ...open, maxCalls: 1 }, Date.now() + 10000, new AbortController().signal);
+    let callSends = 0;
+    const callProvider = boundedProvider(faux.provider, [model], callCap, { controlled: true, fetch: async () => { callSends++; return new Response("no", { status: 400 }); } });
+    callCap.finish(callCap.reserve(model, context, 1000), fauxAssistantMessage("ok"));
+    assert.equal((await callProvider.streamSimple(model, context, { maxTokens: 1000 }).result()).stopReason, "error");
+    assert.equal(callSends, 0); assert.equal(faux.state.callCount, 0);
+    const tokenCap = new BudgetLedger(join(input.target.stateRoot, "token.jsonl"), { ...open, maxTotalTokens: 10 }, Date.now() + 10000, new AbortController().signal);
+    let tokenSends = 0;
+    const tokenProvider = boundedProvider(faux.provider, [model], tokenCap, { controlled: true, fetch: async () => { tokenSends++; return new Response("no", { status: 400 }); } });
+    assert.equal((await tokenProvider.streamSimple(model, context, { maxTokens: 1000 }).result()).stopReason, "error");
+    assert.equal(tokenSends, 0);
+    const mixedCalls = new BudgetLedger(join(input.target.stateRoot, "mixed-calls.jsonl"), { ...open, maxCalls: 1, maxTotalTokens: null }, Date.now() + 10000, new AbortController().signal);
+    mixedCalls.finish(mixedCalls.reserve(model, context, 1000), fauxAssistantMessage("ok"));
+    assert.throws(() => mixedCalls.reserve(model, context, 1000), /Call ceiling/);
+    const mixedTokens = new BudgetLedger(join(input.target.stateRoot, "mixed-tokens.jsonl"), { ...open, maxCalls: null, maxTotalTokens: 61000 }, Date.now() + 10000, new AbortController().signal);
+    mixedTokens.finish(mixedTokens.reserve(model, context, 1000), fauxAssistantMessage("ok"));
+    assert.throws(() => mixedTokens.reserve(model, context, 1000), /token authorization/);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
 test("equal 500k context/output reserves window-plus-output without requiring simultaneous occupancy", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {

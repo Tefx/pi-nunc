@@ -23,6 +23,7 @@ const mutations: Array<[string, (value: Record<string, any>) => void]> = [
   ["missing internal mode", v => delete v.mode], ["invalid internal mode", v => v.mode = "unknown"],
   ["absent limits", v => delete v.limits],
   ["zero calls", v => v.limits.maxCalls = 0], ["negative tokens", v => v.limits.maxTotalTokens = -1], ["fractional tokens", v => v.limits.maxTotalTokens = 1.5],
+  ["infinite calls", v => v.limits.maxCalls = Infinity], ["nan tokens", v => v.limits.maxTotalTokens = NaN], ["unsafe integer calls", v => v.limits.maxCalls = Number.MAX_SAFE_INTEGER + 1],
   ["invalid cost ceiling", v => v.limits.maxCostUsd = "free"], ["infinite time", v => v.limits.maxDurationMs = Infinity], ["missing output cap", v => delete v.limits.maxOutputTokens],
   ["empty model list", v => v.models = []], ["empty provider", v => v.models[0].provider = ""], ["model without capacity", v => delete v.models[0].contextWindow],
   ["empty scenario selection", v => v.scenarios = []], ["unknown scenario", v => v.scenarios[0].id = "answer"], ["duplicate scenario", v => v.scenarios.push(v.scenarios[0])],
@@ -40,6 +41,25 @@ const mutations: Array<[string, (value: Record<string, any>) => void]> = [
 ];
 for (const [name, mutate] of mutations) test(`pre-call rejection: ${name}`, async () => {
   const input = await fixture(); mutate(input); assert.throws(() => parseInput(input));
+});
+test("omitted or null call/token totals normalize; explicit 1001 is admitted", async () => {
+  const input = await fixture();
+  for (const mutate of [
+    (v: typeof input) => { delete (v.limits as { maxCalls?: unknown }).maxCalls; },
+    (v: typeof input) => { v.limits.maxCalls = null; },
+    (v: typeof input) => { delete (v.limits as { maxTotalTokens?: unknown }).maxTotalTokens; },
+    (v: typeof input) => { v.limits.maxTotalTokens = null; },
+    (v: typeof input) => { v.limits.maxCalls = 1001; },
+    (v: typeof input) => { v.limits.maxCalls = null; v.limits.maxTotalTokens = 5000000; },
+    (v: typeof input) => { v.limits.maxCalls = 2; v.limits.maxTotalTokens = null; },
+  ]) {
+    const changed = structuredClone(input); mutate(changed);
+    const parsed = parseInput(changed);
+    if (changed.limits.maxCalls === undefined || changed.limits.maxCalls === null) assert.equal(parsed.limits.maxCalls, null);
+    else assert.equal(parsed.limits.maxCalls, changed.limits.maxCalls);
+    if (changed.limits.maxTotalTokens === undefined || changed.limits.maxTotalTokens === null) assert.equal(parsed.limits.maxTotalTokens, null);
+    else assert.equal(parsed.limits.maxTotalTokens, changed.limits.maxTotalTokens);
+  }
 });
 test("internal offline job cannot cross the live execution boundary", async () => {
   const input = await fixture(); assert.throws(() => parseInput(input, true));
@@ -74,7 +94,7 @@ test("tracked fixture yields effect-free receipt bound to scenario/config/limits
   assert.equal(receipt.callsMade, 0); input.receipt = receipt;
   assert.deepEqual(await preflight(input, repository), receipt);
   await assert.rejects(lstat(input.target.stateRoot), { code: "ENOENT" });
-  const changed = structuredClone(input); changed.limits.maxCalls++;
+  const changed = structuredClone(input); changed.limits.maxCalls = 21;
   await assert.rejects(preflight(changed, repository), /does not match/);
   const changedConfig = structuredClone(input); changedConfig.scenarios[0]!.config.nunc.rolling = { keepRecentFraction: 0.3 };
   await assert.rejects(preflight(changedConfig, repository), /does not match/);

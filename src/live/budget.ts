@@ -62,7 +62,7 @@ export class BudgetLedger {
     const knownRates = rates.every(r => [r.input, r.output, r.cacheRead, r.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && (this.limits.maxCostUsd !== null || rates.some(r => Math.max(r.input, r.output, r.cacheRead, r.cacheWrite) > 0));
     const catalogReservationUsd = knownRates ? Math.max(...rates.map(r => (model.contextWindow * Math.max(r.input, r.cacheRead, r.cacheWrite) + outputCeiling * r.output) / 1e6)) : undefined;
     const reservedCostUsd = this.limits.maxCostUsd === null ? null : catalogReservationUsd;
-    requireValue(model.api !== "openai-codex-responses" || this.limits.maxCostUsd === null, "COST_LIMIT", "Subscription billing is unknown; bind token/call limits explicitly");
+    requireValue(model.api !== "openai-codex-responses" || this.limits.maxCostUsd === null, "COST_LIMIT", "Subscription billing is unknown; maxCostUsd must be null");
     requireValue(reservedCostUsd !== undefined, "COST_LIMIT", "Unknown pricing cannot establish a USD reservation");
     const records = readLedger(this.path), calls = records.filter((r): r is CallRecord => r.kind === "reserve");
     const terminals = records.filter((r): r is CallEnd => r.kind === "terminal");
@@ -70,8 +70,8 @@ export class BudgetLedger {
     const sameCase = new Set(calls.filter(r => (r.caseKey ?? "") === (this.caseKey ?? "")).map(r => r.id));
     requireValue(terminals.filter(r => sameCase.has(r.id)).every(r => r.stopReason === "stop" || r.stopReason === "toolUse"), "TERMINAL_FAILURE", "Earlier request in this scenario failed or truncated; no retries or further effects allowed");
     requireValue(calls.every(r => ended.has(r.id)), "RECONCILIATION", "Earlier request has no terminal receipt; no further effects allowed");
-    requireValue(calls.length < this.limits.maxCalls, "CALL_LIMIT", "Call ceiling reached");
-    requireValue(calls.reduce((n, r) => n + r.reservedTokens, 0) + reservedTokens <= this.limits.maxTotalTokens, "TOKEN_LIMIT", "Remaining token authorization cannot reserve another full request");
+    if (this.limits.maxCalls !== null) requireValue(calls.length < this.limits.maxCalls, "CALL_LIMIT", "Call ceiling reached");
+    if (this.limits.maxTotalTokens !== null) requireValue(calls.reduce((n, r) => n + r.reservedTokens, 0) + reservedTokens <= this.limits.maxTotalTokens, "TOKEN_LIMIT", "Remaining token authorization cannot reserve another full request");
     if (this.limits.maxCostUsd !== null) requireValue(reservedCostUsd !== null && calls.every(r => r.reservedCostUsd !== null) && calls.reduce((n, r) => n + (r.reservedCostUsd ?? 0), 0) + reservedCostUsd <= this.limits.maxCostUsd, "COST_LIMIT", "Remaining cost authorization cannot reserve another full request");
     const record: CallRecord = { kind: "reserve", id: calls.length + 1, model: `${model.provider}/${model.id}`, inputEstimate, outputCeiling, reservedTokens, reservedCostUsd, ...(catalogReservationUsd === undefined ? {} : { catalogReservationUsd }), at: Date.now(), ...(this.caseKey ? { caseKey: this.caseKey } : {}) };
     appendFileSync(this.path, `${JSON.stringify(record)}\n`, { mode: 0o600, flush: true }); this.active = true;

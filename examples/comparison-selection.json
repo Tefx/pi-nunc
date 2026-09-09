@@ -5,8 +5,6 @@
     "cleanup": "retain"
   },
   "limits": {
-    "maxCalls": 30,
-    "maxTotalTokens": 10000000,
     "maxDurationMs": 300000,
     "maxCostUsd": null
   },

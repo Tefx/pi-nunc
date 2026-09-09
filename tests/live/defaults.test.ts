@@ -25,6 +25,14 @@ test("public stdin resolves synthetic native defaults and current shell selectio
     const nativeFallback = run({ ...selection, limits: { ...selection.limits, maxCostUsd: undefined, maxOutputTokens: undefined } });
     assert.equal(nativeFallback.status, 0, nativeFallback.stderr); assert.equal(JSON.parse(nativeFallback.stdout).effective.thinking, "medium");
     assert.equal(JSON.parse(nativeFallback.stdout).limits.maxCostUsd, null); assert.equal(JSON.parse(nativeFallback.stdout).limits.maxOutputTokens, 128000); assert.equal(JSON.parse(nativeFallback.stdout).effective.compaction.keepRecentTokens, 0);
+    const omittedTotals = run({ ...selection, limits: { maxDurationMs: selection.limits.maxDurationMs, maxCostUsd: null } });
+    assert.equal(omittedTotals.status, 0, omittedTotals.stderr);
+    const omitted = JSON.parse(omittedTotals.stdout);
+    assert.equal(omitted.limits.maxCalls, null); assert.equal(omitted.limits.maxTotalTokens, null);
+    const explicitNull = run({ ...selection, limits: { ...selection.limits, maxCalls: null, maxTotalTokens: null } });
+    assert.equal(explicitNull.status, 0, explicitNull.stderr);
+    assert.equal(JSON.parse(explicitNull.stdout).limits.maxCalls, null);
+    assert.equal(JSON.parse(explicitNull.stdout).limits.maxTotalTokens, null);
     await writeFile(settingsFile, JSON.stringify({ ...settings, defaultProvider: "anthropic", defaultModel: "absent-static-model" }));
     const current = run(selection, { PI_PROVIDER: "openai-codex", PI_MODEL: "gpt-6-astra", PI_REASONING_LEVEL: "medium" });
     assert.equal(current.status, 0, current.stderr); assert.equal(JSON.parse(current.stdout).effective.source, "invoking-runtime"); assert.equal(JSON.parse(current.stdout).effective.thinking, "medium");

@@ -70,7 +70,7 @@ export class StockFixture {
     const messages = payload.messages ?? payload.input ?? [];
     const independent = kind === 'main' && messages.length === 1 && text(messages[0]) === 'Unclassified nested request';
     if (kind === 'main' && this.processes.length && !independent) assert.equal(req.headers['x-nunc-fixture'], 'preserved', 'public header composition preserved');
-    assert(this.requests.length < this.limits.maxCalls && (this.requests.length + 1) * this.reservation <= this.limits.maxTotalTokens, 'bounded native HTTP/token inventory');
+    assert((this.limits.maxCalls == null || this.requests.length < this.limits.maxCalls) && (this.limits.maxTotalTokens == null || (this.requests.length + 1) * this.reservation <= this.limits.maxTotalTokens), 'bounded native HTTP/token inventory');
     const row = { kind, payload, encoding: req.headers['content-encoding'] ?? 'identity', closed: false, number: this.requests.length + 1 }; this.requests.push(row);
     res.on('close', () => { row.closed = true; this.changes.emit('change'); });
     this.changes.emit('change');

@@ -60,7 +60,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   const observations = value.observations ?? ["continuation"];
   requireValue(Array.isArray(observations), "OBSERVATION", "Invalid observations");
   const offline = !observations.includes("continuation");
-  const limits = { ...value.limits, maxOutputTokens: value.limits.maxOutputTokens ?? Math.max(...resolvedModels.map(model => model.maxTokens)), ...(value.limits.maxCostUsd === undefined && provider === "openai-codex" ? { maxCostUsd: null } : {}) };
+  const limits = { ...value.limits, maxCalls: value.limits.maxCalls ?? null, maxTotalTokens: value.limits.maxTotalTokens ?? null, maxOutputTokens: value.limits.maxOutputTokens ?? Math.max(...resolvedModels.map(model => model.maxTokens)), ...(value.limits.maxCostUsd === undefined && provider === "openai-codex" ? { maxCostUsd: null } : {}) };
   const input = parseInput({ version: 1,
     mode: offline ? "controlled" : "native",
     target: value.target, limits, models,

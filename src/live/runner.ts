@@ -59,7 +59,7 @@ export async function execute(value: unknown, repository: string, script: string
     "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
     "Semantic reasons, repeated failed attempts, restatement needs and unsupported claims require independent review of recorded actions/session evidence. No judge or additional model calls are authorized by this runner.",
     "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Reservations are never refunded; missing usage stays null.",
-    "A local abort/terminated process does not prove remote cancellation or final billing. Unresolved requests, cancellation, and exhausted shared call/token/time/known-cost limits stop further effects and retain isolated evidence. A completed failed independent scenario keeps its reservation and is not replayed; later authorized isolated scenarios may continue within remaining shared limits. Unknown usage stays null.",
+    "A local abort/terminated process does not prove remote cancellation or final billing. Unresolved requests, cancellation, exhausted time/known-cost limits, and any configured call/token caps stop further effects and retain isolated evidence. A completed failed independent scenario keeps its reservation and is not replayed; later authorized isolated scenarios may continue within remaining shared time/known-cost limits and any still-configured call/token caps. Unknown usage stays null.",
   ] };
   try {
     await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600 });
@@ -106,8 +106,10 @@ async function runStock(input: RunInput, repository: string, deadline: number, s
   for (const mode of input.observations ?? []) {
     if (mode === "continuation") continue;
     signal.throwIfAborted();
-    const limits = { ...input.limits, maxCalls: input.limits.maxCalls - calls, maxTotalTokens: input.limits.maxTotalTokens - calls * 80000, maxDurationMs: deadline - Date.now() };
-    requireValue(limits.maxCalls > 0 && limits.maxDurationMs > 0, "LIMIT", "Controlled stock observation exhausted its bound");
+    const remainingCalls = input.limits.maxCalls === null ? null : input.limits.maxCalls - calls;
+    const remainingTokens = input.limits.maxTotalTokens === null ? null : input.limits.maxTotalTokens - calls * 80000;
+    const limits = { ...input.limits, maxCalls: remainingCalls, maxTotalTokens: remainingTokens, maxDurationMs: deadline - Date.now() };
+    requireValue((remainingCalls === null || remainingCalls > 0) && limits.maxDurationMs > 0, "LIMIT", "Controlled stock observation exhausted its bound");
     const parent = join(input.target.stateRoot, "stock"); await mkdir(parent, { recursive: true });
     const result = await new Promise<string>((resolve, reject) => {
       const child = spawn(process.execPath, [join(repository, "scripts/observe-stock.mjs"), mode === "stock_tui" ? "tui" : "rpc", parent], { cwd: input.target.stateRoot, detached: true, env: { ...childEnvironment(input.target.stateRoot), NUNC_STOCK_LIMITS: JSON.stringify(limits) }, stdio: ["ignore", "pipe", "ignore"] });
@@ -122,7 +124,7 @@ async function runStock(input: RunInput, repository: string, deadline: number, s
       if (signal.aborted) stop();
     });
     const row = JSON.parse(result.trim()) as { status: string; requests: number; evidence: string };
-    requireValue(row.status === "PROVEN_CONTROLLED" && Number.isSafeInteger(row.requests) && row.requests > 0 && row.requests <= limits.maxCalls && within(row.evidence, parent), "STOCK_OBSERVATION", "Invalid stock observation receipt");
+    requireValue(row.status === "PROVEN_CONTROLLED" && Number.isSafeInteger(row.requests) && row.requests > 0 && (remainingCalls === null || row.requests <= remainingCalls) && within(row.evidence, parent), "STOCK_OBSERVATION", "Invalid stock observation receipt");
     const evidence: Record<string, unknown> = {};
     for (const name of await readdir(row.evidence)) {
       if (!/^(events|session-\d+)\.jsonl$|^(result|wire|processes|timeline)\.json$/.test(name)) continue;
