@@ -35,11 +35,11 @@ for (const segment of execution.rawSegments ?? []) {
   }
   const projected = [];
   for (const row of segment.rollovers ?? []) {
-    const preBranchIds = (row.branch ?? []).map(e => e.id);
-    const leaf = row.branch?.at(-1)?.id;
-    const pre = new Set(preBranchIds);
-    const added = entries.filter(e => e.type === "compaction" && e.parentId === leaf && !pre.has(e.id));
-    const branch = added.length ? [...row.branch, ...added] : row.rebuilt ?? row.branch ?? [];
+    const preBranchIds = Array.isArray(row.branch) ? row.branch.map(e => e.id) : undefined;
+    const leaf = Array.isArray(row.branch) ? row.branch.at(-1)?.id : undefined;
+    const pre = new Set(preBranchIds ?? []);
+    const added = Array.isArray(row.branch) && leaf ? entries.filter(e => e.type === "compaction" && e.parentId === leaf && !pre.has(e.id)) : [];
+    const branch = added.length ? [...row.branch, ...added] : Array.isArray(row.branch) ? row.branch : (row.rebuilt ?? []);
     const identity = resolveCompactionIdentity({
       preBranchIds, branch, rebuilt: row.rebuilt, reported: row.snapshot,
       ...(row.snapshot?.fromHook === true ? {} : row.preparation?.firstKeptEntryId ? { expectedCut: row.preparation.firstKeptEntryId } : {}),
@@ -50,7 +50,7 @@ for (const segment of execution.rawSegments ?? []) {
       ? { status: "resolved", reportedId: identity.reportedId }
       : { status: "UNPROVEN", reason: identity.reason, reportedId: identity.reportedId },
       ...(snapshot ? { snapshot } : { snapshot: undefined }) };
-    const facts = rolloverFacts(next, segment.requests ?? [], segment.group);
+    const facts = snapshot ? rolloverFacts(next, segment.requests ?? [], segment.group) : { kTokens: null, firstKeptEntryId: null, cutPoint: null };
     projected.push({
       turn: row.turn,
       identity,
@@ -63,20 +63,22 @@ for (const segment of execution.rawSegments ?? []) {
       cutPoint: facts.cutPoint,
     });
   }
-  const joined = joinedObservations([{ ...segment, rollovers: projected.map((p, i) => {
+  const joinedRows = projected.map((p, i) => {
     const row = segment.rollovers[i];
     const snapshot = p.identity.status === "resolved" ? p.identity.snapshot : undefined;
     return { ...row, reported: row.snapshot, association: p.identity.status === "resolved"
       ? { status: "resolved", reportedId: p.identity.reportedId }
       : { status: "UNPROVEN", reason: p.identity.reason, reportedId: p.identity.reportedId },
       ...(snapshot ? { snapshot } : { snapshot: undefined }) };
-  }), requests: segment.requests ?? [] }]);
-  const facts = joined.rows.map(row => rolloverFacts(row, joined.requests, segment.group));
+  });
+  const unresolved = projected.some(p => p.identity.status !== "resolved");
+  const joined = joinedObservations([{ ...segment, rollovers: joinedRows, requests: segment.requests ?? [] }]);
+  const facts = unresolved ? [] : joined.rows.map(row => rolloverFacts(row, joined.requests, segment.group));
   groups.push({
     group: segment.group, mode: segment.mode, scenario: segment.scenario, sessionFile: segment.sessionFile,
     originalRowCount: (segment.rollovers ?? []).length,
     originalSnapshotIds: (segment.rollovers ?? []).map(r => r.snapshot?.id ?? null),
-    projected, joinedRowCount: joined.rows.length,
+    projected, joinedRowCount: unresolved ? 0 : joined.rows.length,
     joinedSnapshotIds: facts.map(f => f.snapshotId),
     joinedKTokens: facts.map(f => f.kTokens),
     nativeReferences: facts.map(f => ({ snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps })),
@@ -100,8 +102,14 @@ const out = {
 };
 await mkdir(outDir, { recursive: true });
 await writeFile(join(outDir, "projection.json"), JSON.stringify(out, null, 2));
+const unresolved = groups.some(g => g.projected.some(p => p.identity.status !== "resolved"));
 console.log(JSON.stringify({
   wrote: join(outDir, "projection.json"),
-  groups: groups.map(g => ({ group: g.group, original: g.originalSnapshotIds, actual: g.joinedSnapshotIds, k: g.joinedKTokens, rows: g.joinedRowCount })),
+  unresolved,
+  groups: groups.map(g => ({ group: g.group, original: g.originalSnapshotIds, actual: g.joinedSnapshotIds, k: g.joinedKTokens, rows: g.joinedRowCount, identities: g.projected.map(p => p.identity.status === "resolved" ? p.actualSnapshotId : p.identity.reason) })),
   retainedApplicability: retainedApplicability.map(x => ({ report: x.report, observedSnapshotRows: x.observedSnapshotRows, mismatchCount: x.mismatchCount })),
 }));
+if (unresolved) {
+  console.error("commit-association: unresolved compaction identity; calibration references refused");
+  process.exit(1);
+}

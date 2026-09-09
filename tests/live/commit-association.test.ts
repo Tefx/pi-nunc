@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { compactionAssociationError, resolveCompactionIdentity } from "../../src/live/compaction-identity.js";
 import { joinedObservations } from "../../src/live/comparison.js";
 import { rolloverFacts, type RolloverObservation } from "../../src/live/comparison-observation.js";
@@ -70,13 +71,32 @@ test("joined observations dedup inherited copies and keep distinct equal-summary
   assert.equal(joinedObservations([stale]).rows.length, 1);
 });
 
-test("unproven association refuses dependent transport without crediting a reported ID", () => {
+test("association error helper names missing identity without crediting a reported snapshot", () => {
   const reported = entry("old");
   const refused = compactionAssociationError({ association: { status: "UNPROVEN", reason: "ambiguous-new-compaction" }, snapshot: reported });
   assert.match(refused!, /ambiguous-new-compaction/);
   assert.match(refused!, /dependent transport refused/);
   assert.equal(compactionAssociationError({ snapshot: entry("new"), association: { status: "resolved" } }), undefined);
   assert.match(compactionAssociationError(undefined)!, /no-new-compaction/);
+});
+
+test("public reanalysis CLI refuses missing prestate and emits no usable native references", async () => {
+  const root = await mkdtemp(join(repository, ".scratch", "commit-association-cli-"));
+  const out = join(root, "out");
+  await writeFile(join(root, "execution.json"), JSON.stringify({ rawSegments: [{ group: "native", mode: "matched", scenario: "synthetic", rollovers: [{
+    turn: "b", reason: "manual", model: { id: "synthetic", provider: "fixture", contextWindow: 60000 }, thinking: "off",
+    preparation: { firstKeptEntryId: "kept", settings: { reserveTokens: 1 }, messagesToSummarize: [], turnPrefixMessages: [], isSplitTurn: false },
+    active: [kept("kept")], rebuilt: [entry("new", "kept"), kept("kept")], snapshot: entry("old", "kept"), callIds: [],
+  }], requests: [] }] }));
+  const run = spawnSync(process.execPath, [join(repository, "scripts/reanalyze-commit-association.mjs"), root, out, repository], {
+    encoding: "utf8", env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" },
+  });
+  assert.notEqual(run.status, 0, run.stdout + run.stderr);
+  const projection = JSON.parse(await readFile(join(out, "projection.json"), "utf8"));
+  assert.equal(projection.groups[0]!.projected[0]!.identity.status, "UNPROVEN");
+  assert.equal(projection.groups[0]!.projected[0]!.identity.reason, "missing-prestate");
+  assert.equal(projection.groups[0]!.projected[0]!.actualSnapshotId, null);
+  assert.deepEqual(projection.groups[0]!.nativeReferences, []);
 });
 
 async function groupRun(f: Awaited<ReturnType<typeof comparisonStock>>, group: ComparisonGroup, mode: ComparisonMode, matchReferences?: MatchReference[], caseRoot?: string) {
@@ -91,6 +111,32 @@ async function groupRun(f: Awaited<ReturnType<typeof comparisonStock>>, group: C
   await writeFile(join(f.dir, `${group}-association.json`), JSON.stringify(report, null, 2));
   return report;
 }
+
+test("stock persist with dropped prestate refuses later provider transport and keeps the compaction", { timeout: 60000 }, async () => {
+  const f = await comparisonStock({ e3: "siblings" });
+  try {
+    const model: Model<Api> = { id: f.modelId, name: f.modelId, provider: f.provider, api: f.api, baseUrl: f.endpoint, reasoning: false, input: ["text", "image"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+    const stateRoot = join(f.state, "worker-run-prestate"); await mkdir(join(stateRoot, "tmp"), { recursive: true });
+    const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
+      limits: { maxCalls: 24, maxTotalTokens: 1920000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 60000 },
+      overrides: [{ requirement: "identity-prestate-probe", reason: "Drop frozen prestate after a real persist" }],
+      scenarios: [{ id: "e3", config: { compaction: { enabled: true, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
+      comparison: { modes: ["defaults"], targets: { native: { repository }, current: { repository }, candidate: { repository } } } };
+    const report = await runSegment({ input, scenarioIndex: 0, deadline: Date.now() + 60000, resume: false, group: "native" },
+      { models: [model], controlledModels: { providers: { groq: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ ...model, provider: undefined, cost: undefined }] } } } });
+    assert.equal(report.status, "UNPROVEN", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic }));
+    const row = report.rollovers?.find(r => r.reason === "threshold");
+    assert.equal(row?.association?.status, "UNPROVEN");
+    assert.equal(row?.association?.reason, "missing-prestate");
+    assert.equal(row?.snapshot, undefined);
+    assert.equal(row?.continuationCallId, undefined);
+    assert.ok(report.sessionFile);
+    const comps = SessionManager.open(report.sessionFile).getBranch().filter(e => e.type === "compaction");
+    assert.equal(comps.length, 1);
+    const lastMaintenance = Math.max(0, ...(row?.callIds ?? []));
+    assert.equal((report.requests ?? []).filter(r => r.kind === "main" && r.callId > lastMaintenance).length, 0);
+  } finally { await f.close(); }
+});
 
 test("stock equal-summary compactons keep distinct actual IDs through observer, join and native references", { timeout: 120000 }, async () => {
   const f = await comparisonStock({ sameMemory: true });

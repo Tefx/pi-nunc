@@ -32,6 +32,10 @@ export function payloadAppendBEnabled(input: { overrides?: Record<string, unknow
 export function providerWrapEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
   return namedRequirement(input, "provider-wrap");
 }
+/** Verification-only: drop frozen prestate after session_before_compact so a real persist can still miss identity. */
+export function identityPrestateProbeEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
+  return namedRequirement(input, "identity-prestate-probe");
+}
 function keys(value: unknown, allowed: string[], label: string): asserts value is Record<string, unknown> {
   requireValue(object(value), "INPUT", `${label} must be an object`);
   requireValue(Object.keys(value).every(k => allowed.includes(k)), "INPUT", `Unknown ${label} field`);

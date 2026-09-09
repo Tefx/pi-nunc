@@ -5,13 +5,13 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { Control } from "./scenarios.js";
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string }
+export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
 export function observerState(source: string): ObserverState | undefined { return states.get(source); }
 import { boundedProvider, BudgetLedger } from "./budget.js";
-import { compactionAssociationStop, resolveCompactionIdentity } from "./compaction-identity.js";
-import { RunnerError, requireValue, type RunInput } from "./contract.js";
+import { compactionAssociationStop, resolveCompactionIdentity, type CompactionIdentityReason } from "./compaction-identity.js";
+import { identityPrestateProbeEnabled, object, RunnerError, requireValue, type RunInput } from "./contract.js";
 import { authorizeVerification, toolPath } from "./tool-path.js";
 
 function toolBlockReason(error: unknown, aborted: boolean): string {
@@ -70,7 +70,11 @@ export default function observer(pi: ExtensionAPI): void {
   // identity alone cannot unwrap a prior decorator. Remove this registration at
   // public runtime teardown; the refreshed native registry remains auth/config owner.
   pi.on("session_shutdown", () => { for (const id of new Set(binding.models.map(m => m.provider))) pi.unregisterProvider(id); });
-  pi.events.on("nunc:maintenance", event => log("maintenance", event));
+  pi.events.on("nunc:maintenance", event => {
+    log("maintenance", event);
+    const result = object(event) && object(event.result) ? event.result : undefined;
+    if (result?.ok === true && object(result.candidate) && typeof result.candidate.firstKeptEntryId === "string") state.identityResultCut = result.candidate.firstKeptEntryId;
+  });
   pi.events.on("nunc:admission", event => log("admission", event));
   pi.on("before_provider_request", event => {
     const payload = event.payload;
@@ -79,33 +83,46 @@ export default function observer(pi: ExtensionAPI): void {
   pi.on("before_provider_request", event => event.payload);
   pi.on("session_before_compact", (event, ctx) => {
     state.compacting = true;
-    log("preparation", { reason: event.reason, model: ctx.model, thinking: ctx.thinkingLevel,
-      preparation: { ...event.preparation, fileOps: Object.fromEntries(Object.entries(event.preparation.fileOps).map(([k, v]) => [k, [...v]])) },
-      branch: event.branchEntries, active: ctx.sessionManager.buildContextEntries() });
-    if (binding.boundary && state.boundaryCommitted) state.stop ??= "E3 requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
-    if (binding.boundary && (!state.boundaryDone || state.expectedFirst && state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select the eligible tool boundary";
-    log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryDone: state.boundaryDone, expectedFirst: state.expectedFirst, stopped: state.stop });
-    if (state.stop) return { cancel: true };
-    state.preBranchIds = event.branchEntries.map(e => e.id);
-    state.identityCut = event.preparation.firstKeptEntryId;
+    if (!state.stop) {
+      state.preBranchIds = event.branchEntries.map(e => e.id);
+      state.identityCut = event.preparation.firstKeptEntryId;
+    }
+    try {
+      log("preparation", { reason: event.reason, model: ctx.model, thinking: ctx.thinkingLevel,
+        preparation: { ...event.preparation, fileOps: Object.fromEntries(Object.entries(event.preparation.fileOps).map(([k, v]) => [k, [...v]])) },
+        branch: event.branchEntries, active: ctx.sessionManager.buildContextEntries() });
+      if (binding.boundary && state.boundaryCommitted) state.stop ??= "E3 requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
+      if (binding.boundary && (!state.boundaryDone || state.expectedFirst && state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select the eligible tool boundary";
+      log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryDone: state.boundaryDone, expectedFirst: state.expectedFirst, stopped: state.stop });
+      if (state.stop) {
+        delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
+        return { cancel: true };
+      }
+      if (identityPrestateProbeEnabled(binding.input)) { delete state.preBranchIds; delete state.identityCut; }
+    } catch {
+      // Freeze already captured. A later projection throw must not cancel persist.
+    }
   });
   pi.on("session_compact", (event, ctx) => {
     state.compacting = false;
-    const preBranchIds = state.preBranchIds, identityCut = state.identityCut;
-    delete state.preBranchIds; delete state.identityCut;
-    const rebuilt = ctx.sessionManager.buildContextEntries();
-    const identity = resolveCompactionIdentity({
-      preBranchIds, branch: ctx.sessionManager.getBranch(), rebuilt, reported: event.compactionEntry,
-      ...(event.compactionEntry?.fromHook === true || identityCut === undefined ? {} : { expectedCut: identityCut }),
-    });
-    const association = identity.status === "resolved"
-      ? { status: "resolved" as const, reportedId: identity.reportedId }
-      : { status: "UNPROVEN" as const, reason: identity.reason, reportedId: identity.reportedId };
-    log("commit", { reason: event.reason, reported: event.compactionEntry, rebuilt, association,
-      ...(identity.status === "resolved" ? { snapshot: identity.snapshot } : {}) });
-    if (identity.status !== "resolved") {
-      state.stop ??= compactionAssociationStop(identity.reason);
+    const preBranchIds = state.preBranchIds, identityCut = state.identityCut, resultCut = state.identityResultCut;
+    delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
+    const refuse = (reason: CompactionIdentityReason, rebuilt?: unknown) => {
+      state.stop ??= compactionAssociationStop(reason);
+      log("commit", { reason: event.reason, reported: event.compactionEntry, association: { status: "UNPROVEN" as const, reason, reportedId: event.compactionEntry?.id ?? null }, ...(rebuilt !== undefined ? { rebuilt } : {}) });
       log("stopped", { code: "ASSOCIATION", message: state.stop });
+    };
+    try {
+      const rebuilt = ctx.sessionManager.buildContextEntries();
+      const identity = resolveCompactionIdentity({
+        preBranchIds, branch: ctx.sessionManager.getBranch(), rebuilt, reported: event.compactionEntry,
+        ...(event.compactionEntry?.fromHook === true || identityCut === undefined ? {} : { expectedCut: identityCut }),
+        ...(event.compactionEntry?.fromHook === true && resultCut !== undefined ? { resultCut } : {}),
+      });
+      if (identity.status !== "resolved") refuse(identity.reason, rebuilt);
+      else log("commit", { reason: event.reason, reported: event.compactionEntry, rebuilt, snapshot: identity.snapshot, association: { status: "resolved" as const, reportedId: identity.reportedId } });
+    } catch {
+      refuse("inconsistent-cut-or-result");
     }
     if (state.expectedFirst) { state.boundaryCommitted = true; state.restorePending = true; }
     delete state.expectedFirst;
@@ -113,7 +130,7 @@ export default function observer(pi: ExtensionAPI): void {
   });
   pi.on("session_compact_failed", event => {
     state.compacting = false;
-    delete state.preBranchIds; delete state.identityCut;
+    delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
     if (binding.boundary) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
     log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry });
   });

@@ -63,7 +63,7 @@ export function scopedUsage(records: LedgerRecord[], ids: Set<number>) {
 export function joinedObservations(segments: SegmentReport[]) {
   const rows = new Map<string, RolloverObservation>(), requests = new Map<number, RequestObservation>();
   for (const segment of segments) {
-    for (const row of segment.rollovers ?? []) rows.set(row.snapshot?.id ?? `${row.branch.at(-1)?.id}:${row.callIds.join(",")}`, row);
+    for (const row of segment.rollovers ?? []) rows.set(row.snapshot?.id ?? `${row.branch?.at(-1)?.id ?? "unassociated"}:${(row.callIds ?? []).join(",")}`, row);
     for (const req of segment.requests ?? []) requests.set(req.callId, req);
   }
   return { rows: [...rows.values()], requests: [...requests.values()] };
@@ -117,7 +117,11 @@ export async function executeComparison(value: unknown, repository: string, scri
           if (input.limits.maxCostUsd !== null) requireValue(report.usage.reservedCostUsd !== null && report.usage.reservedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
           const beforeIds = new Set(readLedger(join(root, "calls.jsonl")).filter(r => r.kind === "reserve").map(r => r.id));
           const native = joinedObservations(completed.get(`native:${label}`) ?? []);
-          const matchReferences: MatchReference[] = native.rows.map(row => { const f = rolloverFacts(row, native.requests, "native"); return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps }; });
+          const matchReferences: MatchReference[] = native.rows.map(row => {
+            if (row.association?.status === "UNPROVEN" || !row.snapshot) return { snapshotId: "unobserved", mTokens: null, outputCaps: [] };
+            const f = rolloverFacts(row, native.requests, "native");
+            return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps };
+          });
           const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences }, signal);
           report.children.push(child);
           if (child.timing) segmentIntervals.push(child.timing);
