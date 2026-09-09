@@ -2978,7 +2978,7 @@ phases:
   steps:
   - id: nunc.readme-public
     name: Current English README and publication-ready documentation
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [README.md, docs/**, .gitignore]\n  blocked_paths: [plan.yaml,\
       \ plan-dashboard.html, .pi/**, .agents/**, .env, .env.*, '**/auth.json']\n\n\
@@ -3041,6 +3041,21 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-09T18:24:31.821181Z'
+    done_at: '2026-09-09T19:21:21.003849+00:00'
+    evidence: 'Integrated c078197534d1c747a0be479fe13258348f8e8e2a via checked fast-forward
+      from post-claim 709ee3d. English user README, current required protection, commands/config/native
+      limits, PATH clone/ci/build/load quick start; narrowly corrected stale linked
+      docs and added local-only ignores. Parent reviewed diffs and requested missing
+      portable quick start and reproducible 70dacad comparison prerequisite, delivered
+      incremental correction. No source/lock/tests changed. Inspected complete offline
+      log .vectl/worktrees/nunc-readme-public/.scratch/nunc-readme-public/check-all-423-52.log:
+      423 pass, 0 fail, 52 files; underlying inputs unchanged by doc-only correction
+      and no-op rebase. Owner verified PATH npm ci/build and actual locked CLI --nunc-config
+      registration with isolated HOME and no model request, plus 10-doc relative links/anchors.
+      Candidate and integration identical; retained ref refs/vectl/retained/nunc-readme-public.
+      No live descendant process observed. Public-history/account/readback reserved
+      for next step; untracked local data preserved and now ignored. No publication
+      or license grant yet.'
   - id: nunc.github-public
     name: Create tefx/pi-nunc public repository and push reviewed main
     status: pending
