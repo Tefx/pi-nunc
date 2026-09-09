@@ -55,14 +55,21 @@ context: "当前授权为用户『更新文档，然后创建实施计划』：�
   \ docs/DEVELOPMENT.md 的已见同目标准备方式进行，禁止全局导入、自动工具链升级或把安装藏进检查。这次规划不执行 setup。新检查纳入跟踪\
   \ scripts/check.mjs all，可从 clean checkout 加声明的锁定开发依赖重现；all 使用构造的 offline HOME/agent\
   \ 环境，原生 TUI 依赖显式存在。完整库存随代码演化，不固定历史测试数。"
-project_guidance: 当前阶段 nunc-ui 仅计划已就绪，等待用户明确执行请求；不得借此 claim/dispatch/实施。执行时原样使用记录的
-  node-typescript-engineer：先 nunc.ui-memory，再 nunc.ui-context，最后 nunc.ui-panel。完整读取
-  docs/UI.md 与各 step refs，保留最新估算/预算、/nunc details 与合作 Provider/多追加合同。每个 owner 同时交付实际行为测试、必要跟踪
-  native runner 与文档；不生成无消费者的私有 schema、抽象或 proof 节点。source/tests/docs 为本仓库可回退事务，受控
-  fixture session 由 Pi 原生 API 操作，保护日常与外部状态，producer 无 real-model/credential/global-install/push
-  权限。Orchestrator 持有 claim/worktree/integration/lifecycle 权限，在 nunc.ui-panel 完成程序作本次唯一最终整合接受，消费三个交付、最终
-  full inventory 和必要 native TUI/状态/适用历史证据；候选或测试回调本身不等于接受。完成历史不可重开，失败同 owner 修完整兼容批次，额外
-  topology 仅在真实消费者/authority/效果边界变化时由 Planner 处理。
+project_guidance: 'Current user authorization: refresh and restructure README into
+  English for the implemented pi-nunc design and usage, then create public GitHub
+  repository tefx/pi-nunc and push. Execute github-publication automatically through
+  Orchestrator. This supersedes historical planning-only/no-push guidance solely for
+  this named task and target; completed definitions/evidence stay immutable. Preserve
+  unrelated files, local sessions/settings, secrets, other projects and retained worktrees.
+  No npm publication, deployment, global installation or new paid model calls. Node
+  owner delivers documentation candidate with source-grounded usage and offline proof;
+  DevOps owns the distinct GitHub transaction. Orchestrator judges documentation completion
+  and final task acceptance from the integrated candidate, applicable full offline
+  checks, safe publication preflight and GitHub readback. Use the named step owners
+  without ordinary reranking. Git history and tracked operational metadata must be
+  assessed before public exposure; publish only the reviewed main branch, never all
+  local branches/tags by default. Secrets or unrelated private content block push
+  until reconciled; do not rewrite history or discard user work silently.'
 clipboard:
   author: vectl-orchestrator
   summary: Gemini Flash费用无限额授权；继续extraction真实比较
@@ -2965,3 +2972,125 @@ phases:
       StockactualFvariation remains; no universalpersona recomposition orzeroCAPACITYpromise.
       Optionaltotalquotasremainnull; UIhumanacceptance unchanged. Producercomplete
       only, runtime/wholeproject normativeacceptance stillpending.
+- id: github-publication
+  name: English README and public GitHub publication
+  status: pending
+  steps:
+  - id: nunc.readme-public
+    name: Current English README and publication-ready documentation
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [README.md, docs/**, .gitignore]\n  blocked_paths: [plan.yaml,\
+      \ plan-dashboard.html, .pi/**, .agents/**, .env, .env.*, '**/auth.json']\n\n\
+      Deliver: An English README organized for new users: purpose and bounded same-session\
+      \ memory, verified prerequisites, clone/dependency/build/load quick start, commands\
+      \ and Slots/Context UI, actual optional configuration/defaults, compaction trigger\
+      \ and current-model single maintenance call, required joint retention plus optional\
+      \ priority whole-slot selection, failure/native persistence boundaries and truthful\
+      \ compatibility/limitations. Link detailed docs instead of internal execution/acceptance\
+      \ boilerplate. Correct directly conflicting linked-doc statements narrowly where\
+      \ needed; no product behavior change or documentation-wide rewrite. Current\
+      \ code already implements required protection and final extraction acceptance\
+      \ is recorded, so stale next/unimplemented/pending claims must be checked against\
+      \ current evidence. Do not invent benchmark superiority, universal host compatibility,\
+      \ npm availability, license grants or unsupported install behavior.\n\nBoundary:\
+      \ Node/TypeScript specialist owns this Pi extension's source-grounded documentation\
+      \ and supporting public-safe ignore rules. Local repository transaction only;\
+      \ no GitHub effect or push. Preserve untracked .pi/ and plan-dashboard.html\
+      \ locally and do not stage them. Inspect source, package declarations, lock\
+      \ state and selected host public docs before documenting loading semantics.\
+      \ Product source, tests and lock changes require a concrete necessary scope\
+      \ decision rather than opportunistic cleanup.\n\nAdmit: User requests current\
+      \ English README and public tefx repository. Read current entrypoint/config/engine/policy/UI\
+      \ and selected host docs, with completed Plan evidence used only for applicable\
+      \ claims. Record intended public file/history scope and flag potential sensitive/unrelated\
+      \ content for publication owner; do not copy secret values into evidence. Orchestrator\
+      \ completion review checks factual README/source consistency, meaningful quick-start\
+      \ build/load evidence, local link resolution and applicable full offline regression\
+      \ on integrated candidate. Documentation text-presence tests do not prove behavior.\n\
+      \nRecovery: Retain useful candidate and evidence; repair compatible doc/check\
+      \ gaps on this unfinished step. Revert only owned edits if necessary. Secret/history\
+      \ issues pause public effects without destructive cleanup; leave unrelated state\
+      \ untouched."
+    verification: "```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version:\
+      \ 11.19.0\n  dependency_manifest: package.json\n  dependency_lock: package-lock.json\n\
+      \  setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache,\
+      \ npm_config_ignore_scripts=true, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\nchecks:\n  - id: integrated-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n```\nReuse demonstrably applicable full offline evidence; otherwise run\
+      \ complete inventory after integration. Exercise documented build/load path\
+      \ in isolated task state without a model request. Check local links and review\
+      \ exact usage/config claims against code; report platform-specific check-runner\
+      \ prerequisites honestly. No paid observation or broad new behavioral audit."
+    refs:
+    - README.md
+    - package.json
+    - package-lock.json
+    - .node-version
+    - scripts/check.mjs
+    - src/index.ts
+    - src/pi/config.ts
+    - src/engine/memory.ts
+    - src/engine/engine.ts
+    - policies/default.md
+    - docs/PI.md
+    - docs/ENGINE.md
+    - docs/DEVELOPMENT.md
+    agent: node-typescript-engineer
+  - id: nunc.github-public
+    name: Create tefx/pi-nunc public repository and push reviewed main
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [.git/config]\n  blocked_paths: [plan.yaml, plan-dashboard.html,\
+      \ .pi/**, .agents/**, .env, .env.*, '**/auth.json']\ntarget:\n  provider: github.com\n\
+      \  owner: tefx\n  repository: pi-nunc\n  visibility: public\n  branch: main\n\
+      \nDeliver: Create the user-authorized public GitHub repository tefx/pi-nunc,\
+      \ configure matching local origin and push the reviewed integrated main branch.\
+      \ Return repository URL, observed public visibility, remote main commit and\
+      \ tracking configuration. No npm publication, deployment, tags/all-branches\
+      \ push, force push or extra repository.\n\nAdmit: Predecessor documentation\
+      \ candidate integrated and Orchestrator accepted, with applicable complete offline\
+      \ proof. Before effects inspect exact current local branch/remote state, authenticate\
+      \ through existing approved host credentials without printing tokens or credential\
+      \ locations, and read GitHub account/target existence. Review files AND reachable\
+      \ main history for secrets or unrelated private material, including managed\
+      \ Plan metadata; do not assume .gitignore protects existing history. Keep .pi/,\
+      \ dashboard, scratch, caches, sessions and retained worktree branches local.\
+      \ If target exists, inspect ownership/content before choosing safe same-target\
+      \ continuation; never overwrite unrelated content. Report concrete publication\
+      \ blocker without exposing values. Need for history rewriting, credential change,\
+      \ conflicting target or publication scope change goes to Orchestrator/user,\
+      \ not silent action.\n\nBoundary: Exact DevOps release owner, external persistence\
+      \ transaction distinct from repository documentation edits. Existing GitHub\
+      \ access only; no new accounts/credentials/cost, no personal settings changes.\
+      \ Native gh/git calls are sufficient; material custom release logic, if required,\
+      \ must have a tracked producer rather than untracked executable publication\
+      \ code. Orchestrator owns commits/integration/Plan lifecycle; coordinate its\
+      \ final local tracking commits before final push so completion does not leave\
+      \ intended delivery unpushed.\n\nRecovery: After create/push failure, inspect\
+      \ remote and local state before retry; reuse the same confirmed target and retain\
+      \ evidence. No destructive remote deletion or history rewrite as automatic rollback:\
+      \ public disclosure is not reversible, so preflight must finish before upload.\
+      \ Preserve local repository and report partial created-empty/pushed state accurately.\n\
+      \nFinal task acceptance: Orchestrator makes the single integrated decision for\
+      \ github-publication: README meets current design/usage/English requirements,\
+      \ all required checks and public-scope preflight are satisfied, and GitHub confirms\
+      \ tefx/pi-nunc is public with the intended README/source/main commit. Historical\
+      \ project runtime evidence may be reused only within applicability; this task\
+      \ grants no new product-wide behavioral or performance claims. Publication readback\
+      \ plus accepted documentation closes the requested task; missing/failed necessary\
+      \ proof prevents completion."
+    verification: Read-only GitHub/API readback must confirm repository owner/name,
+      public visibility, default/main branch and its exact Git commit matching intended
+      integrated local main. Verify origin URL/tracking and remotely accessible README.
+      Inspect any possibly started effect before retry. Orchestrator independently
+      checks final result; no extra gate or paid model rerun.
+    refs:
+    - README.md
+    - package.json
+    - .gitignore
+    depends_on:
+    - nunc.readme-public
+    agent: devops-engineer
