@@ -3129,7 +3129,7 @@ phases:
       no product changes or broader branch/tag publication authorized by completion.
 - id: nunc-reporting
   name: 统一只读报告与 Slots/Context 状态补全
-  status: in_progress
+  status: done
   context: 用户已接受最终设计并明确要求更新文档、指定方案并实施。一个可独立验收的交付：统一 /nunc 文字报告与现有 Slots/Context 面板状态来源并补齐展示。命令/布局/数据流/回归与
     README、UI、PI、DEVELOPMENT 文档在同一 Nunc 仓库事务完成；没有独立文档、观察或接受消费者，最终整合接受归 Orchestrator
     的 nunc.reporting 完成程序。全部既有 DONE 历史保留；本阶段仅覆盖新接受的命令兼容变更和报告/面板补全，继承其余当前核心、provider、admission、capacity、manual-save
@@ -3140,7 +3140,7 @@ phases:
   steps:
   - id: nunc.reporting
     name: 统一完整文字报告并补全面板预算、维护与 Diagnostics
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/ui/**\", \"src/pi/**\", \"tests/**\"\
       , \"scripts/**\", \"README.md\", \"docs/UI.md\", \"docs/PI.md\", \"docs/DEVELOPMENT.md\"\
@@ -3245,3 +3245,43 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-10T05:54:40.576150Z'
+    done_at: '2026-09-10T06:43:15.823195+00:00'
+    evidence: 'Implemented by exact owner node-typescript-engineer in isolated .vectl/worktrees/nunc-reporting
+      from post-claim base e13978168b2f377769325a64121ac5b014ff4218. Delivered dadcf35
+      then compatible acceptance repairs 017e5d0679bc9457c249ec1666872a62643f9144;
+      both retained under refs/retained/nunc-reporting and refs/retained/nunc-reporting-final.
+      Parent inspected full source/docs/test diffs and actual native inventory log;
+      owner effects quiescent (terminal callback, no matching descendant observation
+      processes, test fixture cleanup). Rebase onto unchanged integration basis was
+      no-op, immutable target 017e5d0679bc9457c249ec1666872a62643f9144 unchanged;
+      integration HEAD/basis and ancestry checked immediately before exact fast-forward,
+      then HEAD verified equal target. No managed Plan included in candidate.
+
+      Outcome: /nunc status removed without alias, details-only completion/usage;
+      TUI bare /nunc Slots panel and F7 unchanged, nonTUI bare and all-mode details
+      same complete report without model/compaction/session writes or self-echo. Shared
+      ContextSurface current budgets, frozen LastMaintenanceContext.accounting and
+      bounded UI diagnostics; no duplicate lastAccounting/config reporting path. Budget
+      now exposes maintenance input and unknown/no-model/uncapped/zero distinctions;
+      maintenance full/selected, historical input plan, headroom, over-plan, model/time
+      and engine/native-save; Context Diagnostics and warning summary. README.md/docs/UI.md/docs/PI.md/docs/DEVELOPMENT.md
+      updated to final accepted design.
+
+      Verification: required /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1
+      PI_TELEMETRY=0 /opt/homebrew/bin/node scripts/check.mjs all exit 0 on committed
+      017e5d0: 436 tests, 54 files, zero failures, log .vectl/worktrees/nunc-reporting/.scratch/reporting/check-all-017e5d0.log.
+      Covers actual stock CLI/RPC/PTy TUI and full engine/pi/live offline inventory.
+      Parent identified and owner fixed loss of frozen extractionInputLimit (model-switch
+      test current vs historical budget) and stale-root-label TUI proof; stock Diagnostics
+      now selects/enters/reads real warning/returns/closes using fresh bounded output
+      at normal and 12x40 sizes; unknown command checks fresh events. All final checks
+      reused unchanged at exact integrated target; npm run build also exit 0 in integration
+      to refresh local dist. Optional git diff --check reports only extra EOF blank
+      line in new test file, non-blocking formatting, not a required behavior check.
+      Editor geometry/path unchanged; applicable historical IME confirmation retained,
+      no new manual visual or live-model claim. Final completion acceptance by Orchestrator:
+      all material reporting requirements and dependent manual-save/provider/admission/capacity
+      invariants supported, no unresolved behavioral defects. Clean implementation
+      worktree/logs and candidate refs retained for evidence; unrelated historical
+      worktrees untouched. No push, publication, global installation or live/paid
+      model effects.'
