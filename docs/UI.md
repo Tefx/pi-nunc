@@ -124,7 +124,7 @@ Context 根级另有可浏览的 recent Diagnostics 节点，与文字报告共�
 - extraction 默认 `min(8192, model.maxTokens)` 是独立规划值；uncapped Codex/Responses 的 cap 为无，不能把规划值标成强制 cap。调用消费授权仍覆盖真实原生能力。
 - 正常触发余量建议与输入/输出超规划记录保留。`normalExtractionAtTrigger` 为 advisory，不能阻止当前可容纳的 manual/overflow 维护。UI 不写 Pi settings 或自动调整 H。
 
-Current projection 的 Budget 与完整文字报告共用 `ContextSurface` 当前预算：模型窗口、H、主准入、memory/input plan、维护输入规划、M 占用、主/维护输出预留、cap 与 safety。unknown、无模型和 uncapped（none）不得与已知零值混淆。Last maintenance 使用 `LastMaintenanceContext.accounting` 显示 full→selected、normal-trigger headroom/advice、input/output over-plan，并保留实际模型、观察时间、范围以及 engine candidate 与 native saved/pending/failed 的区别。正常触发建议仍为 advisory，不改 settings。文字报告不得把自身写入诊断历史。
+Current projection 的 Budget 与完整文字报告共用 `ContextSurface` 当前预算：模型窗口、H、主准入、memory/input plan、维护输入规划、M 占用、主/维护输出预留、cap 与 safety。unknown、无模型和 uncapped（none）不得与已知零值混淆。Last maintenance 使用 `LastMaintenanceContext.accounting` 显示 full→selected、该次维护冻结的 input plan（`extractionInputLimit`，不随当前 Budget 改写）、normal-trigger headroom/advice、input/output over-plan，并保留实际模型、观察时间、范围以及 engine candidate 与 native saved/pending/failed 的区别。正常触发建议仍为 advisory，不改 settings。文字报告不得把自身写入诊断历史。
 
 ## 5. 人工记忆提交与兼容
 

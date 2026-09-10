@@ -104,6 +104,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
     const a = last.accounting;
     lines.push(
       `Input estimate: full ${thousands(a.fullExtractionTokens)} → selected ${thousands(a.extractionTokens)}`,
+      `Last-maintenance input plan: ${thousands(a.extractionInputLimit)}`,
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
       `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
     );

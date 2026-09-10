@@ -589,7 +589,7 @@ test("context Budget, Last maintenance accounting, Diagnostics, and warning summ
         },
         budget: {
           modelWindow: 10000, triggerTokens: 8000, plannedInputLimit: 8500, mainAdmissionLimit: 9999,
-          extractionInputLimit: 40000, memoryLimit: 0, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: 1000,
+          extractionInputLimit: 11111, memoryLimit: 0, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: 1000,
           outputCapTokens: null, outputCapKnown: true, extractionOutputTokens: 8192, extractionOutputCapTokens: null, extractionOutputCapKnown: true, safetyTokens: 0,
         },
       },
@@ -620,7 +620,8 @@ test("context Budget, Last maintenance accounting, Diagnostics, and warning summ
   overlay.handleInput("\x1b[B");
   overlay.handleInput("\x1b[B");
   const budget = clean(overlay.render(90));
-  assert.match(budget, /Maintenance input plan: 40,000/);
+  assert.match(budget, /Maintenance input plan: 11,111/);
+  assert.doesNotMatch(budget, /Last-maintenance input plan/);
   assert.match(budget, /M occupancy: 20 \/ 0/);
   assert.match(budget, /Main output cap: none/);
   assert.match(budget, /Maintenance output cap: none/);
@@ -631,6 +632,9 @@ test("context Budget, Last maintenance accounting, Diagnostics, and warning summ
   overlay.handleInput("\x1b[B");
   const maint = clean(overlay.render(90));
   assert.match(maint, /Input estimate: full 45,000 → selected 30,000/);
+  assert.match(maint, /Last-maintenance input plan: 40,000/);
+  assert.doesNotMatch(maint, /Last-maintenance input plan: 11,111/);
+  assert.doesNotMatch(maint, /Maintenance input plan: 11,111/);
   assert.match(maint, /Normal-trigger headroom: insufficient; suggest reserveTokens ≥ 20,000/);
   assert.match(maint, /Over-plan records: input yes \/ output no/);
   assert.match(maint, /Native save: saved/);

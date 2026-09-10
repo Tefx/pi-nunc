@@ -197,6 +197,35 @@ test("last-maintenance engine vs native states stay on ContextSurface used by th
   assert.match(savedReport, /Native save: saved/);
   assert(saved.lastMaintenance?.accounting);
   assert.match(savedReport, new RegExp(`full ${saved.lastMaintenance.accounting.fullExtractionTokens.toLocaleString("en-US")} → selected ${saved.lastMaintenance.accounting.extractionTokens.toLocaleString("en-US")}`));
+  assert.match(savedReport, new RegExp(`Last-maintenance input plan: ${saved.lastMaintenance.accounting.extractionInputLimit.toLocaleString("en-US")}`));
+});
+
+test("last-maintenance input plan stays on frozen accounting after current model/budget change", async t => {
+  const captured = port();
+  const f = await fixture({ extras: captured.extras });
+  t.after(() => f.close());
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const saved = captured.context().read(captured.ctx());
+  const frozen = saved.lastMaintenance?.accounting?.extractionInputLimit;
+  const frozenModel = saved.lastMaintenance?.model.id;
+  assert(typeof frozen === "number");
+  assert.equal(saved.current.model?.id, frozenModel);
+  await f.runtime.session.setModel(f.faux.getModel("small")!);
+  const switched = captured.context().read(captured.ctx());
+  assert.equal(switched.lastMaintenance?.accounting?.extractionInputLimit, frozen);
+  assert.equal(switched.lastMaintenance?.model.id, frozenModel);
+  assert.notEqual(switched.current.model?.id, frozenModel);
+  assert.notEqual(switched.current.budget.extractionInputLimit, frozen);
+  const report = detailsLines({ view: switched, diagnostics: [] });
+  const currentPlan = switched.current.budget.extractionInputLimit!.toLocaleString("en-US");
+  const frozenPlan = frozen.toLocaleString("en-US");
+  assert.match(report, new RegExp(`Maintenance input plan: ${currentPlan}`));
+  assert.match(report, new RegExp(`Last-maintenance input plan: ${frozenPlan}`));
+  assert.doesNotMatch(report, new RegExp(`Last-maintenance input plan: ${currentPlan}`));
+  for (const line of maintenanceLines(switched.lastMaintenance)) {
+    if (line.startsWith("Last-maintenance input plan:")) assert.equal(line, `Last-maintenance input plan: ${frozenPlan}`);
+  }
 });
 
 test("session reset drops last maintenance from the shared report source without a model call", async t => {
