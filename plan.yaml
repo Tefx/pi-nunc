@@ -3129,7 +3129,7 @@ phases:
       no product changes or broader branch/tag publication authorized by completion.
 - id: nunc-reporting
   name: 统一只读报告与 Slots/Context 状态补全
-  status: pending
+  status: in_progress
   context: 用户已接受最终设计并明确要求更新文档、指定方案并实施。一个可独立验收的交付：统一 /nunc 文字报告与现有 Slots/Context 面板状态来源并补齐展示。命令/布局/数据流/回归与
     README、UI、PI、DEVELOPMENT 文档在同一 Nunc 仓库事务完成；没有独立文档、观察或接受消费者，最终整合接受归 Orchestrator
     的 nunc.reporting 完成程序。全部既有 DONE 历史保留；本阶段仅覆盖新接受的命令兼容变更和报告/面板补全，继承其余当前核心、provider、admission、capacity、manual-save
@@ -3140,7 +3140,7 @@ phases:
   steps:
   - id: nunc.reporting
     name: 统一完整文字报告并补全面板预算、维护与 Diagnostics
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/ui/**\", \"src/pi/**\", \"tests/**\"\
       , \"scripts/**\", \"README.md\", \"docs/UI.md\", \"docs/PI.md\", \"docs/DEVELOPMENT.md\"\
@@ -3243,3 +3243,5 @@ phases:
     - package-lock.json
     - .node-version
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-10T05:54:40.576150Z'
