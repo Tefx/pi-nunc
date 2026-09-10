@@ -19,9 +19,10 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import type { ContextSurface, ContextView } from "../pi/context.js";
+import { unknownBudget } from "../pi/context.js";
 import type { MemorySurface, MemoryView } from "../pi/manual.js";
-import { buildContextNodes, type CtxNode } from "./context-tree.js";
-import { UNLOAD_LIMIT, thousands } from "./status.js";
+import { buildContextNodes, CONTEXT_ROOT_IDS, type CtxNode } from "./context-tree.js";
+import { UNLOAD_LIMIT, firstLine, thousands, type DiagnosticNote } from "./status.js";
 
 export type OverlayTab = "slots" | "context";
 type Layer = "browse" | "edit" | "confirm-delete" | "confirm-discard";
@@ -33,6 +34,7 @@ export interface OverlayHost {
   ctx: ExtensionContext;
   memory: MemorySurface;
   context: ContextSurface;
+  diagnostics?: () => { notes: readonly DiagnosticNote[]; warning?: string };
   done: () => void;
   onFailure?: (message: string) => void;
   onSuccess?: () => void;
@@ -106,7 +108,7 @@ export class NuncOverlay implements Focusable {
     try {
       this.contextView = host.context.read(host.ctx);
     } catch (error) {
-      this.contextView = { current: { scope: "current", sessionId: this.memoryView.revision, leafId: null, model: null, revision: this.memoryView.revision, occupied: this.memoryView.status.occupied, unconfirmed: this.memoryView.status.unconfirmed, contextLayout: this.memoryView.contextLayout, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: true }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, memoryLimit: this.memoryView.budget.limit, memoryOccupied: this.memoryView.budget.tokens, memoryUnknown: this.memoryView.budget.unknown, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null } } };
+      this.contextView = { current: { scope: "current", sessionId: this.memoryView.revision, leafId: null, model: null, revision: this.memoryView.revision, occupied: this.memoryView.status.occupied, unconfirmed: this.memoryView.status.unconfirmed, contextLayout: this.memoryView.contextLayout, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: true }, associations: [] }, budget: { ...unknownBudget(this.memoryView.budget.tokens, this.memoryView.budget.unknown), memoryLimit: this.memoryView.budget.limit } } };
       this.error = error instanceof Error ? error.message : "Inspector read failed";
     }
     const overlay = this;
@@ -488,9 +490,9 @@ export class NuncOverlay implements Focusable {
   }
 
   private contextItems(): SelectItem[] {
-    this.nodes = buildContextNodes(this.contextView);
+    this.nodes = buildContextNodes(this.contextView, this.host.diagnostics?.().notes ?? []);
     const parent = this.contextPath.at(-1);
-    const ids = parent ? this.nodes.get(parent)?.children ?? [] : ["scope:current", "scope:last-main", "scope:last-maintenance", "scope:legend"];
+    const ids = parent ? this.nodes.get(parent)?.children ?? [] : [...CONTEXT_ROOT_IDS];
     const query = this.search.getValue().trim().toLowerCase();
     return ids.map(id => this.nodes.get(id)).filter((node): node is CtxNode => {
       if (!node) return false;
@@ -607,10 +609,12 @@ export class NuncOverlay implements Focusable {
       : view.budget.limit === 0
         ? `M ${thousands(view.budget.tokens)} / 0`
         : `M ≈${thousands(view.budget.tokens)} / ${thousands(view.budget.limit)}`;
+    const warning = this.host.diagnostics?.().warning;
     const flags = [
       view.status.occupied ? "maintenance" : undefined,
       view.status.unconfirmed ? "save unconfirmed" : undefined,
       this.editBasis && view.revision !== this.editBasis.revision ? "revision changed" : undefined,
+      warning ? `warning ${firstLine(warning, 80)}` : undefined,
     ].filter(Boolean).join(" · ");
     const base = `Ready · ${view.memory.slots.length} slots · ${m}`;
     return theme.fg("dim", flags ? `${base} · ${flags}` : base);

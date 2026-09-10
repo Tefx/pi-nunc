@@ -2,7 +2,7 @@
 
 Target: **Pi/pi-ai 0.85.1**, persistent sessions. Nunc is an independent public extension. Stock Pi owns its CLI/TUI/RPC, compaction lifecycle, scheduling, retry, JSONL writes and context rebuilding. The extension requires no SDK host, replacement launcher, private patch, another extension or global installation.
 
-The original core and subsequent native/cooperative compatibility acceptance are complete in the managed plan. The UI in [UI.md](UI.md) is implemented for footer, overlay and command compatibility. Later capacity/command changes and this document do not retroactively extend historical evidence.
+The original core and subsequent native/cooperative compatibility acceptance are complete in the managed plan. The UI in [UI.md](UI.md) is implemented for footer, overlay, complete text report and Diagnostics. The former `/nunc status` short report is superseded. Later capacity/command changes and this document do not retroactively extend historical evidence.
 
 ## Load and configure
 
@@ -13,7 +13,7 @@ Build with the locked local tools (`npm run build`), then choose the extension e
   -e /absolute/pi-nunc/dist/src/index.js --nunc-config /absolute/nunc.json
 ```
 
-`package.json` also declares `pi.extensions`. Omit the flag for Nunc defaults. Relative configuration paths resolve from Pi's cwd; `policyFile` resolves from the configuration file's directory. Nunc reads these files without writing them. In TUI, bare `/nunc` opens the Slots/Context overlay. `/nunc status` and non-TUI `/nunc` show a three-line memory count and compaction-trigger summary without making a request. `/nunc details` adds grouped input/output budgets, the maintenance cap, latest maintenance observations and recent warning diagnostics; numeric budgets use thousands separators. Read-only commands leave the transcript unchanged. The native argument completion menu suggests `details` and `status`. `ctx.hasUI` is not TUI; RPC/print/JSON keep text. Remove the extension resource and use stock `/reload`, or start without it, to unload. Existing summaries remain readable by stock Pi. Manual edits not yet folded into a native compaction need this Nunc to take effect.
+`package.json` also declares `pi.extensions`. Omit the flag for Nunc defaults. Relative configuration paths resolve from Pi's cwd; `policyFile` resolves from the configuration file's directory. Nunc reads these files without writing them. In TUI, bare `/nunc` opens the Slots/Context overlay (default Slots). Non-TUI bare `/nunc` and `/nunc details` in every mode emit the same complete text report from `ContextSurface` and UI diagnostics: occupancy, current budgets including maintenance input, last-maintenance accounting (full→selected, headroom advice, over-plan, engine vs native save), and bounded recent diagnostics. `/nunc status` is removed and prints usage as an unknown argument. Numeric budgets use thousands separators. Read-only commands leave the transcript unchanged and do not record the report as a diagnostic. The native argument completion menu suggests only `details`. `ctx.hasUI` is not TUI; RPC/print/JSON keep text. F7 is unchanged. Remove the extension resource and use stock `/reload`, or start without it, to unload. Existing summaries remain readable by stock Pi. Manual edits not yet folded into a native compaction need this Nunc to take effect.
 
 ```json
 {

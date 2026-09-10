@@ -15,18 +15,13 @@ test("compact footer keeps unknown, zero-budget, and over-100 honest", () => {
   assert.deepEqual(compactFooter({ unavailable: false, occupied: false, unconfirmed: false, warning: false, slotCount: 8, budget: { tokens: 2840, limit: 2000, unknown: false } }), { text: "nunc 8·142%", tone: "dim" });
 });
 
-test("/nunc completions add status without dropping details", () => {
-  assert.deepEqual(commandCompletions(""), [
-    { value: "details", label: "details", description: "Show budget and last maintenance details" },
-    { value: "status", label: "status", description: "Text overview without opening the panel" },
-  ]);
-  assert.deepEqual(commandCompletions("d"), [
-    { value: "details", label: "details", description: "Show budget and last maintenance details" },
-  ]);
-  assert.deepEqual(commandCompletions("st"), [
-    { value: "status", label: "status", description: "Text overview without opening the panel" },
-  ]);
+test("/nunc completions offer only details", () => {
+  const details = { value: "details", label: "details", description: "Complete memory, budget, maintenance, and diagnostic report" };
+  assert.deepEqual(commandCompletions(""), [details]);
+  assert.deepEqual(commandCompletions("d"), [details]);
+  assert.equal(commandCompletions("st"), null);
+  assert.equal(commandCompletions("status"), null);
   assert.equal(commandCompletions("unknown"), null);
   assert.equal(commandCompletions("details "), null);
-  assert.equal(COMMAND_USAGE, "Usage: /nunc [status|details]");
+  assert.equal(COMMAND_USAGE, "Usage: /nunc [details]");
 });

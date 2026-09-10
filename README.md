@@ -63,12 +63,11 @@ The tracked `scripts/check.mjs` inventory is a separate development check with e
 
 | Command | Behavior |
 | --- | --- |
-| `/nunc` | TUI: open the Slots/Context overlay (Slots first). Other modes: three-line text status. No model request. |
-| `/nunc status` | Text status in every mode. |
-| `/nunc details` | Grouped input/output budgets, last maintenance observations, recent warnings. |
-| `F7` | TUI shortcut for the overlay. Does not submit the main editor draft. |
+| `/nunc` | TUI: open the Slots/Context overlay (Slots first). Other modes: the same complete text report as `/nunc details`. No model request. |
+| `/nunc details` | Complete text report in every mode: slots/occupancy/warning, current budgets including maintenance input, last maintenance, recent diagnostics. |
+| `F7` | TUI shortcut for the overlay. Does not submit the main editor draft. Unchanged. |
 
-Unknown arguments print `Usage: /nunc [status|details]`. Native completion offers `status` and `details`. Read-only commands do not append session entries. RPC `hasUI` is not a terminal overlay; `ctx.mode === "tui"` is required for the panel.
+`/nunc status` is removed; it is an unknown argument. Unknown arguments print `Usage: /nunc [details]` and do not open the panel. Native completion offers only `details`. The previous short status text and status alias are superseded. Read-only commands do not append session entries. RPC `hasUI` is not a terminal overlay; `ctx.mode === "tui"` is required for the panel. The text report and panel read `ContextSurface`, last-maintenance accounting, and UI diagnostics; they do not keep a second budget or M store.
 
 Footer examples: `nunc 8·42%` (saved slots and memory-budget occupancy), `nunc ↻ 8` (maintenance, including waiting for Pi to save), `nunc ! 8` (current warning), `nunc ×` (unusable configuration). Occupancy is Nunc’s memory budget, not Pi’s whole-context meter.
 

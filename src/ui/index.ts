@@ -2,9 +2,9 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ContextSurface } from "../pi/context.js";
 import type { MemoryFreeze, MemoryView } from "../pi/manual.js";
 import { NuncOverlay } from "./overlay.js";
-import { compactFooter, type DiagnosticNote } from "./status.js";
+import { compactFooter, DIAGNOSTIC_LIMIT, type DiagnosticNote } from "./status.js";
 
-export { COMMAND_USAGE, commandCompletions, compactFooter, detailsLines, statusLines, UNLOAD_LIMIT } from "./status.js";
+export { COMMAND_USAGE, commandCompletions, compactFooter, detailsLines, DIAGNOSTIC_LIMIT, UNLOAD_LIMIT } from "./status.js";
 export { NuncOverlay } from "./overlay.js";
 export type { CompactFooterInput, DiagnosticNote, FooterTone } from "./status.js";
 
@@ -17,7 +17,7 @@ export function createNuncUi(options: {
 }
 
 export class NuncUi {
-  private currentWarning: string | undefined;
+  private warning: string | undefined;
   private unavailable: string | undefined;
   private diagnostics: DiagnosticNote[] = [];
   private lastCtx: ExtensionContext | undefined;
@@ -31,15 +31,16 @@ export class NuncUi {
   }) {}
 
   recentDiagnostics(): DiagnosticNote[] { return this.diagnostics.slice(); }
+  currentWarning(): string | undefined { return this.warning; }
 
   noteDiagnostic(level: DiagnosticNote["level"], message: string): void {
     this.diagnostics.push({ level, message });
-    if (this.diagnostics.length > 20) this.diagnostics = this.diagnostics.slice(-20);
-    if (level !== "info") this.currentWarning = message;
+    if (this.diagnostics.length > DIAGNOSTIC_LIMIT) this.diagnostics = this.diagnostics.slice(-DIAGNOSTIC_LIMIT);
+    if (level !== "info") this.warning = message;
   }
 
   recover(): void {
-    this.currentWarning = undefined;
+    this.warning = undefined;
     this.unavailable = undefined;
   }
 
@@ -81,7 +82,7 @@ export class NuncUi {
       unavailable: Boolean(this.unavailable),
       occupied: view?.status.occupied ?? false,
       unconfirmed: view?.status.unconfirmed ?? false,
-      warning: Boolean(this.currentWarning),
+      warning: Boolean(this.warning),
       slotCount: view?.memory.slots.length ?? 0,
       budget: view?.budget ?? { tokens: 0, limit: null, unknown: true },
     });
@@ -98,6 +99,7 @@ export class NuncUi {
           tui, theme, keybindings, ctx,
           memory: this.options.memory,
           context: this.options.context,
+          diagnostics: () => ({ notes: this.diagnostics.slice(), ...(this.warning ? { warning: this.warning } : {}) }),
           done: () => done(null),
           onFailure: message => { try { this.noteDiagnostic("warning", message); } catch { /* Diagnostic only. */ } this.refresh(ctx); },
           onSuccess: () => { try { this.recover(); } catch { /* Status only. */ } this.refresh(ctx); },

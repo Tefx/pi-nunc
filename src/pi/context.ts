@@ -74,6 +74,7 @@ export interface ContextBudget {
   triggerTokens: number | null;
   plannedInputLimit: number | null;
   mainAdmissionLimit: number | null;
+  extractionInputLimit: number | null;
   memoryLimit: number | null;
   memoryOccupied: number | null;
   memoryUnknown: boolean;
@@ -82,6 +83,7 @@ export interface ContextBudget {
   outputCapKnown: boolean;
   extractionOutputTokens: number | null;
   extractionOutputCapTokens: number | null;
+  extractionOutputCapKnown: boolean;
   safetyTokens: number | null;
 }
 export interface CurrentContext {
@@ -374,12 +376,13 @@ function readConfig(options: { config: (ctx: ExtensionContext, model: Model<Api>
   try { return options.config(ctx, model); } catch { return undefined; }
 }
 
-function unknownBudget(occupied: number, unknown: boolean): ContextBudget {
+export function unknownBudget(occupied: number, unknown: boolean): ContextBudget {
   return {
     modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null,
+    extractionInputLimit: null,
     memoryLimit: null, memoryOccupied: occupied, memoryUnknown: unknown,
     outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false,
-    extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null,
+    extractionOutputTokens: null, extractionOutputCapTokens: null, extractionOutputCapKnown: false, safetyTokens: null,
   };
 }
 
@@ -391,6 +394,7 @@ function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedCont
     triggerTokens: config.triggerTokens,
     plannedInputLimit: plan.mainInputLimit,
     mainAdmissionLimit: mainAdmissionLimit(model, config.main),
+    extractionInputLimit: plan.extractionInputLimit,
     memoryLimit: plan.memoryLimit,
     memoryOccupied: occupied,
     memoryUnknown,
@@ -399,6 +403,7 @@ function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedCont
     outputCapKnown: uncapped,
     extractionOutputTokens: config.extraction.outputTokens,
     extractionOutputCapTokens: uncapped ? null : config.extraction.outputTokens,
+    extractionOutputCapKnown: true,
     safetyTokens: config.main.safetyTokens,
   };
 }

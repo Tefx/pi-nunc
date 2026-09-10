@@ -1,8 +1,5 @@
-import { VERSION, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Accounting } from "../engine/index.js";
-import { inputLimit, mainAdmissionLimit, omitsSerializedOutputCap } from "../engine/accounting.js";
-import { engineConfig, readConfig } from "../pi/config.js";
-import type { MemoryView } from "../pi/manual.js";
+import { VERSION } from "@earendil-works/pi-coding-agent";
+import type { ContextView, CurrentContext, LastMaintenanceContext } from "../pi/context.js";
 
 export type FooterTone = "dim" | "accent" | "warning" | "error";
 export interface CompactFooterInput {
@@ -15,12 +12,12 @@ export interface CompactFooterInput {
 }
 export interface DiagnosticNote { level: "warning" | "error" | "info"; message: string }
 
-export const COMMAND_USAGE = "Usage: /nunc [status|details]";
+export const COMMAND_USAGE = "Usage: /nunc [details]";
 export const UNLOAD_LIMIT = "Manual edits not yet absorbed by the next native compaction need a current Nunc to interpret; unload or older Nunc still reads the last native summary.";
+export const DIAGNOSTIC_LIMIT = 20;
 
 const COMPLETIONS = [
-  { value: "details", label: "details", description: "Show budget and last maintenance details" },
-  { value: "status", label: "status", description: "Text overview without opening the panel" },
+  { value: "details", label: "details", description: "Complete memory, budget, maintenance, and diagnostic report" },
 ] as const;
 
 export function commandCompletions(prefix: string): { value: string; label: string; description: string }[] | null {
@@ -44,53 +41,104 @@ export function thousands(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-export function statusLines(view: MemoryView, triggerTokens: number | undefined): string {
+export function firstLine(message: string, max = 160): string {
+  const line = message.split("\n")[0] ?? message;
+  return line.length > max ? `${line.slice(0, max)}…` : line;
+}
+
+export function quantity(value: number | null, noModel: boolean): string {
+  if (noModel) return "no model";
+  if (value === null) return "unknown";
+  return thousands(value);
+}
+
+export function capLabel(known: boolean, tokens: number | null, noModel: boolean, unknownLabel = "unknown"): string {
+  if (noModel) return "no model";
+  if (!known) return unknownLabel;
+  if (tokens === null) return "none";
+  return thousands(tokens);
+}
+
+export function memoryOccupancy(current: CurrentContext): string {
+  const b = current.budget;
+  const noModel = current.model === null;
+  const occupied = b.memoryOccupied === null ? (noModel ? "no model" : "unknown") : thousands(b.memoryOccupied);
+  if (b.memoryUnknown) return b.memoryOccupied === null ? occupied : `${occupied} · unknown limit`;
+  if (b.memoryLimit === null) return `${occupied} / ${noModel ? "no model" : "unknown"}`;
+  return `${occupied} / ${thousands(b.memoryLimit)}`;
+}
+
+export function budgetLines(current: CurrentContext): string[] {
+  const noModel = current.model === null;
+  const b = current.budget;
   return [
-    `Memory: ${view.memory.slots.length} slots`,
-    `Compaction trigger: ${triggerTokens === undefined ? "no model selected" : `${thousands(triggerTokens)} tokens`}`,
-    "Budget details: /nunc details",
-  ].join("\n");
+    `Model: ${current.model ? `${current.model.provider}/${current.model.id}` : "no model"}`,
+    `Model window: ${quantity(b.modelWindow, noModel)}`,
+    `H / trigger: ${quantity(b.triggerTokens, noModel)}`,
+    `Main admission: ${quantity(b.mainAdmissionLimit, noModel)}`,
+    `Memory/input plan: ${quantity(b.plannedInputLimit, noModel)}`,
+    `Maintenance input plan: ${quantity(b.extractionInputLimit, noModel)}`,
+    `M occupancy: ${memoryOccupancy(current)}`,
+    `Main output reserve: ${quantity(b.outputReserveTokens, noModel)}`,
+    `Maintenance output reserve: ${quantity(b.extractionOutputTokens, noModel)}`,
+    `Main output cap: ${capLabel(b.outputCapKnown, b.outputCapTokens, noModel, "not observed")}`,
+    `Maintenance output cap: ${capLabel(b.extractionOutputCapKnown, b.extractionOutputCapTokens, noModel)}`,
+    `Safety: ${quantity(b.safetyTokens, noModel)}`,
+  ];
+}
+
+export function maintenanceLines(last: LastMaintenanceContext | undefined): string[] {
+  if (!last) return ["No maintenance record in this context."];
+  const engine = last.engine ?? "pending";
+  const lines = [
+    `Model: ${last.model.provider}/${last.model.id} (${last.model.api})`,
+    `Observed: ${new Date(last.observedAt).toISOString()}`,
+    `Scope: last-maintenance · ${last.reason ?? "unknown reason"}`,
+    `Engine: ${engine} · native ${last.native}${last.invalidated ? " · invalidated" : ""}`,
+    last.candidate ? `Engine candidate: ${last.candidate.memory.slots.length} slots @ ${last.candidate.firstKeptEntryId}` : "Engine candidate: none",
+    last.native === "saved" && last.after
+      ? `Native save: saved · after ${last.after.memory.slots.length} slots`
+      : `Native save: ${last.native}${last.native === "saved" ? "" : " (candidate success is not a native save)"}`,
+  ];
+  if (last.accounting) {
+    const a = last.accounting;
+    lines.push(
+      `Input estimate: full ${thousands(a.fullExtractionTokens)} → selected ${thousands(a.extractionTokens)}`,
+      `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
+      `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
+    );
+  }
+  if (last.code) lines.push(`${last.code}: ${last.message ?? ""}`);
+  return lines;
+}
+
+export function diagnosticLines(notes: readonly DiagnosticNote[]): string[] {
+  const shown = notes.filter(note => note.level !== "info");
+  if (shown.length === 0) return ["No recent diagnostics."];
+  return shown.map(note => `${note.level}: ${firstLine(note.message)}`);
 }
 
 export function detailsLines(input: {
-  view: MemoryView;
-  ctx: ExtensionContext;
-  configPath: string | undefined;
-  compaction: Parameters<typeof engineConfig>[2];
-  lastAccounting: Accounting | null;
+  view: ContextView;
   diagnostics: readonly DiagnosticNote[];
+  currentWarning?: string;
 }): string {
-  const selection = readConfig(input.configPath, input.ctx.cwd);
-  const config = input.ctx.model ? engineConfig(selection.config, input.ctx.model, input.compaction) : undefined;
+  const current = input.view.current;
   const summary = [
-    `Memory: ${input.view.memory.slots.length} slots`,
-    `Compaction trigger: ${config ? thousands(config.triggerTokens) + " tokens" : "no model selected"}`,
+    `Memory: ${current.layout.memory?.slots.length ?? current.contextLayout.slotCount} slots`,
+    `Occupied: ${current.occupied ? "yes" : "no"}`,
+    `Unconfirmed: ${current.unconfirmed ? "yes" : "no"}`,
+    `Current warning: ${input.currentWarning ? firstLine(input.currentWarning) : "none"}`,
   ];
-  const details = config && input.ctx.model ? [
-    "", "Input budget (tokens)",
-    `  Main admission: ${thousands(mainAdmissionLimit(input.ctx.model, config.main))}`,
-    `  Memory plan: ${thousands(inputLimit(input.ctx.model, config.main))}`,
-    `  Maintenance: ${thousands(inputLimit(input.ctx.model, config.extraction))}`,
-    "", "Output reserve (tokens)",
-    `  Main: ${thousands(config.main.nativeOutputReserve ?? config.main.outputTokens)}`,
-    `  Maintenance: ${thousands(config.extraction.outputTokens)}`,
-    `  Maintenance output cap: ${omitsSerializedOutputCap(input.ctx.model) ? "none" : thousands(config.extraction.outputTokens)}`,
-    `Safety margin: ${thousands(config.extraction.safetyTokens)} tokens`,
-  ] : [];
-  const last = input.lastAccounting ? [
-    "", "Last maintenance (this context)",
-    `  Input estimate: full ${thousands(input.lastAccounting.fullExtractionTokens)} → selected ${thousands(input.lastAccounting.extractionTokens)}`,
-    `  Normal-trigger headroom: ${input.lastAccounting.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(input.lastAccounting.suggestedReserveTokens)}`,
-    `  Over-plan records: input ${input.lastAccounting.inputExceededPlan ? "yes" : "no"} / output ${input.lastAccounting.outputExceededPlan ? "yes" : "no"}`,
-  ] : ["", "No maintenance record in this context."];
-  const notes = input.diagnostics.length === 0 ? [] : [
+  const notes = diagnosticLines(input.diagnostics);
+  return [
+    ...summary,
+    "", "Current budgets",
+    ...budgetLines(current).map(line => `  ${line}`),
+    "", "Last maintenance",
+    ...maintenanceLines(input.view.lastMaintenance).map(line => `  ${line}`),
     "", "Recent diagnostics",
-    ...input.diagnostics.slice(-5).map(note => `  ${note.level}: ${firstLine(note.message)}`),
-  ];
-  return [...summary, ...details, ...last, ...notes, "", `Pi ${VERSION} · budgets are estimates`].join("\n");
-}
-
-function firstLine(message: string): string {
-  const line = message.split("\n")[0] ?? message;
-  return line.length > 160 ? `${line.slice(0, 160)}…` : line;
+    ...notes.map(line => `  ${line}`),
+    "", `Pi ${VERSION} · budgets are estimates`,
+  ].join("\n");
 }

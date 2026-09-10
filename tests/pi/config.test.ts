@@ -52,15 +52,14 @@ test("loaded /nunc command completes details by argument prefix without side eff
     .flatMap(extension => [...extension.commands.values()]).find(command => command.name === "nunc");
   assert(command?.getArgumentCompletions);
   const entries = f.runtime.session.sessionManager.getEntries();
-  const details = { value: "details", label: "details", description: "Show budget and last maintenance details" };
-  const status = { value: "status", label: "status", description: "Text overview without opening the panel" };
-  assert.deepEqual(await command.getArgumentCompletions(""), [details, status]);
+  const details = { value: "details", label: "details", description: "Complete memory, budget, maintenance, and diagnostic report" };
+  assert.deepEqual(await command.getArgumentCompletions(""), [details]);
   assert.deepEqual(await command.getArgumentCompletions(" d"), [details]);
   for (const prefix of ["d", "det", "details"]) {
     assert.deepEqual(await command.getArgumentCompletions(prefix), [details]);
   }
   for (const prefix of ["s", "st", "status"]) {
-    assert.deepEqual(await command.getArgumentCompletions(prefix), [status]);
+    assert.equal(await command.getArgumentCompletions(prefix), null);
   }
   for (const prefix of ["unknown", "details ", "details x", "status "]) {
     assert.equal(await command.getArgumentCompletions(prefix), null);
@@ -69,7 +68,7 @@ test("loaded /nunc command completes details by argument prefix without side eff
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
 });
 
-test("registered /nunc renders a compact summary and opt-in budget details without model calls or transcript changes", async t => {
+test("registered /nunc emits one complete report and treats status as unknown without model calls or transcript changes", async t => {
   const messages: string[] = [];
   const f = await fixture({ extras: [{ name: "capture-nunc-status", factory(pi) {
     pi.events.on("nunc:diagnostic", value => {
@@ -79,18 +78,17 @@ test("registered /nunc renders a compact summary and opt-in budget details witho
   t.after(() => f.close());
   const entries = f.runtime.session.sessionManager.getEntries();
   await f.runtime.session.prompt("/nunc");
-  assert.equal(messages.at(-1), "Memory: 0 slots\nCompaction trigger: 24,000 tokens\nBudget details: /nunc details");
+  const bare = messages.at(-1)!;
   await f.runtime.session.prompt("/nunc details");
-  assert.equal(messages.at(-1), [
-    "Memory: 0 slots", "Compaction trigger: 24,000 tokens", "", "Input budget (tokens)",
-    "  Main admission: 59,999", "  Memory plan: 50,784", "  Maintenance: 50,784", "", "Output reserve (tokens)",
-    "  Main: 8,192", "  Maintenance: 8,192", "  Maintenance output cap: 8,192", "Safety margin: 1,024 tokens",
-    "", "No maintenance record in this context.", "", "Pi 0.85.1 · budgets are estimates",
-  ].join("\n"));
+  const details = messages.at(-1)!;
+  assert.equal(bare, details);
+  assert.match(bare, /Memory: 0 slots/);
+  assert.match(bare, /Maintenance input plan:/);
+  assert.match(bare, /No maintenance record in this context/);
   await f.runtime.session.prompt("/nunc status");
-  assert.equal(messages.at(-1), "Memory: 0 slots\nCompaction trigger: 24,000 tokens\nBudget details: /nunc details");
+  assert.equal(messages.at(-1), "Usage: /nunc [details]");
   await f.runtime.session.prompt("/nunc unknown");
-  assert.equal(messages.at(-1), "Usage: /nunc [status|details]");
+  assert.equal(messages.at(-1), "Usage: /nunc [details]");
   assert.equal(f.faux.state.callCount, 0);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
   f.seed(); f.respond(memoryPatch);
@@ -98,10 +96,10 @@ test("registered /nunc renders a compact summary and opt-in budget details witho
   const saved = f.runtime.session.sessionManager.getEntries();
   const calls = f.faux.state.callCount;
   await f.runtime.session.prompt("/nunc");
-  assert.equal(messages.at(-1), "Memory: 1 slots\nCompaction trigger: 24,000 tokens\nBudget details: /nunc details");
   await f.runtime.session.prompt("/nunc details");
   const accounting = f.events.at(-1)!.result.observations.accounting!;
-  assert(messages.at(-1)!.includes(`Last maintenance (this context)\n  Input estimate: full ${accounting.fullExtractionTokens.toLocaleString("en-US")} → selected ${accounting.extractionTokens.toLocaleString("en-US")}`));
+  assert.equal(messages.at(-1), messages.at(-2));
+  assert(messages.at(-1)!.includes(`Input estimate: full ${accounting.fullExtractionTokens.toLocaleString("en-US")} → selected ${accounting.extractionTokens.toLocaleString("en-US")}`));
   assert.equal(f.faux.state.callCount, calls);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), saved);
 });

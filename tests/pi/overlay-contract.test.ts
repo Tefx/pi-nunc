@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, TuiMainScreen, getKeybindings, setKeybindings, type TUI } from "@earendil-works/pi-tui";
 import { NuncOverlay } from "../../src/ui/overlay.js";
 import { NuncUi } from "../../src/ui/index.js";
+import type { Accounting } from "../../src/engine/index.js";
 import type { ContextView } from "../../src/pi/context.js";
 import type { MemoryView } from "../../src/pi/manual.js";
+import type { DiagnosticNote } from "../../src/ui/status.js";
 
 function clean(lines: string[]): string {
   return lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b_pi:c\x07/g, "");
@@ -44,8 +46,8 @@ function fixture(options: { rows?: number; text?: string; failure?: string; unco
       },
       budget: {
         modelWindow: 10000, triggerTokens: 8000, plannedInputLimit: 8500, mainAdmissionLimit: 9999,
-        memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: 1000,
-        outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: 1000, extractionOutputCapTokens: null, safetyTokens: 500,
+        extractionInputLimit: 7000, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: 1000,
+        outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: 1000, extractionOutputCapTokens: null, extractionOutputCapKnown: true, safetyTokens: 500,
       },
     },
     lastMain: {
@@ -174,7 +176,7 @@ test("injected cancel binding closes browse", () => {
   let closed = false;
   const overlay = new NuncOverlay({
     ctx: f.ctx as never, memory: f.memory as never,
-    context: { read: () => ({ current: { scope: "current", sessionId: "s", leafId: "l", model: null, revision: "old", occupied: false, unconfirmed: false, contextLayout: { slotCount: 2, activeEntries: 0 }, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, memoryLimit: null, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null } } }) } as never,
+    context: { read: () => ({ current: { scope: "current", sessionId: "s", leafId: "l", model: null, revision: "old", occupied: false, unconfirmed: false, contextLayout: { slotCount: 2, activeEntries: 0 }, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, extractionInputLimit: null, memoryLimit: null, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, extractionOutputCapKnown: false, safetyTokens: null } } }) } as never,
     tui: { requestRender() {}, terminal: { rows: 40, columns: 120 } } as TUI,
     theme: f.ctx.ui.theme as never,
     keybindings: new KeybindingsManager(TUI_KEYBINDINGS, { "tui.select.cancel": "q" }),
@@ -196,7 +198,7 @@ test("sync rereads last-main without replacing an edit revision", () => {
 
 test("unconfirmed footer is not a normal percentage", () => {
   const f = fixture({ unconfirmed: true });
-  const ui = new NuncUi({ memory: f.memory as never, context: { read: () => ({ current: { revision: "old", occupied: false, unconfirmed: true, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null }, contextLayout: { slotCount: 2, activeEntries: 0 }, scope: "current", sessionId: "s", leafId: "l", model: null } }) } as never, supported() {} });
+  const ui = new NuncUi({ memory: f.memory as never, context: { read: () => ({ current: { revision: "old", occupied: false, unconfirmed: true, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, extractionInputLimit: null, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, extractionOutputCapKnown: false, safetyTokens: null }, contextLayout: { slotCount: 2, activeEntries: 0 }, scope: "current", sessionId: "s", leafId: "l", model: null } }) } as never, supported() {} });
   ui.attach(f.ctx as never);
   assert.equal(f.statuses.at(-1)?.key, "nunc");
   assert.match(f.statuses.at(-1)?.value ?? "", /nunc !/);
@@ -261,7 +263,7 @@ test("refresh isolates inspector read failures", () => {
     ctx: f.ctx as never, memory: f.memory as never,
     context: { read: () => {
       if (boom) throw new Error("inspector-read-failure");
-      return { current: { scope: "current", sessionId: "s", leafId: "l", model: null, revision: "old", occupied: false, unconfirmed: false, contextLayout: { slotCount: 2, activeEntries: 0 }, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, safetyTokens: null } } };
+      return { current: { scope: "current", sessionId: "s", leafId: "l", model: null, revision: "old", occupied: false, unconfirmed: false, contextLayout: { slotCount: 2, activeEntries: 0 }, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, extractionInputLimit: null, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, extractionOutputCapKnown: false, safetyTokens: null } } };
     } } as never,
     tui: { requestRender() {}, terminal: { rows: 40, columns: 120 } } as TUI,
     theme: f.ctx.ui.theme as never, keybindings: new KeybindingsManager(TUI_KEYBINDINGS),
@@ -486,9 +488,10 @@ test("context abbreviations legend is reachable in panel and explains F, M, R, B
   f.overlay.handleInput("\t"); // switch to Context tab
   assert.equal(f.overlay.tabName, "context");
 
-  // Navigate down to item 3: Legend · abbreviations
+  // Navigate down to Legend · abbreviations (after current, last-main, last-maintenance, Diagnostics)
   f.overlay.handleInput("\x1b[B"); // to last-main
   f.overlay.handleInput("\x1b[B"); // to last-maintenance
+  f.overlay.handleInput("\x1b[B"); // to Diagnostics
   f.overlay.handleInput("\x1b[B"); // to Legend
   const legendPreview = clean(f.overlay.render(90));
   assert.match(legendPreview, /F \(Fixed\)/);
@@ -536,6 +539,111 @@ test("context abbreviations legend is reachable in panel and explains F, M, R, B
   // Esc returns to root level of Context tab
   f.overlay.handleInput("\x1b");
   assert.match(clean(f.overlay.render(90)), /Legend · abbreviations/);
+});
+
+function sampleAccounting(over: Partial<Accounting> = {}): Accounting {
+  return {
+    estimator: "pi-heuristic",
+    outputReserveTokens: 8192,
+    outputCapTokens: 8192,
+    normalHeadroomSufficient: false,
+    suggestedReserveTokens: 20000,
+    inputExceededPlan: true,
+    outputExceededPlan: false,
+    fixedTokens: 100,
+    mainBeforeTokens: 1000,
+    mainInputLimit: 50000,
+    extractionInputLimit: 40000,
+    effectiveTrigger: 24000,
+    memoryLimit: 2000,
+    keepTarget: 1000,
+    keptTokens: 800,
+    fullExtractionTokens: 45000,
+    extractionTokens: 30000,
+    normalExtractionAtTrigger: 41000,
+    mainAfterTokens: 900,
+    memoryTokens: 20,
+    growthTokens: 1024,
+    ...over,
+  };
+}
+
+test("context Budget, Last maintenance accounting, Diagnostics, and warning summary share one view", () => {
+  const f = fixture();
+  const notes: DiagnosticNote[] = [{ level: "warning", message: "Admission CAPACITY\nprivate body" }];
+  let warning: string | undefined = "Admission CAPACITY\nprivate body";
+  const overlay = new NuncOverlay({
+    ctx: f.ctx as never, memory: f.memory as never,
+    diagnostics: () => ({ notes, ...(warning ? { warning } : {}) }),
+    context: { read: () => ({
+      current: {
+        scope: "current" as const, sessionId: "s", leafId: "l",
+        model: { id: "m", provider: "p", api: "openai-completions" }, revision: "old",
+        occupied: false, unconfirmed: false, contextLayout: { slotCount: 2, activeEntries: 0 },
+        layout: {
+          system: { text: "SYSTEM_BODY", tokens: 3 },
+          tools: { count: 1, names: ["tool"], tokens: 4, unknown: false, definitions: [{ name: "tool", description: "Readable tool", parameters: { type: "object" }, tokens: 4, unknown: false }] },
+          memory: { slots: f.view.memory.slots, tokens: 20, envelopeTokens: 1 },
+          messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0,
+          heuristic: { tokens: 27, unknown: false }, associations: [],
+        },
+        budget: {
+          modelWindow: 10000, triggerTokens: 8000, plannedInputLimit: 8500, mainAdmissionLimit: 9999,
+          extractionInputLimit: 40000, memoryLimit: 0, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: 1000,
+          outputCapTokens: null, outputCapKnown: true, extractionOutputTokens: 8192, extractionOutputCapTokens: null, extractionOutputCapKnown: true, safetyTokens: 0,
+        },
+      },
+      lastMaintenance: {
+        scope: "last-maintenance" as const, observedAt: 2, sessionId: "s", leafId: "l",
+        model: { id: "m", provider: "p", api: "openai-completions" }, reason: "threshold", engine: "ok" as const, native: "saved" as const,
+        before: {
+          memory: f.view.memory, entries: [], messages: [],
+          system: { text: "FROZEN_SYS", tokens: 1 },
+          tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] },
+        },
+        cut: { firstKeptEntryId: "keep1", retiredEntryIds: ["b1"], keptEntryIds: ["keep1"] },
+        candidate: { memory: f.view.memory, firstKeptEntryId: "keep1" },
+        after: { memory: f.view.memory, keptEntryIds: ["keep1"] },
+        accounting: sampleAccounting(),
+      },
+    }) } as never,
+    tui: { requestRender() {}, terminal: { rows: 40, columns: 120 } } as TUI,
+    theme: f.ctx.ui.theme as never, keybindings: new KeybindingsManager(TUI_KEYBINDINGS),
+    done() { overlay.dispose(); },
+  });
+  overlay.handleInput("\t");
+  const root = clean(overlay.render(90));
+  assert.match(root, /warning Admission CAPACITY/);
+  assert.match(root, /Diagnostics/);
+  overlay.handleInput("\r");
+  overlay.handleInput("\x1b[B");
+  overlay.handleInput("\x1b[B");
+  overlay.handleInput("\x1b[B");
+  const budget = clean(overlay.render(90));
+  assert.match(budget, /Maintenance input plan: 40,000/);
+  assert.match(budget, /M occupancy: 20 \/ 0/);
+  assert.match(budget, /Main output cap: none/);
+  assert.match(budget, /Maintenance output cap: none/);
+  assert.match(budget, /Safety: 0/);
+  assert.doesNotMatch(budget, /no model/);
+  overlay.handleInput("\x1b");
+  overlay.handleInput("\x1b[B");
+  overlay.handleInput("\x1b[B");
+  const maint = clean(overlay.render(90));
+  assert.match(maint, /Input estimate: full 45,000 → selected 30,000/);
+  assert.match(maint, /Normal-trigger headroom: insufficient; suggest reserveTokens ≥ 20,000/);
+  assert.match(maint, /Over-plan records: input yes \/ output no/);
+  assert.match(maint, /Native save: saved/);
+  overlay.handleInput("\x1b[B");
+  const diagRoot = clean(overlay.render(90));
+  assert.match(diagRoot, /Diagnostics/);
+  assert.doesNotMatch(diagRoot, /private body/);
+  overlay.handleInput("\r");
+  assert.match(clean(overlay.render(90)), /private body/);
+  warning = undefined;
+  overlay.sync();
+  assert.doesNotMatch(clean(overlay.render(90)), /warning Admission CAPACITY/);
+  assert.match(clean(overlay.render(90)), /Admission CAPACITY/);
 });
 
 

@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
-import type { Accounting, FixedContext, MaintenanceResult } from "./engine/index.js";
+import type { FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
@@ -9,7 +9,7 @@ import { eligibleStarts, project, withEffectiveMemory } from "./pi/projection.js
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
 import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
-import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines, statusLines } from "./ui/index.js";
+import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines } from "./ui/index.js";
 
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
 export interface HostSettingsSource { readSettings: () => { compaction: Required<CompactionSettings>; blockImages: boolean } }
@@ -20,9 +20,8 @@ export default function nunc(pi: ExtensionAPI): void {
   let generation = 0;
   let running: AbortController | undefined;
   let hostSettings: HostSettingsSource | undefined;
-  let lastAccounting: Accounting | null = null;
   let headroomWarned = false;
-  const invalidate = () => { generation++; running?.abort(); admission.invalidateUsage(); lastAccounting = null; headroomWarned = false; };
+  const invalidate = () => { generation++; running?.abort(); admission.invalidateUsage(); headroomWarned = false; };
   pi.events.on("nunc:host-settings", (value: unknown) => {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
     invalidate(); hostSettings = value as HostSettingsSource;
@@ -150,10 +149,10 @@ export default function nunc(pi: ExtensionAPI): void {
       // Native Codex OAuth's subscription zero is not an observed USD bill.
       if (model.api === "openai-codex-responses") result.observations.usage.cost = null;
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }
-      lastAccounting = result.observations.accounting;
-      if (lastAccounting && !lastAccounting.normalHeadroomSufficient && !headroomWarned) {
+      const accounting = result.observations.accounting;
+      if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
         headroomWarned = true;
-        notify(ctx, `Normal-trigger extraction estimate ${lastAccounting.normalExtractionAtTrigger} exceeds planned input ${lastAccounting.extractionInputLimit}; consider Pi reserveTokens >= ${lastAccounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance is checked separately; settings were not changed.`);
+        notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds planned input ${accounting.extractionInputLimit}; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance is checked separately; settings were not changed.`);
       }
       if (!result.ok) { notify(ctx, `${result.code}: ${result.message}`); return { cancel: true }; }
       if (controller.signal.aborted || event.signal.aborted || String(generation) !== binding.generation ||
@@ -180,23 +179,18 @@ export default function nunc(pi: ExtensionAPI): void {
       await ui.openOverlay(ctx);
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid configuration"); }
   } });
-  pi.registerCommand("nunc", { description: "Show memory status; /nunc status for text; /nunc details for budgets (no request)",
+  pi.registerCommand("nunc", { description: "Show memory overlay or complete text report (no request)",
     getArgumentCompletions: prefix => commandCompletions(prefix),
     handler: async (args, ctx) => {
     try {
       const mode = args.trim();
-      if (mode && mode !== "details" && mode !== "status") { notify(ctx, COMMAND_USAGE); return; }
+      if (mode && mode !== "details") { notify(ctx, COMMAND_USAGE); return; }
       supported(ctx);
       if (!mode && ctx.mode === "tui") { await ui.openOverlay(ctx); return; }
-      const view = memory.read(ctx);
-      const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd);
-      const config = ctx.model ? engineConfig(selection.config, ctx.model, settings(ctx).compaction) : undefined;
-      if (mode === "details") {
-        const configPath = pi.getFlag("nunc-config");
-        notify(ctx, detailsLines({ view, ctx, configPath: typeof configPath === "string" ? configPath : undefined, compaction: settings(ctx).compaction, lastAccounting, diagnostics: ui.recentDiagnostics().filter(note => note.level !== "info") }), "info");
-        return;
-      }
-      notify(ctx, statusLines(view, config?.triggerTokens), "info");
+      const warning = ui.currentWarning();
+      const report = detailsLines({ view: contextView.read(ctx), diagnostics: ui.recentDiagnostics(), ...(warning ? { currentWarning: warning } : {}) });
+      try { pi.events.emit("nunc:diagnostic", { level: "info", message: report }); } catch { /* Observer only. */ }
+      try { if (ctx.hasUI) ctx.ui.notify(`Nunc: ${report}`, "info"); else console.error(`Nunc: ${report}`); } catch { /* Never fall through to default summary. */ }
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid configuration"); }
   } });
 }

@@ -92,6 +92,13 @@ try {
   p.keys("\t");
   await f.wait(() => /\[Context\]/.test(strip(p.stdout)), "context tab");
   assert.match(strip(p.stdout), /Current projection|Last main|Last maintenance|F |M /);
+  p.keys("\x1b[B");
+  await delay(80);
+  p.keys("\x1b[B");
+  await delay(80);
+  p.keys("\x1b[B");
+  await delay(80);
+  assert.match(strip(p.stdout), /Diagnostics/);
   p.keys("\x1b");
   await delay(80);
   p.keys("\x1b");
@@ -121,12 +128,12 @@ try {
   assert.equal(f.log.filter(e => e.type === "compact").length, 0);
   f.release("main");
   await f.wait(() => f.log.some(e => e.type === "settled"), "inflight settled");
-  await p.send("/nunc status");
-  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Memory:")), "status text");
   await p.send("/nunc details");
-  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Main admission")), "details text");
+  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Maintenance input plan")), "details text");
+  await p.send("/nunc status");
+  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Usage: /nunc [details]")), "unknown status");
   await p.send("/nunc nope");
-  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Usage: /nunc [status|details]")), "unknown usage");
+  await f.wait(() => f.log.some(e => e.type === "diagnostic" && String(e.data.message).includes("Usage: /nunc [details]")), "unknown usage");
   p.keys("\x1b[200~中文粘贴\x1b[201~");
   await delay(150);
   await p.send("/nunc");
@@ -150,6 +157,17 @@ try {
     await short.wait(() => short.log.some(e => e.type === "start" && e.data.mode === "tui"), "short tui start");
     await p2.send("/nunc");
     await short.wait(() => /Nunc/.test(strip(p2.stdout)) && /close|esc|select/i.test(strip(p2.stdout)), "short overlay controls");
+    p2.keys("\t");
+    await delay(200);
+    p2.keys("\x1b[B");
+    await delay(60);
+    p2.keys("\x1b[B");
+    await delay(60);
+    p2.keys("\x1b[B");
+    await delay(80);
+    assert.match(strip(p2.stdout), /Diag/);
+    p2.keys("\t");
+    await delay(80);
     p2.keys("\r");
     await delay(200);
     assert.match(strip(p2.stdout), /save/);
@@ -172,7 +190,8 @@ try {
     slotPaste: true,
     inflightPreserved: true,
     shortScreen: true,
-    commands: ["status", "details", "unknown"],
+    commands: ["details", "status-unknown", "unknown"],
+    diagnosticsNav: true,
     unproven: ["IME candidate window position requires a real terminal/window"],
   };
 } catch (error) {

@@ -1,6 +1,6 @@
 import type { ContextLayout, ContextMessage, ContextView, CurrentContext, LastMainContext, LastMaintenanceContext } from "../pi/context.js";
 import type { Slot } from "../engine/index.js";
-import { thousands } from "./status.js";
+import { budgetLines, firstLine, maintenanceLines, thousands, type DiagnosticNote } from "./status.js";
 
 export interface CtxNode {
   id: string;
@@ -11,12 +11,15 @@ export interface CtxNode {
   children: string[];
 }
 
-export function buildContextNodes(view: ContextView): Map<string, CtxNode> {
+export const CONTEXT_ROOT_IDS = ["scope:current", "scope:last-main", "scope:last-maintenance", "scope:diagnostics", "scope:legend"] as const;
+
+export function buildContextNodes(view: ContextView, diagnostics: readonly DiagnosticNote[] = []): Map<string, CtxNode> {
   const nodes = new Map<string, CtxNode>();
   const add = (node: CtxNode) => { nodes.set(node.id, node); return node.id; };
   add(scopeCurrent(view.current, add));
   add(scopeLastMain(view.lastMain, add));
   add(scopeLastMaintenance(view.lastMaintenance, add));
+  add(scopeDiagnostics(diagnostics, add));
   add(scopeLegend(add));
   return nodes;
 }
@@ -85,6 +88,27 @@ function scopeLastMain(last: LastMainContext | undefined, add: (node: CtxNode) =
     label: "Last main request",
     description: `${last.outcome} ${last.model.id}`,
     preview: lastMainSummary(last),
+    children,
+  };
+}
+
+function scopeDiagnostics(notes: readonly DiagnosticNote[], add: (node: CtxNode) => string): CtxNode {
+  const shown = notes.filter(note => note.level !== "info");
+  if (shown.length === 0) {
+    return { id: "scope:diagnostics", label: "Diagnostics", description: "none", preview: "No recent diagnostics", children: [] };
+  }
+  const children = shown.map((note, index) => add({
+    id: `diag:${index}`,
+    label: note.level,
+    description: firstLine(note.message, 80),
+    preview: note.message,
+    children: [],
+  }));
+  return {
+    id: "scope:diagnostics",
+    label: "Diagnostics",
+    description: String(shown.length),
+    preview: `${shown.length} recent diagnostic${shown.length === 1 ? "" : "s"}`,
     children,
   };
 }
@@ -295,22 +319,12 @@ function payloadPreview(last: LastMainContext): string {
 }
 
 function maintenanceSummary(last: LastMaintenanceContext): string {
-  const when = new Date(last.observedAt).toISOString();
   const cut = last.cut ? `B ${last.cut.retiredEntryIds.length} · K ${last.cut.keptEntryIds.length} · firstKept ${last.cut.firstKeptEntryId}` : "B/K unknown (no extraction cut yet)";
-  const after = last.native === "saved" && last.after ? `native saved · after ${last.after.memory.slots.length} slots` : last.native === "saved" ? "native saved" : `native ${last.native}${last.invalidated ? " · invalidated (no after)" : ""}`;
-  const candidate = last.candidate ? `engine candidate ${last.candidate.memory.slots.length} slots @ ${last.candidate.firstKeptEntryId}` : "no candidate";
   return [
-    `Scope: last-maintenance · ${last.reason ?? "unknown reason"}`,
-    `${last.model.provider}/${last.model.id} (${last.model.api})`,
-    when,
-    `engine ${last.engine ?? "pending"} · ${after}`,
-    candidate,
+    ...maintenanceLines(last),
     cut,
     `before M ${last.before.memory.slots.length} slots · ${last.before.messages.length} messages`,
-    last.accounting ? `accounting extraction ${last.accounting.extractionTokens} / plan ${last.accounting.extractionInputLimit}` : "",
-    last.code ? `${last.code}: ${last.message ?? ""}` : "",
-    last.native !== "saved" ? "Candidate success is not a native save." : "",
-  ].filter(Boolean).join("\n");
+  ].join("\n");
 }
 
 function bars(current: CurrentContext): string {
@@ -349,26 +363,11 @@ function memoryLine(current: CurrentContext): string {
 }
 
 function budgetPreview(current: CurrentContext): string {
-  const b = current.budget;
-  return [
-    `model window ${nullLabel(b.modelWindow)}`,
-    `H / trigger ${nullLabel(b.triggerTokens)}`,
-    `planned input ${nullLabel(b.plannedInputLimit)}`,
-    `main admission ${nullLabel(b.mainAdmissionLimit)}`,
-    `M budget ${b.memoryUnknown ? "unknown" : nullLabel(b.memoryLimit)} occupied ${b.memoryOccupied === null ? "unknown" : thousands(b.memoryOccupied)}`,
-    `output reserve ${nullLabel(b.outputReserveTokens)}`,
-    `output cap ${b.outputCapKnown ? (b.outputCapTokens === null ? "none" : nullLabel(b.outputCapTokens)) : "not observed"}`,
-    `extraction output ${nullLabel(b.extractionOutputTokens)} cap ${b.extractionOutputCapTokens === null ? "none" : nullLabel(b.extractionOutputCapTokens)}`,
-    `safety ${nullLabel(b.safetyTokens)}`,
-  ].join("\n");
+  return budgetLines(current).join("\n");
 }
 
 function countsPreview(layout: ContextLayout): string {
   return `${layout.messageCount} messages / ${layout.blockCount} blocks\npackaging ${thousands(layout.packagingTokens)} · extra input ${thousands(layout.extraInputTokens)}\nheuristic ${tokenLabel(layout.heuristic.tokens, layout.heuristic.unknown)}`;
-}
-
-function nullLabel(value: number | null): string {
-  return value === null ? "unknown" : thousands(value);
 }
 
 function scopeLegend(add: (node: CtxNode) => string): CtxNode {
