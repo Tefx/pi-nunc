@@ -55,21 +55,23 @@ context: "当前授权为用户『更新文档，然后创建实施计划』：�
   \ docs/DEVELOPMENT.md 的已见同目标准备方式进行，禁止全局导入、自动工具链升级或把安装藏进检查。这次规划不执行 setup。新检查纳入跟踪\
   \ scripts/check.mjs all，可从 clean checkout 加声明的锁定开发依赖重现；all 使用构造的 offline HOME/agent\
   \ 环境，原生 TUI 依赖显式存在。完整库存随代码演化，不固定历史测试数。"
-project_guidance: 'Current user authorization: refresh and restructure README into
-  English for the implemented pi-nunc design and usage, then create public GitHub
-  repository tefx/pi-nunc and push. Execute github-publication automatically through
-  Orchestrator. This supersedes historical planning-only/no-push guidance solely for
-  this named task and target; completed definitions/evidence stay immutable. Preserve
-  unrelated files, local sessions/settings, secrets, other projects and retained worktrees.
-  No npm publication, deployment, global installation or new paid model calls. Node
-  owner delivers documentation candidate with source-grounded usage and offline proof;
-  DevOps owns the distinct GitHub transaction. Orchestrator judges documentation completion
-  and final task acceptance from the integrated candidate, applicable full offline
-  checks, safe publication preflight and GitHub readback. Use the named step owners
-  without ordinary reranking. Git history and tracked operational metadata must be
-  assessed before public exposure; publish only the reviewed main branch, never all
-  local branches/tags by default. Secrets or unrelated private content block push
-  until reconciled; do not rewrite history or discard user work silently.'
+project_guidance: 'Current user authorization: accepted the reporting/panel design
+  and requested 更新文档、指定方案并实施. Execute nunc-reporting through Orchestrator; its single
+  implementation owner is node-typescript-engineer. The new phase contract supersedes
+  historical planning-only instructions and old /nunc status / three-line fallback
+  compatibility solely for these accepted changes. Historical GitHub publication and
+  live-model permissions do not authorize new effects for this task. Preserve all
+  completed phase/step definitions, statuses, evidence and history; retained worktrees
+  and unrelated local work remain untouched. Only pi-nunc source/tests/necessary tracked
+  runners/docs may change, with isolated offline stock-host fixtures. No global installation/configuration,
+  host patch, external repository edits, GitHub push/publication, paid/live model
+  calls or actual credentials. Protect managed Plan state, .pi/, .agents/, plan-dashboard.html,
+  secrets and daily sessions/settings/defaults. Orchestrator owns claims, integration
+  and final integrated acceptance within nunc.reporting completion: full applicable
+  project-native offline inventory on the final candidate, meaningful affected command/report/lifecycle
+  checks and real stock PTY/TUI browsing evidence. Reuse applicable underlying evidence;
+  historical IME confirmation applies only where editor geometry/behavior is unchanged.
+  No documentation-first producer or duplicate acceptance node.'
 clipboard:
   author: vectl-orchestrator
   summary: Gemini Flash费用无限额授权；继续extraction真实比较
@@ -3125,3 +3127,119 @@ phases:
       src/pi/payload.ts, tests/pi/fixtures.ts edits and untracked tests/pi/payload-instructions.test.ts
       preserved and excluded. Final lifecycle-only commit may be synchronized separately;
       no product changes or broader branch/tag publication authorized by completion.
+- id: nunc-reporting
+  name: 统一只读报告与 Slots/Context 状态补全
+  status: pending
+  context: 用户已接受最终设计并明确要求更新文档、指定方案并实施。一个可独立验收的交付：统一 /nunc 文字报告与现有 Slots/Context 面板状态来源并补齐展示。命令/布局/数据流/回归与
+    README、UI、PI、DEVELOPMENT 文档在同一 Nunc 仓库事务完成；没有独立文档、观察或接受消费者，最终整合接受归 Orchestrator
+    的 nunc.reporting 完成程序。全部既有 DONE 历史保留；本阶段仅覆盖新接受的命令兼容变更和报告/面板补全，继承其余当前核心、provider、admission、capacity、manual-save
+    与编辑器保护。既有发布/付费权限不用于本阶段。
+  depends_on:
+  - nunc-ui
+  - nunc-host-prompt-compat
+  steps:
+  - id: nunc.reporting
+    name: 统一完整文字报告并补全面板预算、维护与 Diagnostics
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"src/ui/**\", \"src/pi/**\", \"tests/**\"\
+      , \"scripts/**\", \"README.md\", \"docs/UI.md\", \"docs/PI.md\", \"docs/DEVELOPMENT.md\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
+      .pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver:\
+      \ 完整实现用户已接受的只读报告与面板方案，并同步必要文档。删除 /nunc status 命令、补全和 alias；status 按未知参数显示用法。仅\
+      \ ctx.mode === tui 的 bare /nunc 打开现有 overlay，默认 Slots；非 TUI bare /nunc 与任意模式\
+      \ /nunc details 输出同一完整文字报告。保留 F7 当前行为，RPC hasUI 不表示可以开 TUI。参数补全与 usage 准确对应唯一\
+      \ details 子命令，未知参数不触发面板或模型。\n\n面板状态摘要完整显示 slots、M 预算占用、occupied/unconfirmed\
+      \ 与当前 warning 摘要。保留且仅保留 Slots、Context 两个 tabs。Context 的 Current projection/Budget\
+      \ 包含全部当前预算，补齐维护输入规划，并清楚区分模型窗口、H、main admission、memory/input plan、M 占用、主/维护输出预留、cap\
+      \ 与 safety；unknown、无模型和 uncapped 与已知零值不能混淆。Last maintenance 补齐 full→selected\
+      \ 输入估算、normal-trigger headroom/advice、input/output over-plan，保留实际模型、观察时间与范围、engine\
+      \ candidate/原生 saved/pending/failed 的区别。Context 根级增加可浏览的 recent Diagnostics\
+      \ 节点，完整文字报告包含上述状态、预算、最近维护和诊断事实；继续有界诊断与现有隐私保护，不能把报告自身作为新警告或反复回显放大。当前状态与历史观察清楚分开，正常触发建议仍为\
+      \ advisory，不更改 settings、预算政策或准入。\n\n面板和文字使用共享预算/维护/诊断来源，消费现有 ContextSurface/LastMaintenanceContext.accounting\
+      \ 与 UI 诊断/当前警告的生命周期语义；消除 src/index.ts 独立 lastAccounting 报告副本和文字报告独立配置/预算 reread\
+      \ 路径。不得新增持久化日志、状态存储或另一份 M/预算器。读取视图、命令和浏览不发模型请求、不触发 compaction、不发 user prompt、不\
+      \ append session entry；现有用户明确编辑/保存的原生写入仍保留。共享来源需在模型/路径/session/reload、维护终态与\
+      \ warning 恢复时保持一致与正确作用域，未知观察不成为合法请求的新拒绝理由。\n\n同步 README.md、docs/UI.md、docs/PI.md、docs/DEVELOPMENT.md\
+      \ 中实际受影响的命令、显示、数据来源和验证工作流，明确本次接受的 status 删除与完整文字 fallback 替代旧兼容描述；其余已接受产品/架构合同不变。不把文档关键词或自报\
+      \ PASS 当行为证明。\n\nBoundary: node-typescript-engineer 持有这一原生 Node/Pi TUI 与只读报告交付；source、meaningful\
+      \ tests、必要 tracked runner 和 docs 是同一可 Git 回退事务。仅授权 pi-nunc 仓库和新隔离合成 session/profile/loopback\
+      \ 的本地离线验证；保留所有 retained worktrees、daily sessions/settings/defaults、秘密与外部项目。禁止全局安装、host\
+      \ patch、替代 launcher、外部 repo 修改、push/publication、付费/live 模型或真实凭据。保持 manual edit/save/revision/concurrency/unconfirmed、IME/native\
+      \ editor/keybinding/focus/draft/queue 行为，保持 provider 委托/组合、one-shot maintenance、输出/媒体/tool/admission/capacity\
+      \ 现行不变量。只读行为测试不能通过禁用实际 seam 达成零效果。\n\nAdmit: 消费已交付的 UI/Context/manual-save 与现行\
+      \ host compatibility；以当前源和锁定 Pi 0.85.1 接口为准。下列 refs 是已有实现和证明入口，用户本次明确要求覆盖其旧命令描述。owner\
+      \ 可在同一步选择最小内部实现、同目标准备与修复；受影响行为和新增 stock TUI 观测须落入 tracked tests/runner 并加入现有\
+      \ all inventory。真实 PTY/TUI 验证 bare command、details、status/unknown、Diagnostics\
+      \ 导航与 compact/short 布局；组件与生命周期测试证明共享预算/advice/diagnostic 数据及重置、模型/时间作用域、engine/native-save\
+      \ 区别和无副作用，不能只测试字符串模板。\n\nFinal acceptance: Orchestrator 在本步骤完成程序承担本次唯一最终整合接受，scope\
+      \ 为 nunc-reporting 的全部新要求与其依赖的既有 Slots/Context/manual-memory、provider/admission/capacity\
+      \ 和当前 host compatibility 不变量。绑定最终整合不可变候选，消费完整适用项目原生离线 all 库存、受影响真实 stock PTY/TUI\
+      \ 与数据流/生命周期证明，判断覆盖、跨表面一致、无效果约束、兼容边界与清理。有效历史模型/编辑器证据按相关输入复用；编辑器 geometry/行为未改无需重复历史人工\
+      \ IME 确认，浏览布局变更必须有本次 stock TUI 证据。若改变 IME/编辑器 geometry/行为且自动化无法证明，用户需针对该最终候选提供真实\
+      \ host IME 观察；仅该必要人工条件阻塞相应接受，agent-obtainable proof 仍由本 owner 完成，不建 human-wait\
+      \ 节点。无阻断缺陷、必要失败或必要未证明方可完成并宣布本次成果通过；接受不授权发布或 live effects。\n\nRecovery: 本未完成\
+      \ writable owner 原位吸收兼容实现/测试/docs 修复；缺报告修报告、缺观测补观测。保留有用候选与证据，终止并清理本次测试进程/隔离状态，不动\
+      \ retained/user 状态；不因失败、重试或证据格式另建节点。若出现新效果/保护边界或已完成 producer 的真实不可吸收缺口，先核对并交\
+      \ Orchestrator/Planner 处理；不改 completed history。"
+    verification: "```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version:\
+      \ 11.19.0\n  stock_pi_version: 0.85.1\n  dependency_manifest: package.json\n\
+      \  dependency_lock: package-lock.json\n  runtime_declaration: .node-version\n\
+      \  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache,\
+      \ npm_config_ignore_scripts=true, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n  tui_python_argv: [/usr/bin/python3]\n\
+      \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n  comparison_baseline:\
+      \ .scratch/baseline-70dacad\n  setup_reference: docs/DEVELOPMENT.md\nchecks:\n\
+      \  - id: reporting-final-integrated-offline\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers:\n      - tui-only-bare-command-default-Slots-and-unchanged-F7\n\
+      \      - identical-complete-nonTUI-bare-and-all-mode-details-report\n      -\
+      \ removed-status-no-alias-completion-and-unknown-usage\n      - read-only-zero-model-compaction-user-prompt-session-entry-effects\n\
+      \      - shared-current-budgets-maintenance-input-plan-M-occupancy-warning-summary\n\
+      \      - full-selected-headroom-advice-overplan-model-time-engine-native-scope\n\
+      \      - recent-Diagnostics-root-navigation-and-shared-warning-recovery\n  \
+      \    - lifecycle-model-session-path-reload-reset-and-observation-applicability\n\
+      \      - stock-PTY-TUI-commands-Diagnostics-and-compact-short-layout\n     \
+      \ - preserved-manual-save-concurrency-editor-draft-queue-provider-admission-capacity\n\
+      \      - complete-project-native-engine-pi-live-offline-inventory-and-type-build\n\
+      ```\nRun from the assigned checkout with locked development dependencies. Setup\
+      \ is separate from checks; reuse applicable existing environment and the documented\
+      \ clean/built baseline when it meets the baseline contract, rather than recreating\
+      \ retained worktrees. A clean checkout must be reproducible through docs/DEVELOPMENT.md's\
+      \ declared setup including the baseline; missing prerequisites are explicit\
+      \ failures, never skipped checks or global installs. Any necessary added behavioral\
+      \ checks and observation logic belong to tracked producer source/tests/runner\
+      \ and are discovered by all.\n\nOwner supplies actual behavior/stock-host evidence\
+      \ and cleanup outcomes. Orchestrator consumes full applicable all evidence on\
+      \ the final integrated candidate, reruns affected proof when source/lock/config/integration\
+      \ invalidates it, and judges every material accepted requirement. Valid unaffected\
+      \ observations may be reused; component PASS alone does not establish final\
+      \ acceptance. Historical IME evidence is applicable only to unchanged editor\
+      \ geometry/behavior. No fresh paid/live model or daily credential observation\
+      \ is authorized."
+    refs:
+    - README.md
+    - docs/UI.md
+    - docs/PI.md
+    - docs/DEVELOPMENT.md
+    - docs/ENGINE.md
+    - docs/DESIGN.md
+    - src/index.ts
+    - src/ui/status.ts
+    - src/ui/index.ts
+    - src/ui/context-tree.ts
+    - src/ui/overlay.ts
+    - src/pi/context.ts
+    - src/pi/manual.ts
+    - tests/pi/config.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/overlay.test.ts
+    - tests/pi/overlay-contract.test.ts
+    - tests/pi/ui-panel.test.ts
+    - scripts/observe-ui.mjs
+    - scripts/check.mjs
+    - scripts/pty-driver.py
+    - package.json
+    - package-lock.json
+    - .node-version
+    agent: node-typescript-engineer
