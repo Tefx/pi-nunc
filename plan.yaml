@@ -3657,3 +3657,38 @@ phases:
     Gemini（禁止 Astra）且有可重现的工具调用与任务续做行为证据。
   context: 基于 docs/MEMORY-GUIDANCE.md 规范，落实 nunc_memory_read / nunc_memory_patch 的防滥用与过时处理指导说明，以及
     policies/default.md 中关于行动步骤顺序条件与诊断精度的两处提取策略补充。验证严格遵守 Gemini-only 限制，严禁使用 Astra。
+  steps:
+  - id: nunc.memory-guidance-implementation
+    name: 落实记忆工具说明与提取策略优化及离线机械回归
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"policies/default.md\", \"tests/**\",\
+      \ \"docs/**\", \"README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".pi/**\", \".agents/**\", \".scratch/baseline-70dacad/**\"\
+      ]\n\nDeliver: 依据 docs/MEMORY-GUIDANCE.md 实施文本修改：\n1. src/index.ts：\n   - nunc_memory_read\
+      \ 描述增加按需读取、普通轮次无需例行调用、笔记可能过时且不覆盖当前指令、writable 不保证 patch 成功、null 预算表示未知。\n  \
+      \ - nunc_memory_patch 描述明确仅存继续任务有价值的简洁决策/理由/未完工作/阻塞/恢复入口、标注推测/未完成、优先更新去重清理失效、不记流水账/原始输出/凭证、笔记不授予权限且不覆盖指令；revision\
+      \ 冲突先 reread+reconcile 再重试，unconfirmed 绝不自动重放；update 参数说明整条正文替换并保留仍有效内容与 ID/位置；remove\
+      \ 参数说明仅当前 M 删除、不擦除历史。\n2. policies/default.md：\n   - 在已有的未完成义务条目下补充：Preserve\
+      \ the next actionable step and any ordering, dependency, or wait condition needed\
+      \ to resume correctly; do not invent a plan.\n   - 在已有的恢复入口条目下补充：Preserve exact\
+      \ error messages, commands, identifiers, and values when they distinguish the\
+      \ failure or recovery action; omit incidental logs.\n   - 保持所有不变量：不增加固定标题或 slot\
+      \ 数量限制，不累积全量文件操作列表，不依赖主 agent 先记笔记，机器合同（add/remove/priority/required）与预算逻辑严格不变。\n\
+      3. 同步更新相关测试断言（如 tests/pi/active-memory.test.ts 中精确匹配工具 description 的断言）。\n\n\
+      Verification:\n- npm run build 编译成功\n- /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1\
+      \ PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 /opt/homebrew/bin/node scripts/check.mjs\
+      \ all 全量离线通过（513+ 项）\n- /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1\
+      \ PI_TELEMETRY=0 HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts\
+      \ /opt/homebrew/bin/node --test dist/tests/pi/larva.integration.js 通过\n注意：离线受控测试仅证明接口契约与宿主状态机逻辑，不证明真实模型语义质量。"
+    verification: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1
+      PI_TELEMETRY=0 /opt/homebrew/bin/node scripts/check.mjs all
+    refs:
+    - docs/MEMORY-GUIDANCE.md
+    - src/index.ts
+    - policies/default.md
+    - tests/pi/active-memory.test.ts
+    - docs/ACTIVE-MEMORY.md
+    - docs/POLICY.md
+    agent: node-typescript-engineer
