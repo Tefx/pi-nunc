@@ -3784,7 +3784,7 @@ phases:
     agent: general
   - id: nunc.memory-guidance-observation-support
     name: 交付工作记忆八类行为的跟踪场景与原生观察能力
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/**\", \"scripts/**\", \"docs/**\"\
       , \"examples/**\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
@@ -3849,3 +3849,5 @@ phases:
     depends_on:
     - nunc.memory-guidance-implementation
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-11T17:19:53.634180Z'
