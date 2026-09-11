@@ -3900,7 +3900,7 @@ phases:
       consumer contract by Planner. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/memory-guidance-execution/observation-support/helpers'
   - id: nunc.memory-guidance-runner-repair
     name: 修复有效 M 提取证明与原生观察资格报告
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/**\", \"scripts/**\", \"docs/**\"\
       , \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -3958,3 +3958,20 @@ phases:
     agent: principal-engineer
     claimed_by: principal-engineer
     claimed_at: '2026-09-11T19:39:48.710559Z'
+    done_at: '2026-09-11T19:54:57.506184+00:00'
+    evidence: Integrated exact dfddbc76e7e28ca332ea71fcb4b0668b2d63c47a via checked
+      fast-forward from basis2ba31fc72a663d31c99237e47ae9e8fe62652dbd; rebase unchanged,
+      retained refs/retained/nunc-guidance-runner-repair. Parent inspected effective-M
+      project(beforeActive) selection with exactly one F/M and independent unchanged
+      B/K comparison, final changed paths and all log. Final offline528/528 across63files;
+      public native manual-M revisions/first checkpoint/kept obsolete carriers and
+      missing/wrong source negatives reported, g4/g8 controlled continuation reached.
+      Larva8 reused from takeover-larva-1.log because related code/config/deps/tests
+      unchanged; no fresh execution claim. g6 inequality H<U and F>H proves conditional
+      infeasibility; no padding/budget/core modifications. Result .scratch/memory-guidance-execution/runner-repair/result.md
+      and check-all.log. Clean worktree/no matching processes observed. Four changed
+      files only runner/tests/LIVE docs. Worktree retained for native reports/sessions
+      run-Ew0hJh and run-WQb2iF pending downstream consumer/reconciliation. No live
+      calls or original Gemini report edits. Original eval remains incomplete; limited
+      important-behavior judgment and causally justified scoped Gemini observation
+      next.
