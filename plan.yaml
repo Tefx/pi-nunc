@@ -3900,7 +3900,7 @@ phases:
       consumer contract by Planner. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/memory-guidance-execution/observation-support/helpers'
   - id: nunc.memory-guidance-runner-repair
     name: 修复有效 M 提取证明与原生观察资格报告
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/**\", \"scripts/**\", \"docs/**\"\
       , \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -3956,3 +3956,5 @@ phases:
     depends_on:
     - nunc.memory-guidance-observation-support
     agent: principal-engineer
+    claimed_by: principal-engineer
+    claimed_at: '2026-09-11T19:39:48.710559Z'
