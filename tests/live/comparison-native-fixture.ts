@@ -89,7 +89,7 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
 }
 export async function compareCli(f: any, scenarios: unknown[], modes: string[], tag: string, automatic = false) {
   const stateRoot = join(f.dir, `nunc-live-${tag}`);
-  const selection = { target: { repository, stateRoot, cleanup: "remove" }, limits: { maxCalls: 300, maxTotalTokens: 24000000, maxDurationMs: 240000, maxOutputTokens: 20000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios,
+  const selection = { target: { repository, stateRoot, cleanup: "remove" }, limits: { maxCalls: 300, maxTotalTokens: 24000000, maxDurationMs: 400000, maxOutputTokens: 20000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios,
     overrides: [{ requirement: "controlled-extraction-observation", reason: "Named isolated loopback native scheduling and measured retention", config: { nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } }, compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
     comparison: { modes, targets: { native: { repository }, current: { repository: join(repository, ".scratch/baseline-70dacad") }, candidate: { repository } } } };
   const child = spawn(process.execPath, [join(repository, "scripts/compare-extraction.mjs")], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"] });

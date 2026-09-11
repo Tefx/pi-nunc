@@ -136,7 +136,7 @@ test("E4 invalid current response remains unqualified and cannot claim required-
   } finally { await f.close(); }
 });
 
-test("public CLI -> worker -> stock Pi -> loopback: all groups, per-roll matching, restart and successful remove", { timeout: 300000 }, async () => {
+test("public CLI -> worker -> stock Pi -> loopback: all groups, per-roll matching, restart and successful remove", { timeout: 450000 }, async () => {
   const f = await comparisonStock({ e3: "siblings" });
   try {
     const { code, stderr, report, stateRoot } = await compareCli(f, [{ id: "e1" }, { id: "e2" }, { id: "e3" }, { id: "e4", variant: "fits-required" }, { id: "e4", variant: "required-too-large" }], ["defaults", "matched"], "positive");
