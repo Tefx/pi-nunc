@@ -3267,7 +3267,7 @@ phases:
       model effects.'
 - id: nunc-larva-prompt
   name: Nunc 请求级 Larva 指令桥接（等待用户调度）
-  status: pending
+  status: in_progress
   gate: 用户明确调度且 Larva 输入可用后执行。最终候选完整 all 与真实 Larva 组合证明覆盖 docs/LARVA-PROMPT.md 全部新合同及依赖不变量，无阻断缺陷或必要未证明才可接受。历史
     overflow 未完成原因独立披露，不宣称全部 CAPACITY 已修复。
   context: 仅规划。用户将在 Larva 就绪后再次明确调度；设计收到不代表实施或真实验证授权。用户供应实际 v1 实现及声明依赖，Nunc owner
@@ -3278,7 +3278,7 @@ phases:
   steps:
   - id: nunc.larva-prompt
     name: 实现请求局部指令解析、预算收据绑定与真实 Larva 组合验收
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/**\", \"src/ui/**\", \"src/index.ts\", \"tests/**\"\
       , \"scripts/**\", \"docs/**\", \"README.md\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -3377,6 +3377,8 @@ phases:
     - package-lock.json
     - .node-version
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-11T07:38:51.151437Z'
 - id: nunc-active-memory
   name: 主动 CRUD、唯一尾置 M 与 receipt 适配
   status: locked
