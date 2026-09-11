@@ -2,6 +2,7 @@ import { test } from "node:test";
 import { semanticEvidence } from "../../src/live/scenarios.js";
 import assert from "node:assert/strict";
 import { legalCuts, mainContext, maintain } from "../../src/engine/index.js";
+import { reduceToolBodies } from "../../src/engine/request.js";
 import type { ActiveEntry } from "../../src/engine/index.js";
 import { answer, assistant, input, noChange, responder, sourceRecords, tool, user } from "./fixtures.js";
 
@@ -61,6 +62,8 @@ const invalidSources: ActiveEntry[][] = [
   [assistant("a", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("r", "x", "out", "write")],
   [assistant("a", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("r", "x", "out"), tool("r2", "x", "duplicate")],
   [user("u", "u"), assistant("a", [{ type: "toolCall", id: "x", name: "read", arguments: {} }])],
+  [assistant("a", [{ type: "toolCall", id: "x", name: "read", arguments: {} }, { type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("r", "x", "out")],
+  [assistant("a1", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), assistant("a2", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("r", "x", "out")],
   [user("dup", "u"), user("dup", "u")],
   [{ entryId: "empty", sourceRole: "custom", messages: [] }, user("u", "u")],
 ];
@@ -158,4 +161,75 @@ test("unsupported block and old compaction in R fail explicitly", async () => {
   const result = await maintain(source, responder()); assert(!result.ok); assert.equal(result.code, "UNSUPPORTED_INPUT");
   Object.assign(source.active[2]!, { sourceRole: "compaction" });
   const old = await maintain(source, responder()); assert(!old.ok); assert.equal(old.code, "INPUT");
+});
+
+test("sequential completed tool calls can reuse the same tool call ID across turns without breaking maintenance or cut legality", async () => {
+  const source = await input();
+  source.config.keepRecentFraction = 0.35;
+  source.active = [
+    user("u1", "First turn inquiry: " + "a".repeat(1000)),
+    assistant("a1", [{ type: "toolCall", id: "call1", name: "read", arguments: { path: "first.txt" } }]),
+    tool("r1", "call1", "First result body: " + "1".repeat(500)),
+    assistant("ans1", [{ type: "text", text: "First turn complete." }]),
+    user("u2", "Second turn inquiry: " + "b".repeat(1000)),
+    assistant("a2", [{ type: "toolCall", id: "call1", name: "read", arguments: { path: "second.txt" } }]),
+    tool("r2", "call1", "Second result body: " + "2".repeat(500)),
+    assistant("ans2", [{ type: "text", text: "Second turn complete." }]),
+    user("latest", "Third turn recent instructions: " + "c".repeat(500)),
+  ];
+
+  const cuts = legalCuts(source.active);
+  // Entry indices:
+  // 0: u1, 1: a1, 2: r1, 3: ans1, 4: u2, 5: a2, 6: r2, 7: ans2, 8: latest
+  // Legal cut boundaries where pending.size === 0:
+  // After r1 (before ans1, index 3), before u2 (index 4), after ans1 (before u2),
+  // after r2 (before ans2, index 7), before latest (index 8).
+  // Indices 1 (between u1 and a1) is pending 0, so cut at 1.
+  // Neither index 2 (inside call1 pair 1) nor index 6 (inside call1 pair 2) may be cuts!
+  assert(!cuts.includes(2), "cut cannot separate a1 call from r1 result");
+  assert(!cuts.includes(6), "cut cannot separate a2 call from r2 result");
+  assert(cuts.includes(3), "cut after completed first tool call pair is legal");
+  assert(cuts.includes(4), "cut between turns is legal");
+  assert(cuts.includes(7), "cut after completed second tool call pair is legal");
+  assert(cuts.includes(8), "cut before latest user is legal");
+
+  const result = await maintain(source, async request => {
+    const records = sourceRecords(request.context);
+    const r1 = records.find(r => r.entryId === "r1");
+    const r2 = records.find(r => r.entryId === "r2");
+    assert(r1 && r2, "both tool result occurrences must be in transcript");
+    const a1 = records.find(r => r.entryId === "a1");
+    const a2 = records.find(r => r.entryId === "a2");
+    assert.deepEqual((a1?.messages[0]?.content as any[])?.find(b => b.type === "toolCall")?.arguments, { path: "first.txt" });
+    assert.deepEqual((a2?.messages[0]?.content as any[])?.find(b => b.type === "toolCall")?.arguments, { path: "second.txt" });
+    return responder()(request);
+  });
+  assert(result.ok, result.ok ? "" : result.message);
+  assert(result.candidate.kept.length > 0);
+  assert(!result.candidate.retiredEntryIds.includes("r2"), "recent second tool pair retained");
+});
+
+test("tool reduction preserves distinct omissions when multiple tool results reuse the same call ID", async () => {
+  const source = await input();
+  const giant1 = "AAAA" + "1".repeat(320000) + "ZZZZ";
+  const giant2 = "BBBB" + "2".repeat(320000) + "YYYY";
+  source.active = [
+    user("u1", "Start task"),
+    assistant("a1", [{ type: "toolCall", id: "shared-id", name: "read", arguments: { path: "one.txt" } }]),
+    tool("r1", "shared-id", giant1),
+    assistant("ans1", [{ type: "text", text: "Finished one." }]),
+    user("u2", "Next task"),
+    assistant("a2", [{ type: "toolCall", id: "shared-id", name: "read", arguments: { path: "two.txt" } }]),
+    tool("r2", "shared-id", giant2),
+    user("latest", "Keep recent work"),
+  ];
+  const { source: reduced, omissions } = reduceToolBodies(source.active, 200);
+  assert.equal(omissions.length, 2);
+  assert.equal(omissions[0]?.entryId, "r1");
+  assert.equal(omissions[0]?.toolCallId, "shared-id");
+  assert.equal(omissions[1]?.entryId, "r2");
+  assert.equal(omissions[1]?.toolCallId, "shared-id");
+  assert.notEqual(omissions[0]?.entryId, omissions[1]?.entryId);
+  assert.equal(omissions[0]?.omittedCodePoints, giant1.length - 400);
+  assert.equal(omissions[1]?.omittedCodePoints, giant2.length - 400);
 });

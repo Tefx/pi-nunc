@@ -105,6 +105,53 @@ test("current F/M/R counts, tool association, packaging, and long bodies stay or
   assert.notEqual(imaged.current.layout.heuristic.tokens, 0);
 });
 
+test("context layout links each occurrence of repeated tool call IDs to its own call and result order", async t => {
+  const { f, context, ctx } = await prepared(t);
+  const manager = f.runtime.session.sessionManager;
+  // Turn 1
+  manager.appendMessage({ role: "user", content: "Inspect first file", timestamp: 1 });
+  manager.appendMessage({
+    ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+    content: [{ type: "toolCall", id: "t1", name: "read", arguments: { path: "alpha.txt" } }],
+  });
+  manager.appendMessage({
+    role: "toolResult", toolCallId: "t1", toolName: "read",
+    content: [{ type: "text", text: "alpha body" }], isError: false, timestamp: 2,
+  });
+  manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "stop", content: [{ type: "text", text: "Finished alpha." }] });
+  // Turn 2: reuses same toolCall id "t1"
+  manager.appendMessage({ role: "user", content: "Inspect second file", timestamp: 3 });
+  manager.appendMessage({
+    ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+    content: [{ type: "toolCall", id: "t1", name: "read", arguments: { path: "beta.txt" } }],
+  });
+  manager.appendMessage({
+    role: "toolResult", toolCallId: "t1", toolName: "read",
+    content: [{ type: "text", text: "beta body" }], isError: false, timestamp: 4,
+  });
+  manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "stop", content: [{ type: "text", text: "Finished beta." }] });
+
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  const view = context().read(ctx());
+  const associations = view.current.layout.associations.filter(item => item.toolCallId === "t1");
+  assert.equal(associations.length, 2, "must produce distinct association for each completed occurrence");
+
+  const [firstAssoc, secondAssoc] = associations;
+  assert(firstAssoc && secondAssoc);
+  assert.notEqual(firstAssoc.callOrder, secondAssoc.callOrder, "call orders must differ");
+  assert.notEqual(firstAssoc.resultOrder, secondAssoc.resultOrder, "result orders must differ");
+
+  const call1 = view.current.layout.messages[firstAssoc.callOrder]!;
+  const res1 = view.current.layout.messages[firstAssoc.resultOrder]!;
+  assert.equal((call1.blocks.find(b => b.type === "toolCall")?.arguments as any)?.path, "alpha.txt");
+  assert.equal(res1.blocks.find(b => b.type === "text")?.text, "alpha body");
+
+  const call2 = view.current.layout.messages[secondAssoc.callOrder]!;
+  const res2 = view.current.layout.messages[secondAssoc.resultOrder]!;
+  assert.equal((call2.blocks.find(b => b.type === "toolCall")?.arguments as any)?.path, "beta.txt");
+  assert.equal(res2.blocks.find(b => b.type === "text")?.text, "beta body");
+});
+
 test("manual M revision matches the memory surface; model change keeps last-main labels", async t => {
   const admissions: AdmissionObservation[] = [];
   const { f, memory, context, ctx } = await prepared(t, {}, admissions);

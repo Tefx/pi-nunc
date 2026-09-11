@@ -83,7 +83,7 @@ function validateMessage(value: unknown, where: string): asserts value is Messag
 /** Validate all associations, then expose entry boundaries with no crossing calls. */
 export function legalCuts(active: ActiveEntry[]): number[] {
   requireThat(Array.isArray(active) && active.length > 0, "INPUT", "No active visible history");
-  const entries = new Set<string>(), seenCalls = new Set<string>();
+  const entries = new Set<string>();
   const pending = new Map<string, string>();
   const cuts: number[] = [];
   for (const [index, entry] of active.entries()) {
@@ -96,8 +96,8 @@ export function legalCuts(active: ActiveEntry[]): number[] {
       validateMessage(message, entry.entryId);
       if (message.role === "assistant") {
         for (const block of message.content) if (block.type === "toolCall") {
-          requireThat(!seenCalls.has(block.id), "INPUT", `Duplicate tool call ${block.id}`);
-          seenCalls.add(block.id); pending.set(block.id, block.name);
+          requireThat(!pending.has(block.id), "INPUT", `Duplicate tool call ${block.id}`);
+          pending.set(block.id, block.name);
         }
       } else if (message.role === "toolResult") {
         requireThat(pending.get(message.toolCallId) === message.toolName, "INPUT", `Orphan/duplicate/mismatched result ${message.toolCallId}`);

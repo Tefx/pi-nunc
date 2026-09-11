@@ -55,6 +55,21 @@ Manual saving affects requests constructed after successful save, not already co
 
 **Unload/downgrade limitation:** manual changes not yet folded into a native compaction require this Nunc implementation. Stock Pi or an older Nunc reads the last native summary. Existing sessions need no rewrite. `ctx.compact()` is unsuitable as an every-edit save operation: in Pi 0.85.1 it first aborts and may reject preparation before the extension hook.
 
+## Tool call association and ID scope
+
+Stock Pi passes tool call blocks and tool result messages generated during model interactions. Different model providers, gateways, local runtimes, and mock fixtures generate tool call identifiers differently:
+- Some providers generate pseudo-random globally unique strings (e.g. OpenAI `call_...`, Anthropic `toolu_...`).
+- Other providers (including local models, proxies, or sequential counters) emit deterministic, locally-scoped identifiers (such as `call-1`, `0`, or function-name prefixes) that may be reused in subsequent completed turns.
+
+Nunc validates tool call associations and ID scoping without falsely rejecting legitimate completed tool loops:
+- **Sequential completed reuse:** Tool call IDs are scoped to the active pending set. Once a tool call receives its matching tool result, that tool call is resolved and completed. Subsequent assistant messages in the same session may legitimately reuse that tool call ID without triggering `Duplicate tool call` rejection.
+- **Ambiguous pending calls:** Active tool call IDs within the pending set must remain unique. If an assistant message emits multiple tool calls with the same ID, or emits a tool call with an ID already pending an unresolved result, Nunc rejects the request locally before provider transport (`INPUT: Duplicate tool call <id>`) with zero HTTP requests.
+- **Strict result matching:** Each `toolResult` message must correspond to an active pending tool call by both `toolCallId` and matching `toolName`. Orphan results (no pending call), duplicate results (call already resolved), and tool name mismatches are rejected before transport (`INPUT: Orphan/duplicate/mismatched result <id>`) with zero HTTP requests.
+- **Unresolved calls:** Any tool call left without a matching result at the end of visible history is rejected before dispatch (`INPUT: Unresolved tool calls: <id>`).
+- **Maintenance cut legality:** In `legalCuts(active)`, entry boundaries where tool calls are pending are never legal cuts (`pending.size === 0` required). Maintenance will never separate a tool call from its result during compaction.
+- **Context occurrence linkage:** In `contextSurface(pi).read(ctx)`, `associationsOf` pairs each tool result with its specific call occurrence by message order, ensuring distinct `callOrder` and `resultOrder` linkage even when tool call IDs are reused across completed turns.
+- **Session origin disclosure:** Historical `seenCalls` across the entire history explained Nunc's rejection of sequential completed pairs; the actual origin of the repeated ID in the original user's session (model vs gateway vs host) was not confirmed because raw session data was not provided. Nunc guarantees local compatibility for valid repeated IDs regardless of upstream source.
+
 ## Main-request admission
 
 **Further planned change:** [Active memory and tail-M receipts](ACTIVE-MEMORY.md) adds optional model CRUD, a single request-tail memory carrier, automatic old-layout conversion and conservative R/M-separated receipts after the Larva bridge. There is no front-layout fallback. It does not change the Larva v1 zero-reply/unavailable contract or Pi core. Current behavior below remains applicable until those implementations are delivered.

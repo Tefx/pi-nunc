@@ -19,9 +19,25 @@ function turnMap(branch: SessionEntry[], contract: PlacementContract) {
 }
 function unitsIntact(entries: SessionEntry[]) {
   const messages = entries.flatMap(e => convertToLlm(sessionEntryToContextMessages(e)));
-  const calls = messages.flatMap((m, i) => m.role === "assistant" ? m.content.flatMap(b => b.type === "toolCall" ? [{ id: b.id, name: b.name, i }] : []) : []);
-  const results = messages.flatMap((m, i) => m.role === "toolResult" ? [{ id: m.toolCallId, name: m.toolName, i }] : []);
-  return new Set(calls.map(c => c.id)).size === calls.length && calls.length === results.length && calls.every(c => results.filter(r => r.id === c.id && r.name === c.name && r.i > c.i).length === 1);
+  const pending = new Map<string, string>();
+  let callCount = 0;
+  let resultCount = 0;
+  for (const m of messages) {
+    if (m.role === "assistant") {
+      for (const b of m.content) {
+        if (b.type === "toolCall") {
+          if (pending.has(b.id)) return false;
+          pending.set(b.id, b.name);
+          callCount++;
+        }
+      }
+    } else if (m.role === "toolResult") {
+      if (pending.get(m.toolCallId) !== m.toolName) return false;
+      pending.delete(m.toolCallId);
+      resultCount++;
+    }
+  }
+  return pending.size === 0 && callCount === resultCount;
 }
 /** Named placement and same-session integrity; cross-session generated content has no equality requirement. */
 export function logicalPlacement(row: RolloverObservation, cwd: string) {

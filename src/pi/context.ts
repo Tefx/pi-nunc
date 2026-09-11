@@ -630,7 +630,9 @@ function associationsOf(messages: readonly ContextMessage[]): ToolAssociation[] 
   for (const message of messages) {
     if (message.role === "assistant") {
       for (const block of message.blocks) {
-        if (block.type === "toolCall" && block.toolCallId && block.toolName) pending.set(block.toolCallId, { toolName: block.toolName, callOrder: message.order });
+        if (block.type === "toolCall" && block.toolCallId && block.toolName) {
+          if (!pending.has(block.toolCallId)) pending.set(block.toolCallId, { toolName: block.toolName, callOrder: message.order });
+        }
       }
     } else if (message.role === "toolResult" && message.toolCallId && message.toolName) {
       const call = pending.get(message.toolCallId);
