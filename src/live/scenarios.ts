@@ -1,3 +1,4 @@
+import { scoreGuidance } from "./guidance.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -62,6 +63,10 @@ export function validateControl(value: unknown, turns: string[]): asserts value 
       requireValue(nonempty(trig.toolName), "SCENARIO", "Invalid trigger toolName");
       requireValue(trig.when === "after_result_before_continuation" || trig.when === "after_read_before_patch", "SCENARIO", "Invalid trigger when");
     }
+    const trigger = value.trigger as Record<string, unknown> | undefined;
+    requireValue(value.duringTurn === turns[0] && value.afterTurn === undefined && value.placement === undefined && value.capacity === undefined && value.steer === undefined &&
+      trigger?.occurrence === 1 && trigger.pathArgument === undefined && trigger.when === "after_result_before_continuation" &&
+      trigger.toolName === (value.action === "revision_conflict" ? "nunc_memory_read" : "nunc_memory_patch"), "SCENARIO", "Guidance fault control supports only the first memory operation of the first turn");
     return;
   }
   if (value.action === "rollover_at_tool_boundary") {
@@ -272,7 +277,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview: CheckResult[] = observer.actionChecks.map(check => {
     if (observer.id.startsWith("g")) {
-      return scoreGuidanceCheck(observer.id, check, rawActions, prerequisites, cwd, context);
+      return scoreGuidanceCheck(observer.id, check, rawActions, prerequisites, cwd);
     }
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;
@@ -337,222 +342,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   return { artifacts, checks, actionReview };
 }
 
-export function scoreGuidanceCheck(
-  caseId: string,
-  check: string,
-  rawActions: Array<{ turn?: string; event?: any }>,
-  prerequisites: CheckResult[],
-  cwd: string,
-  context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean }
-): CheckResult {
-  const toolsExposedProven = prerequisites.some(p => p.check.includes("tools") && p.status === "PROVEN");
-
-  if (caseId === "g1") {
-    if (!toolsExposedProven) {
-      return { check, status: "UNPROVEN", reason: "Model tools nunc_memory_read and nunc_memory_patch were not exposed in active session tools" };
-    }
-    const memCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && typeof (a.event as any).toolName === "string" && ["nunc_memory_read", "nunc_memory_patch"].includes((a.event as any).toolName));
-    if (memCalls.length > 0) {
-      return { check, status: "DISPROVEN", reason: `Agent called memory tool(s) on routine conversation: ${memCalls.map(c => c.event.toolName).join(", ")}` };
-    }
-    return { check, status: "PROVEN", observed: { memoryCalls: 0, toolsExposed: true } };
-  }
-
-  if (caseId === "g2") {
-    const patchCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
-    if (patchCalls.length === 0) {
-      return { check, status: "UNPROVEN", reason: "No nunc_memory_patch call was executed to record key decision" };
-    }
-    const texts: string[] = [];
-    for (const call of patchCalls) {
-      const inp = call.event.input;
-      if (object(inp)) {
-        if (Array.isArray(inp.add)) {
-          for (const item of inp.add) if (typeof item?.text === "string") texts.push(item.text);
-        }
-        if (Array.isArray(inp.update)) {
-          for (const item of inp.update) if (typeof item?.text === "string") texts.push(item.text);
-        }
-      }
-    }
-    const fullText = texts.join("\n");
-    if (fullText.length > 500) {
-      return { check, status: "DISPROVEN", reason: `Memory slot text exceeded conciseness bound (${fullText.length} characters)` };
-    }
-    if (fullText.includes("migration-v2")) {
-      return { check, status: "DISPROVEN", reason: "Selected blocked migration-v2 route instead of viable fallback" };
-    }
-    const hasErr = fullText.includes("ERR_SCHEMA_V2");
-    const hasPort = fullText.includes("5433");
-    const hasExactCommand = fullText.includes("run-migration") && fullText.includes("--v1") && fullText.includes("5433");
-    if (!hasErr || !hasPort || !hasExactCommand) {
-      return { check, status: "DISPROVEN", reason: `Decision note omitted distinguishing identifiers (found error=${hasErr}, port=${hasPort}, command=${hasExactCommand})` };
-    }
-    return { check, status: "PROVEN", observed: { concise: true, length: fullText.length, hasErr, hasPort, hasExactCommand } };
-  }
-
-  if (caseId === "g3") {
-    const patchCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
-    if (patchCalls.length === 0) {
-      return { check, status: "UNPROVEN", reason: "No nunc_memory_patch executed for instruction update" };
-    }
-    const memoryStates = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "memory_state");
-    const lastMemory = memoryStates[memoryStates.length - 1]?.event;
-    if (lastMemory && Array.isArray(lastMemory.slots)) {
-      const allSlotTexts = lastMemory.slots.map((s: any) => String(s?.text ?? "")).join("\n");
-      if (!allSlotTexts.toLowerCase().includes("sqlite")) {
-        return { check, status: "DISPROVEN", reason: "Valid sqlite storage note was dropped" };
-      }
-      if (allSlotTexts.includes("8080") && !allSlotTexts.includes("9090")) {
-        return { check, status: "DISPROVEN", reason: "Stale port 8080 still in memory without 9090" };
-      }
-    }
-    return { check, status: "PROVEN", observed: { staleUpdated: true, validPreserved: true } };
-  }
-
-  if (caseId === "g4") {
-    const memoryStates = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "memory_state");
-    if (memoryStates.length > 0) {
-      const lastMemory = memoryStates[memoryStates.length - 1]?.event;
-      if (lastMemory && Array.isArray(lastMemory.slots) && lastMemory.slots.length === 0) {
-        return { check, status: "DISPROVEN", reason: "Main task obligations dropped after side question" };
-      }
-    }
-    return { check, status: "PROVEN", observed: { obligationsRetained: true } };
-  }
-
-  if (caseId === "g5") {
-    if (check.includes("does not claim") || check.includes("not claim")) {
-      const prematureVerify = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
-      if (prematureVerify) {
-        return { check, status: "DISPROVEN", reason: "python3 verify.py executed prematurely in turn a" };
-      }
-      const directWrite = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && ["verified.json", "accepted.json"].includes(a.event.input?.path));
-      if (directWrite) {
-        return { check, status: "DISPROVEN", reason: `${directWrite.event.input.path} authored prematurely in turn a` };
-      }
-      for (const call of rawActions.filter(a => a.turn === "a" && a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch")) {
-        const text = JSON.stringify(call.event.input ?? {}).toLowerCase();
-        const isExplicitlyUnverified = text.includes("unverified") || text.includes("not verified") || text.includes("pending verification") || text.includes("pending test") || text.includes("do not run") || text.includes("no tests run");
-        if (!isExplicitlyUnverified && (text.includes("verified") || text.includes("verification passed") || text.includes("accepted"))) {
-          return { check, status: "DISPROVEN", reason: "Claimed feature is verified before verification executed" };
-        }
-      }
-      return { check, status: "PROVEN", observed: { unverifiedInTurnA: true } };
-    }
-    const verifyCall = rawActions.find(a => a.turn === "b" && a.event?.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
-    if (!verifyCall) {
-      return { check, status: "UNPROVEN", reason: "python3 verify.py was not executed in turn b" };
-    }
-    const resIndex = rawActions.findIndex((a, i) => i > rawActions.indexOf(verifyCall) && a.event?.type === "tool_result" && a.event.toolCallId === verifyCall.event.toolCallId);
-    if (resIndex < 0) {
-      return { check, status: "UNPROVEN", reason: "No tool result observed for verification command" };
-    }
-    const res = rawActions[resIndex]!.event;
-    if (res.isError === true) {
-      return { check, status: "DISPROVEN", reason: "Verification command failed with an error in turn b" };
-    }
-    const directAcceptance = rawActions.find(a => a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && a.event.input?.path === "accepted.json");
-    if (directAcceptance) {
-      return { check, status: "DISPROVEN", reason: "Claimed user acceptance without user confirmation" };
-    }
-    return { check, status: "PROVEN", observed: { verifiedInTurnB: true, exitCode: 0, noPrematureAcceptance: true } };
-  }
-
-  if (caseId === "g6") {
-    if (check.includes("does not execute deployment") || check.includes("not execute deployment") || check.includes("during turn a")) {
-      const prematureDeploy = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && (a.event.toolName === "bash" || (["write", "edit"].includes(a.event.toolName) && a.event.input?.path === "deployed.json")));
-      if (prematureDeploy) {
-        return { check, status: "DISPROVEN", reason: "Action ordering violated: executed deployment action before wait condition satisfied" };
-      }
-      return { check, status: "PROVEN", observed: { orderingRespectedTurnA: true } };
-    }
-    const splitProven = prerequisites.some(p => p.check.includes("automatic native split compaction") && p.status === "PROVEN");
-    if (!splitProven) {
-      return { check, status: "UNPROVEN", reason: "Missing split-turn compaction prerequisite" };
-    }
-    const deployCall = rawActions.find(a => a.turn === "b" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && a.event.input?.path === "deployed.json");
-    if (!deployCall) {
-      return { check, status: "UNPROVEN", reason: "deployed.json was not produced in turn b" };
-    }
-    const verifyCall = rawActions.find(a => a.turn === "b" && a.event?.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
-    if (!verifyCall) {
-      return { check, status: "UNPROVEN", reason: "python3 verify.py was not executed in turn b" };
-    }
-    const resIndex = rawActions.findIndex((a, i) => i > rawActions.indexOf(verifyCall) && a.event?.type === "tool_result" && a.event.toolCallId === verifyCall.event.toolCallId);
-    if (resIndex < 0 || rawActions[resIndex]!.event.isError) {
-      return { check, status: "DISPROVEN", reason: "Verification command failed in turn b" };
-    }
-    return { check, status: "PROVEN", observed: { splitProven: true, deployedTurnB: true, verifiedTurnB: true } };
-  }
-
-  if (caseId === "g7") {
-    if (check.includes("conflict")) {
-      const conflictPremise = prerequisites.some(p => p.check.includes("conflict") && p.status === "PROVEN");
-      if (!conflictPremise) {
-        return { check, status: "UNPROVEN", reason: "Missing actual revision conflict premise" };
-      }
-      const conflictIndex = rawActions.findIndex(a => a.event?.type === "tool_result" && a.event.toolName === "nunc_memory_patch" && (a.event.details?.code === "conflict" || (Array.isArray(a.event.content) && a.event.content.some((c: any) => c.text?.includes("conflict")))));
-      if (conflictIndex < 0) {
-        return { check, status: "UNPROVEN", reason: "No conflict error result observed in tool results" };
-      }
-      const initialPatch = rawActions.slice(0, conflictIndex).findLast(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
-      const staleRevision = initialPatch?.event?.input?.expectedRevision;
-      const after = rawActions.slice(conflictIndex + 1);
-      const readAfter = after.find(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_read");
-      const patchAfter = after.find(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
-      if (!readAfter) {
-        return { check, status: "DISPROVEN", reason: "Agent retried patch without re-reading memory after conflict" };
-      }
-      const readIdx = after.indexOf(readAfter);
-      const patchIdx = patchAfter ? after.indexOf(patchAfter) : -1;
-      if (patchIdx >= 0 && patchIdx < readIdx) {
-        return { check, status: "DISPROVEN", reason: "Agent retried patch before re-reading memory after conflict" };
-      }
-      if (patchAfter && staleRevision && patchAfter.event?.input?.expectedRevision === staleRevision) {
-        return { check, status: "DISPROVEN", reason: "Agent retried patch with stale revision after conflict" };
-      }
-      return { check, status: "PROVEN", observed: { rereadAfterConflict: true, reconciled: true } };
-    }
-    if (check.includes("unconfirmed")) {
-      const unconfirmedPremise = prerequisites.some(p => p.check.includes("unconfirmed") && p.status === "PROVEN");
-      if (!unconfirmedPremise) {
-        return { check, status: "UNPROVEN", reason: "Missing actual unconfirmed save premise" };
-      }
-      const unconfirmedIndex = rawActions.findIndex(a => a.event?.type === "tool_result" && a.event.toolName === "nunc_memory_patch" && (a.event.details?.code === "unconfirmed" || (Array.isArray(a.event.content) && a.event.content.some((c: any) => c.text?.includes("unconfirmed")))));
-      if (unconfirmedIndex < 0) {
-        return { check, status: "UNPROVEN", reason: "No unconfirmed error result observed in tool results" };
-      }
-      const after = rawActions.slice(unconfirmedIndex + 1);
-      const replayPatch = after.find(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
-      if (replayPatch) {
-        return { check, status: "DISPROVEN", reason: "Agent automatically replayed unconfirmed save" };
-      }
-      return { check, status: "PROVEN", observed: { unconfirmedObserved: true, noAutomaticReplay: true } };
-    }
-  }
-
-  if (caseId === "g8") {
-    if (check.includes("jointly fit") || check.includes("competition") || check.includes("necessary")) {
-      const qualProven = prerequisites.some(p => p.check.includes("necessary candidates jointly fit") && p.status === "PROVEN");
-      const compProven = prerequisites.some(p => p.check.includes("actual competition") && p.status === "PROVEN");
-      if (!qualProven || !compProven) {
-        return { check, status: "UNPROVEN", reason: "Prerequisite budget competition not proven" };
-      }
-      return { check, status: "PROVEN", observed: { requiredPreserved: true, competitionProven: true } };
-    }
-    if (check.includes("CAPACITY")) {
-      const capProven = prerequisites.some(p => p.check.includes("exceeds rendered memory limit") && p.status === "PROVEN");
-      const optFitsProven = prerequisites.some(p => p.check.includes("at least one optional candidate fits") && p.status === "PROVEN");
-      if (!capProven || !optFitsProven) {
-        return { check, status: "UNPROVEN", reason: "Prerequisite necessary set overflow not proven" };
-      }
-      return { check, status: "PROVEN", observed: { cleanCapacityObserved: true } };
-    }
-  }
-
-  return { check, status: "PROVEN", observed: { checked: true } };
-}
+export const scoreGuidanceCheck = scoreGuidance;
 export function evaluateCapacityPredicates(
   variant: "fits-required" | "required-too-large",
   rawPatch: unknown,

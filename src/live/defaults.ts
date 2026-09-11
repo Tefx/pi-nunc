@@ -21,10 +21,21 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   let second: { provider: string; id: string } | undefined;
   const differences: RunInput["overrides"] = [];
   let config: Record<string, unknown> = { nunc: {}, compaction: settings.getCompactionSettings() };
+  const scopedConfigs = new Map<string, Record<string, unknown>>();
+  const mergeConfig = (base: Record<string, unknown>, patch: Record<string, unknown>) => ({ ...base, ...patch,
+    ...(object(patch.compaction) ? { compaction: { ...(object(base.compaction) ? base.compaction : {}), ...patch.compaction } } : {}) });
   if (value.overrides !== undefined) {
     requireValue(Array.isArray(value.overrides), "OVERRIDE", "Overrides must be named test requirements");
     for (const override of value.overrides) {
-      requireValue(object(override) && Object.keys(override).every(k => ["requirement", "reason", "model", "smallerModel", "thinking", "config"].includes(k)) && typeof override.requirement === "string" && override.requirement.trim() && typeof override.reason === "string" && override.reason.trim(), "OVERRIDE", "Each override requires a named requirement and reason");
+      requireValue(object(override) && Object.keys(override).every(k => ["requirement", "reason", "model", "smallerModel", "thinking", "config", "scenario"].includes(k)) && typeof override.requirement === "string" && override.requirement.trim() && typeof override.reason === "string" && override.reason.trim(), "OVERRIDE", "Each override requires a named requirement and reason");
+      if (override.scenario !== undefined) {
+        requireValue(typeof override.scenario === "string" && value.scenarios.some(s => object(s) && `${s.id}${s.variant ? `/${s.variant}` : ""}` === override.scenario) &&
+          object(override.config) && override.model === undefined && override.smallerModel === undefined && override.thinking === undefined && !scopedConfigs.has(override.scenario),
+          "OVERRIDE", "A scenario override must uniquely name a selected id[/variant] and contain only config");
+        scopedConfigs.set(override.scenario, override.config);
+        differences.push(structuredClone(override));
+        continue;
+      }
       const before = { provider, model: id, thinking, config: structuredClone(config) };
       for (const key of ["model", "smallerModel"] as const) if (override[key] !== undefined) {
         const model = override[key];
@@ -32,7 +43,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
         if (key === "model") { provider = model.provider; id = model.id; } else second = { provider: model.provider, id: model.id };
       }
       if (override.thinking !== undefined) { requireValue(typeof override.thinking === "string", "OVERRIDE", "Invalid thinking override"); thinking = override.thinking; }
-      if (override.config !== undefined) { requireValue(object(override.config), "CONFIG", "Invalid config override"); config = { ...config, ...override.config, ...(object(override.config.compaction) ? { compaction: { ...(object(config.compaction) ? config.compaction : {}), ...override.config.compaction } } : {}) }; }
+      if (override.config !== undefined) { requireValue(object(override.config), "CONFIG", "Invalid config override"); config = mergeConfig(config, override.config); }
       differences.push({ ...structuredClone(override), from: before, to: { provider, model: id, thinking, config: structuredClone(config) } });
     }
   }
@@ -66,7 +77,10 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
     target: value.target, limits, models,
     scenarios: value.scenarios.map(s => {
       requireValue(object(s) && Object.keys(s).every(k => ["id", "variant", "assets"].includes(k)), "SCENARIO", "Scenario config belongs in a named override");
-      return { ...s, config, ...(s.assets ? { assets: s.assets } : {}) };
+      const scoped = scopedConfigs.get(`${s.id}${s.variant ? `/${s.variant}` : ""}`);
+      const selectedConfig = scoped ? mergeConfig(config, scoped) : config;
+      if (scoped) differences.push({ requirement: "resolved-scenario-config", reason: "Scenario config applied after shared overrides", scenario: `${s.id}${s.variant ? `/${s.variant}` : ""}`, from: config, to: selectedConfig });
+      return { ...s, config: selectedConfig, ...(s.assets ? { assets: s.assets } : {}) };
     }),
     observations,
     ...(value.comparison ? { comparison: value.comparison } : {}),

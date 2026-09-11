@@ -2,7 +2,7 @@ import { archiveCloseoutEffects } from "./archive-closeout.js";
 import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
 import { qualifyCapacity, checkCapacityRecovery } from "./capacity-observation.js";
 import { elapsedInterval, type WallClockInterval } from "./timing.js";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
@@ -128,7 +128,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   const boundary = boundaryControl ? { control: boundaryControl, requestText: scenario.turns.find(t => t.id === boundaryControl.duringTurn)!.text, fixtureContent: scenario.files[boundaryControl.trigger!.pathArgument!]! } : undefined;
   const guidanceControls = observer.controls
     ?.filter(c => c.action === "revision_conflict" || c.action === "unconfirmed_save")
-    .map(c => ({ action: c.action as "revision_conflict" | "unconfirmed_save", turn: c.duringTurn ?? c.afterTurn, trigger: c.trigger }));
+    .map(c => ({ action: c.action as "revision_conflict" | "unconfirmed_save", turn: c.duringTurn ?? c.afterTurn, trigger: c.trigger,
+       requestText: scenario.turns.find(t => t.id === (c.duringTurn ?? c.afterTurn))!.text }));
   const targetRepository = group === "native" ? undefined : input.comparison?.targets[group].repository ?? input.target.repository;
   const prepare = async (branch: SessionEntry[], active: SessionEntry[], control: typeof observer.controls[number], trigger?: Parameters<typeof prepareBoundary>[0]["trigger"]) => {
     const result = await prepareBoundary({ branch, active, control, turns, turnOrder: scenario.turns.map(t => t.id), config: runConfig,
@@ -269,6 +270,15 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         turns[turn] = delivered; report.nextTurn = index + 1;
         continue;
       }
+      if (selection.id === "g6" && turn === "b") {
+        const statusPath = join(caseRoot, "task", "status.json"), lockPath = join(caseRoot, "task", "deploy.lock");
+        const before = JSON.parse(await readFile(statusPath, "utf8"));
+        requireValue(before.deployLock === true && (await readFile(lockPath, "utf8")) === scenario.files["deploy.lock"], "PREREQUISITE", "Deployment lock changed before the controller release");
+        const after = { ...before, deployLock: false, serviceReady: true };
+        await writeFile(statusPath, JSON.stringify(after)); await unlink(lockPath);
+        report.actions.push({ turn, event: { type: "fixture_state", path: "status.json", before, after, lockRemoved: true } });
+        report.prerequisites.push({ check: "deployment lock cleared in task fixture before turn b", status: "PROVEN", observed: after });
+      }
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
       turnBeforeIds = beforeIds;
       await session.prompt(inputTurn.text, { expandPromptTemplates: false });
@@ -279,6 +289,15 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", last?.role === "assistant" && last.errorMessage ? last.errorMessage : "Main run did not end in a complete stop state");
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
 
+      if (selection.id.startsWith("g")) {
+        const active = sm.buildContextEntries();
+        const artifacts: Record<string, unknown> = {};
+        for (const path of new Set(observer.artifactChecks.map(c => c.path))) {
+          try { artifacts[path] = JSON.parse(await readFile(join(caseRoot, "task", path), "utf8")); } catch { artifacts[path] = null; }
+        }
+        report.actions.push({ turn, event: { type: "turn_complete", stopReason: last!.stopReason, response: last!.content,
+          memory: project(active).memory, activeEntryIds: active.map(e => e.id), sessionFile: session.sessionFile, artifacts } });
+      }
       if ((selection.id === "e4" || selection.id === "g8") && selection.variant === "required-too-large" && turn === "c") {
         if (group === "candidate") (capacityFailure ? report.prerequisites : (report.setupChecks ??= [])).push(checkCapacityRecovery({
           capacityFailed: capacityFailure !== undefined,
@@ -533,19 +552,14 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           report.prerequisites.push({ check: "actual unconfirmed save triggered on nunc_memory_patch", status: "UNPROVEN", reason: "No unconfirmed premise observed" });
         }
       }
-      if (selection.id === "g8") {
-        const variant = selection.variant === "required-too-large" ? "required-too-large" : "fits-required";
-        const memEntries = sm.buildContextEntries();
-        const projected = project(memEntries);
-        if (report.maintenance.length > 0) {
-          const qual = qualifyCapacity(variant, projected.memory, report.maintenance[0] as MaintenanceResult | undefined, report.contexts.map(c => c.context), maintenanceResponses, firstModel.id);
-          report.prerequisites.push(...qual);
-        }
-      }
+      // Capacity qualification was captured at the frozen transaction above. Never
+      // requalify it against final memory or unrelated main contexts/responses.
+
     }
     const scoreContext = { actions: report.actions, requireVerificationReceipt: true };
+    const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? report.setupChecks ?? [] : [])];
     if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);
-    report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...report.prerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);
+    report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...scorePrerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);
     captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);
     report.status = report.prerequisites.every(p => p.status === "PROVEN") &&
       !report.score.checks.some(c => c.status === "DISPROVEN") &&

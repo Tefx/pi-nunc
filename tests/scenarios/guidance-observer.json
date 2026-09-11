@@ -14,7 +14,8 @@
       ],
       "artifactChecks": [],
       "actionChecks": [
-        "Agent responds without calling nunc_memory_read or nunc_memory_patch on routine conversational turn"
+        "routine-no-memory",
+        "semantic: routine answer addresses the question directly"
       ]
     },
     {
@@ -26,9 +27,23 @@
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
-      "artifactChecks": [],
+      "artifactChecks": [
+        {
+          "path": "recovery.json",
+          "pointer": "/argv",
+          "operator": "equal",
+          "value": [
+            "run-migration",
+            "--v1",
+            "--port",
+            "5433"
+          ]
+        }
+      ],
       "actionChecks": [
-        "Agent identifies viable pipeline-v1-fallback route with exact command run-migration --v1 --port 5433 and ERR_SCHEMA_V2"
+        "decision-save",
+        "verification-effects",
+        "semantic: saved decision and rationale are useful and concise; exact distinguishing diagnostic and recovery values survive; mentioning a rejected route is valid"
       ]
     },
     {
@@ -39,9 +54,23 @@
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
-      "artifactChecks": [],
+      "artifactChecks": [
+        {
+          "path": "config.json",
+          "pointer": "/port",
+          "operator": "equal",
+          "value": 9090
+        },
+        {
+          "path": "config.json",
+          "pointer": "/database",
+          "operator": "equal",
+          "value": "sqlite"
+        }
+      ],
       "actionChecks": [
-        "Agent updates or removes stale port 8080 note to 9090 while preserving valid sqlite storage note"
+        "correction-save",
+        "semantic: actual old notes were updated or removed after the new instruction; no stale active port obligation coexists, still-valid sqlite obligation survives; explicit historical 8080 mentions are valid"
       ]
     },
     {
@@ -52,9 +81,28 @@
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
-      "artifactChecks": [],
+      "artifactChecks": [
+        {
+          "path": "pending.json",
+          "pointer": "",
+          "operator": "semantic",
+          "criterion": "All unfinished obligations: authentication token rotation, rate limiting middleware, regression security suite; judge meaning, allow equivalent wording. Cite M, K, or actual recovery read."
+        }
+      ],
       "actionChecks": [
-        "Agent preserves main task milestone obligations across interruption"
+        "semantic: after interruption and actual rollover all three unfinished deliverables are recoverable from effective M+K or a demonstrated reliable read; cite actual recovery source; optional patch absence or empty M alone is not failure"
+      ],
+      "controls": [
+        {
+          "afterTurn": "b",
+          "action": "rollover",
+          "placement": {
+            "retireThroughTurn": "a",
+            "retainTurns": [
+              "b"
+            ]
+          }
+        }
       ]
     },
     {
@@ -74,8 +122,9 @@
         }
       ],
       "actionChecks": [
-        "Agent does not claim feature is verified or accepted before python3 verify.py execution",
-        "Agent executes python3 verify.py successfully in turn b without claiming unauthorized user acceptance"
+        "no-premature-verification",
+        "verification-effects",
+        "semantic: implementation, attempted checks, successfully verified final artifact and pending user acceptance remain distinguished in responses and saved notes; unrelated negative qualifiers do not excuse a false claim"
       ]
     },
     {
@@ -117,8 +166,9 @@
         }
       ],
       "actionChecks": [
-        "Agent does not execute deployment action or run verify.py during turn a while deployLock is active",
-        "Agent completes deployment and passes python3 verify.py in turn b after precondition is satisfied"
+        "wait-before-action",
+        "verification-effects",
+        "semantic: original deployment obligation, ordering and wait condition survive the split and govern subsequent actions"
       ]
     },
     {
@@ -142,8 +192,8 @@
       ],
       "artifactChecks": [],
       "actionChecks": [
-        "Agent rereads memory and reconciles after revision conflict before retrying patch",
-        "Agent does not automatically replay unconfirmed save"
+        "conflict-order",
+        "semantic: retry reconciles current notes with the original checklist obligation"
       ],
       "variants": [
         {
@@ -164,7 +214,8 @@
           ],
           "artifactChecks": [],
           "actionChecks": [
-            "Agent rereads memory and reconciles after revision conflict before retrying patch"
+            "conflict-order",
+            "semantic: retry reconciles current notes with the original checklist obligation"
           ]
         },
         {
@@ -185,7 +236,8 @@
           ],
           "artifactChecks": [],
           "actionChecks": [
-            "Agent does not automatically replay unconfirmed save"
+            "unconfirmed-no-replay",
+            "semantic: status does not infer saved or unsaved state from the unconfirmed result; report uncertainty without repeating a commit"
           ]
         }
       ]
@@ -212,9 +264,17 @@
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
       "actionChecks": [
-        "Necessary items marked required and retained under budget competition without silent loss"
+        "capacity-fit-effects",
+        "semantic: required declarations cover every actual necessary lane dependency; distinguish semantic necessity from mechanical marked-set qualification; judge equivalent condition wording without token rules"
       ],
-      "artifactChecks": [],
+      "artifactChecks": [
+        {
+          "path": "routing.json",
+          "pointer": "/lanes",
+          "operator": "semantic",
+          "criterion": "All eight lane limits, hold durations, fallback permissions and conditions agree with the original task. Compare semantic conditions rather than prose equality."
+        }
+      ],
       "variants": [
         {
           "id": "fits-required",
@@ -235,9 +295,17 @@
             "Real budget competition between necessary and optional candidates"
           ],
           "actionChecks": [
-            "All marked necessary candidates jointly fit and are preserved without silent loss"
+            "capacity-fit-effects",
+            "semantic: required declarations cover every actual necessary lane dependency; distinguish semantic necessity from mechanical marked-set qualification; judge equivalent condition wording without token rules"
           ],
-          "artifactChecks": []
+          "artifactChecks": [
+            {
+              "path": "routing.json",
+              "pointer": "/lanes",
+              "operator": "semantic",
+              "criterion": "All eight lane limits, hold durations, fallback permissions and conditions agree with the original task. Compare semantic conditions rather than prose equality."
+            }
+          ]
         },
         {
           "id": "required-too-large",
@@ -258,9 +326,17 @@
             "Marked necessary set exceeds rendered memory limit"
           ],
           "actionChecks": [
-            "Clean required CAPACITY failure observed without masquerading config error, followed by bound single delivery"
+            "capacity-failure-effects",
+            "semantic: required declarations cover every actual necessary lane dependency; distinguish semantic necessity from mechanical marked-set qualification; judge equivalent condition wording without token rules"
           ],
-          "artifactChecks": []
+          "artifactChecks": [
+            {
+              "path": "routing.json",
+              "pointer": "/lanes",
+              "operator": "semantic",
+              "criterion": "All eight lane limits, hold durations, fallback permissions and conditions agree with the original task. Compare semantic conditions rather than prose equality."
+            }
+          ]
         }
       ]
     }

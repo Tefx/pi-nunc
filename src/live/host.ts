@@ -40,7 +40,7 @@ export interface HostOptions {
   onAction?: ((event: unknown) => void) | undefined;
   boundary?: { control: Control; requestText: string; fixtureContent: string } | undefined;
   verification?: { script: string; artifact: string } | undefined;
-  guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; turn?: string | undefined; trigger?: ToolTrigger | undefined }> | undefined;
+  guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string | undefined; trigger?: ToolTrigger | undefined }> | undefined;
   boundaryCompleted?: boolean | undefined;
   onBoundary?: ((data: any) => Promise<void>) | undefined;
   onBoundaryRestore?: (() => Promise<void>) | undefined;
@@ -172,7 +172,11 @@ export class NativeHost {
       if (e.type === "boundary-restore") void this.options.onBoundaryRestore?.().catch(() => this.fail("PREPARATION", "Boundary configuration restoration failed"));
       if (e.type === "maintenance") this.options.onMaintenance?.(e.data);
       if (e.type === "maintenance_response") this.options.onMaintenanceResponse?.(e.data);
-      if (e.type === "action" || e.type === "lifecycle") this.options.onAction?.(e.data);
+      if (e.type === "action") this.options.onAction?.(e.data);
+      if (e.type === "lifecycle" || e.type === "memory_state") {
+        requireValue(object(e.data), "OBSERVER", "Invalid lifecycle/memory observation");
+        this.options.onAction?.({ ...e.data, type: e.type });
+      }
       if (e.type === "context") {
         requireValue(object(e.data) && object(e.data.model) && object(e.data.context) && Array.isArray(e.data.context.messages), "OBSERVER", "Invalid observed context");
         const observedModel = e.data.model;

@@ -1,13 +1,13 @@
-import { appendFileSync, chmodSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Control, ToolTrigger } from "./scenarios.js";
 import { memorySurface } from "../pi/manual.js";
-import { MANUAL_MEMORY_TYPE } from "../pi/projection.js";
+
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
+export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; unconfirmedMode?: number; unconfirmedCallId?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
 export function observerState(source: string): ObserverState | undefined { return states.get(source); }
@@ -32,7 +32,12 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; turn?: string; trigger?: ToolTrigger }> };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }> };
+  const controlFor = (action: "revision_conflict" | "unconfirmed_save", ctx: ExtensionContext) => {
+    const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
+    const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
+    return binding.guidanceControls?.find(c => c.action === action && c.requestText === text);
+  };
   const signal = AbortSignal.timeout(Math.max(1, binding.deadline - Date.now()));
   const log = (type: string, data: unknown) => appendFileSync(binding.events, JSON.stringify({ type, data }) + "\n", { mode: 0o600 });
   const ledger = new BudgetLedger(binding.ledger, binding.input.limits, binding.deadline, signal, binding.caseKey);
@@ -75,11 +80,15 @@ export default function observer(pi: ExtensionAPI): void {
   // The registry can wrap registered providers in models.json overlays, so object
   // identity alone cannot unwrap a prior decorator. Remove this registration at
   // public runtime teardown; the refreshed native registry remains auth/config owner.
+  const restoreSaveFile = () => {
+    if (!state.unconfirmedFile) return;
+    chmodSync(state.unconfirmedFile, state.unconfirmedMode!);
+    requireValue((statSync(state.unconfirmedFile).mode & 0o777) === state.unconfirmedMode, "CLEANUP", "Session file mode restoration failed");
+    log("lifecycle", { phase: "save-file-restored", toolCallId: state.unconfirmedCallId, mode: state.unconfirmedMode });
+    delete state.unconfirmedFile; delete state.unconfirmedMode;
+  };
   pi.on("session_shutdown", () => {
-    if (state.unconfirmedFile) {
-      try { chmodSync(state.unconfirmedFile, 0o600); } catch { /* ignore */ }
-      delete state.unconfirmedFile;
-    }
+    restoreSaveFile();
     for (const id of new Set(binding.models.map(m => m.provider))) pi.unregisterProvider(id);
   });
   pi.events.on("nunc:maintenance", event => {
@@ -176,15 +185,16 @@ export default function observer(pi: ExtensionAPI): void {
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       } else if (event.toolName === "nunc_memory_read" || event.toolName === "nunc_memory_patch") {
         if (event.toolName === "nunc_memory_patch") {
-          const unconfirmedCtrl = binding.guidanceControls?.find(c => c.action === "unconfirmed_save");
+          const unconfirmedCtrl = controlFor("unconfirmed_save", ctx);
           if (unconfirmedCtrl && !state.unconfirmedInjected) {
             state.unconfirmedInjected = true;
             const sessionFile = ctx.sessionManager.getSessionFile();
             if (sessionFile && existsSync(sessionFile)) {
-              try {
-                chmodSync(sessionFile, 0o444);
-                state.unconfirmedFile = sessionFile;
-              } catch { /* handled */ }
+              state.unconfirmedMode = statSync(sessionFile).mode & 0o777;
+              state.unconfirmedFile = sessionFile;
+              state.unconfirmedCallId = event.toolCallId;
+              chmodSync(sessionFile, state.unconfirmedMode & ~0o222);
+              log("lifecycle", { phase: "save-file-readonly", toolCallId: event.toolCallId });
             }
           }
         }
@@ -202,25 +212,26 @@ export default function observer(pi: ExtensionAPI): void {
     }
   });
   pi.on("tool_result", async (event, ctx) => {
-    if (state.unconfirmedFile) {
-      try { chmodSync(state.unconfirmedFile, 0o600); } catch { /* handled */ }
-      delete state.unconfirmedFile;
-      log("lifecycle", { phase: "unconfirmed-injected" });
+    if (state.unconfirmedFile && event.toolCallId === state.unconfirmedCallId) {
+      restoreSaveFile();
+      const details = event.details as any;
+      if (details?.ok === false && details.code === "unconfirmed") {
+        log("lifecycle", { phase: "unconfirmed-injected", toolCallId: event.toolCallId, code: details.code });
+      }
     }
-    if (event.toolName === "nunc_memory_read") {
-      const conflictCtrl = binding.guidanceControls?.find(c => c.action === "revision_conflict");
+    if (event.toolName === "nunc_memory_patch" && state.conflictInjected && (event.details as any)?.ok === false && (event.details as any)?.code === "conflict") {
+      log("lifecycle", { phase: "revision-conflict-injected", toolCallId: event.toolCallId });
+    }
+    if (event.toolName === "nunc_memory_read" && event.isError === false) {
+      const conflictCtrl = controlFor("revision_conflict", ctx);
       if (conflictCtrl && !state.conflictInjected) {
         state.conflictInjected = true;
-        try {
-          pi.appendEntry(MANUAL_MEMORY_TYPE, {
-            nunc: {
-              version: 1,
-              nextId: 99,
-              slots: [{ id: "m99", text: "concurrent conflict modification" }],
-            },
-          });
-          log("lifecycle", { phase: "revision-conflict-injected" });
-        } catch { /* handled */ }
+        const surface = memorySurface(pi);
+        if (surface) {
+          const before = surface.read(ctx);
+          const saved = surface.patch(ctx, { expectedRevision: before.revision, add: [{ key: "concurrent", text: "Checklist source is notes.txt." }] });
+          log("lifecycle", { phase: "concurrent-save", toolCallId: event.toolCallId, beforeRevision: before.revision, saved });
+        }
       }
     }
     let verification: unknown;
