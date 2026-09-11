@@ -3402,7 +3402,7 @@ phases:
       remain unproved.'
 - id: nunc-active-memory
   name: 主动 CRUD、唯一尾置 M 与 receipt 适配
-  status: locked
+  status: pending
   gate: 在最终整合候选上，完整all与真实Pi/Larva/Nunc组合证明覆盖ACTIVE-MEMORY.md全部必要合同、先行F桥接和适用既有核心/维护/人工/UI/Provider不变量。无阻断缺陷或必要未证明方可接受。只读模型成本分析不冒充实测；不要求未授权付费cache/账单测试，不宣称所有CAPACITY已修复。
   context: 用户授权文档与新增计划，等待后续明确调度；前置nunc-larva-prompt及其Larva就绪条件不变。本phase消费其F解析/请求身份，完整交付docs/ACTIVE-MEMORY.md：CRUD、原子统一M、唯一尾部载体、保守R/M
     receipt和自动旧布局转换。无前置回退或双布局兼容，不改Pi core。一个Node owner持有source/tests/runner/docs，Orchestrator在其完成程序承担本phase及依赖实际组合的唯一接受，不扩展先行接受范围或修改DONE。
@@ -3511,7 +3511,7 @@ phases:
     agent: node-typescript-engineer
 - id: nunc-tool-call-repair
   name: 工具调用 ID 作用域与关联兼容修复
-  status: in_progress
+  status: done
   gate: Orchestrator 在唯一实现步骤完成程序接受本修复：最终整合候选完整 all、真实 stock Pi/native serializer 受控服务证明与适用前置
     Larva 桥接证据共同覆盖合法 ID 复用和非法关联拒绝。不得因组件 PASS 或仅放宽校验宣称解决；实际用户会话来源未知单独披露。仅规划，等待用户明确调度，不授权安装或发布。
   context: 用户要求在 nunc-larva-prompt 后插入修复步骤；本 phase 位于该前置已接受结果与 nunc-active-memory
@@ -3523,7 +3523,7 @@ phases:
   steps:
   - id: nunc.tool-call-repair
     name: 修复合法工具调用 ID 复用并保持完整关联校验
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
@@ -3601,3 +3601,23 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-11T10:16:03.511917Z'
+    done_at: '2026-09-11T11:04:37.726095+00:00'
+    evidence: 'Orchestrator accepted and fast-forwarded exact candidate git:9a4cf3447597a8093d5515d465283b16c6c95f58
+      from integration basis79ad201; unchanged rebase, retained refs/retained/nunc-tool-call-repair-final.
+      Inspected product diff, maintenance/source and per-occurrence Context tests,
+      complete real Pi/Nunc/native joint tests, actual logs. Required offline all
+      exit0:465 tests/56 files (.scratch/tool-call-repair-execution/all-corrected.log).
+      Real Larva composition exit0:5 (.scratch/tool-call-repair-execution/larva-integration-corrected.log);
+      clean read-only Larva f10271b5 unchanged. Four native mapping families execute
+      actual session tool calls twice reusing completed IDs, check distinct args/result
+      bodies in fourth captured wire request and successful terminal response; positive-controlled
+      route then orphan INPUT/zero additional sends covers all four, with both provider
+      methods transport-bound. Pending ambiguity, orphan/duplicate/name mismatch/unresolved
+      calls remain rejected; legal cuts and source extraction/omissions plus occurrence
+      Context associations inspected. Existing receipt/bridge/cancellation inventory
+      remains passing. Diagnosis at .scratch/tool-call-repair-execution/diagnosis.md.
+      Does not establish original user ID source or arbitrary remote service acceptance;
+      no paid/live calls. No processes/open worktree consumers observed. Scratch preserved
+      in worktree-scratch.tar.gz: old worktree .scratch paths map to same archive
+      members; baseline symlink not followed. Worktree cleanup follows. Current user
+      explicitly authorized remaining Plan; proceed to active-memory after reconciliation.'
