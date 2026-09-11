@@ -113,12 +113,8 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
   return { memory, active, ...(latest ? { latestId: latest.id } : {}) };
 }
 
-export const NUNC_CARRIER_MARK = Symbol.for("nunc.carrier.mark");
-
-export interface CarrierTag {
-  memory: Memory;
-  rCount: number;
-}
+// Provenance stays process-local and cannot be copied with message text/fields.
+const carriers = new WeakSet<object>();
 
 export function withEffectiveMemory<T extends { role: string; stopReason?: string; customType?: string; summary?: string }>(messages: readonly T[], memory: Memory): T[] {
   const out: T[] = [];
@@ -126,7 +122,7 @@ export function withEffectiveMemory<T extends { role: string; stopReason?: strin
     if (message.role === "assistant" && message.stopReason && ["error", "aborted"].includes(message.stopReason)) continue;
     if (message.role === "compactionSummary") continue;
     if (message.role === "custom" && message.customType === "nunc.memory") continue;
-    if ((message as any)[NUNC_CARRIER_MARK] || (message as any).__nunc_carrier__) continue;
+    if (carriers.has(message)) continue;
     out.push(message);
   }
   if (memory.slots.length > 0) {
@@ -135,17 +131,7 @@ export function withEffectiveMemory<T extends { role: string; stopReason?: strin
       content: [{ type: "text", text: renderMemory(memory.slots) }],
       timestamp: 0,
     } as unknown as T;
-    const tag: CarrierTag = { memory: structuredClone(memory), rCount: out.length };
-    Object.defineProperty(carrier, NUNC_CARRIER_MARK, {
-      value: tag,
-      enumerable: false,
-      configurable: true,
-    });
-    Object.defineProperty(carrier, "__nunc_carrier__", {
-      value: tag,
-      enumerable: false,
-      configurable: true,
-    });
+    carriers.add(carrier);
     out.push(carrier);
   }
   return out;

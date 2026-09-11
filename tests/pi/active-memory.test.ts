@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall, type Model, type Provider } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type ExtensionAPI, type ExtensionContext, SessionManager } from "@earendil-works/pi-coding-agent";
-import { memoryMessage, renderMemory, emptyMemory } from "../../src/engine/memory.js";
-import { memoryTokens } from "../../src/engine/accounting.js";
-import { project } from "../../src/pi/projection.js";
+import { memoryMessage, renderMemory, legacyRenderMemory, emptyMemory } from "../../src/engine/memory.js";
+import { memoryTokens, messageTokens, textTokens } from "../../src/engine/accounting.js";
+import { project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, memoryPatch } from "./fixtures.js";
@@ -339,6 +339,7 @@ test("freeze to native terminal mutual exclusion: patch rejected while maintenan
 
 test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty, nonempty->nonempty", async t => {
   const admissions: AdmissionObservation[] = [];
+  const extraMainInputTokens = 37;
   let surfaceRef: MemorySurface | undefined;
   let ctxRef: ExtensionContext | undefined;
   const f = await fixture({
@@ -351,6 +352,7 @@ test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty
         surfaceRef = memorySurface(pi);
       },
     }],
+    config: { budget: { extraMainInputTokens } },
   });
   t.after(() => f.close());
 
@@ -428,6 +430,19 @@ test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty
   assert.equal(adm5.estimateReason, "matching-receipt");
   assert.equal(adm5.receiptBreakdown?.currentMTokens, 0);
   assert.equal(adm5.receiptBreakdown?.retainedOldMMargin, true);
+  for (const [index, observation] of [adm2, adm3, adm4, adm5].entries()) {
+    const body = f.calls[index + 1]!;
+    const currentM = observation.receiptBreakdown!.currentMTokens;
+    const r = currentM ? body.messages.slice(0, -1) : body.messages;
+    const anchorIndex = r.findLastIndex(m => m.role === "assistant");
+    const anchor = r[anchorIndex]!;
+    assert(anchor.role === "assistant");
+    const u = anchor.usage.input + anchor.usage.cacheRead + anchor.usage.cacheWrite + anchor.usage.output;
+    const delta = r.slice(anchorIndex + 1).reduce((sum, message) => sum + messageTokens(message), 0);
+    assert.equal(observation.receiptBreakdown!.observedU, u);
+    assert.equal(observation.receiptBreakdown!.deltaRTokens, delta);
+    assert.equal(observation.inputTokens, u + delta + currentM + extraMainInputTokens + textTokens("{}"));
+  }
 });
 
 test("tail layout: single F->R->M layout, no compactionSummary wrapper, R tool calls and results preserved", async t => {
@@ -877,7 +892,7 @@ test("no recursive margin accumulation across multiple turns: U always comes fro
   assert.notEqual(adm3.receiptBreakdown?.observedU, adm2.receiptBreakdown!.observedU + adm2.receiptBreakdown!.deltaRTokens);
 });
 
-test("earlier receipt is reused when later response has invalid usage", async t => {
+for (const clone of [false, true]) test(`later invalid usage: ${clone ? "whole-context clone loses projection association" : "in-place rewrite still selects earlier valid receipt"}`, async t => {
   const admissions: AdmissionObservation[] = [];
   let corruptSecond = false;
   const f = await fixture({
@@ -887,7 +902,7 @@ test("earlier receipt is reused when later response has invalid usage", async t 
         pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
         pi.on("context", event => {
           if (!corruptSecond) return;
-          const messages = structuredClone(event.messages);
+          const messages = clone ? structuredClone(event.messages) : event.messages;
           const assistants = messages.filter(m => m.role === "assistant");
           if (assistants.length >= 2) {
             // Corrupt the second assistant's usage so its receipt anchor is unusable
@@ -916,10 +931,35 @@ test("earlier receipt is reused when later response has invalid usage", async t 
   await f.runtime.session.prompt("Turn 3 prompt");
 
   const adm3 = mains(admissions).at(-1)!;
-  assert.equal(adm3.estimator, "pi-usage-backed");
-  assert.equal(adm3.estimateReason, "matching-receipt");
-  assert.equal(adm3.receiptBreakdown?.observedU, u1); // Reused earlier valid receipt from Turn 1!
-  assert(adm3.anchorTrailingMessages! >= 2);
+  if (clone) {
+    assert.equal(adm3.estimator, "pi-heuristic");
+    assert.equal(adm3.estimateReason, "messages-mismatch");
+  } else {
+    assert.equal(adm3.estimator, "pi-usage-backed");
+    assert.equal(adm3.estimateReason, "matching-receipt");
+    assert.equal(adm3.receiptBreakdown?.observedU, u1);
+    assert(adm3.anchorTrailingMessages! >= 2);
+  }
+});
+
+test("response timestamp identity remains bound even when content and usage are unchanged", async t => {
+  const admissions: AdmissionObservation[] = [];
+  let changeIdentity = false;
+  const f = await fixture({ extras: [{ name: "usage-components", factory(pi) {
+    pi.events.on("nunc:admission", v => admissions.push(v as AdmissionObservation));
+    pi.on("context", event => {
+      if (changeIdentity) for (const message of event.messages) if (message.role === "assistant") message.timestamp++;
+    });
+  } }] });
+  t.after(() => f.close());
+  f.respond(() => fauxAssistantMessage("known response"));
+  await f.runtime.session.prompt("first component receipt");
+  await f.runtime.session.prompt("reuse measured components");
+  assert.equal(mains(admissions).at(-1)?.estimator, "pi-usage-backed");
+  changeIdentity = true;
+  await f.runtime.session.prompt("same content and usage, changed response identity");
+  assert.equal(mains(admissions).at(-1)?.estimator, "pi-heuristic");
+  assert.equal(mains(admissions).at(-1)?.estimateReason, "messages-mismatch");
 });
 
 test("public tool nunc_memory_patch rejects when session state is unconfirmed", async t => {

@@ -89,6 +89,12 @@ Drivers preserve mechanical reports, native sessions, request payloads and proce
 
 `all` proves the checked local mechanics. Real token accuracy, cache benefit, model policy quality, paid-service behavior, continued-task effectiveness and final integrated acceptance require separately authorized observation and judgment. See [PI](PI.md) for the extension contract and [LIVE](LIVE.md) for the bounded downstream runner. This producer neither installs a daily extension nor performs live/paid calls.
 
+## Active-memory regression evidence
+
+`tests/pi/projection-binding.test.ts` uses the real loader/context hooks and native Responses serializer with both Provider methods bound to controlled fetch. It distinguishes unknown calls before main admission, independent nested/repeated calls, whole-context clones, an identity-preserving carrier edit before serialization (including zero-send overflow), and sent-M versus Current/Last-main reporting. `tests/pi/memory-contract.test.ts` covers final-candidate budget, unknown/over-limit reduction, shared manual/model revisions, actual tool-preflight cancellation, old checkpoint/revision IDs and nextId across resume/reload/tree/fork/new, repeated conversion and invalid old data. `active-memory.test.ts` asserts the four exact U + delta R + current M + extras formulas; receipt/ownership and inherited native inventories retain the other cancellation/payload/lifecycle checks.
+
+The explicit `tests/pi/larva.integration.ts` entrypoint loads the supplied read-only Larva implementation. Its expanded cases execute actual temporary borrow and automatic restoration adjacent to M writes, real `session.compact()` with a later public hook holding the engine-to-native-terminal gap, and actual resource reload with active M and fresh/rebuilt receipts. Scripted responses prove host state and serialization, not model judgment or real billing. Default `all` does not require the Larva checkout.
+
 ## Manual IME / visual overlay check
 
 PTY CJK bytes do not prove IME candidate-window placement. Preparation is tracked and offline:

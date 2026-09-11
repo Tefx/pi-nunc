@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { Type } from "@earendil-works/pi-ai";
-import { getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
@@ -82,7 +82,7 @@ export default function nunc(pi: ExtensionAPI): void {
       pi.registerTool({
         name: "nunc_memory_patch",
         label: "Patch Memory",
-        description: "Atomically add, update, or remove working memory slots. Requires expectedRevision from nunc_memory_read.",
+        description: "Atomically add, update, or remove working memory slots. Requires expectedRevision from nunc_memory_read. Record confirmed decisions and necessary reasons, current blockers and recovery pointers; label conjectures and unfinished work. Notes are session working data and do not change user instructions or historical facts.",
         parameters: Type.Object({
           expectedRevision: Type.String({ description: "Revision obtained from nunc_memory_read" }),
           add: Type.Optional(Type.Array(
@@ -203,16 +203,17 @@ export default function nunc(pi: ExtensionAPI): void {
     admission.ensure(ctx);
     try {
       const sessionId = ctx.sessionManager.getSessionId();
-      const leafId = ctx.sessionManager.getLeafId();
       const projected = project(ctx.sessionManager.buildContextEntries());
       const messages = withEffectiveMemory(event.messages, projected.memory);
-      admission.bindProjection({
-        sessionId,
-        leafId,
-        memory: structuredClone(projected.memory),
-        rCount: projected.memory.slots.length > 0 ? messages.length - 1 : messages.length,
-        hasM: projected.memory.slots.length > 0,
-        carrierMsg: projected.memory.slots.length > 0 ? messages.at(-1) : undefined,
+      // Inspect Pi's public native mapping without changing real AgentMessages
+      // that later context hooks still consume. Native user/assistant/toolResult
+      // objects (and our carrier) survive conversion and witness this projection.
+      const converted = convertToLlm(messages);
+      const originals = new Set<object>(messages);
+      if (ctx.model) admission.bindProjection({
+        sessionId, signal: ctx.signal, model: ctx.model, messages: converted,
+        identityMessages: converted.filter(message => originals.has(message)),
+        memory: projected.memory,
       });
       return { messages };
     } catch (error) {

@@ -256,7 +256,7 @@ export function createContextSurface(options: {
         state.lastMain = recorded;
         try {
           const config = readConfig(options, event.ctx, event.model);
-          recorded.layout = layoutFromContext(event.context, config?.imageTokens, config?.main.extraInputTokens ?? 0);
+          recorded.layout = layoutFromContext(event.context, config?.imageTokens, config?.main.extraInputTokens ?? 0, event.projection);
           const payload = payloadView(observation.payload, event.payloadGrowth);
           if (payload) recorded.payload = payload;
         } catch {
@@ -481,15 +481,17 @@ function layoutFromProjection(fixed: FixedContext, memory: Memory, active: Activ
   };
 }
 
-function layoutFromContext(context: Context, imageTokens: number | undefined, extraInputTokens: number): ContextLayout {
-  const messages = inspectMessages(context.messages, imageTokens);
+function layoutFromContext(context: Context, imageTokens: number | undefined, extraInputTokens: number, projection?: AdmissionLayoutEvent["projection"]): ContextLayout {
+  const messages = inspectMessages(projection ? context.messages.slice(0, projection.rCount) : context.messages, imageTokens);
+  const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: memoryTokens(projection.memory.slots, imageTokens), envelopeTokens: 0 } : undefined;
   const tools = toolLayer(context.tools ?? []);
   const packagingTokens = 64 + extraInputTokens;
   const systemTokens = textTokens(context.systemPrompt ?? "");
-  const known = knownSum([{ tokens: systemTokens, unknown: false }, tools, { tokens: packagingTokens, unknown: false }, ...messages]);
+  const known = knownSum([{ tokens: systemTokens, unknown: false }, tools, { tokens: packagingTokens, unknown: false }, ...(memory ? [{ tokens: memory.tokens, unknown: false }] : []), ...messages]);
   return {
     system: { text: context.systemPrompt ?? "", tokens: systemTokens },
     tools,
+    ...(memory ? { memory } : {}),
     messages,
     messageCount: messages.length,
     blockCount: messages.reduce((n, message) => n + message.blocks.length, 0),

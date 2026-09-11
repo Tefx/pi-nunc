@@ -10,7 +10,9 @@ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-code
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, type AdmissionObservation } from "../../src/pi/admission.js";
 import { applyLastUserTextAppend } from "../../src/pi/payload.js";
-import { memorySurface } from "../../src/pi/manual.js";
+import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
+import { renderMemory } from "../../src/engine/memory.js";
+import { memoryTokens } from "../../src/engine/accounting.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
 
@@ -238,10 +240,13 @@ test("stable actual Larva state leaves target instructions unchanged in native C
   assert.equal(turn2.estimateReason, "matching-receipt");
 });
 
-test("continuous tools, temporary borrow, continuation lifecycle and idle callback on native Codex serializer", async t => {
+test("temporary borrow and automatic restoration with adjacent M writes, continuation and idle callback on native Codex serializer", async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
   let piRef: ExtensionAPI | undefined;
+  let ctxRef: ExtensionContext;
+  let surfaceRef: MemorySurface;
+  let borrowedWrite = false;
   const settledResolvers: Array<() => void> = [];
 
   const f = await fixture({
@@ -251,6 +256,15 @@ test("continuous tools, temporary borrow, continuation lifecycle and idle callba
       name: "watch-admission",
       factory(pi) {
         piRef = pi;
+        surfaceRef = memorySurface(pi)!;
+        pi.on("session_start", (_event, ctx) => { ctxRef = ctx; });
+        pi.on("tool_result", (event, ctx) => {
+          if (event.toolName !== "larva_persona_switch") return;
+          const v = surfaceRef.read(ctx);
+          const result = surfaceRef.patch(ctx, { expectedRevision: v.revision, update: [{ id: "s1", text: "M2 after actual borrow" }] });
+          assert.equal(result.ok, true);
+          borrowedWrite = true;
+        });
         pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
         pi.on("agent_settled", () => {
           const r = settledResolvers.shift();
@@ -326,6 +340,8 @@ test("continuous tools, temporary borrow, continuation lifecycle and idle callba
 
   await f.runtime.session.prompt("/larva-persona synth-codex-primary");
 
+  assert.equal(surfaceRef!.patch(ctxRef!, { expectedRevision: surfaceRef!.read(ctxRef!).revision, add: [{ key: "initial", text: "M1 before borrow" }] }).ok, true);
+
   // Step 1: Start turn 1 that triggers tool call to larva_persona_switch
   const settled1 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 1 settle timeout");
   await f.runtime.session.prompt("Calculate task requiring specialized borrow");
@@ -337,7 +353,10 @@ test("continuous tools, temporary borrow, continuation lifecycle and idle callba
   await settled2;
 
   // Turn 2 assertions (Continuation):
+  assert.equal(borrowedWrite, true);
   assert.equal(bodies.length, 2);
+  assert(JSON.stringify((bodies[0]!.input as unknown[]).at(-1)).includes("M1 before borrow"));
+  assert(JSON.stringify((bodies[1]!.input as unknown[]).at(-1)).includes("M2 after actual borrow"));
   const contBody = bodies[1]!;
   assert(typeof contBody.instructions === "string");
   assert(contBody.instructions.includes("synth-codex-specialist"));
@@ -350,6 +369,7 @@ test("continuous tools, temporary borrow, continuation lifecycle and idle callba
   assert.equal(contAdmission.resolution, "resolved");
   assert.equal(contAdmission.payload?.mode, "identity");
 
+  assert.equal(surfaceRef!.patch(ctxRef!, { expectedRevision: surfaceRef!.read(ctxRef!).revision, update: [{ id: "s1", text: "M3 after automatic restoration" }] }).ok, true);
   // Step 3: Trigger idle callback, proving lease automatically restored to synth-codex-primary and continuation expired
   assert(piRef);
   const settled3 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Idle turn settle timeout");
@@ -372,6 +392,10 @@ test("continuous tools, temporary borrow, continuation lifecycle and idle callba
   assert.equal(idleAdmission.resolution, "resolved");
   assert.equal(idleAdmission.estimator, "pi-usage-backed");
   assert.equal(idleAdmission.estimateReason, "matching-receipt");
+  assert.equal(idleAdmission.receiptBreakdown?.currentMTokens, memoryTokens(surfaceRef!.read(ctxRef!).memory.slots));
+  assert.equal(idleAdmission.receiptBreakdown?.retainedOldMMargin, true);
+  assert.equal(idleAdmission.receiptBreakdown?.observedU, 145);
+  assert(JSON.stringify((idleBody.input as unknown[]).at(-1)).includes("M3 after automatic restoration"));
 });
 
 test("real resource reload invalidates old resolver listener and native maintenance stays isolated", async t => {
@@ -774,13 +798,19 @@ test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overla
   assert(adm5.anchorTrailingMessages! >= 2);
 });
 
-test("real Pi/Larva/Nunc joint loop: idle callback with active M, native maintenance freeze mutual exclusion THROUGH terminal, and reload isolation", async t => {
+test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, then reload reconstructs M and receipts", { timeout: 30000 }, async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
   const settledResolvers: Array<() => void> = [];
   let piRef: ExtensionAPI | undefined;
-  let surfaceRef: any;
-  let ctxRef: any;
+  let surfaceRef: MemorySurface;
+  let ctxRef: ExtensionContext;
+  let inMaintenance = false;
+  let nativeSaved = 0;
+  let engineReturned = false;
+  const beforeTerminal = Promise.withResolvers<void>();
+  const releaseTerminal = Promise.withResolvers<void>();
+  t.after(() => releaseTerminal.resolve());
 
   const f = await fixture({
     extensions: [larvaExtensionPath],
@@ -794,7 +824,20 @@ test("real Pi/Larva/Nunc joint loop: idle callback with active M, native mainten
         piRef = pi;
         pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
         pi.on("session_start", (_event, ctx) => { ctxRef = ctx; });
-        surfaceRef = memorySurface(pi);
+        surfaceRef = memorySurface(pi)!;
+        pi.events.on("nunc:maintenance", (value: any) => { engineReturned = value.result.ok; });
+        // This later public hook runs after Nunc returned the candidate, while Pi
+        // still has not appended its compaction or emitted the terminal event.
+        pi.on("session_before_compact", async () => {
+          assert.equal(engineReturned, true);
+          beforeTerminal.resolve();
+          await withTimeout(releaseTerminal.promise, 15000, "release native terminal");
+        });
+        pi.on("session_compact", (event, ctx) => {
+          assert(ctx.sessionManager.getEntries().some(e => e.id === event.compactionEntry.id));
+          assert.equal(surfaceRef.read(ctx).status.occupied, false);
+          nativeSaved++;
+        });
         pi.on("agent_settled", () => {
           const r = settledResolvers.shift();
           r?.();
@@ -818,7 +861,9 @@ test("real Pi/Larva/Nunc joint loop: idle callback with active M, native mainten
     const decoded = request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
     const body = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
     bodies.push(body);
-    return codexSSE(model.id, `Turn response ${sendCount}`);
+    return codexSSE(model.id, inMaintenance
+      ? JSON.stringify({ add: [], remove: [], priority: ["s1"], required: [] })
+      : `Turn response ${sendCount}`);
   };
 
   const credential = oauthFixture();
@@ -836,11 +881,11 @@ test("real Pi/Larva/Nunc joint loop: idle callback with active M, native mainten
   await f.runtime.session.prompt("/larva-persona synth-codex-primary");
 
   // Step 1: Commit initial M
-  const v0 = surfaceRef.read(ctxRef);
-  surfaceRef.patch(ctxRef, {
+  const v0 = surfaceRef!.read(ctxRef!);
+  assert.equal(surfaceRef!.patch(ctxRef!, {
     expectedRevision: v0.revision,
     add: [{ key: "heartbeat-note", text: "Persistent note across idle and reload" }],
-  });
+  }).ok, true);
 
   // Prompt 1 runs and finishes
   const settled1 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 1 settle timeout");
@@ -867,43 +912,65 @@ test("real Pi/Larva/Nunc joint loop: idle callback with active M, native mainten
   const patchTool = (f.runtime.session as any).getToolDefinition("nunc_memory_patch");
   assert(patchTool);
 
-  // Begin freeze (simulates active maintenance)
-  assert.equal(surfaceRef.beginFreeze(), true);
-  // Nested beginFreeze returns false because occupied
-  assert.equal(surfaceRef.beginFreeze(), false);
-
-  const curView = surfaceRef.read(ctxRef);
+  inMaintenance = true;
+  const compact = f.runtime.session.compact();
+  await withTimeout(beforeTerminal.promise, 15000, "engine returned before native terminal");
+  assert.equal(nativeSaved, 0);
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
+  const curView = surfaceRef!.read(ctxRef!);
+  assert.equal(curView.status.occupied, true);
   // Attempt tool patch while maintenance is active: MUST be rejected with "occupied"
   const occupiedRes = await patchTool.execute("call-occ-1", {
     expectedRevision: curView.revision,
     add: [{ key: "during-freeze", text: "Should be blocked" }],
-  }, undefined, undefined, ctxRef);
+  }, undefined, undefined, ctxRef!);
 
   assert(occupiedRes.isError);
   const occupiedData = JSON.parse(occupiedRes.content[0].text);
   assert.equal(occupiedData.ok, false);
   assert.equal(occupiedData.code, "occupied");
 
-  // End freeze (terminal reached)
-  surfaceRef.endFreeze();
+  const manualBlocked = surfaceRef!.replace(ctxRef!, curView.revision, "s1", "blocked manual edit");
+  assert.equal(manualBlocked.ok, false);
+  if (!manualBlocked.ok) assert.equal(manualBlocked.code, "occupied");
+  releaseTerminal.resolve();
+  await withTimeout(compact, 15000, "native compaction terminal");
+  inMaintenance = false;
+  assert.equal(nativeSaved, 1);
+  assert.equal(surfaceRef!.read(ctxRef!).status.occupied, false);
+  assert.equal(sendCount, 3);
+  assert(admissions.some(a => a.kind === "maintenance" && a.outcome === "delegate" && a.payload));
+  assert(!JSON.stringify(bodies[2]!.input).includes(renderMemory(curView.memory.slots)), "maintenance uses extraction sources, never the main carrier");
 
-  // Patch now succeeds
+  // Patch now succeeds against the newly saved checkpoint revision.
   const successRes = await patchTool.execute("call-succ-1", {
-    expectedRevision: curView.revision,
+    expectedRevision: surfaceRef!.read(ctxRef!).revision,
     add: [{ key: "after-freeze", text: "Successfully added after maintenance unlocked" }],
-  }, undefined, undefined, ctxRef);
+  }, undefined, undefined, ctxRef!);
 
   assert(!successRes.isError);
   const successData = JSON.parse(successRes.content[0].text);
   assert.equal(successData.ok, true);
 
-  // Step 4: Next prompt runs with updated M and reuses receipt
-  const settled3 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 3 settle timeout");
+  // Native maintenance invalidated receipts. Rebuild a new one, then perform
+  // actual resource reload with active M (no reread/replay of session storage).
   await f.runtime.session.prompt("Prompt following maintenance unlock");
-  await settled3;
-
-  assert.equal(sendCount, 3);
-  const adm3 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
-  assert.equal(adm3.estimator, "pi-usage-backed");
-  assert.equal(adm3.estimateReason, "matching-receipt");
+  assert.equal(admissions.filter(a => a.kind === "main").at(-1)!.estimator, "pi-heuristic");
+  await f.runtime.session.prompt("Establish reuse before reload");
+  assert.equal(admissions.filter(a => a.kind === "main").at(-1)!.estimator, "pi-usage-backed");
+  const beforeReload = surfaceRef!.read(ctxRef!).memory;
+  const memoryEntries = () => f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction" || e.type === "custom" && e.customType === "nunc.memory");
+  const entriesBeforeReload = memoryEntries();
+  await f.runtime.session.reload();
+  assert.deepEqual(surfaceRef!.read(ctxRef!).memory, beforeReload);
+  assert.deepEqual(memoryEntries(), entriesBeforeReload);
+  await f.runtime.session.prompt("First rebuilt request after reload");
+  assert.equal(admissions.filter(a => a.kind === "main").at(-1)!.estimator, "pi-heuristic");
+  const rebuiltTail = (bodies.at(-1)!.input as Array<{ content: Array<{ text: string }> }>).at(-1)!;
+  assert.equal(rebuiltTail.content[0]!.text, renderMemory(beforeReload.slots));
+  await f.runtime.session.prompt("Reuse rebuilt request after reload");
+  const last = admissions.filter(a => a.kind === "main").at(-1)!;
+  assert.equal(last.estimator, "pi-usage-backed");
+  assert.equal(last.receiptBreakdown?.currentMTokens, memoryTokens(beforeReload.slots));
+  assert.equal(sendCount, 7);
 });

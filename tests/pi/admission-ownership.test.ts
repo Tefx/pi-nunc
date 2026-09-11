@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, type Context } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, type Context } from "@earendil-works/pi-ai";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Admission } from "../../src/pi/admission.js";
 import { engineConfig } from "../../src/pi/config.js";
@@ -133,15 +133,21 @@ test("repeated same-length completed calls keep a bounded receipt and bind the a
   const e = await env();
   const provider = e.registry.getProvider(e.model.provider);
   assert(provider);
+  // This component test supplies the same explicit projection boundary used by
+  // the context hook; unassociated direct provider calls cannot mint receipts.
+  const bind = (context: Context) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal, model: e.model, messages: context.messages, memory: { version: 1, nextId: 1, slots: [] } });
+  bind(e.context);
   let completed = await provider.streamSimple(e.model, e.context, e.options).result();
   assert.equal(completed.stopReason, "stop", completed.errorMessage ?? "");
   for (let i = 0; i < 11; i++) {
+    bind(e.context);
     completed = await provider.streamSimple(e.model, e.context, e.options).result();
     assert.equal(completed.stopReason, "stop", completed.errorMessage ?? "");
   }
   await Promise.resolve();
   e.observations.length = 0;
   const follow: Context = { messages: [e.context.messages[0]!, completed, { role: "user", content: "next synthetic turn", timestamp: 2 }] };
+  bind(follow);
   const next = await provider.streamSimple(e.model, follow, e.options).result();
   assert.equal(next.stopReason, "stop", next.errorMessage ?? "");
   const reused = e.observations.filter(o => o.kind === "main").at(-1) as { estimator?: string } | undefined;
@@ -152,6 +158,49 @@ test("repeated same-length completed calls keep a bounded receipt and bind the a
   assert.equal(after.stopReason, "stop", after.errorMessage ?? "");
   const fresh = e.observations.filter(o => o.kind === "main").at(-1) as { estimator?: string } | undefined;
   assert.equal(fresh?.estimator, "pi-heuristic");
+  e.admission.close(e.ctx);
+});
+
+test("receipt U sums real input/cache/output components instead of inconsistent totalTokens", async () => {
+  const e = await env();
+  // Controlled Provider result only; this is an admission component check, not
+  // evidence for a native serializer or a remote service's usage reporting.
+  e.registry.registerProvider({ ...e.faux.provider, streamSimple(model) {
+    const stream = createAssistantMessageEventStream();
+    const message = { ...fauxAssistantMessage("controlled usage"), api: model.api, provider: model.provider, model: model.id };
+    message.usage = { ...message.usage, input: 100, cacheRead: 20, cacheWrite: 5, output: 10, totalTokens: 1 };
+    queueMicrotask(() => { stream.push({ type: "done", reason: "stop", message }); stream.end(message); });
+    return stream;
+  } });
+  e.admission.ensure(e.ctx);
+  const provider = e.registry.getProvider(e.model.provider)!;
+  const bind = (messages: Context["messages"]) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal, model: e.model, messages, memory: { version: 1, nextId: 1, slots: [] } });
+  bind(e.context.messages);
+  const first = await provider.streamSimple(e.model, e.context, e.options).result();
+  const follow: Context = { messages: [...e.context.messages, first, { role: "user", content: "next", timestamp: 2 }] };
+  bind(follow.messages);
+  await provider.streamSimple(e.model, follow, e.options).result();
+  assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).receiptBreakdown.observedU, 135);
+  e.admission.close(e.ctx);
+});
+
+test("ambiguous projection witnesses and missing bindings cannot establish pure-R receipts", async () => {
+  const e = await env();
+  const first = e.context.messages[0]!;
+  const second: Context["messages"][number] = { role: "user", content: "second witness", timestamp: 2 };
+  const context: Context = { messages: [first, second] };
+  const bind = (messages: Context["messages"]) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal, model: e.model, messages, memory: { version: 1, nextId: 1, slots: [] } });
+  bind(context.messages);
+  bind([second, first]);
+  const response = await e.held.streamSimple(e.model, context, e.options).result();
+  assert.equal(response.stopReason, "stop");
+  assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).estimateReason, "messages-mismatch");
+  e.admission.invalidateUsage();
+  const unbound = await e.held.streamSimple(e.model, context, e.options).result();
+  const follow: Context = { messages: [first, second, unbound, { role: "user", content: "follow unbound", timestamp: 3 }] };
+  bind(follow.messages);
+  await e.held.streamSimple(e.model, follow, e.options).result();
+  assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).estimateReason, "no-receipt");
   e.admission.close(e.ctx);
 });
 
