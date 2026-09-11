@@ -2,7 +2,7 @@
 
 This document specifies accepted guidance refinements for Nunc's active working memory tools and maintenance extraction policy.
 
-**Status:** Proposed / Specification for Implementation Plan.
+**Status:** Tool and policy guidance text modifications implemented in `nunc.memory-guidance-implementation`; Gemini behavioral validation pending in `nunc.memory-guidance-gemini-eval`.
 **Scope:** Tool descriptions (`src/index.ts`), built-in semantic policy (`policies/default.md`), associated test evidence, and plan specification.
 **Invariants:** No changes to public tool names, parameters schemas, wire JSON contracts, slot IDs, revision algorithms, budget calculations, `required` joint protection, F → R → M carrier projection, or Pi native compaction scheduling.
 

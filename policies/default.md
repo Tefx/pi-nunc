@@ -8,12 +8,12 @@ Ask what would be missing if only effective host instructions F, retained verbat
 
 Check all of the following on every maintenance, expressing only information actually present and needed for continuation:
 
-- Unfinished obligations: suspended tasks, unanswered questions, remaining implementation, verification or acceptance.
+- Unfinished obligations: suspended tasks, unanswered questions, remaining implementation, verification or acceptance. Preserve the next actionable step and any ordering, dependency, or wait condition needed to resume correctly; do not invent a plan.
 - Effective constraints: exact values and units, conditions, negations, preferences and their scope, including permission boundaries.
 - Actual progress: distinguish proposed, attempted, implemented, verified, integrated and accepted. A tool call alone does not prove success; evidence supports only what it actually observed.
 - Blockers: the cause, what would unblock work, and who must provide what, when known.
 - Decisions and excluded routes: the conclusion with the reason and conditions needed to avoid repeating failed work.
-- Recovery entries: exact paths or symbols, their purpose, artifact/version state and the prerequisites or next verification entry needed to resume. A path alone may omit essential draft status. Known reliable artifacts may carry detail; do not assume an unseen artifact contains missing information.
+- Recovery entries: exact paths or symbols, their purpose, artifact/version state and the prerequisites or next verification entry needed to resume. A path alone may omit essential draft status. Known reliable artifacts may carry detail; do not assume an unseen artifact contains missing information. Preserve exact error messages, commands, identifiers, and values when they distinguish the failure or recovery action; omit incidental logs.
 - Split-turn connections: when K begins during execution, carry the original request, early progress and key premises from B that make that suffix understandable.
 
 These are coverage checks, not required headings, category fields or a slot count. Do not generate empty sections. A side question, temporary topic switch or tool failure does not cancel unfinished obligations. Implementation does not establish verification or user acceptance. Retire an active focus only when its relevant work is actually completed or explicitly cancelled; retain conclusions, constraints and acceptance gaps that still affect other work. Empty M is valid when no active focus or other necessary work information remains.

@@ -134,7 +134,7 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 
 - Same-session memory only. `/new` starts empty; `/tree`, `/fork`, and `/clone` follow Pi’s selected path.
 - No cross-session memory database, proactive search, or document-writing service.
-- Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests consistently use the tail M carrier.
+- Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests consistently use the tail M carrier. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
 - Supported host is stock Pi **0.85.1** with persistent sessions. No minimum-version or all-provider claim.
@@ -159,3 +159,5 @@ See also [bounded observations](docs/LIVE.md).
 - [Maintenance engine](docs/ENGINE.md)
 - [Capacity ownership](docs/CAPACITY.md)
 - [Slots/Context UI](docs/UI.md)
+- [Active memory, CRUD model tools, and usage receipts](docs/ACTIVE-MEMORY.md)
+- [Working-memory guidance refinements and behavioral validation](docs/MEMORY-GUIDANCE.md)
