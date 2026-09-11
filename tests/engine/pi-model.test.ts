@@ -29,7 +29,7 @@ test("public package export -> engine -> piComplete -> real Pi registry/runtime 
   assert.equal(result.observations.requests, 1);
   assert(result.observations.usage.contextInput! > 0);
   // Exercise the host projection used in budgeting, without claiming loader/persistence coverage.
-  assert.deepEqual(memoryMessage(result.candidate.memory.slots), convertToLlm([{ role: "compactionSummary", summary: renderMemory(result.candidate.memory.slots), tokensBefore: 0, timestamp: 0 }])[0]);
+  assert.deepEqual(memoryMessage(result.candidate.memory.slots), convertToLlm([{ role: "custom", customType: "nunc.memory", content: [{ type: "text", text: renderMemory(result.candidate.memory.slots) }], display: false, timestamp: 0 } as any])[0]);
 });
 
 test("public complete keeps transformHeaders; piComplete does not inherit SDK-only header hooks", async () => {

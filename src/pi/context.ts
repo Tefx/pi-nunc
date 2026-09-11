@@ -127,6 +127,7 @@ export interface LastMainContext {
   outputReserveTokens?: number;
   outputCapTokens?: number | null;
   initialMetadataTokens?: number;
+  receiptBreakdown?: AdmissionObservation["receiptBreakdown"];
   layout: ContextLayout;
   payload?: LastMainPayload;
 }
@@ -249,6 +250,7 @@ export function createContextSurface(options: {
           ...(observation.outputTokens === undefined ? {} : { outputTokens: observation.outputTokens }),
           ...(observation.outputReserveTokens === undefined ? {} : { outputReserveTokens: observation.outputReserveTokens }),
           ...(observation.outputCapTokens === undefined ? {} : { outputCapTokens: observation.outputCapTokens }),
+          ...(observation.receiptBreakdown ? { receiptBreakdown: observation.receiptBreakdown } : {}),
           ...(event.initialMetadataTokens === undefined ? {} : { initialMetadataTokens: event.initialMetadataTokens }),
         };
         state.lastMain = recorded;
@@ -454,14 +456,14 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
 function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number): ContextLayout {
   const inspected = inspectEntries(active, imageTokens);
   const tools = toolLayer(fixed.tools);
-  const envelopeTokens = messageCost(memoryMessage([]), undefined).tokens ?? 0;
-  const memoryLayer = { slots: structuredClone(memory.slots), tokens: imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens), envelopeTokens };
+  const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
+  const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0 };
   const packagingTokens = 64 + extraInputTokens;
   const known = knownSum([
     { tokens: textTokens(fixed.systemPrompt), unknown: false },
     tools,
     { tokens: packagingTokens, unknown: false },
-    { tokens: memoryLayer.tokens + envelopeTokens, unknown: false },
+    { tokens: memoryLayer.tokens, unknown: false },
     ...inspected.messages,
   ]);
   return {

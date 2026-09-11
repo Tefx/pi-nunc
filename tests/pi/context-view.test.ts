@@ -171,7 +171,7 @@ test("manual M revision matches the memory surface; model change keeps last-main
   f.respond(() => fauxAssistantMessage("After attribution cut."));
   await f.runtime.session.prompt("First constructed request after save");
   const fresh = context().read(ctx()).lastMain;
-  assert.equal(fresh?.estimator, "pi-heuristic");
+  assert.equal(fresh?.estimator, "pi-usage-backed");
   const previousModel = fresh?.model.id;
   await f.runtime.session.setModel(f.faux.getModel("small")!);
   const switched = context().read(ctx());
@@ -585,6 +585,7 @@ test("append plus metadata exposes text tokens separately from charged overhead;
     read: () => ({ revision: "r", memory: emptyMemory(), status: { occupied: false, unconfirmed: false }, budget: { tokens: 0, limit: 100, unknown: false, overLimit: false }, contextLayout: { slotCount: 0, activeEntries: 0 } }),
     replace: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
     delete: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
+    patch: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
   };
   const host = {
     events: {

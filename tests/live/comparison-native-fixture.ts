@@ -15,7 +15,9 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
   const verify = { tool: { name: "bash", input: { command: "python3 verify.py" } } };
   const lanes = Object.fromEntries([...suite.cases.find((c: any) => c.id === "e4").turns[0].text.matchAll(/(amber|birch|cedar|dune|elm|fir|grove|heath): (-?\d+), (\d+), (true|false), '([^']+)'/g)].map((m: any) => [m[1], { maxC: Number(m[2]), holdMinutes: Number(m[3]), fallbackAllowed: m[4] === "true", condition: m[5] }]));
   f.response = (row: any, source: any) => {
-    const messages = row.payload.messages ?? row.payload.input ?? [], last = messages.at(-1);
+    const messages = row.payload.messages ?? row.payload.input ?? [];
+    const nonMemory = messages.filter((m: any) => !text(m).includes("Nunc working memory"));
+    const last = nonMemory.at(-1);
     const serialized = messages.some((m: any) => text(m).includes("<conversation>"));
     if ((serialized || source) && options.failMaintenance) return { status: 503, message: "Controlled maintenance failure" };
     if (serialized && current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
@@ -27,7 +29,7 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
       if (current?.scenario === "e4" && options.invalidCapacity) return "Incomplete capacity response";
       if (current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
       const required = JSON.stringify(row.payload).includes("four required fields");
-      const add = current?.scenario === "e4" ? [{ key: "req", text: "n".repeat(options.tooLarge ? 1000 : 240) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "note", text: "Controlled protocol note." }];
+      const add = current?.scenario === "e4" ? [{ key: "req", text: "n".repeat(options.tooLarge ? 1000 : 120) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "note", text: "Controlled protocol note." }];
       const priority = current?.scenario === "e4" ? ["opt", "extra", "req"] : ["note"];
       return JSON.stringify({ add, remove: source.M.map((s: any) => s.id), priority, ...(required ? { required: [add[0]!.key] } : {}) });
     }

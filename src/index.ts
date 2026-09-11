@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { Type } from "@earendil-works/pi-ai";
 import { getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
@@ -17,6 +18,7 @@ export interface MaintenanceEvent { reason: SessionBeforeCompactEvent["reason"];
 
 export default function nunc(pi: ExtensionAPI): void {
   pi.registerFlag("nunc-config", { description: "Nunc JSON configuration path (relative to cwd); policy paths are relative to this file", type: "string" });
+  pi.registerFlag("nunc-memory-tools", { description: "Expose nunc_memory_read and nunc_memory_patch model tools", type: "boolean" });
   let generation = 0;
   let running: AbortController | undefined;
   let hostSettings: HostSettingsSource | undefined;
@@ -50,7 +52,97 @@ export default function nunc(pi: ExtensionAPI): void {
       return { name, description: tool.description, parameters: tool.parameters };
     }) };
   };
-  const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => { admission.invalidateUsage(); ui.refresh(); } });
+  const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => { ui.refresh(); } });
+  let toolsRegistered = false;
+  const registerMemoryTools = () => {
+    if (toolsRegistered) return;
+    if (Boolean(pi.getFlag("nunc-memory-tools"))) {
+      pi.registerTool({
+        name: "nunc_memory_read",
+        label: "Read Memory",
+        description: "Read the current session-local working memory slots, revision, budget and writable status.",
+        parameters: Type.Object({}),
+        execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
+          const view = memory.read(ctx);
+          const result = {
+            revision: view.revision,
+            slots: view.memory.slots.map(s => ({ id: s.id, text: s.text })),
+            budget: {
+              usedTokens: view.budget.tokens,
+              limitTokens: view.budget.limit,
+            },
+            writable: !view.status.occupied && !view.status.unconfirmed,
+          };
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result) }],
+            details: result,
+          };
+        },
+      });
+      pi.registerTool({
+        name: "nunc_memory_patch",
+        label: "Patch Memory",
+        description: "Atomically add, update, or remove working memory slots. Requires expectedRevision from nunc_memory_read.",
+        parameters: Type.Object({
+          expectedRevision: Type.String({ description: "Revision obtained from nunc_memory_read" }),
+          add: Type.Optional(Type.Array(
+            Type.Object({
+              key: Type.String({ description: "Temporary unique key for the added item within this batch" }),
+              text: Type.String({ description: "Content of the note" }),
+            }),
+            { description: "Items to add (system assigns final IDs in order)" }
+          )),
+          update: Type.Optional(Type.Array(
+            Type.Object({
+              id: Type.String({ description: "ID of existing slot to update" }),
+              text: Type.String({ description: "Updated content of the slot" }),
+            }),
+            { description: "Items to update (preserves ID and position)" }
+          )),
+          remove: Type.Optional(Type.Array(
+            Type.String({ description: "ID of existing slot to remove" }),
+            { description: "Slot IDs to remove" }
+          )),
+        }),
+        execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+          const patchParams = (params ?? {}) as Parameters<typeof memory.patch>[1];
+          const res = memory.patch(ctx, patchParams);
+          if (res.ok) {
+            const payload = {
+              ok: true,
+              revision: res.revision,
+              added: res.added,
+              budget: res.budget,
+            };
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify(payload) }],
+              details: payload,
+            };
+          }
+          const errPayload = {
+            ok: false,
+            code: res.code,
+            message: res.message,
+            recovery: {
+              revision: res.view.revision,
+              budget: {
+                usedTokens: res.view.budget.tokens,
+                limitTokens: res.view.budget.limit,
+              },
+              writable: !res.view.status.occupied && !res.view.status.unconfirmed,
+            },
+          };
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(errPayload) }],
+            details: errPayload,
+            isError: true,
+          };
+        },
+      });
+      toolsRegistered = true;
+    }
+  };
+  registerMemoryTools();
   const contextView = createContextSurface({
     pi, memory, fixed,
     config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction),
@@ -77,6 +169,7 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   pi.on("session_start", (_event, ctx) => {
+    registerMemoryTools();
     invalidate(); contextView.resetPath();
     try {
       admission.ensure(ctx); supported(ctx);

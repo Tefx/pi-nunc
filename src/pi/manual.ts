@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, Memory, Slot } from "../engine/index.js";
 import { memoryPlan, memoryTokens } from "../engine/index.js";
-import { EngineError, nonempty, validateMemory } from "../engine/validation.js";
+import { EngineError, integer, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
 import { engineConfig, readConfig, type HostCompactionSettings } from "./config.js";
 import { MANUAL_MEMORY_TYPE, memoryRevision, project, revisionApplies } from "./projection.js";
 
@@ -26,10 +26,22 @@ export type ManualSaveResult =
   | { ok: true; revision: string; memory: Memory }
   | { ok: false; code: ManualSaveCode; message: string; view: MemoryView };
 
+export interface MemoryPatchParams {
+  expectedRevision: string;
+  add?: Array<{ key: string; text: string }>;
+  update?: Array<{ id: string; text: string }>;
+  remove?: string[];
+}
+
+export type MemoryPatchResult =
+  | { ok: true; revision: string; added: Record<string, string>; budget: { usedTokens: number; limitTokens: number | null }; memory: Memory }
+  | { ok: false; code: ManualSaveCode; message: string; view: MemoryView };
+
 export interface MemorySurface {
   read(ctx: ExtensionContext): MemoryView;
   replace(ctx: ExtensionContext, revision: string, slotId: string, text: string): ManualSaveResult;
   delete(ctx: ExtensionContext, revision: string, slotId: string): ManualSaveResult;
+  patch(ctx: ExtensionContext, params: MemoryPatchParams): MemoryPatchResult;
 }
 export interface MemoryFreeze extends MemorySurface {
   beginFreeze(): boolean;
@@ -60,36 +72,6 @@ export function createMemorySurface(options: {
       },
     };
   };
-  const commit = (ctx: ExtensionContext, revision: string, next: Memory | ManualSaveResult): ManualSaveResult => {
-    if ("ok" in next) return next;
-    if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
-    if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
-    const current = viewOf(ctx);
-    if (!revisionApplies(revision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
-      return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
-    }
-    try { validateMemory(next); } catch (error) {
-      return fail("invalid", error instanceof Error ? error.message : "Invalid memory", current);
-    }
-    const budget = measureBudget(ctx, options, next.slots);
-    const grew = budget.tokens > current.budget.tokens;
-    if (grew && budget.unknown) return fail("unknown-budget", "Memory budget cannot be computed; growing edit was not saved", current);
-    if (grew && budget.limit !== null && budget.tokens > budget.limit) {
-      return fail("overbudget", `Growing edit estimate ${budget.tokens} exceeds M budget ${budget.limit}`, { ...current, budget });
-    }
-    if (isDeepStrictEqual(next, current.memory)) return { ok: true, revision: current.revision, memory: current.memory };
-    const leaf = ctx.sessionManager.getLeafId();
-    try {
-      options.pi.appendEntry(MANUAL_MEMORY_TYPE, { nunc: next });
-    } catch (error) {
-      const advanced = ctx.sessionManager.getLeafId();
-      if (advanced && advanced !== leaf) markUnconfirmed(ctx.sessionManager, advanced);
-      return fail("unconfirmed", `Save unconfirmed: ${error instanceof Error ? error.message : "native append failed"}. ${UNCONFIRMED_MESSAGE}`, viewOf(ctx));
-    }
-    options.onCommitted();
-    const saved = viewOf(ctx);
-    return { ok: true, revision: saved.revision, memory: saved.memory };
-  };
   const surface: MemoryFreeze = {
     beginFreeze() {
       if (state.occupied) { state.ignoreFailed++; return false; }
@@ -101,18 +83,163 @@ export function createMemorySurface(options: {
       return false;
     },
     read: viewOf,
+    patch(ctx, params) {
+      if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
+      if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
+      const current = viewOf(ctx);
+      if (!record(params) || typeof params.expectedRevision !== "string") {
+        return fail("invalid", "Expected expectedRevision string in patch parameters", current);
+      }
+      if (!revisionApplies(params.expectedRevision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
+        return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
+      }
+      const existingSlots = current.memory.slots;
+      const existingIdSet = new Set(existingSlots.map(s => s.id));
+      const addList = params.add ?? [];
+      const updateList = params.update ?? [];
+      const removeList = params.remove ?? [];
+      if (!Array.isArray(addList) || !Array.isArray(updateList) || !Array.isArray(removeList)) {
+        return fail("invalid", "add, update, and remove must be arrays if provided", current);
+      }
+
+      // Check additions
+      const addedKeys = new Set<string>();
+      for (const item of addList) {
+        if (!record(item) || typeof item.key !== "string" || typeof item.text !== "string" || !nonempty(item.key) || !nonempty(item.text)) {
+          return fail("invalid", "Invalid addition item: key and text must be non-empty strings", current);
+        }
+        if (addedKeys.has(item.key) || existingIdSet.has(item.key)) {
+          return fail("invalid", `Addition key ${item.key} collides with an existing slot ID or another addition`, current);
+        }
+        addedKeys.add(item.key);
+      }
+
+      // Check updates
+      const updatedIds = new Set<string>();
+      for (const item of updateList) {
+        if (!record(item) || typeof item.id !== "string" || typeof item.text !== "string" || !nonempty(item.text)) {
+          return fail("invalid", "Invalid update item: id must be string and text must be non-empty", current);
+        }
+        if (!existingIdSet.has(item.id)) {
+          return fail("invalid", `Update target slot ${item.id} does not exist`, current);
+        }
+        if (updatedIds.has(item.id)) {
+          return fail("invalid", `Duplicate update target slot ${item.id}`, current);
+        }
+        updatedIds.add(item.id);
+      }
+
+      // Check removals
+      const removedIds = new Set<string>();
+      for (const id of removeList) {
+        if (typeof id !== "string") {
+          return fail("invalid", "Invalid remove item: id must be a string", current);
+        }
+        if (!existingIdSet.has(id)) {
+          return fail("invalid", `Remove target slot ${id} does not exist`, current);
+        }
+        if (removedIds.has(id)) {
+          return fail("invalid", `Duplicate remove target slot ${id}`, current);
+        }
+        if (updatedIds.has(id)) {
+          return fail("invalid", `Slot ${id} cannot be both updated and removed in the same patch`, current);
+        }
+        removedIds.add(id);
+      }
+
+      // Build candidate slots
+      const updateMap = new Map(updateList.map(u => [u.id, u.text]));
+      const survivingSlots: Slot[] = [];
+      for (const slot of existingSlots) {
+        if (removedIds.has(slot.id)) continue;
+        if (updateMap.has(slot.id)) {
+          survivingSlots.push({ id: slot.id, text: updateMap.get(slot.id)! });
+        } else {
+          survivingSlots.push({ id: slot.id, text: slot.text });
+        }
+      }
+
+      // Assign IDs for additions
+      let nextId = current.memory.nextId;
+      const allIds = new Set(existingSlots.map(s => s.id));
+      const addedMap: Record<string, string> = {};
+      const newSlots: Slot[] = [];
+      for (const item of addList) {
+        let id: string;
+        do {
+          try {
+            requireThat(integer(nextId + 1, 1), "INPUT", "Memory ID counter exhausted");
+          } catch (e) {
+            return fail("invalid", e instanceof Error ? e.message : "ID counter exhausted", current);
+          }
+          id = `s${nextId++}`;
+        } while (allIds.has(id));
+        allIds.add(id);
+        addedMap[item.key] = id;
+        newSlots.push({ id, text: item.text });
+      }
+
+      const nextMemory: Memory = {
+        version: 1,
+        nextId,
+        slots: [...survivingSlots, ...newSlots],
+      };
+
+      try {
+        validateMemory(nextMemory);
+      } catch (error) {
+        return fail("invalid", error instanceof Error ? error.message : "Invalid memory candidate", current);
+      }
+
+      // Measure budget
+      const budget = measureBudget(ctx, options, nextMemory.slots);
+      const grew = budget.tokens > current.budget.tokens;
+      if (grew && budget.unknown) {
+        return fail("unknown-budget", "Memory budget cannot be computed; growing edit was not saved", current);
+      }
+      if (grew && budget.limit !== null && budget.tokens > budget.limit) {
+        return fail("overbudget", `Growing edit estimate ${budget.tokens} exceeds M budget ${budget.limit}`, { ...current, budget });
+      }
+
+      // No-op check
+      if (isDeepStrictEqual(nextMemory, current.memory)) {
+        return {
+          ok: true,
+          revision: current.revision,
+          memory: current.memory,
+          added: addedMap,
+          budget: { usedTokens: current.budget.tokens, limitTokens: current.budget.limit },
+        };
+      }
+
+      const leaf = ctx.sessionManager.getLeafId();
+      try {
+        options.pi.appendEntry(MANUAL_MEMORY_TYPE, { nunc: nextMemory });
+      } catch (error) {
+        const advanced = ctx.sessionManager.getLeafId();
+        if (advanced && advanced !== leaf) markUnconfirmed(ctx.sessionManager, advanced);
+        return fail("unconfirmed", `Save unconfirmed: ${error instanceof Error ? error.message : "native append failed"}. ${UNCONFIRMED_MESSAGE}`, viewOf(ctx));
+      }
+
+      options.onCommitted();
+      const saved = viewOf(ctx);
+      return {
+        ok: true,
+        revision: saved.revision,
+        memory: saved.memory,
+        added: addedMap,
+        budget: { usedTokens: saved.budget.tokens, limitTokens: saved.budget.limit },
+      };
+    },
     replace(ctx, revision, slotId, text) {
-      return commit(ctx, revision, prepareEdit(ctx, revision, state, viewOf, memory => {
-        if (!nonempty(text)) throw new EngineError("INPUT", "Empty text is not a valid slot");
-        if (!memory.slots.some(slot => slot.id === slotId)) throw new EngineError("INPUT", `Unknown slot ${slotId}`);
-        return { version: 1, nextId: memory.nextId, slots: memory.slots.map(slot => slot.id === slotId ? { id: slot.id, text } : slot) };
-      }));
+      const res = surface.patch(ctx, { expectedRevision: revision, update: [{ id: slotId, text }] });
+      if (res.ok) return { ok: true, revision: res.revision, memory: res.memory };
+      return res;
     },
     delete(ctx, revision, slotId) {
-      return commit(ctx, revision, prepareEdit(ctx, revision, state, viewOf, memory => {
-        if (!memory.slots.some(slot => slot.id === slotId)) throw new EngineError("INPUT", `Unknown slot ${slotId}`);
-        return { version: 1, nextId: memory.nextId, slots: memory.slots.filter(slot => slot.id !== slotId) };
-      }));
+      const res = surface.patch(ctx, { expectedRevision: revision, remove: [slotId] });
+      if (res.ok) return { ok: true, revision: res.revision, memory: res.memory };
+      return res;
     },
   };
   options.pi.events.on("nunc:memory-bind", reply => {
@@ -129,7 +256,8 @@ export function memorySurface(pi: { events: { emit: (channel: string, data: unkn
   return found;
 }
 
-function fail(code: ManualSaveCode, message: string, view: MemoryView): ManualSaveResult {
+type FailResult = { ok: false; code: ManualSaveCode; message: string; view: MemoryView };
+function fail(code: ManualSaveCode, message: string, view: MemoryView): FailResult {
   return { ok: false, code, message, view };
 }
 
@@ -161,17 +289,6 @@ function sessionUnconfirmed(manager: SessionHandle): boolean {
     return false;
   }
   return true;
-}
-
-function prepareEdit(ctx: ExtensionContext, revision: string, state: { occupied: boolean }, viewOf: (ctx: ExtensionContext) => MemoryView, edit: (memory: Memory) => Memory): Memory | ManualSaveResult {
-  if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
-  if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
-  const current = viewOf(ctx);
-  if (!revisionApplies(revision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
-    return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
-  }
-  try { return edit(current.memory); }
-  catch (error) { return fail("invalid", error instanceof Error ? error.message : "Invalid memory", current); }
 }
 
 function measureBudget(ctx: ExtensionContext, options: Parameters<typeof createMemorySurface>[0], slots: Slot[]): MemoryBudgetView {

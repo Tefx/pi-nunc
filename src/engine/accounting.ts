@@ -63,10 +63,12 @@ export function admissionEstimate(context: Context, model: Model<Api>, imageToke
   return { tokens: fresh, estimator: "pi-heuristic" };
 }
 export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEntry[]): Context {
-  return { ...fixed, messages: [memoryMessage(slots), ...active.flatMap(e => e.messages)] };
+  const r = active.flatMap(e => e.messages);
+  return { ...fixed, messages: slots.length > 0 ? [...r, memoryMessage(slots)] : [...r] };
 }
 export function memoryTokens(slots: Slot[], imageTokens?: number): number {
-  return messageTokens(memoryMessage(slots), imageTokens) - messageTokens(memoryMessage([]), imageTokens);
+  if (slots.length === 0) return 0;
+  return messageTokens(memoryMessage(slots), imageTokens);
 }
 /** Native serializers that omit an output cap; a smaller configured ceiling is not enforceable. */
 export function omitsSerializedOutputCap(model: Model<Api>): boolean {

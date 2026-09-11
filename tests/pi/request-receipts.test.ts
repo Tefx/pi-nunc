@@ -316,7 +316,7 @@ test("public context rewrite of the response anchor over limit sends zero additi
   assert.equal(f.calls.length, before);
 });
 
-test("model, tools, compaction and manual M invalidate every receipt", async t => {
+test("model, tools, and compaction invalidate receipts, while manual M preserves reusable receipts", async t => {
   const env = await receiptsFixture(t);
   await env.f.runtime.session.prompt("On large");
   await env.f.runtime.session.setModel(env.f.faux.getModel("small")!);
@@ -349,5 +349,6 @@ test("model, tools, compaction and manual M invalidate every receipt", async t =
   if (view.memory.slots[0]) assert.equal(memory.replace(env.ctx(), view.revision, view.memory.slots[0].id, "Edited receipt cut").ok, true);
   await env.f.runtime.session.prompt("After save");
   const afterSave = mains(env.observations).at(-1);
-  assert.equal(afterSave?.estimator, "pi-heuristic");
+  assert.equal(afterSave?.estimator, "pi-usage-backed");
+  assert.equal(afterSave?.estimateReason, "matching-receipt");
 });

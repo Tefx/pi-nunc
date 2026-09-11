@@ -3,10 +3,12 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createAssistantMessageEventStream, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import type { Complete, EngineConfig } from "../engine/index.js";
-import { admissionEstimate, inputLimit, mainAdmissionLimit, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
+import type { Complete, EngineConfig, Memory } from "../engine/index.js";
+import { admissionEstimate, inputLimit, mainAdmissionLimit, memoryTokens, messageTokens, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
+import { emptyMemory, memoryMessage } from "../engine/memory.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
+import { project } from "./projection.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = {
@@ -21,16 +23,20 @@ interface MainReceipt {
   model: Model<Api>;
   systemPrompt: string | undefined;
   tools: unknown;
-  messages: unknown;
-  messageCount: number;
+  rMessages: unknown;
+  rCount: number;
+  mTokens: number;
+  hasM: boolean;
   response: unknown;
 }
 interface MainSnapshot {
   model: Model<Api>;
   systemPrompt: string | undefined;
   tools: unknown;
-  messages: unknown;
-  messageCount: number;
+  rMessages: unknown;
+  rCount: number;
+  mTokens: number;
+  hasM: boolean;
   generation: number;
   payloadBound: boolean;
 }
@@ -47,6 +53,12 @@ export type ResolveSystemPromptRequest = {
   reply: (result: ResolveSystemPromptResult) => void;
 };
 export type AdmissionEstimateReason = "matching-receipt" | "no-receipt" | "model-mismatch" | "system-mismatch" | "tools-mismatch" | "messages-mismatch" | "payload-unbound" | "usage-unusable" | "lifecycle-reset";
+export interface ReceiptBreakdown {
+  observedU: number;
+  deltaRTokens: number;
+  currentMTokens: number;
+  retainedOldMMargin: boolean;
+}
 export interface AdmissionObservation {
   kind: "main" | "maintenance" | "unknown";
   outcome: "delegate" | "reject";
@@ -62,6 +74,7 @@ export interface AdmissionObservation {
   estimateReason?: AdmissionEstimateReason;
   hostPromptMatchesRequest?: boolean;
   anchorTrailingMessages?: number;
+  receiptBreakdown?: ReceiptBreakdown;
   code?: string;
   payload?: PayloadObservation;
 }
@@ -139,8 +152,8 @@ export class Admission {
   private hostPromptMatches(ctx: ExtensionContext, context: Context): boolean | undefined {
     try { return ctx.getSystemPrompt() === context.systemPrompt; } catch { return undefined; }
   }
-  private assistantUsageUsable(message: { role?: string; stopReason?: string; model?: string; provider?: string; api?: string; usage?: unknown }, model: Model<Api>): boolean {
-    if (message.role !== "assistant" || message.stopReason === "aborted" || message.stopReason === "error") return false;
+  private assistantUsageUsable(message: unknown, model: Model<Api>): boolean {
+    if (!record(message) || message.role !== "assistant" || message.stopReason === "aborted" || message.stopReason === "error") return false;
     if (message.model !== model.id || message.provider !== model.provider || message.api !== model.api) return false;
     const usage = message.usage;
     if (!record(usage) || ![usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.totalTokens].every(n => integer(n))) return false;
@@ -148,6 +161,13 @@ export class Admission {
       ? usage.totalTokens
       : (usage.input as number) + (usage.output as number) + (usage.cacheRead as number) + (usage.cacheWrite as number);
     return integer(tokens, 1);
+  }
+  private assistantUsageTokens(message: unknown): number {
+    if (!record(message) || !record(message.usage)) return 0;
+    const usage = message.usage as { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; totalTokens?: number };
+    return typeof usage.totalTokens === "number" && usage.totalTokens > 0
+      ? usage.totalTokens
+      : (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
   }
   private responseView(message: { role?: string; content?: unknown; stopReason?: string; model?: string; provider?: string; api?: string; usage?: unknown }): unknown {
     return jsonView({
@@ -160,26 +180,96 @@ export class Admission {
       usage: message.usage,
     });
   }
-  private selectReceipt(context: Context, model: Model<Api>): { reason: AdmissionEstimateReason; receipt?: MainReceipt } {
-    if (!this.receipts.length) return { reason: "no-receipt" };
+  private selectReceipt(effectiveContext: Context, model: Model<Api>, currentMemory: Memory, imageTokens?: number): {
+    reason: AdmissionEstimateReason;
+    validAssociation: boolean;
+    receipt?: MainReceipt;
+    receiptTokens: number;
+    anchorTrailingMessages?: number;
+    receiptBreakdown?: ReceiptBreakdown;
+    rMessages: Context["messages"];
+    currentMTokens: number;
+    hasM: boolean;
+  } {
+    const hasM = currentMemory.slots.length > 0;
+    const currentMTokens = hasM ? memoryTokens(currentMemory.slots, imageTokens) : 0;
+    const mCarrier = hasM ? memoryMessage(currentMemory.slots) : undefined;
+
+    let validAssociation = false;
+    let rMessages: Context["messages"] = [];
+    if (!hasM) {
+      rMessages = effectiveContext.messages;
+      validAssociation = true;
+    } else {
+      if (effectiveContext.messages.length >= 1 && isDeepStrictEqual(effectiveContext.messages.at(-1), mCarrier)) {
+        rMessages = effectiveContext.messages.slice(0, -1);
+        validAssociation = true;
+      }
+    }
+
+    if (!validAssociation) {
+      return { reason: "messages-mismatch", validAssociation: false, receiptTokens: 0, rMessages: effectiveContext.messages, currentMTokens, hasM };
+    }
+
+    if (!this.receipts.length) {
+      return { reason: "no-receipt", validAssociation: true, receiptTokens: 0, rMessages, currentMTokens, hasM };
+    }
+
     let reason: AdmissionEstimateReason = "messages-mismatch";
-    let best: MainReceipt | undefined;
-    const tools = jsonView(context.tools ?? []);
+    let best: { receipt: MainReceipt; deltaRTokens: number; uTokens: number; trailing: number } | undefined;
+    const tools = jsonView(effectiveContext.tools ?? []);
+
     for (const receipt of this.receipts) {
       if (!isDeepStrictEqual(receipt.model, model)) { if (!best) reason = "model-mismatch"; continue; }
-      if (receipt.systemPrompt !== context.systemPrompt) { if (!best) reason = "system-mismatch"; continue; }
+      if (receipt.systemPrompt !== effectiveContext.systemPrompt) { if (!best) reason = "system-mismatch"; continue; }
       if (!isDeepStrictEqual(receipt.tools, tools)) { if (!best) reason = "tools-mismatch"; continue; }
-      if (context.messages.length <= receipt.messageCount) { if (!best) reason = "messages-mismatch"; continue; }
-      if (!isDeepStrictEqual(jsonView(context.messages.slice(0, receipt.messageCount)), receipt.messages)) { if (!best) reason = "messages-mismatch"; continue; }
-      const anchor = context.messages[receipt.messageCount];
+      if (rMessages.length <= receipt.rCount) { if (!best) reason = "messages-mismatch"; continue; }
+      if (!isDeepStrictEqual(jsonView(rMessages.slice(0, receipt.rCount)), receipt.rMessages)) { if (!best) reason = "messages-mismatch"; continue; }
+      const anchor = rMessages[receipt.rCount];
       if (!anchor || !this.assistantUsageUsable(anchor, model)) { if (!best) reason = "usage-unusable"; continue; }
       if (!isDeepStrictEqual(this.responseView(anchor), receipt.response)) { if (!best) reason = "messages-mismatch"; continue; }
-      if (!best || receipt.messageCount >= best.messageCount) best = receipt;
+
+      const deltaR = rMessages.slice(receipt.rCount + 1);
+      const deltaRTokens = deltaR.reduce((sum, m) => sum + messageTokens(m, imageTokens), 0);
+      const uTokens = this.assistantUsageTokens(anchor);
+      const trailing = deltaR.length;
+      if (!best || receipt.rCount >= best.receipt.rCount) {
+        best = { receipt, deltaRTokens, uTokens, trailing };
+      }
     }
-    return best ? { reason: "matching-receipt", receipt: best } : { reason };
+
+    if (best) {
+      const receiptTokens = best.uTokens + best.deltaRTokens + currentMTokens;
+      const receiptBreakdown: ReceiptBreakdown = {
+        observedU: best.uTokens,
+        deltaRTokens: best.deltaRTokens,
+        currentMTokens,
+        retainedOldMMargin: best.receipt.hasM,
+      };
+      return {
+        reason: "matching-receipt",
+        validAssociation: true,
+        receipt: best.receipt,
+        receiptTokens,
+        anchorTrailingMessages: best.trailing,
+        receiptBreakdown,
+        rMessages,
+        currentMTokens,
+        hasM,
+      };
+    }
+
+    return {
+      reason,
+      validAssociation: true,
+      receiptTokens: 0,
+      rMessages,
+      currentMTokens,
+      hasM,
+    };
   }
   private remember(receipt: MainReceipt): void {
-    const dup = this.receipts.findIndex(existing => existing.messageCount === receipt.messageCount && existing.systemPrompt === receipt.systemPrompt && isDeepStrictEqual(existing.model, receipt.model) && isDeepStrictEqual(existing.tools, receipt.tools));
+    const dup = this.receipts.findIndex(existing => existing.rCount === receipt.rCount && existing.systemPrompt === receipt.systemPrompt && isDeepStrictEqual(existing.model, receipt.model) && isDeepStrictEqual(existing.tools, receipt.tools));
     if (dup >= 0) this.receipts.splice(dup, 1);
     this.receipts.push(receipt);
     while (this.receipts.length > MAIN_RECEIPT_LIMIT) this.receipts.shift();
@@ -192,8 +282,10 @@ export class Admission {
         model: snapshot.model,
         systemPrompt: snapshot.systemPrompt,
         tools: snapshot.tools,
-        messages: snapshot.messages,
-        messageCount: snapshot.messageCount,
+        rMessages: snapshot.rMessages,
+        rCount: snapshot.rCount,
+        mTokens: snapshot.mTokens,
+        hasM: snapshot.hasM,
         response: this.responseView(message),
       });
     }, () => { /* Failed stream; no receipt. */ });
@@ -359,35 +451,48 @@ export class Admission {
           throw resolved.error;
         }
 
-        const selected = this.selectReceipt(effectiveContext, model);
-        const estimate = selected.receipt
-          ? admissionEstimate(effectiveContext, model, config.imageTokens, true, selected.receipt.messageCount, selected.receipt.messageCount)
-          : admissionEstimate(effectiveContext, model, config.imageTokens);
-        inputTokens = estimate.tokens + config.main.extraInputTokens + initialMetadataTokens;
+        const entries = ctx.sessionManager.buildContextEntries ? ctx.sessionManager.buildContextEntries() : [];
+        const effectiveMemory = entries.length ? project(entries).memory : emptyMemory();
+        const selected = this.selectReceipt(effectiveContext, model, effectiveMemory, config.imageTokens);
+        let estimateTokens: number;
+        let estimator: "pi-heuristic" | "pi-usage-backed";
+        if (selected.receipt) {
+          estimator = "pi-usage-backed";
+          estimateTokens = selected.receiptTokens;
+        } else {
+          estimator = "pi-heuristic";
+          estimateTokens = admissionEstimate(effectiveContext, model, config.imageTokens).tokens;
+        }
+        inputTokens = estimateTokens + config.main.extraInputTokens + initialMetadataTokens;
         const plannedInputLimit = inputLimit(model, config.main);
         const hostPromptMatchesRequest = this.hostPromptMatches(ctx, effectiveContext);
         budgetObservation = {
           resolution: resolved.status,
-          estimator: estimate.estimator,
+          estimator,
           plannedInputLimit,
           inputExceededPlan: inputTokens > plannedInputLimit,
           outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens,
           estimateReason: selected.reason,
-          ...(selected.receipt ? { anchorTrailingMessages: effectiveContext.messages.length - selected.receipt.messageCount - 1 } : {}),
+          ...(selected.receipt ? { anchorTrailingMessages: selected.anchorTrailingMessages } : {}),
           ...(hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest }),
           ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}),
+          ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
         };
         limit = mainAdmissionLimit(model, config.main);
-        if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimate.estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
-        snapshot = {
-          model: structuredClone(model),
-          systemPrompt: effectiveContext.systemPrompt,
-          tools: jsonView(effectiveContext.tools ?? []),
-          messages: jsonView(effectiveContext.messages),
-          messageCount: effectiveContext.messages.length,
-          generation: this.generation,
-          payloadBound: true,
-        };
+        if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
+        if (selected.validAssociation) {
+          snapshot = {
+            model: structuredClone(model),
+            systemPrompt: effectiveContext.systemPrompt,
+            tools: jsonView(effectiveContext.tools ?? []),
+            rMessages: jsonView(selected.rMessages),
+            rCount: selected.rMessages.length,
+            mTokens: selected.currentMTokens,
+            hasM: selected.hasM,
+            generation: this.generation,
+            payloadBound: true,
+          };
+        }
       }
       if (kind === "maintenance") {
         const config = this.config(ctx, model);

@@ -29,8 +29,8 @@ test("public package export -> actual loader -> manual hook -> single JSONL snap
   await f.runtime.session.prompt("Continue without restating the old constraint.");
   assert.equal(f.events.length, 1, "ordinary turn performs no maintenance");
   const main = f.calls.at(-1)!;
-  assert.deepEqual(main.messages.slice(1, 1 + kept.length), kept);
-  const summary = main.messages[0]; assert(summary && typeof summary.content !== "string");
+  assert.deepEqual(main.messages.slice(0, kept.length), kept);
+  const summary = main.messages.at(-1); assert(summary && typeof summary.content !== "string");
   assert(summary.content.some(b => b.type === "text" && b.text.includes(result.summary)));
   assert.equal(f.faux.state.callCount, 2);
 });

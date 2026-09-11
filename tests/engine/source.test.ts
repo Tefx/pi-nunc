@@ -17,7 +17,7 @@ test("complete effective source includes pending latest user, custom messages, f
   assert(resultMessage.role === "toolResult"); resultMessage.isError = true;
   const before = structuredClone(source.active);
   const main = mainContext(source.fixed, source.memory.slots, source.active);
-  assert.deepEqual(main.messages.slice(1), source.active.flatMap(e => e.messages));
+  assert.deepEqual(source.memory.slots.length ? main.messages.slice(0, -1) : main.messages, source.active.flatMap(e => e.messages));
   const result = await maintain(source, async request => {
     const records = sourceRecords(request.context);
     assert.deepEqual(records.map(({ entryId, sourceRole, messages }) => ({ entryId, sourceRole, messages })), before.map(e => ({ ...e, messages: e.messages.map(semanticEvidence) })));

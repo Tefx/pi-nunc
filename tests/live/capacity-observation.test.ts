@@ -16,7 +16,7 @@ test("capacity predicates distinguish required fit, real competition and an opti
 test("capacity qualification uses the full memory limit and reserves growth once outside it", () => {
   const growth = { fixedTokens: 10, memoryLimit: 100, keptTokens: 10, growthReserve: 80, effectiveTrigger: 200 };
   const result = { ok: true, observations: { accounting: growth } } as unknown as MaintenanceResult;
-  const patch = { add: [{ key: "r", text: "x".repeat(240) }, { key: "o", text: "o" }], remove: [], priority: ["r", "o"], required: ["r"] };
+  const patch = { add: [{ key: "r", text: "x".repeat(120) }, { key: "o", text: "o" }], remove: [], priority: ["r", "o"], required: ["r"] };
   const requiredSize = memoryTokens([{ id: "s1", text: patch.add[0]!.text }]);
   assert(requiredSize <= 100 && requiredSize > 100 - growth.growthReserve);
   const context: Context = { systemPrompt: "Rendered memory limit: 100 estimated tokens", messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }] };

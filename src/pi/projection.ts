@@ -1,6 +1,6 @@
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ActiveEntry, Memory } from "../engine/index.js";
-import { emptyMemory, renderMemory } from "../engine/index.js";
+import { emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
 import { EngineError, record, validateMemory } from "../engine/validation.js";
 
 /** Private CustomEntry type. Replaceable encoding; not a public SDK. */
@@ -24,10 +24,33 @@ function checkpointMemory(latest: Extract<SessionEntry, { type: "compaction" }>)
   const details: unknown = latest.details;
   if (record(details) && "nunc" in details) {
     validateMemory(details.nunc);
-    if (renderMemory(details.nunc.slots) !== latest.summary) throw new EngineError("INPUT", "Nunc snapshot and summary disagree");
+    const expectedCurrent = renderMemory(details.nunc.slots);
+    const expectedLegacy = legacyRenderMemory(details.nunc.slots);
+    if (latest.summary !== expectedCurrent && latest.summary !== expectedLegacy) {
+      throw new EngineError("INPUT", "Nunc snapshot and summary disagree");
+    }
     return structuredClone(details.nunc);
   }
-  if (latest.summary.trim()) return { version: 1, nextId: 1, slots: [{ id: "legacy", text: latest.summary }] };
+  if (latest.summary.trim()) {
+    const trimmed = latest.summary.trim();
+    if (trimmed.startsWith("Nunc working memory (session-local")) {
+      const newline = trimmed.indexOf("\n");
+      if (newline >= 0) {
+        try {
+          const parsed = JSON.parse(trimmed.slice(newline + 1));
+          if (Array.isArray(parsed)) {
+            const memory: Memory = { version: 1, nextId: 1, slots: parsed };
+            validateMemory(memory);
+            return memory;
+          }
+        } catch {
+          throw new EngineError("INPUT", "Corrupt legacy memory summary");
+        }
+      }
+      throw new EngineError("INPUT", "Corrupt legacy memory summary");
+    }
+    return { version: 1, nextId: 1, slots: [{ id: "legacy", text: latest.summary }] };
+  }
   return emptyMemory();
 }
 
@@ -90,22 +113,22 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
   return { memory, active, ...(latest ? { latestId: latest.id } : {}) };
 }
 
-export function withEffectiveMemory<T extends { role: string; stopReason?: string; summary?: string }>(messages: readonly T[], memory: Memory): T[] {
-  const summary = renderMemory(memory.slots);
-  let seen = false;
+export function withEffectiveMemory<T extends { role: string; stopReason?: string; customType?: string; summary?: string }>(messages: readonly T[], memory: Memory): T[] {
   const out: T[] = [];
   for (const message of messages) {
     if (message.role === "assistant" && message.stopReason && ["error", "aborted"].includes(message.stopReason)) continue;
-    if (message.role === "compactionSummary") {
-      if (seen) continue;
-      seen = true;
-      out.push(message.summary === summary ? message : { ...message, summary });
-      continue;
-    }
+    if (message.role === "compactionSummary") continue;
+    if (message.role === "custom" && message.customType === "nunc.memory") continue;
     out.push(message);
   }
-  if (!seen && memory.slots.length > 0) {
-    out.unshift({ role: "compactionSummary", summary, tokensBefore: 0, timestamp: 0 } as unknown as T);
+  if (memory.slots.length > 0) {
+    out.push({
+      role: "custom",
+      customType: "nunc.memory",
+      content: [{ type: "text", text: renderMemory(memory.slots) }],
+      display: false,
+      timestamp: 0,
+    } as unknown as T);
   }
   return out;
 }

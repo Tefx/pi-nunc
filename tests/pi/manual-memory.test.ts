@@ -142,7 +142,7 @@ test("new constructed requests see saved M; in-flight context and queue stay leg
   assert(JSON.stringify(f.calls.at(-1)!.messages).includes("Post-save memory"));
 });
 
-test("saving invalidates pre-save usage attribution on the next constructed main request", async t => {
+test("saving preserves pre-save usage attribution with updated M on the next constructed main request", async t => {
   const admissions: AdmissionObservation[] = [];
   const { f, surface, ctx } = await prepared(t, {}, admissions);
   f.respond(() => fauxAssistantMessage("Prefix established."));
@@ -154,7 +154,8 @@ test("saving invalidates pre-save usage attribution on the next constructed main
   await f.runtime.session.prompt("First constructed request after save");
   const afterSave = admissions.filter(a => a.kind === "main");
   assert(afterSave.length > 0, JSON.stringify(afterSave));
-  assert(afterSave.every(a => a.estimator !== "pi-usage-backed"), JSON.stringify(afterSave));
+  assert(afterSave.every(a => a.estimator === "pi-usage-backed"), JSON.stringify(afterSave));
+  assert(afterSave.every(a => a.estimateReason === "matching-receipt"), JSON.stringify(afterSave));
 });
 
 test("candidate-to-native terminal gap occupies save; ordinary agent run does not", async t => {

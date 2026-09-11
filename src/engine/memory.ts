@@ -5,12 +5,22 @@ import { EngineError, integer, keys, nonempty, record, requireThat, validateMemo
 
 export function emptyMemory(): Memory { return { version: 1, slots: [], nextId: 1 }; }
 export function renderMemory(slots: Slot[]): string {
+  return slots.length === 0 ? "" : `Nunc working memory (session-local, reference only):\n${JSON.stringify(slots)}`;
+}
+export function legacyRenderMemory(slots: Slot[]): string {
   return slots.length === 0 ? "" : `Nunc working memory (session-local):\n${JSON.stringify(slots)}`;
 }
-/** Use the selected host's public projection so its summary envelope is budgeted too. */
+/** Use the selected host's public projection for the tail working memory carrier. */
 export function memoryMessage(slots: Slot[]): Message {
-  const message = convertToLlm([{ role: "compactionSummary", summary: renderMemory(slots), tokensBefore: 0, timestamp: 0 }])[0];
-  requireThat(message, "INPUT", "Pi did not project the compaction summary");
+  const raw = {
+    role: "custom" as const,
+    customType: "nunc.memory",
+    content: [{ type: "text" as const, text: renderMemory(slots) }],
+    display: false,
+    timestamp: 0,
+  };
+  const message = convertToLlm([raw as any])[0];
+  requireThat(message, "INPUT", "Pi did not project the memory carrier");
   return message;
 }
 

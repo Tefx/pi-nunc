@@ -10,6 +10,7 @@ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-code
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, type AdmissionObservation } from "../../src/pi/admission.js";
 import { applyLastUserTextAppend } from "../../src/pi/payload.js";
+import { memorySurface } from "../../src/pi/manual.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
 
@@ -481,4 +482,149 @@ test("genuine late change at before_provider_request validates and charges growt
   assert.equal(main.resolution, "resolved");
   assert(main.payload);
   assert.equal(main.payload.transform, "last-user-text-append");
+});
+
+test("real Pi/Larva/Nunc joint loop: model-tool M mutation, native serializer wire payload verification, tail carrier, and usage-backed receipt reuse", async t => {
+  const admissions: AdmissionObservation[] = [];
+  const bodies: Record<string, unknown>[] = [];
+  const settledResolvers: Array<() => void> = [];
+  let surfaceRef: any;
+  let ctxRef: any;
+
+  const f = await fixture({
+    extensions: [larvaExtensionPath],
+    flagValues: [
+      ["larva-agent-persona-switch", "auto"],
+      ["nunc-memory-tools", "true"],
+    ],
+    extras: [{
+      name: "watch-admission",
+      factory(pi) {
+        pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
+        pi.on("session_start", (_event, ctx) => { ctxRef = ctx; });
+        surfaceRef = memorySurface(pi);
+        pi.on("agent_settled", () => {
+          const r = settledResolvers.shift();
+          r?.();
+        });
+      },
+    }],
+  });
+  t.after(async () => {
+    await f.close();
+  });
+
+  const provider = openaiCodexProvider();
+  const model = provider.getModels().find(m => m.id === "gpt-6-astra")!;
+  assert(model);
+
+  function toolCallSSE(modelId: string, toolName: string, args: Record<string, unknown>, callId: string) {
+    const item = {
+      type: "function_call",
+      id: "fc_" + callId,
+      call_id: callId,
+      name: toolName,
+      arguments: JSON.stringify(args),
+    };
+    const events = [
+      { type: "response.created", response: { id: "r_" + callId, model: modelId, status: "in_progress", output: [] } },
+      { type: "response.output_item.added", output_index: 0, item },
+      { type: "response.output_item.done", output_index: 0, item },
+      { type: "response.completed", response: { id: "r_" + callId, model: modelId, status: "completed", output: [item], usage: { input_tokens: 150, output_tokens: 30, total_tokens: 180, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+    ];
+    return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  }
+
+  let sendCount = 0;
+  const transport: typeof fetch = async (resource, init) => {
+    sendCount++;
+    const request = new Request(resource, init);
+    const bytes = Buffer.from(await request.arrayBuffer());
+    const decoded = request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    const body = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
+    bodies.push(body);
+
+    if (sendCount === 1) {
+      // Prompt 1, turn 1: Call nunc_memory_read
+      return toolCallSSE(model.id, "nunc_memory_read", {}, "call-read-1");
+    }
+    if (sendCount === 2) {
+      // Prompt 1, turn 2: Read output received, call nunc_memory_patch to add note
+      const currentRev = surfaceRef.read(ctxRef).revision;
+      return toolCallSSE(model.id, "nunc_memory_patch", {
+        expectedRevision: currentRev,
+        add: [{ key: "task-goal", text: "Verified joint Larva Nunc integration note" }],
+      }, "call-patch-1");
+    }
+    if (sendCount === 3) {
+      // Prompt 1, turn 3: Patch output received, complete turn 1
+      return codexSSE(model.id, "Memory updated successfully.");
+    }
+    // Prompt 2 (turn 2): Return completion
+    return codexSSE(model.id, "Second prompt completed.");
+  };
+
+  const credential = oauthFixture();
+  await f.credentials.modify(model.provider, async () => credential);
+  const bound = { apiKey: credential.access, fetch: transport, transport: "sse" as const, maxRetries: 0 as const };
+  const nativeModel = (m: Model<any>): Model<"openai-codex-responses"> => ({ ...m, api: "openai-codex-responses" });
+  const wrapped: Provider = {
+    ...provider,
+    stream: (m, context, options) => provider.stream(nativeModel(m), context, { ...options, ...bound } as Parameters<typeof provider.stream>[2]),
+    streamSimple: (m, context, options) => provider.streamSimple(nativeModel(m), context, { ...options, ...bound }),
+  };
+  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+  await f.runtime.session.setModel(model);
+
+  // Set persona via Larva
+  await f.runtime.session.prompt("/larva-persona synth-codex-primary");
+
+  // Step 1: Prompt 1 triggers tool loop (read -> patch -> done)
+  const settled1 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 1 settle timeout");
+  await f.runtime.session.prompt("Execute tool-driven memory update");
+  await settled1;
+
+  assert.equal(sendCount, 3);
+  // Verify M was committed into session
+  const memAfterTurn1 = surfaceRef.read(ctxRef);
+  assert.equal(memAfterTurn1.memory.slots.length, 1);
+  assert.equal(memAfterTurn1.memory.slots[0].text, "Verified joint Larva Nunc integration note");
+
+  // Step 2: Prompt 2 sends with committed M
+  const settled2 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 2 settle timeout");
+  await f.runtime.session.prompt("Second prompt following memory commit");
+  await settled2;
+
+  assert.equal(sendCount, 4);
+
+  // Assert wire payload of Prompt 2 (bodies[3])
+  const wireBody2 = bodies[3]!;
+  assert(wireBody2.input && Array.isArray(wireBody2.input));
+  const wireMessages = wireBody2.input as Array<Record<string, unknown>>;
+
+  // Tail message in wire input MUST be the working memory carrier
+  const wireTail = wireMessages.at(-1)!;
+  const wireTailContent = JSON.stringify(wireTail);
+  assert(wireTailContent.includes("Nunc working memory (session-local, reference only)"));
+  assert(wireTailContent.includes("Verified joint Larva Nunc integration note"));
+
+  // First message must NOT be a compactionSummary
+  assert(!JSON.stringify(wireMessages[0]).includes("The conversation history before this point was compacted"));
+
+  // Previous tools (nunc_memory_read and nunc_memory_patch) and their results must be preserved in wire messages
+  assert(wireMessages.some(m => JSON.stringify(m).includes("nunc_memory_read")));
+  assert(wireMessages.some(m => JSON.stringify(m).includes("nunc_memory_patch")));
+
+  // Instructions must include Larva persona instructions
+  assert(typeof wireBody2.instructions === "string");
+  assert(wireBody2.instructions.includes("synth-codex-primary"));
+
+  // Check Nunc admission for Prompt 2: must reuse receipt!
+  const main2 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
+  assert(main2);
+  assert.equal(main2.resolution, "resolved");
+  assert.equal(main2.estimator, "pi-usage-backed");
+  assert.equal(main2.estimateReason, "matching-receipt");
+  assert(main2.receiptBreakdown?.currentMTokens! > 0);
+  assert.equal(main2.receiptBreakdown?.retainedOldMMargin, true);
 });
