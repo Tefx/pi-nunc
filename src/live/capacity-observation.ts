@@ -37,6 +37,16 @@ export function qualifyCapacity(
   }
 }
 
+/** Bind the engine's declared required IDs to the actual saved candidate. */
+export function checkRequiredRetention(result: MaintenanceResult | undefined, saved: Memory): CheckResult {
+  const req = result?.observations.required;
+  const pass = result?.ok === true && req && !req.failed && req.declared.length > 0 &&
+    new Set(req.retainedSlotIds).size === req.declared.length && req.retainedSlotIds.length === req.declared.length &&
+    req.retainedSlotIds.every(id => result.candidate.memory.slots.some(s => s.id === id)) &&
+    isDeepStrictEqual(result.candidate.memory, saved);
+  return { check: "all marked necessary candidates jointly retained in final memory", status: pass ? "PROVEN" : "UNPROVEN", observed: { required: req ?? null, saved } };
+}
+
 /** A completed assistant alone cannot establish recovery after a failed rollover. */
 export function checkCapacityRecovery(facts: {
   capacityFailed: boolean; deliveredCount: number; terminalStop: boolean;

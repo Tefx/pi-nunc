@@ -5,10 +5,9 @@
     "cleanup": "retain"
   },
   "limits": {
-    "maxDurationMs": 180000,
-    "maxOutputTokens": 65536,
-    "maxCalls": 20,
-    "maxTotalTokens": 200000,
+    "maxDurationMs": 3600000,
+    "maxCalls": 160,
+    "maxTotalTokens": 240000000,
     "maxCostUsd": null
   },
   "scenarios": [
@@ -26,11 +25,21 @@
   "overrides": [
     {
       "requirement": "gemini-live-observation",
-      "reason": "docs/MEMORY-GUIDANCE.md phase 3 behavioral evaluation",
-      "model": {
-        "provider": "openrouter",
-        "id": "google/gemini-3.8-flash"
-      }
+      "reason": "Gemini-only behavior observation; output allowance resolves from native metadata",
+      "model": { "provider": "openrouter", "id": "google/gemini-3.8-flash" },
+      "config": { "retentionCalibration": { "minFraction": 0.000001, "maxFraction": 0.999999 } }
+    },
+    {
+      "requirement": "measured-required-competition",
+      "reason": "Task-only 512-token memory experiment; actual complete response must independently qualify required fit and optional competition",
+      "scenario": "g8/fits-required",
+      "config": { "nunc": { "memory": { "maxTokens": 512 } } }
+    },
+    {
+      "requirement": "measured-required-overflow",
+      "reason": "Task-only 128-token memory experiment; actual necessary set must exceed this limit while an optional candidate fits",
+      "scenario": "g8/required-too-large",
+      "config": { "nunc": { "memory": { "maxTokens": 128 } } }
     }
   ]
 }

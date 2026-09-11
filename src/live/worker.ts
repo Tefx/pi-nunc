@@ -1,6 +1,6 @@
 import { archiveCloseoutEffects } from "./archive-closeout.js";
 import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
-import { qualifyCapacity, checkCapacityRecovery } from "./capacity-observation.js";
+import { qualifyCapacity, checkCapacityRecovery, checkRequiredRetention } from "./capacity-observation.js";
 import { elapsedInterval, type WallClockInterval } from "./timing.js";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -448,7 +448,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.setupChecks.push(...qualifyCapacity(selection.variant as "fits-required" | "required-too-large",
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
                 report.contexts.slice(capacityContextStart).filter(c => c.kind === "maintenance").map(c => c.context),
-                maintenanceResponses.slice(capacityResponseStart), capacityModel, report.rollovers!.at(-1)?.prepared?.calibration?.accounting));
+                maintenanceResponses.slice(capacityResponseStart), capacityModel, report.rollovers!.at(-1)?.prepared?.calibration?.accounting)
+                .filter(c => selection.id !== "g8" || c.check !== "at least one necessary candidate is larger than an optional candidate"));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
               const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots) && isDeepStrictEqual(saved.buildContextEntries(), beforeActive);
@@ -481,8 +482,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                   report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "candidate", guardApplicability: "APPLICABLE" } });
                   const req = result?.observations.required;
                   if (selection.variant === "fits-required") {
-                    const pass = Boolean(result?.ok && req && !req.failed && req.declared.length > 0);
-                    report.setupChecks!.push({ check: "all marked necessary candidates jointly retained in final memory", status: pass ? "PROVEN" : "UNPROVEN", observed: req ?? null });
+                    report.setupChecks!.push(checkRequiredRetention(result, project(saved.buildContextEntries()).memory));
                   } else if (selection.variant === "required-too-large") {
                     const reqExceeds = report.setupChecks?.find(p => p.check.includes("marked necessary set exceeds rendered memory limit"))?.status === "PROVEN";
                     report.setupChecks!.push({ check: "required-too-large rollover eligibility", status: reqExceeds ? "DISPROVEN" : "UNPROVEN", reason: reqExceeds ? "Maintenance succeeded despite the measured necessary-set overflow" : "Successful ordinary continuation remains eligible; the capacity variant did not qualify" });

@@ -92,10 +92,18 @@ Nunc's built-in policy (`policies/default.md`) already covers all these semantic
   1. *Routine conversation (g1):* Agent answers directly without calling `nunc_memory_read` or `nunc_memory_patch` (memory tools actively exposed in session tools).
   2. *Key decision & diagnostic precision (g2):* Agent patches concise reasoning and decision points rather than full transcript logs, preserving distinguishing error messages (e.g. `ERR_SCHEMA_V2`), ports (`5433`), and recovery commands (`run-migration --v1`).
   3. *Instruction correction (g3):* When user changes a requirement, agent updates/removes stale notes and retains still-valid entries.
-  4. *Multi-task interruption (g4):* Unfinished main task obligations remain preserved across side discussions.
+  4. *Multi-task interruption (g4):* After a side discussion and actual rollover, unfinished obligations remain recoverable from effective M+K or a demonstrated reliable recovery read; optional patch absence or empty M alone is not a defect.
   5. *Implemented vs. verified status distinction (g5):* Completed code without verification is not claimed as verified or accepted; verified status is recorded only after successful verification without premature acceptance claims.
-  6. *Split-turn wait & action ordering (g6):* Next actionable step and wait conditions/dependencies are respected before subsequent actions.
+  6. *Split-turn wait & action ordering (g6):* The original request actually retires while its complete tool unit and suffix remain; after native commit/continuation, the model waits for a real lock-release transition before deployment and verification.
   7. *Revision conflict & unconfirmed save (g7):* Real revision conflict leads to re-reading memory and reconciling before retrying; real unconfirmed save is not automatically replayed.
   8. *Budget competition & required capacity qualification (g8):* Necessary items marked `required`, jointly retained under budget competition without silent loss (`fits-required`), or cleanly trigger required `CAPACITY` failure without masquerading as config/invalid errors (`required-too-large`).
 - **Evaluation Evidence:**
-  Observe actual tool call parameters, session JSONL entries, and subsequent turn actions. Do not rely on prompt keyword presence or self-reported model claims.
+  Observe actual tool call parameters/results, session JSONL entries, saved revisions, delivered M+K, subsequent turn actions and artifact-bound verification receipts. Do not rely on prompt keyword presence or self-reported model claims.
+
+### Mechanical versus semantic evidence
+
+The tracked runner exposes all ten selections (g7 and g8 each have two variants) through `scripts/verify-live.mjs`; see [LIVE](LIVE.md) and `examples/guidance-selection.json`. No live call belongs to the observation-support producer.
+
+Mechanical checks can establish actual saves, current-revision retry ordering, non-replay through a later opportunity, task-state transitions, final-artifact verification, and qualified required-capacity effects. They cannot classify free-form rationale, historical versus active obligations, conciseness, acceptance claims, or semantic necessity. Those checks remain explicitly `UNPROVEN` for the downstream Gemini observer, which should cite observations and assess importance and uncertainty. There is no character bound, fixed slot count, required wording or exact language. Valid references to rejected routes and obsolete values must remain distinguishable from selecting them.
+
+The g2 action is a local recovery simulation validated by route/argv, not an external migration. The g5 verifier executes function behavior, and g6 clears the actual task lock before allowing the continuation. Capacity limits in the example create bounded experiments; the model's actual complete response may still fail qualification, especially if it omits optional content. Such a result proves neither a model defect nor capacity behavior. `OBSERVED` and green offline tests do not resolve semantic acceptance, and the runner does not relax the downstream acceptance contract.

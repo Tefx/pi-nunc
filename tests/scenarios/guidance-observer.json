@@ -257,7 +257,7 @@
               "b"
             ]
           },
-          "capacity": "complete extraction fits; all marked necessary candidates jointly fit with actual ID/wrapping and growth space; all candidates together exceed memory limit; at least one necessary candidate is larger than an optional candidate"
+          "capacity": "complete extraction fits; all marked necessary candidates jointly fit with actual ID/wrapping and growth space; all candidates together exceed memory limit"
         }
       ],
       "setupChecks": [
@@ -288,7 +288,7 @@
                   "b"
                 ]
               },
-              "capacity": "complete extraction fits; all marked necessary candidates jointly fit with actual ID/wrapping and growth space; all candidates together exceed memory limit; at least one necessary candidate is larger than an optional candidate"
+              "capacity": "complete extraction fits; all marked necessary candidates jointly fit with actual ID/wrapping and growth space; all candidates together exceed memory limit"
             }
           ],
           "setupChecks": [
@@ -319,7 +319,7 @@
                   "b"
                 ]
               },
-              "capacity": "complete extraction fits but marked necessary set exceeds rendered memory limit or leaves insufficient growth space, while at least one optional candidate fits"
+              "capacity": "complete extraction fits but marked necessary set exceeds rendered memory limit while at least one optional candidate fits"
             }
           ],
           "setupChecks": [

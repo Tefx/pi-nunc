@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { loadScenario, scoreArtifacts, seedScenario, type CheckResult } from "../../src/live/scenarios.js";
 import { scoreGuidance, TOOLS_CHECK, SPLIT_CHECK, type GuidanceAction } from "../../src/live/guidance.js";
 import { repository } from "./fixtures.js";
+import { checkRequiredRetention } from "../../src/live/capacity-observation.js";
 
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 const exposed: CheckResult[] = [{ check: TOOLS_CHECK, status: "PROVEN" }];
@@ -163,11 +164,21 @@ test("g7 unconfirmed needs actual result plus later opportunity and counts block
   const r = response(c, { ok: false, code: "unconfirmed" });
   assert.equal(score("g7", "unconfirmed-no-replay", [c, r], p).status, "UNPROVEN");
   assert.equal(score("g7", "unconfirmed-no-replay", [c, r, terminal("b")], p).status, "PROVEN");
-  for (const type of ["tool_call", "tool_blocked"]) {
+  for (const type of ["tool_call", "tool_blocked", "tool_intent"]) {
     const replay = call("b", "nunc_memory_patch", { expectedRevision: "other" }); replay.event.type = type;
     assert.equal(score("g7", "unconfirmed-no-replay", [c, r, replay, terminal("b")], p).status, "DISPROVEN");
   }
   assert.equal(score("g7", "unconfirmed-no-replay", [c, response(c, { ok: true, message: "unconfirmed mentioned" }), terminal("b")], p).status, "UNPROVEN");
+});
+
+test("required retention is bound to saved memory and complete distinct required IDs", () => {
+  const saved = { version: 1 as const, nextId: 3, slots: [{ id: "s1", text: "needed" }, { id: "s2", text: "also needed" }] };
+  const result: any = { ok: true, candidate: { memory: saved }, observations: { required: { declared: ["a", "b"], retainedSlotIds: ["s1", "s2"], failed: false } } };
+  assert.equal(checkRequiredRetention(result, saved).status, "PROVEN");
+  for (const retainedSlotIds of [["s1"], ["s1", "s1"], ["s1", "missing"]]) {
+    assert.equal(checkRequiredRetention({ ...result, observations: { required: { ...result.observations.required, retainedSlotIds } } }, saved).status, "UNPROVEN");
+  }
+  assert.equal(checkRequiredRetention(result, { ...saved, slots: saved.slots.slice(0, 1) }).status, "UNPROVEN");
 });
 
 test("g8 candidate size flags alone never prove actual retention or CAPACITY/recovery effects", () => {

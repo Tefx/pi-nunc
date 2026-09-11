@@ -155,6 +155,12 @@ export default function observer(pi: ExtensionAPI): void {
     if (binding.boundary) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
     log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry });
   });
+  pi.on("message_end", event => {
+    if (event.message.role !== "assistant") return;
+    for (const block of event.message.content) if (block.type === "toolCall") {
+      log("action", { type: "tool_intent", toolName: block.name, toolCallId: block.id, input: block.arguments });
+    }
+  });
   pi.on("turn_end", async (event, ctx) => {
     if (!binding.boundary || state.boundaryDone || !state.triggerId || !event.toolResults.some(r => r.toolCallId === state.triggerId)) return;
     state.boundaryDone = true;
