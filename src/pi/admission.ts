@@ -235,6 +235,11 @@ export class Admission {
           currentMTokens = 0;
         }
       }
+    } else if (!binding && !tag) {
+      validAssociation = true;
+      rMessages = effectiveContext.messages;
+      hasM = false;
+      currentMTokens = 0;
     }
 
     if (!validAssociation) {
