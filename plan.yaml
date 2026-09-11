@@ -3710,7 +3710,7 @@ phases:
       directory consumers.'
   - id: nunc.memory-guidance-gemini-eval
     name: Gemini 真实模型行为评测与最终整合验收
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -3797,6 +3797,8 @@ phases:
     depends_on:
     - nunc.memory-guidance-observation-support
     agent: general
+    claimed_by: general
+    claimed_at: '2026-09-11T19:12:07.644052Z'
   - id: nunc.memory-guidance-observation-support
     name: 交付工作记忆八类行为的跟踪场景与原生观察能力
     status: done
