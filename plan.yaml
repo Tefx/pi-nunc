@@ -3267,7 +3267,7 @@ phases:
       model effects.'
 - id: nunc-larva-prompt
   name: Nunc 请求级 Larva 指令桥接（等待用户调度）
-  status: in_progress
+  status: done
   gate: 用户明确调度且 Larva 输入可用后执行。最终候选完整 all 与真实 Larva 组合证明覆盖 docs/LARVA-PROMPT.md 全部新合同及依赖不变量，无阻断缺陷或必要未证明才可接受。历史
     overflow 未完成原因独立披露，不宣称全部 CAPACITY 已修复。
   context: 仅规划。用户将在 Larva 就绪后再次明确调度；设计收到不代表实施或真实验证授权。用户供应实际 v1 实现及声明依赖，Nunc owner
@@ -3278,7 +3278,7 @@ phases:
   steps:
   - id: nunc.larva-prompt
     name: 实现请求局部指令解析、预算收据绑定与真实 Larva 组合验收
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/**\", \"src/ui/**\", \"src/index.ts\", \"tests/**\"\
       , \"scripts/**\", \"docs/**\", \"README.md\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -3379,6 +3379,27 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-11T07:38:51.151437Z'
+    done_at: '2026-09-11T10:08:37.680456+00:00'
+    evidence: 'Orchestrator final integrated acceptance: git:5e4deadb41073b5bd6309aeed40e881a095c3b2c,
+      fast-forwarded from d2d8419. Exact planned owner node-typescript-engineer implemented
+      three commits; original final 87a3909 retained at refs/retained/nunc-larva-prompt-final
+      and original 9bd085f at refs/retained/nunc-larva-prompt-initial. Required offline
+      all exited 0: 456 tests/55 files; required actual Larva integration exited 0:
+      five scenarios. Parent inspected source and actual final logs, including native
+      Codex continuation/borrow/automatic restoration/idle payload identity and matching
+      receipt; native Responses, real reload/single resolver, maintenance zero emissions,
+      late payload validation; actual nested resolver, immutable callback snapshots/Context
+      and wrapper association. Read-only Larva clean f10271b5f47eb24f9b9685eb93af2e2011d23819.
+      Rebase changed only managed future Plan topology; no evidence-affecting tracked
+      input changed, so final command observations remain applicable. Full acceptance
+      and limitations: .scratch/larva-prompt-execution/acceptance.md; command logs
+      all-final.log and larva-integration-final.log alongside it. Scratch artifacts
+      archived in worktree-scratch.tar.gz with old-path mapping in acceptance.md;
+      no residual process/open consumer observed, eligible checkout removal follows
+      completion. User explicitly authorized only this phase; authorization consumed,
+      no downstream dispatch. No installed/Pi/Larva repo changes, paid/live effects
+      or publication. Historical overflow-recovery cause and real billing/cache/model-effectiveness
+      remain unproved.'
 - id: nunc-active-memory
   name: 主动 CRUD、唯一尾置 M 与 receipt 适配
   status: locked
@@ -3490,7 +3511,7 @@ phases:
     agent: node-typescript-engineer
 - id: nunc-tool-call-repair
   name: 工具调用 ID 作用域与关联兼容修复
-  status: locked
+  status: pending
   gate: Orchestrator 在唯一实现步骤完成程序接受本修复：最终整合候选完整 all、真实 stock Pi/native serializer 受控服务证明与适用前置
     Larva 桥接证据共同覆盖合法 ID 复用和非法关联拒绝。不得因组件 PASS 或仅放宽校验宣称解决；实际用户会话来源未知单独披露。仅规划，等待用户明确调度，不授权安装或发布。
   context: 用户要求在 nunc-larva-prompt 后插入修复步骤；本 phase 位于该前置已接受结果与 nunc-active-memory
