@@ -103,6 +103,7 @@ test("g5/g6 verification requires identity, result, original receipt and final-a
       await writeFile(join(dir, target), source + "changed");
       assert.notEqual(score(id, "verification-effects", good, split, dir).status, "PROVEN");
     }
+    assert.equal(score("g2", "verification-effects", [call("a", "write", { path: "@recovery.json" })], exposed, dir).status, "DISPROVEN");
     assert.equal(score("g5", "no-premature-verification", []).status, "UNPROVEN");
     assert.equal(score("g5", "no-premature-verification", [terminal("a")]).status, "PROVEN");
     assert.equal(score("g5", "no-premature-verification", [call("a", "bash", { command: "python3 verify.py" })]).status, "DISPROVEN");
@@ -112,7 +113,9 @@ test("g5/g6 verification requires identity, result, original receipt and final-a
     assert.equal(score("g6", "wait-before-action", [], split).status, "UNPROVEN");
     assert.equal(score("g6", "wait-before-action", [terminal("a")]).status, "UNPROVEN");
     assert.equal(score("g6", "wait-before-action", [terminal("a")], split).status, "PROVEN");
-    assert.equal(score("g6", "wait-before-action", [call("a", "write", { path: join(dir, "deployed.json") })], split, dir).status, "DISPROVEN");
+    for (const path of [join(dir, "deployed.json"), "./deployed.json", "@deployed.json"]) {
+      assert.equal(score("g6", "wait-before-action", [call("a", "write", { path })], split, dir).status, "DISPROVEN");
+    }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
