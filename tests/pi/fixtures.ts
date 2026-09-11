@@ -3,14 +3,14 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fauxProvider, fauxAssistantMessage, InMemoryCredentialStore, type FauxResponseFactory } from "@earendil-works/pi-ai";
-import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices, createEventBus, SessionManager, SettingsManager, ModelRegistry, ModelRuntime, type CreateAgentSessionRuntimeFactory, type ToolDefinition, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices, createEventBus, SessionManager, SettingsManager, ModelRegistry, ModelRuntime, type CreateAgentSessionRuntimeFactory, type ToolDefinition, type InlineExtension, type EventBus } from "@earendil-works/pi-coding-agent";
 import nunc from "pi-nunc";
 import { bindHostSettings, type MaintenanceEvent, type NuncConfig } from "pi-nunc/pi";
 import { sourceRecords, answer } from "../engine/fixtures.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url)); // emitted dist/tests/pi -> worktree
 export const extensionPath = resolve(root, "dist/src/index.js");
-export async function fixture(options: { config?: NuncConfig; enabled?: boolean; tools?: ToolDefinition[]; extras?: InlineExtension[]; ephemeral?: boolean; diskSettings?: boolean; publicFactory?: boolean } = {}) {
+export async function fixture(options: { config?: NuncConfig; enabled?: boolean; tools?: ToolDefinition[]; extras?: InlineExtension[]; ephemeral?: boolean; diskSettings?: boolean; publicFactory?: boolean; bus?: (bus: EventBus) => void; extensions?: string[]; flagValues?: [string, string][] } = {}) {
   const scratch = resolve(root, ".scratch"); await mkdir(scratch, { recursive: true });
   const dir = await mkdtemp(join(scratch, "pi-"));
   const cwd = join(dir, "work"), agentDir = join(dir, "agent"), sessionDir = join(dir, "sessions");
@@ -39,13 +39,23 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
   const factory: CreateAgentSessionRuntimeFactory = async target => {
     const bus = createEventBus();
     bus.on("nunc:maintenance", data => events.push(data as MaintenanceEvent));
+    options.bus?.(bus);
     const services = await createAgentSessionServices({ ...target, settingsManager: settings, modelRuntime, extensionFlagValues: new Map([["nunc-config", configFile]]), resourceLoaderOptions: {
-      eventBus: bus, additionalExtensionPaths: options.publicFactory ? [] : [extensionPath], noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+      eventBus: bus, additionalExtensionPaths: options.publicFactory ? [] : [extensionPath, ...(options.extensions ?? [])], noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
       systemPrompt: "Perform the current task.", extensionFactories: [...(options.publicFactory ? [{ name: "nunc-public", factory: nunc }] : []), ...(options.extras ?? [])],
     } });
     assert.deepEqual(services.resourceLoader.getExtensions().errors, []);
     if (!options.publicFactory) assert.equal(services.resourceLoader.getExtensions().extensions.filter(e => e.path === extensionPath).length, 1);
-    const created = await createAgentSessionFromServices({ services, sessionManager: target.sessionManager, ...(target.sessionStartEvent ? { sessionStartEvent: target.sessionStartEvent } : {}), model: faux.getModel(), thinkingLevel: "off", tools: (options.tools ?? []).map(t => t.name), ...(options.tools ? { customTools: options.tools } : {}) });
+    const created = await createAgentSessionFromServices({
+      services,
+      sessionManager: target.sessionManager,
+      ...(target.sessionStartEvent ? { sessionStartEvent: target.sessionStartEvent } : {}),
+      model: faux.getModel(),
+      thinkingLevel: "off",
+      tools: (options.tools ?? []).map(t => t.name),
+      ...(options.tools ? { customTools: options.tools } : {}),
+      ...(options.flagValues ? { flagValues: new Map(options.flagValues) } : {}),
+    } as Parameters<typeof createAgentSessionFromServices>[0]);
     if (!options.diskSettings) bindHostSettings(bus, settings);
     await created.session.bindExtensions({ mode: "json", onError: error => errors.push(error.error) });
     return { ...created, services, diagnostics: services.diagnostics };

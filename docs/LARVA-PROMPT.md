@@ -1,8 +1,8 @@
 # Larva 请求级系统指令桥接
 
-状态：**设计与待调度计划；尚未实现或完成联合验收**。
+状态：**已实现，完成 Nunc 独立行为测试与真实 Larva 组合验收**。
 
-用户授权本轮更新详细文档并创建实施计划；用户会在 Larva 修复完成后亲自调度实施。不得因收到 Larva 设计、接口变为可用或 Plan 步骤处于 pending 就自动 claim、dispatch、实现、测试、安装或调用模型。全程禁止修改 Pi core、已安装 Pi 包及私有宿主状态。
+用户授权本轮根据 Larva 就绪状态调度实施 nunc-larva-prompt phase；全程禁止修改 Pi core、已安装 Pi 包及私有宿主状态。实现仅在每个独立 main 请求准入前通过公开 `pi.events` 发起 `larva:resolve-system-prompt:v1` 同步解析；请求局部有效 Context 统一用于估算、receipt 建立、native Provider 委托与 Last main 观察。零回复走 legacy 路径；explicit unavailable、重复回复或协议错误在传输前由本地 CONFIG 拒绝。maintenance 与 unknown 调用保持零 resolver 请求。真实 Larva 联合验证通过独立入口 `tests/pi/larva.integration.ts` 显式完成。
 
 后续独立交付：[ACTIVE-MEMORY.md](ACTIVE-MEMORY.md) 在本桥接完成后加入主动 CRUD、唯一尾 M 和新的 R/M receipt。它保留本文件 v1 接口及先行步骤的接受范围；M 的自动旧布局转换不会取消这里的零回复 legacy 或显式失败合同。
 

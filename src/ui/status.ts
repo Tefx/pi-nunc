@@ -1,5 +1,5 @@
 import { VERSION } from "@earendil-works/pi-coding-agent";
-import type { ContextView, CurrentContext, LastMaintenanceContext } from "../pi/context.js";
+import type { ContextView, CurrentContext, LastMainContext, LastMaintenanceContext } from "../pi/context.js";
 
 export type FooterTone = "dim" | "accent" | "warning" | "error";
 export interface CompactFooterInput {
@@ -113,6 +113,21 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
   return lines;
 }
 
+export function lastMainLines(last: LastMainContext | undefined): string[] {
+  if (!last) return ["No main request record in this context."];
+  const lines = [
+    `Model: ${last.model.provider}/${last.model.id} (${last.model.api})`,
+    `Observed: ${new Date(last.observedAt).toISOString()}`,
+    `Scope: last-main · ${last.outcome}${last.code ? ` ${last.code}` : ""}`,
+  ];
+  if (last.resolution) lines.push(`Resolution: ${last.resolution}`);
+  if (last.estimator) lines.push(`Estimator: ${last.estimator}`);
+  if (last.inputTokens !== undefined) {
+    lines.push(`Input estimate: ${thousands(last.inputTokens)}${last.inputLimit !== undefined ? ` / enforced ${thousands(last.inputLimit)}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${thousands(last.plannedInputLimit)}` : ""}`);
+  }
+  return lines;
+}
+
 export function diagnosticLines(notes: readonly DiagnosticNote[]): string[] {
   const shown = notes.filter(note => note.level !== "info");
   if (shown.length === 0) return ["No recent diagnostics."];
@@ -136,6 +151,7 @@ export function detailsLines(input: {
     ...summary,
     "", "Current budgets",
     ...budgetLines(current).map(line => `  ${line}`),
+    ...(input.view.lastMain ? ["", "Last main", ...lastMainLines(input.view.lastMain).map(line => `  ${line}`)] : []),
     "", "Last maintenance",
     ...maintenanceLines(input.view.lastMaintenance).map(line => `  ${line}`),
     "", "Recent diagnostics",

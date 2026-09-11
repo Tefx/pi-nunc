@@ -114,6 +114,7 @@ export interface LastMainContext {
   model: { id: string; provider: string; api: string };
   outcome: "delegate" | "reject";
   code?: string;
+  resolution?: AdmissionObservation["resolution"];
   estimator?: AdmissionObservation["estimator"];
   estimateReason?: AdmissionObservation["estimateReason"];
   hostPromptMatchesRequest?: boolean;
@@ -236,6 +237,7 @@ export function createContextSurface(options: {
           outcome: observation.outcome,
           layout: unavailableLayout(),
           ...(observation.code ? { code: observation.code } : {}),
+          ...(observation.resolution ? { resolution: observation.resolution } : {}),
           ...(observation.estimator ? { estimator: observation.estimator } : {}),
           ...(observation.estimateReason ? { estimateReason: observation.estimateReason } : {}),
           ...(observation.hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest: observation.hostPromptMatchesRequest }),

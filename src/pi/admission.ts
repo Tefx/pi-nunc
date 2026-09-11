@@ -9,7 +9,14 @@ import { EngineError, integer, legalCuts, record } from "../engine/validation.js
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
-type CallRecord = { context: Context; model: Model<Api>; signal: AbortSignal | undefined; simple: boolean; seen: WeakSet<Provider> };
+type CallRecord = {
+  context: Context;
+  effectiveContext?: Context;
+  model: Model<Api>;
+  signal: AbortSignal | undefined;
+  simple: boolean;
+  seen: WeakSet<Provider>;
+};
 interface MainReceipt {
   model: Model<Api>;
   systemPrompt: string | undefined;
@@ -29,8 +36,35 @@ interface MainSnapshot {
 }
 /** In-process bound for completed receipts; not a call or token cap. */
 const MAIN_RECEIPT_LIMIT = 8;
+export const LARVA_RESOLVE_SYSTEM_PROMPT_EVENT = "larva:resolve-system-prompt:v1";
+export type SystemPromptResolutionStatus = "resolved" | "legacy-no-reply" | "unavailable" | "protocol-error";
+export type ResolveSystemPromptResult =
+  | { status: "ok"; systemPrompt: string }
+  | { status: "unavailable"; reason: string };
+export type ResolveSystemPromptRequest = {
+  scope: "main";
+  systemPrompt: string;
+  reply: (result: ResolveSystemPromptResult) => void;
+};
 export type AdmissionEstimateReason = "matching-receipt" | "no-receipt" | "model-mismatch" | "system-mismatch" | "tools-mismatch" | "messages-mismatch" | "payload-unbound" | "usage-unusable" | "lifecycle-reset";
-export interface AdmissionObservation { kind: "main" | "maintenance" | "unknown"; outcome: "delegate" | "reject"; inputTokens?: number; inputLimit?: number; plannedInputLimit?: number; inputExceededPlan?: boolean; outputTokens?: number; outputReserveTokens?: number; outputCapTokens?: number | null; estimator?: "pi-heuristic" | "pi-usage-backed"; estimateReason?: AdmissionEstimateReason; hostPromptMatchesRequest?: boolean; anchorTrailingMessages?: number; code?: string; payload?: PayloadObservation }
+export interface AdmissionObservation {
+  kind: "main" | "maintenance" | "unknown";
+  outcome: "delegate" | "reject";
+  resolution?: SystemPromptResolutionStatus;
+  inputTokens?: number;
+  inputLimit?: number;
+  plannedInputLimit?: number;
+  inputExceededPlan?: boolean;
+  outputTokens?: number;
+  outputReserveTokens?: number;
+  outputCapTokens?: number | null;
+  estimator?: "pi-heuristic" | "pi-usage-backed";
+  estimateReason?: AdmissionEstimateReason;
+  hostPromptMatchesRequest?: boolean;
+  anchorTrailingMessages?: number;
+  code?: string;
+  payload?: PayloadObservation;
+}
 export interface AdmissionLayoutEvent {
   ctx: ExtensionContext;
   model: Model<Api>;
@@ -170,7 +204,12 @@ export class Admission {
     try { this.onLayout?.({ ...detail, observation: value }); } catch { /* Read-only observer. */ }
   }
   private sameCall(record: CallRecord | undefined, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean): record is CallRecord {
-    return !!record && record.context === context && record.model.id === model.id && record.model.provider === model.provider && record.signal === options?.signal && record.simple === simple;
+    return !!record &&
+      (record.context === context || (record.effectiveContext !== undefined && record.effectiveContext === context)) &&
+      record.model.id === model.id &&
+      record.model.provider === model.provider &&
+      record.signal === options?.signal &&
+      record.simple === simple;
   }
   private dispatch(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
     const entry = this.installed.get(model.provider);
@@ -189,6 +228,71 @@ export class Admission {
     next.seen.add(wrapper);
     return this.call.run(next, () => this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream));
   }
+  private resolveSystemPrompt(rawPrompt: string): { status: "resolved"; systemPrompt: string } | { status: "legacy-no-reply" } | { status: "unavailable"; error: EngineError } | { status: "protocol-error"; error: EngineError } {
+    let windowClosed = false;
+    const replies: unknown[] = [];
+    const reply = (result: unknown) => {
+      if (windowClosed) return;
+      replies.push(result);
+    };
+    try {
+      this.pi.events.emit(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, {
+        scope: "main",
+        systemPrompt: rawPrompt,
+        reply,
+      } satisfies ResolveSystemPromptRequest);
+    } catch {
+      windowClosed = true;
+      return {
+        status: "protocol-error",
+        error: new EngineError("CONFIG", "Larva system prompt resolution event dispatch threw an exception"),
+      };
+    }
+    windowClosed = true;
+
+    if (replies.length === 0) {
+      return { status: "legacy-no-reply" };
+    }
+    if (replies.length > 1) {
+      return {
+        status: "protocol-error",
+        error: new EngineError("CONFIG", "Larva system prompt resolution received duplicate replies"),
+      };
+    }
+    const candidate = replies[0];
+    if (!record(candidate)) {
+      return {
+        status: "protocol-error",
+        error: new EngineError("CONFIG", "Larva system prompt resolution returned non-record reply"),
+      };
+    }
+    if (candidate.status === "ok") {
+      if (typeof candidate.systemPrompt !== "string") {
+        return {
+          status: "protocol-error",
+          error: new EngineError("CONFIG", "Larva system prompt resolution returned invalid ok payload"),
+        };
+      }
+      return { status: "resolved", systemPrompt: candidate.systemPrompt };
+    }
+    if (candidate.status === "unavailable") {
+      if (typeof candidate.reason !== "string" || candidate.reason.length === 0) {
+        return {
+          status: "protocol-error",
+          error: new EngineError("CONFIG", "Larva system prompt resolution returned invalid unavailable payload"),
+        };
+      }
+      return {
+        status: "unavailable",
+        error: new EngineError("CONFIG", "Larva system prompt is currently unavailable"),
+      };
+    }
+    return {
+      status: "protocol-error",
+      error: new EngineError("CONFIG", "Larva system prompt resolution returned unknown status"),
+    };
+  }
+
   private enter(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
     const scope = this.maintenance.getStore();
     const ownedMaintenance = !simple && scope && !scope.used && scope.request.context === context &&
@@ -204,8 +308,9 @@ export class Admission {
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
     let initialMetadataTokens = 0;
-    let budgetObservation: Pick<AdmissionObservation, "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages"> = {};
+    let budgetObservation: Pick<AdmissionObservation, "resolution" | "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages"> = {};
     let snapshot: MainSnapshot | undefined;
+    let effectiveContext = context;
     try {
       if (kind === "unknown") {
         this.observe({ kind, outcome: "delegate" });
@@ -231,20 +336,33 @@ export class Admission {
         // Validate projected media/blocks/associations, without inventing source IDs.
         if (context.messages.length) legalCuts(context.messages.map((m, i) => ({ entryId: String(i), sourceRole: m.role, messages: [m] })));
         if (!model.input.includes("image") && context.messages.some(m => Array.isArray(m.content) && m.content.some(b => b.type === "image"))) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
-        const selected = this.selectReceipt(context, model);
+        if (context.systemPrompt !== undefined && typeof context.systemPrompt !== "string") throw new EngineError("INPUT", "System prompt must be a string or undefined");
+
+        const resolved = this.resolveSystemPrompt(context.systemPrompt ?? "");
+        if (resolved.status === "resolved") {
+          effectiveContext = { ...context, systemPrompt: resolved.systemPrompt };
+          const currentRecord = this.call.getStore();
+          if (currentRecord) currentRecord.effectiveContext = effectiveContext;
+        } else if (resolved.status === "unavailable" || resolved.status === "protocol-error") {
+          budgetObservation = { resolution: resolved.status };
+          throw resolved.error;
+        }
+
+        const selected = this.selectReceipt(effectiveContext, model);
         const estimate = selected.receipt
-          ? admissionEstimate(context, model, config.imageTokens, true, selected.receipt.messageCount, selected.receipt.messageCount)
-          : admissionEstimate(context, model, config.imageTokens);
+          ? admissionEstimate(effectiveContext, model, config.imageTokens, true, selected.receipt.messageCount, selected.receipt.messageCount)
+          : admissionEstimate(effectiveContext, model, config.imageTokens);
         inputTokens = estimate.tokens + config.main.extraInputTokens + initialMetadataTokens;
         const plannedInputLimit = inputLimit(model, config.main);
-        const hostPromptMatchesRequest = this.hostPromptMatches(ctx, context);
+        const hostPromptMatchesRequest = this.hostPromptMatches(ctx, effectiveContext);
         budgetObservation = {
+          resolution: resolved.status,
           estimator: estimate.estimator,
           plannedInputLimit,
           inputExceededPlan: inputTokens > plannedInputLimit,
           outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens,
           estimateReason: selected.reason,
-          ...(selected.receipt ? { anchorTrailingMessages: context.messages.length - selected.receipt.messageCount - 1 } : {}),
+          ...(selected.receipt ? { anchorTrailingMessages: effectiveContext.messages.length - selected.receipt.messageCount - 1 } : {}),
           ...(hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest }),
           ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}),
         };
@@ -252,10 +370,10 @@ export class Admission {
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimate.estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
         snapshot = {
           model: structuredClone(model),
-          systemPrompt: context.systemPrompt,
-          tools: jsonView(context.tools ?? []),
-          messages: jsonView(context.messages),
-          messageCount: context.messages.length,
+          systemPrompt: effectiveContext.systemPrompt,
+          tools: jsonView(effectiveContext.tools ?? []),
+          messages: jsonView(effectiveContext.messages),
+          messageCount: effectiveContext.messages.length,
           generation: this.generation,
           payloadBound: true,
         };
@@ -298,9 +416,9 @@ export class Admission {
         };
         const finalInputTokens = inputTokens! + chargedTokens;
         if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
-        const layout = { ctx, model, context, payloadGrowth, initialMetadataTokens };
+        const layout = { ctx, model, context: effectiveContext, payloadGrowth, initialMetadataTokens };
         try {
-          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context, allowSystemInstructionRewrite: kind === "main" });
+          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main" });
           this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
           return replacement;
         } catch (error) {
@@ -313,22 +431,22 @@ export class Admission {
           throw new EngineError(code, errorMessage);
         }
       } };
-      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context, initialMetadataTokens });
+      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context: effectiveContext, initialMetadataTokens });
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
-      const stream = simple ? delegate.streamSimple(model, context, forwarded as SimpleStreamOptions) : delegate.stream(model, context, forwarded);
+      const stream = simple ? delegate.streamSimple(model, effectiveContext, forwarded as SimpleStreamOptions) : delegate.stream(model, effectiveContext, forwarded);
       if (snapshot) this.watchCompletion(stream, snapshot);
       return stream;
     } catch (error) {
       const aborted = options?.signal?.aborted === true || error instanceof EngineError && error.code === "CANCELLED";
-      const code = error instanceof EngineError ? error.code : aborted ? "CANCELLED" : "INPUT";
+      const code = aborted ? "CANCELLED" : error instanceof EngineError ? error.code : "INPUT";
       const capacity = kind === "main" && code === "CAPACITY" && !aborted;
       const errorMessage = `${capacity ? "context_length_exceeded: " : ""}Nunc local ${code}; request=${randomUUID()}; ${error instanceof Error ? error.message : "Request rejected"}`;
       if (capacity && options?.signal) this.rejected.set(errorMessage, options.signal);
       const message: AssistantMessage = { role: "assistant", content: [], api: model.api, provider: model.provider, model: model.id, timestamp: Date.now(), stopReason: aborted ? "aborted" : "error", errorMessage, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); stream.end();
-      this.observe({ kind, outcome: "reject", code, ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context, initialMetadataTokens });
+      this.observe({ kind, outcome: "reject", code, ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context: effectiveContext, initialMetadataTokens });
       return stream;
     }
   }

@@ -65,7 +65,10 @@ export default function nunc(pi: ExtensionAPI): void {
   observeLayout = event => {
     contextView.observeAdmission(event);
     if (event.observation.kind === "main" && event.observation.outcome === "reject") {
-      ui.noteDiagnostic("warning", `Admission ${event.observation.code ?? "reject"}`);
+      const detail = event.observation.resolution && (event.observation.resolution === "unavailable" || event.observation.resolution === "protocol-error")
+        ? ` (${event.observation.resolution})`
+        : "";
+      ui.noteDiagnostic("warning", `Admission ${event.observation.code ?? "reject"}${detail}`);
     } else if (event.observation.kind === "main" && event.observation.outcome === "delegate") {
       ui.recover();
     }

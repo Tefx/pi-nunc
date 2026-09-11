@@ -293,6 +293,7 @@ function lastMainSummary(last: LastMainContext): string {
     `Scope: last-main · ${last.outcome}${last.code ? ` ${last.code}` : ""}`,
     `${last.model.provider}/${last.model.id} (${last.model.api})`,
     when,
+    last.resolution ? `resolution ${last.resolution}` : "",
     last.estimator ? `estimator ${last.estimator}` : "",
     last.inputTokens !== undefined ? `input ${last.inputTokens}${last.inputLimit !== undefined ? ` / enforced ${last.inputLimit}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${last.plannedInputLimit}` : ""}` : "",
     last.inputExceededPlan === true ? "input exceeded plan (advisory if delegated)" : "",
