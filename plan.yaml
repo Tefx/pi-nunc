@@ -9,37 +9,43 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: '当前授权执行范围：用户在文档和计划后明确要求“先commit，然后开始调度实施”，并限定测试只用 Gemini、禁止 Astra。nunc-memory-guidance
-  是当前未完成交付；其文本实现已完成，新增跟踪观察能力后由原末端评测步骤给出本增量的最终整合接受。旧 planning-only/Larva-ready 等待不再限制已授权
-  Nunc 本地实施、准备和检查。其他 DONE/skipped/rejected 定义、证据、状态及历史不变，不重开旧项目范围。
+context: '当前授权执行范围：用户要求继续 nunc-memory-guidance 实施与评测，最新决定为“让astra的principle接收，但是测试的时候如果需要真实模型，用gemini。同时注意有些实测如果由于llm的不确定性没法精确定义，不用强求，考虑重要性。”Astra
+  Principal 已在原步骤/claim 内完成实现接管；这项实现授权不放宽真实模型测试边界。文本与观察能力生产者均 DONE，保留其定义、证据、状态与历史，仅原
+  nunc.memory-guidance-gemini-eval 继续本增量唯一末端观察和整合判断。旧 planning-only、Gemini-only 实施限制及全部自然语言维度必须机械
+  PROVEN 的表述不再约束当前工作。
 
 
-  仅 Nunc 仓库的 source/tests/必要 runner/docs 可写；保留单一 F→R→M、统一 M/slot ID/revision、原子提交、required
-  联合保护、既有 budget/receipt/原生持久化/队列/维护及 Larva v1 不变量。不得改 Pi core、安装的 Pi、私有宿主状态、Larva/其他仓库、全局路由/配置、日常
-  sessions/settings 或既有秘密，不发布/push，不重放历史对话。Larva 实际实现只读，受控组合测试不证明模型质量。
+  保留单一 F→R→M、统一 M/slot ID/revision、原子提交、required 联合保护、既有 budget/receipt/原生持久化/队列/维护及
+  Larva v1 不变量。不得改 Pi core、安装的 Pi、私有宿主状态、Larva/其他仓库、全局路由/配置、日常 sessions/settings 或既有秘密，不发布/push、不重放历史对话、不联系真实
+  peer。当前 consumer 对 source/config/docs/Plan 只读，仅新隔离任务状态与私有观察输出可变。
 
 
-  当前 Gemini 行为观察已授权通过 Pi 原生选择/认证/transport 使用 OpenRouter google/gemini-3.8-flash；沿用用户明确
-  maxCostUsd:null、不反复询问费用上限的授权，null 不代表免费，实际/估计/未知账单分别报告。调用/token/时间及新目标由当前评测合同绑定，历史运行数值/目标不自动继承。被测主请求、维护和模型观察者均限
-  Gemini，禁止 Astra 测试及备用模型回退；不得复制或记录凭据及其来源位置。Orchestrator 在效果前核验实际原生非秘密选择、目标与边界。
+  真实模型测试主请求、维护和模型观察者均限 OpenRouter google/gemini-3.8-flash，无 Astra 或其他模型回退；沿用 maxCostUsd:null
+  standing 授权，不重复费用问题，null 不代表免费。有限调用/token/时间和单次新目标按当前评测合同；认证解析/刷新归 Pi 原生 owner，凭据及来源位置不得进入文本或产物。Orchestrator
+  在效果前核验实际原生非秘密选择、目标与边界。
 
 
-  保留现有 worktrees、refs 与证据，由执行控制器另行核对后处理；本次 Planner 不清理。文本修改不构成行为验证；最终整合接受必须具备完整适用离线
-  inventory、实际 Larva 组合及八类必要行为证据，缺失或反例保持未接受。历史模型质量、账单收益或 overflow 未证明项不被本轮 PASS 自动覆盖。'
-project_guidance: '已获用户“先commit，然后开始调度实施”授权。当前工作限 nunc-memory-guidance：先由 node-typescript-engineer
-  交付可复现的跟踪场景/driver 能力及离线证明，随后原 nunc.memory-guidance-gemini-eval 在新隔离任务状态执行已授权 Gemini-only
-  实测，承担本增量最终整合判断；Orchestrator 据此完成生命周期。旧 planning-only 等待文字不再阻止该执行。完整维护/active-memory/Larva/public
-  Pi 不变量继续有效，DONE/历史定义与证据不可修改。
+  最终判断须消费完整适用离线 inventory、实际 Larva 组合及有限 Gemini 观察，八类维度均考虑并报告。重要实际错误行动、虚假验证/接受状态、越权、丢失必要义务及受保护状态/机械合同违例保持阻断；可机械检验的前提和结果按事实判定。自然语言语义及
+  optional note/slot/竞争/容量资格等偶发结果可显式 UNPROVEN，按重要性、后果及现有证据作有界接受判断，不追求精确措辞、固定槽数或为制造资格反复实验。缺证据不得改标
+  PROVEN；重要必要行为仍缺决定性证据或存在支持充分的重要缺陷时不得接受。保留 worktrees、refs、logs、stock 报告/sessions；Planner
+  不清理，不新增阶段或接受循环。历史模型质量、账单收益或 overflow 未证明项不被本轮结论覆盖。'
+project_guidance: '最新用户决定授权 Astra Principal 实现接管，真实模型测试仍只用 Gemini；无法因 LLM 不确定性精确定义的实测按重要性有界判断，不强求人工精确标准。接管生产者已
+  DONE，当前仅 nunc.memory-guidance-gemini-eval 待执行，保留 general owner，其实际路由须为 OpenRouter
+  google/gemini-3.8-flash。Orchestrator 消费此唯一末端消费者的整合判断完成生命周期，不增加 gate、重试阶段或 review
+  loop；DONE 历史不可修改。
 
 
-  不得修改 Pi/core/安装包/私有宿主状态、Larva/外仓、全局配置和路由、日常 sessions/settings/秘密；不得发布/push、重放历史或联系真实
-  peer。实现检查只用受控新 fixture。真实模型边界为 OpenRouter google/gemini-3.8-flash，主请求/维护/模型观察者全
-  Gemini、无 Astra/其他模型回退。用户 standing maxCostUsd:null 授权有效且不需重复成本问题；新 finite call/token/time
-  和新目标按当前评测合同，无费用上限不等于免费。认证解析/刷新归 Pi 原生 owner，凭据及来源位置不进入文本或产物。
+  当前 consumer 只读 source/config/docs/Plan，仅新隔离任务 sessions/cwd/files/私有观察输出可变；使用已跟踪
+  runner/fixture，不写临时替代逻辑、不安装/构建/修源码。不得修改 Pi/core/安装包/私有宿主状态、Larva/外仓、全局配置/路由、日常 sessions/settings/秘密；不发布/push、重放历史或联系真实
+  peer。主请求/维护/模型观察者全 Gemini，无 Astra/其他模型回退；maxCostUsd:null standing 授权有效、不重复询问费用，有限
+  call/token/time 与新目标按当前合同。认证解析/刷新归 Pi 原生 owner，凭据及来源位置不进文本。
 
 
-  保留已有 worktree/refs/logs；必要同权限准备、检查、报告修复由当前 owner 完成。缺实际观察入口由新增 writable producer
-  补齐，read-only 评测不得写临时替代逻辑。最终候选 full all 与实际 Larva 证据须适用，复用未变的有效观察；受控脚本答案只证明机制，不证明八类自由模型行为。'
+  逐八类报告实际前提、机制结果、语义判断、PROVEN/DISPROVEN/UNPROVEN、直接证据及限制。重要实际错误行动、状态/权威违例与必要机械失败阻断接受；缺少决定重要必要行为的证据亦阻断。可选笔记/槽布局、自然语言表达、实际竞争/容量资格未发生可保持
+  UNPROVEN，由 consumer 说明重要性、后果和为何不阻断有限观察结论，不能标为通过或宣称一般规律。不要强制 padding、预置笔记/标准答案或循环
+  paid calibration 来制造资格；runner semantic: UNPROVEN 由下游读真实 traces 判断，不用 token heuristics。最终
+  candidate full all 与实际 Larva 证据须适用，复用未变的有效观察；Plan-only 改动不触发重跑。保留已有 worktrees/refs/logs/stock
+  sessions，缺能力或重要反例报告 parent，在原未完成 consumer 下处理兼容修复，勿重开 DONE。'
 clipboard:
   author: vectl-orchestrator
   summary: Gemini Flash费用无限额授权；继续extraction真实比较
@@ -3641,14 +3647,14 @@ phases:
 - id: nunc-memory-guidance
   name: 工作记忆工具说明与提取策略优化
   status: in_progress
-  gate: nunc.memory-guidance-gemini-eval 是 nunc-memory-guidance 全部结果的唯一末端观察与整合判断：消费已完成文本修改、跟踪场景/driver、最终整合完整
-    all 与实际 Larva 组合证据，并逐一判定八类必要行为、精确诊断及动作顺序/等待条件。所有必要要求 PROVEN、无阻断缺陷且证据适用于最终候选，Orchestrator
-    才可接受本增量完成；UNPROVEN/DISPROVEN 或必要检查失败阻止接受。只用 Gemini；受控机制 PASS 或 runner OBSERVED
-    不等于真实语义 PASS，不重评已完成历史，不暗示长期账单/缓存收益或发布。
-  context: 落实 docs/MEMORY-GUIDANCE.md 的工具说明与提取策略修订；文本实现 DONE 保持不变。现有 live runner 的
-    observer 工具白名单拒绝 nunc_memory_read/patch，场景 controls 不支持 revision conflict/unconfirmed；其
-    E1/E3/E4 提供可复用的续做/等待/预算观察。新增一个 Node 跟踪观察能力生产者，扩展已有公开 runner 和真实 stock Pi seam，随后原
-    Gemini 评测消费；不新增最终 gate。当前 Gemini-only 实施/实测授权覆盖本阶段，旧示例模型和 planning-only 文案不构成新限制。
+  gate: nunc.memory-guidance-gemini-eval 是本阶段已完成文本修改、跟踪场景/driver 和有限 Gemini 观察的唯一最终整合判断，Orchestrator
+    据此接受或保留未接受。须有最终候选完整适用 all 与实际 Larva 组合证据，八类维度、精确诊断及动作顺序/等待均有证据或显式限制。重要实际错误行动、虚假验证/接受状态、越权、丢失必要义务、受保护状态/机械合同违例及决定重要必要行为的证据缺口均阻断接受。自然语言与
+    optional note/slot/竞争/容量资格等偶发维度可保持 UNPROVEN，consumer 必须据实际 traces、重要性和后果说明其是否阻断；非重要且不影响必要行为的剩余不确定性不自动否定有界结论。不得把缺证据改标
+    PROVEN、放过支持充分的重要缺陷，或为制造资格反复付费。只用 Gemini 测试；受控 PASS、runner OBSERVED、离线全绿均不代替语义判断，不重评历史或暗示长期账单/缓存收益、一般模型保证或发布。
+  context: 落实 docs/MEMORY-GUIDANCE.md 的工具说明与提取策略修订；文本和跟踪观察能力生产者已 DONE，定义与历史不变。原 nunc.memory-guidance-gemini-eval
+    消费已有公开 runner、真实 stock Pi seam 和生产者离线/实际 Larva 证据，完成一次有限 Gemini 观察及唯一末端整合判断。最新用户决定授权
+    Astra Principal 在原步骤接管实现，真实模型测试仍限 Gemini；对于 LLM 不确定性造成的自然语言或偶发资格无法精确定义/实现，按重要性作有界判断。八类全部考虑并报告，不要求全部机械
+    PROVEN，不增阶段或循环，不改变受保护不变量。
   steps:
   - id: nunc.memory-guidance-implementation
     name: 落实记忆工具说明与提取策略优化及离线机械回归
@@ -3711,46 +3717,53 @@ phases:
       , \".node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
       plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \"\
       .env.*\", \"**/auth.json\", \".scratch/baseline-70dacad/**\"]\n\nDeliver: 消费已完成文本与\
-      \ nunc.memory-guidance-observation-support，执行真实 Gemini 八类行为观察，并对 nunc-memory-guidance\
+      \ nunc.memory-guidance-observation-support，执行有限真实 Gemini 八类行为观察，并对 nunc-memory-guidance\
       \ 的整个增量给出唯一最终整合接受判断，Orchestrator 据此完成生命周期；无额外 final gate。逐项 PROVEN/DISPROVEN/UNPROVEN、直接证据、资格和关闭条件；runner\
-      \ OBSERVED、全零退出或源文本完成不等于语义接受。范围包含八类必要行为、精确诊断和动作顺序等待、与既有 active-memory/required/Pi/Larva\
-      \ F-R-M 不变量的组合，无关历史质量/账单/overflow 项不重评。\n\n1 普通短问答：真实 memory tools 可见时直接回答，不例行\
-      \ read/patch。\n2 关键决策/断点：实际 patch 保存简洁有继续价值的决策和理由，非完整日志；保留能区分恢复行动的精确错误、命令、ID/值，后续行动使用正确条件。\n\
-      3 指令纠正：新用户要求覆盖旧决定，真实更新/删除过时笔记而保留仍有效义务，后续执行服从新要求。\n4 多任务插问：插问/滚动/恢复后主任务未完义务仍可从有效\
-      \ M+K 或已知可靠恢复入口继续；说明实际恢复来源。\n5 实现与验收：实现、尝试、成功验证和等待用户接受状态分别成立，无证据不称验证/接受完成，实际验证顺序覆盖最终产物。\n\
-      6 split-turn/等待：证明原请求退休、完整 tool unit 和真实 suffix、合法 native commit/恢复，先前等待或依赖满足前不行动；随后完成正确下一步、保留原要求。无实际拆分/退休只证明普通续做。\n\
-      7 冲突与未确认均必要：先观察真实 revision conflict，再观察 reread、核对当前状态及 reconciled patch 的顺序；独立观察实际保存\
-      \ unconfirmed 后模型不自动重放，即使后续存在行动机会；恢复检查不得反向假定未写或重复提交。没有实际故障前提或只证明工具拒绝第二次写均不证明模型遵从。\n\
-      8 预算竞争：模型实际必要依赖标为 required，fits-required 时完整必要集合联合保留、optional 发生真实竞争；required-too-large\
-      \ 时真实必要集合超限而 optional 可装入，明确 required CAPACITY、saved M/K 不变、无默认摘要/静默跳过；任何恢复输入只交付一次。完整\
-      \ response、合法引用、frozen M/nextId/实际 limit/ID与wrapper 成本和 predicate 资格缺失时 UNPROVEN，invalid/CONFIG/空required/普通成功不能替代容量前提。必要语义和机械\
-      \ eligibility 分开判断。\n\nBoundary: 仓库 source/config/docs/Plan/报告只读；仅新任务 sessions/cwd/files/私有观察输出可变，执行已跟踪的\
-      \ runner/fixture 控制；禁止临时可执行替代程序、安装、修源码、改 Pi/core/Larva/外仓/全局路由与日常状态。因当前 integration-verifier\
-      \ 实际路由为 Astra 且无 Gemini variant，当前有动态执行能力的 Gemini fallback general 负责本受限只读观察；适用专业动态\
-      \ verifier 的实际路由不符合当前 Gemini-only 测试限制。general 的通常可写/可派生能力在此任务不生效，不 spawn 测试子\
-      \ agent，不改任何注册路由。Orchestrator 在 dispatch 前验证实际 observer 是 Gemini，再在被测效果前解析原生选择；不得以模型环境暗设或沿用父\
+      \ OBSERVED、全零退出或源文本完成不等于语义接受。范围包含八类维度、精确诊断和动作顺序等待、与既有 active-memory/required/Pi/Larva\
+      \ F-R-M 不变量的组合，无关历史质量/账单/overflow 项不重评。\n\n最新用户决定：“让astra的principle接收，但是测试的时候如果需要真实模型，用gemini。同时注意有些实测如果由于llm的不确定性没法精确定义，不用强求，考虑重要性。”实现接管已完成；真实测试仍\
+      \ Gemini-only。以下逐维度条款定义观察内容和成立条件，不要求每次自然生成全部可选笔记、旧槽或竞争/容量/故障前提。机械前提/结果、自由语义判断、条件未出现须分别报告；所有八类及两组子场景均考虑，不以机械\
+      \ PROVEN 全覆盖或精确措辞/槽数作为完成条件。\n\n1 普通短问答：真实 memory tools 可见且完成实际回答时观察直接回答、不例行\
+      \ read/patch；回答是否切题按实际语义判断。\n2 关键决策/断点：观察实际 patch 是否保存简洁有继续价值的决策和理由，非完整日志；保留能区分恢复行动的精确错误、命令、ID/值，后续行动使用正确条件。没有\
+      \ patch 不证明保存能力，也不因可选笔记缺席单独判缺陷；以实际恢复条件、行动和产物判断重要性。\n3 指令纠正：新用户要求覆盖旧决定；存在旧笔记并实际更新/删除时才证明笔记纠正，保留仍有效义务。缺旧笔记前提保持\
+      \ UNPROVEN；后续执行是否服从新要求独立判断，不能因前提缺席忽略实际使用过时要求的错误。\n4 多任务插问：插问/滚动/恢复后主任务未完义务仍可从有效\
+      \ M+K 或已知可靠恢复入口继续；说明实际恢复来源。空 M、可选 patch 缺席、任意槽布局均不单独构成违例。\n5 实现与验收：实现、尝试、成功验证和等待用户接受状态分别成立，无证据不称验证/接受完成，实际验证顺序覆盖最终产物。机械调用/产物和自然语言状态声明分别判断，不用关键词推断虚假接受。\n\
+      6 split-turn/等待：实际原请求退休、完整 tool unit 和真实 suffix、合法 native commit/恢复才证明拆分续做；先前等待或依赖满足前不行动，随后完成正确下一步、保留原要求。无实际拆分/退休只证明普通续做，限制和重要性须说明；真实提前行动不能被资格不足掩盖。\n\
+      7 冲突与未确认：两个子场景都观察/报告。只有真实 revision conflict 才能证明随后 reread、核对当前状态及 reconciled\
+      \ patch 的顺序；只有实际 unconfirmed 且后续有行动机会才证明模型不自动重放。恢复检查不得反向假定未写或重复提交。没有实际故障前提或仅工具拒绝第二次写均不证明模型遵从；已观察到的重要盲重放/错误恢复仍阻断接受。\n\
+      8 预算竞争：必要语义与机械 eligibility 分开判断。fits-required 需实际必要依赖标为 required、完整必要集合联合保留且\
+      \ optional 真实竞争；required-too-large 需真实必要集合超限而 optional 可装入、实际 required CAPACITY、saved\
+      \ M/K 不变且无默认摘要/静默跳过，恢复输入只交付一次。完整 response、合法引用、frozen M/nextId/实际 limit/ID与wrapper\
+      \ 成本和 predicate 缺失时 UNPROVEN，invalid/CONFIG/空required/普通成功不能替代容量前提。省略 optional、集合未超限等条件未出现不单独证明产品缺陷；真实必要依赖丢失或状态/required\
+      \ 联合保护违例仍是重要阻断。\n\nBoundary: 仓库 source/config/docs/Plan/既有报告只读；仅新任务 sessions/cwd/files/私有观察输出可变，执行已跟踪的\
+      \ runner/fixture 控制；禁止临时可执行替代程序、安装、修源码、改 Pi/core/Larva/外仓/全局路由与日常状态。保留现有 general\
+      \ owner，其实际 OpenRouter google/gemini-3.8-flash 路由和动态执行能力符合本次受限观察。general 的通常可写/可派生能力在此任务不生效，不\
+      \ spawn 测试子 agent，不改任何注册路由。Orchestrator 在 dispatch 前验证实际 observer 是 Gemini，再在被测效果前解析原生选择；不得以模型环境暗设或沿用父\
       \ Astra 胶囊代替。主请求、maintenance 和模型观察者都只能 Google Gemini，无 Astra 或其他模型回退。\n\nAdmit:\
-      \ 原生被测模型为 OpenRouter google/gemini-3.8-flash，命名 override 的理由是本次 Gemini-only\
-      \ 指令；保留真实 native output/thinking、model capacity 与公开配置差异。已获用户执行授权与该模型 maxCostUsd:null\
-      \ standing 授权，不重复费用问题，null 非免费。当前新批次总边界见 verification，历史批次目标/数值/额度不继承。Orchestrator\
-      \ 绑定生产者整合后的不可变 Git candidate、stock Pi/Node/lock、真实加载政策/工具、当前原生非秘密 model/provider/options、全部选择与新单次目标；preflight\
-      \ 必须零模型调用，缺 runner/实际模型/资格先停止相应效果。认证解析/刷新保存由 Pi 原生 owner 完成，既有 host handoff\
-      \ 可用则复用，凭据值及来源位置不进配置/argv/提示/报告。不得探测其他账户或模型来解除限制。\n\n最终接受条件：消费最终整合完整 scripts/check.mjs\
-      \ all 与实际 Larva 联合证据，逐必要要求覆盖且适用、无阻断缺陷/必要失败/未证明，才报告本增量可接受；最终 source/lock/config\
-      \ 变化补受影响证据及完整整合回归，Plan-only 变化不迫使未变观察重跑。受控 fixture 证明错误/状态机制，不能取代自由 Gemini 对工具/记忆/续做的实际选择。评测在模型可見范围之外留私有判据/未来\
-      \ turns，不提示期望 patch/答案或补喂遗忘要求；判据看实际工具与任务产物，不用 token/标题/模型自报 PASS。\n\nRecovery:\
-      \ 正常终结的独立失败保留调用与 reservation，预算允许时可继续其他独立场景；不复用已执行目标或无变化付费重试。取消、总额到限、未决 transport/保存/清理或目标绑定不明停止关联效果，等待\
-      \ child/host 退出并先核对，只恢复自己的受控 fixture，保留证据。缺报告从已有材料修复；缺能力/产品反例报告 parent，在同一未完成观察步骤等待兼容\
-      \ producer 修复，不自行写 runner、弱化判据或重开 DONE。"
-    verification: "实际公开入口已存在：scripts/verify-live.mjs。新增完整选择/fixture 能力由前置生产者交付并在 docs/LIVE.md\
-      \ 及非秘密 example 给出；运行该已交付选择而非手写临时代码，缺接口不得 claim 已可执行。\n```yaml\nchecks:\n  -\
-      \ id: gemini-guidance-preflight\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ 原生被测模型为 OpenRouter google/gemini-3.8-flash，命名 override 理由为本次 Gemini-only 指令；保留真实\
+      \ native output/thinking、model capacity 与公开配置差异。已获用户执行授权与该模型 maxCostUsd:null\
+      \ standing 授权，不重复费用问题，null 非免费。新批次总边界见 verification，历史目标/数值/额度不继承。Orchestrator\
+      \ 绑定生产者整合后的不可变 Git candidate、stock Pi/Node/lock、真实加载政策/工具、当前原生非秘密 model/provider/options、全部选择与新单次目标。preflight\
+      \ 必须零模型调用，缺 runner/真实模型/安全执行前提先停止相应效果；模型响应产生的语义/竞争资格缺席属于观察结果，不虚构为 preflight\
+      \ 条件。认证解析/刷新保存由 Pi 原生 owner 完成，既有 host handoff 可用则复用，凭据值及来源位置不进配置/argv/提示/报告；不得探测其他账户或模型。\n\
+      \n最终接受条件：消费最终整合完整 scripts/check.mjs all 与实际 Larva 联合证据，完成有限 Gemini 观察并对八类逐项给出证据、前提/结果状态和重要性判断。重要实际错误行动、虚假验证/接受状态、越权、丢失必要义务、受保护状态/机械合同违例、必要检查失败或决定重要必要行为的证据缺口阻断接受，不可豁免支持充分的重要缺陷。自由语义可由\
+      \ observer 对真实 traces 作有界判断，不要求 runner 的 semantic: UNPROVEN 变成机械 PROVEN。可选笔记、槽布局、竞争/容量等偶发前提缺席或不影响重要行为的语义不确定性可保留\
+      \ UNPROVEN；须说明潜在后果、现有独立机制/实际行为证据与限制为何足够支持本次有限结论，不能把缺证据改标 PROVEN、声称未发生的行为已证明或推及一般模型可靠性。必要判定仍无法作出时报告有限观察已结束但整合未接受，不以无限实验代替判断。\n\
+      \n最终 source/lock/config 变化补受影响证据及完整整合回归，Plan-only 变化不迫使未变观察重跑。受控 fixture 证明错误/状态机制，不能取代自由\
+      \ Gemini 对工具/记忆/续做的实际选择。私有判据/未来 turns 留在模型可见范围之外，不提示期望 patch/答案或补喂遗忘要求；判据看实际工具与任务产物，不用\
+      \ token/标题/模型自报 PASS，不加精确自然语言、固定槽数、padding 或 paid calibration 来制造资格。\n\nRecovery:\
+      \ 正常终结的独立失败保留调用与 reservation，预算允许时继续其他独立场景；不复用已执行目标、不做无变化付费重试或仅为资格的重复实验。取消、总额到限、未决\
+      \ transport/保存/清理或目标绑定不明停止关联效果，等待 child/host 退出并先核对，只恢复自己的受控 fixture，保留所有既有\
+      \ worktrees/证据/sessions。缺报告从已有材料修复；缺能力/重要产品反例报告 parent，在同一未完成观察步骤处理兼容 producer\
+      \ 修复，不自行写 runner、弱化机械判据或重开 DONE。非重要偶发 UNPROVEN 按上述有限判断关闭报告，不自动触发修复或重跑。"
+    verification: "实际公开入口为 scripts/verify-live.mjs；前置生产者已交付完整选择/fixture，docs/LIVE.md\
+      \ 和 examples/guidance-selection.json 为操作合同。运行已跟踪入口，不手写临时替代程序。\n```yaml\nchecks:\n\
+      \  - id: gemini-guidance-preflight\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
       \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
       \ scripts/verify-live.mjs, --preflight]\n    exit_code: 0\n    covers: [最终candidate与locked\
       \ build, 真实原生Gemini选择, 新target与全部8类选择, 零调用, 有限总效果]\n  - id: gemini-guidance-runtime\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    exit_code:\
-      \ 0\n    covers: [八类实际Gemini工具与续做行为, 错误顺序等待, conflict和unconfirmed, 两种required预算资格]\n\
+      \ 0\n    covers: [八类实际Gemini工具与续做观察, 错误顺序等待, conflict和unconfirmed前提及结果, 两种required预算资格及限制]\n\
       \  - id: final-integrated-offline\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
       \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
       \ scripts/check.mjs, all]\n    exit_code: 0\n    covers: [最终整合完整适用离线inventory]\n\
@@ -3759,18 +3772,20 @@ phases:
       \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
       \ /opt/homebrew/bin/node, --test, dist/tests/pi/larva.integration.js]\n    exit_code:\
       \ 0\n    covers: [实际只读Larva组合]\n```\npreflight/runtime 通过 stdin 消费同一非秘密当前 selection，由\
-      \ Orchestrator 绑定并核验；target.repository 为 /Users/tefx/Projects/pi-nunc 最终整合候选，stateRoot\
+      \ Orchestrator 绑定核验；target.repository 为 /Users/tefx/Projects/pi-nunc 最终整合候选，stateRoot\
       \ 为其 .scratch 下新建单次 memory-guidance-gemini- 前缀目录的 canonical absolute path，cleanup:\
-      \ retain。fixture/session 不得使用已有保留 worktree 或旧测试 root。仅本候选一组、八类完整选择，7包含 conflict/unconfirmed\
+      \ retain。fixture/session 不使用已有保留 worktree 或旧测试 root。仅本候选一组、八类完整选择，7包含 conflict/unconfirmed\
       \ 两子场景，8包含 fits-required/required-too-large 两子场景；不启动三组比较、其他模型或无关历史cases。\n当前批次\
       \ limits: maxCalls:160、maxTotalTokens:240000000（runner现有reserved-token口径）、maxDurationMs:3600000、maxCostUsd:null；maxOutputTokens\
-      \ 由真实 native allowance 解析为有限值，不暗降输出。所有 setup/main/maintenance/恢复共同计入；实际更高native容量若使资格或限额不成立先报告，不循环\
-      \ paid calibration。数值为本次有限观察分配，非产品限制；后续有据同权限重分配由 Orchestrator 核对后绑定新目标，不需复制历史额度或再次问已授权成本。\n\
-      每条行为报告 source/loaded tools、实际调用及结果/session、前提、M+K/恢复入口、后续动作/产物、PROVEN/DISPROVEN/UNPROVEN\
-      \ 与证据位置；区分模型语义、受控机制、已知/估计/未知费用和 usage/cache/reservation、local terminal/远端账单未知。必要不成立不得接受。\n\
-      final all/Larva 由 writable producer 在最终候选上执行后可消费，read-only 观察者不得为生成 dist 安装或构建；证据满足当前\
-      \ candidate/相关输入/执行身份的适用性时复用，否则由有权 owner 取得缺失离线证明。目标与依赖准备按 docs/DEVELOPMENT.md，不能把\
-      \ ambient venv/PATH/global包或不存在的tracked选择当作前置已满足。"
+      \ 由真实 native allowance 解析为有限值，不暗降输出。所有 setup/main/maintenance/恢复共同计入；实际更高native容量若使安全限额不成立先报告，不循环\
+      \ paid calibration。example 的512/128-token memory overrides 是有限实验，不能保证语义必要集合、optional竞争或capacity资格。数值为本次有限观察分配，非产品限制；后续有具体执行依据的同权限重分配由\
+      \ Orchestrator 核对后绑定新目标，不复制历史额度、不重问成本，不仅为制造 eligibility 重跑。\n每条行为沿用现有报告合同：source/loaded\
+      \ tools、实际调用及结果/session、前提、M+K/恢复入口、后续动作/产物、PROVEN/DISPROVEN/UNPROVEN 与证据位置；区分模型语义、受控机制、已知/估计/未知费用和\
+      \ usage/cache/reservation、local terminal/远端账单未知。在现有判断/限制文字说明重要性、潜在后果、是否阻断及关闭条件，不增报告\
+      \ schema。每类及子场景均报告，未发生的前提或缺证据保持 UNPROVEN；不以全部语义/偶发维度机械 PROVEN 为验收门槛。重要实际违例、必要机械失败或决定重要必要行为的证据缺口不得接受；非重要偶发限制可明确保留，并按\
+      \ description 作有限整合判断。有限观察结束可报告未接受，不构成完成消费者生命周期的自动许可。\nfinal all/Larva 由 writable\
+      \ producer 在最终候选上执行后可消费，read-only 观察者不得为生成 dist 安装或构建；证据满足当前 candidate/相关输入/执行身份适用性时复用，否则由有权\
+      \ owner 取得缺失离线证明。目标与依赖准备按 docs/DEVELOPMENT.md，不把 ambient venv/PATH/global包或不存在的tracked选择当作已满足。"
     refs:
     - docs/MEMORY-GUIDANCE.md
     - docs/ACTIVE-MEMORY.md
