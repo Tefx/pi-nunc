@@ -503,3 +503,257 @@ test("observation and details surfaces expose resolved and error states without 
   // Current projection remains independent
   assert.notEqual(view.current.layout.system.text, RESOLVED_PROMPT_A);
 });
+
+test("handler mutating reply object after callback is ignored and captured scalar value is preserved", async t => {
+  const f = await fixture({
+    extras: [{
+      name: "larva-mutable-reply",
+      factory(pi) {
+        pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
+          const req = data as ResolveSystemPromptRequest;
+          const mutableReply = { status: "ok" as const, systemPrompt: RESOLVED_PROMPT_A };
+          req.reply(mutableReply);
+          // Counterexample: mutate the object immediately after reply()
+          mutableReply.systemPrompt = "MUTATED_PROMPT_LEAK";
+        });
+      },
+    }],
+  });
+  t.after(() => f.close());
+
+  f.respond((context) => {
+    // Assert that the provider receives the callback-time value, NOT the mutated value!
+    assert.equal(context.systemPrompt, RESOLVED_PROMPT_A);
+    assert.doesNotMatch(context.systemPrompt, /MUTATED_PROMPT_LEAK/);
+    return fauxAssistantMessage("Verified unmutated prompt.");
+  });
+
+  await f.runtime.session.prompt("Prompt testing mutation resistance");
+  assert.equal(f.faux.state.callCount, 1);
+});
+
+test("untrusted getter exception on reply object yields protocol-error CONFIG rejection without leaking", async t => {
+  const admissions: AdmissionObservation[] = [];
+  const f = await fixture({
+    extras: [{
+      name: "larva-throwing-getter",
+      factory(pi) {
+        pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
+        pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
+          const req = data as ResolveSystemPromptRequest;
+          const throwingObject = {
+            status: "ok",
+            get systemPrompt(): string {
+              throw new Error("SECRET_TOKEN_DO_NOT_LEAK");
+            },
+          };
+          req.reply(throwingObject as any);
+        });
+      },
+    }],
+  });
+  t.after(() => f.close());
+
+  await f.runtime.session.prompt("Prompt testing throwing getter");
+  assert.equal(f.faux.state.callCount, 0);
+
+  const lastMessage = f.runtime.session.messages.at(-1);
+  assert.equal(lastMessage?.role, "assistant");
+  assert.equal(lastMessage?.stopReason, "error");
+  assert.match(lastMessage?.errorMessage ?? "", /Nunc local CONFIG/);
+  // Secret token from throwing getter must NOT be leaked into user-visible error message
+  assert.doesNotMatch(lastMessage?.errorMessage ?? "", /SECRET_TOKEN_DO_NOT_LEAK/);
+
+  const lastMain = admissions.filter(a => a.kind === "main").at(-1);
+  assert(lastMain);
+  assert.equal(lastMain.outcome, "reject");
+  assert.equal(lastMain.code, "CONFIG");
+  assert.equal(lastMain.resolution, "protocol-error");
+});
+
+test("independent unknown provider call makes zero resolver calls and delegates unchanged", async t => {
+  let resolverCalls = 0;
+  const admissions: AdmissionObservation[] = [];
+  let capturedCtx: ExtensionContext | undefined;
+
+  const f = await fixture({
+    extras: [{
+      name: "larva-unknown-check",
+      factory(pi) {
+        pi.on("session_start", (_e, ctx) => { capturedCtx = ctx; });
+        pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
+        pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
+          resolverCalls++;
+          const req = data as ResolveSystemPromptRequest;
+          req.reply({ status: "ok", systemPrompt: RESOLVED_PROMPT_A });
+        });
+      },
+    }],
+  });
+  t.after(() => f.close());
+
+  f.respond(() => fauxAssistantMessage("Unknown response."));
+
+  assert(capturedCtx);
+  const registry = new ModelRegistry(f.modelRuntime);
+  const provider = registry.getRegisteredNativeProvider("nunc-pi-fixture");
+  assert(provider);
+
+  // Invoke with an independent signal/session not matching main run -> classified as unknown
+  const unknownContext: Context = { systemPrompt: "Original unknown prompt", messages: [{ role: "user", content: "Unknown query", timestamp: 1 }] };
+  const res = await provider.streamSimple(f.faux.getModel(), unknownContext, { signal: new AbortController().signal }).result();
+
+  assert.equal(res.stopReason, "stop");
+  // Resolver must NOT be called for unknown requests!
+  assert.equal(resolverCalls, 0);
+  assert.equal(admissions.at(-1)?.kind, "unknown");
+  assert.equal(admissions.at(-1)?.outcome, "delegate");
+  assert.equal(admissions.at(-1)?.resolution, undefined);
+});
+
+test("wrapper-chain re-entry with effectiveContext passes through inner wrapper without re-resolving", async t => {
+  let resolverCalls = 0;
+  let capturedCtx: ExtensionContext | undefined;
+
+  const f = await fixture({
+    extras: [{
+      name: "larva-chain-check",
+      factory(pi) {
+        pi.on("session_start", (_e, ctx) => { capturedCtx = ctx; });
+        pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
+          resolverCalls++;
+          const req = data as ResolveSystemPromptRequest;
+          req.reply({ status: "ok", systemPrompt: RESOLVED_PROMPT_A });
+        });
+      },
+    }],
+  });
+  t.after(() => f.close());
+
+  assert(capturedCtx);
+  const registry = new ModelRegistry(f.modelRuntime);
+  const outerWrapper = registry.getRegisteredNativeProvider("nunc-pi-fixture");
+  assert(outerWrapper);
+
+  // Wrap a second time to form an inner/outer wrapper chain on the same provider ID
+  const innerWrapper: any = {
+    ...outerWrapper,
+    streamSimple: (m: any, c: any, opts: any) => outerWrapper.streamSimple(m, c, opts),
+  };
+  registry.registerProvider(innerWrapper);
+
+  f.respond((context) => {
+    assert.equal(context.systemPrompt, RESOLVED_PROMPT_A);
+    return fauxAssistantMessage("Chained answer.");
+  });
+
+  await f.runtime.session.prompt("Prompt through wrapper chain");
+  // Resolver must be called exactly ONCE despite the multiple wrappers in the chain!
+  assert.equal(resolverCalls, 1);
+  assert.equal(f.faux.state.callCount, 1);
+});
+
+test("original Provider Context object is strictly immutable across resolution and delegation", async t => {
+  let resolverCalls = 0;
+  let capturedCtx: ExtensionContext | undefined;
+
+  const f = await fixture({
+    extras: [{
+      name: "larva-immutability-check",
+      factory(pi) {
+        pi.on("session_start", (_e, ctx) => { capturedCtx = ctx; });
+        pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
+          resolverCalls++;
+          const req = data as ResolveSystemPromptRequest;
+          req.reply({ status: "ok", systemPrompt: RESOLVED_PROMPT_A });
+        });
+      },
+    }],
+  });
+  t.after(() => f.close());
+
+  assert(capturedCtx);
+  const registry = new ModelRegistry(f.modelRuntime);
+  const provider = registry.getRegisteredNativeProvider("nunc-pi-fixture");
+  assert(provider);
+
+  const originalMessages = [{ role: "user" as const, content: "Query", timestamp: 1 }];
+  const originalTools = [{ name: "t", description: "d", parameters: {} }];
+  const originalContext: Context = {
+    systemPrompt: "Original unmodified system prompt",
+    messages: originalMessages,
+    tools: originalTools,
+  };
+
+  const controller = new AbortController();
+  Object.defineProperty(capturedCtx, "signal", { value: controller.signal, configurable: true });
+
+  f.respond((receivedContext) => {
+    // Inside the provider, receivedContext is the effective context with the resolved prompt
+    assert.equal(receivedContext.systemPrompt, RESOLVED_PROMPT_A);
+    // Messages and tools object references remain identical
+    assert.equal(receivedContext.messages, originalMessages);
+    assert.equal(receivedContext.tools, originalTools);
+    return fauxAssistantMessage("Verified context immutability.");
+  });
+
+  const res = await provider.streamSimple(f.faux.getModel(), originalContext, {
+    signal: controller.signal,
+    sessionId: capturedCtx.sessionManager.getSessionId(),
+  }).result();
+
+  assert.equal(res.stopReason, "stop");
+  assert.equal(resolverCalls, 1);
+
+  // Original Context passed by caller must remain 100% UNCHANGED
+  assert.equal(originalContext.systemPrompt, "Original unmodified system prompt");
+  assert.equal(originalContext.messages, originalMessages);
+  assert.equal(originalContext.tools, originalTools);
+});
+
+test("independent nested resolves with different signals receive separate resolutions", async t => {
+  let resolverCalls = 0;
+  let capturedCtx: ExtensionContext | undefined;
+
+  const f = await fixture({
+    extras: [{
+      name: "larva-nested-check",
+      factory(pi) {
+        pi.on("session_start", (_e, ctx) => { capturedCtx = ctx; });
+        pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
+          resolverCalls++;
+          const req = data as ResolveSystemPromptRequest;
+          req.reply({ status: "ok", systemPrompt: `${RESOLVED_PROMPT_A} #${resolverCalls}` });
+        });
+      },
+    }],
+  });
+  t.after(() => f.close());
+
+  assert(capturedCtx);
+  const registry = new ModelRegistry(f.modelRuntime);
+  const provider = registry.getRegisteredNativeProvider("nunc-pi-fixture");
+  assert(provider);
+
+  const sessionId = capturedCtx.sessionManager.getSessionId();
+  const c1 = new AbortController();
+  const c2 = new AbortController();
+  Object.defineProperty(capturedCtx, "signal", { value: c1.signal, configurable: true });
+
+  f.respond((context) => {
+    return fauxAssistantMessage(`Response for ${context.systemPrompt}`);
+  });
+
+  // Call 1
+  const ctx1: Context = { systemPrompt: "prompt 1", messages: [{ role: "user", content: "call 1", timestamp: 1 }] };
+  const res1 = await provider.streamSimple(f.faux.getModel(), ctx1, { signal: c1.signal, sessionId }).result();
+  assert.equal(res1.stopReason, "stop");
+  assert.equal(resolverCalls, 1);
+
+  // Call 2 with different signal/context
+  Object.defineProperty(capturedCtx, "signal", { value: c2.signal, configurable: true });
+  const ctx2: Context = { systemPrompt: "prompt 2", messages: [{ role: "user", content: "call 2", timestamp: 2 }] };
+  const res2 = await provider.streamSimple(f.faux.getModel(), ctx2, { signal: c2.signal, sessionId }).result();
+  assert.equal(res2.stopReason, "stop");
+  assert.equal(resolverCalls, 2);
+});

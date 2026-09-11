@@ -1,6 +1,6 @@
 # Larva 请求级系统指令桥接
 
-状态：**已实现，完成 Nunc 独立行为测试与真实 Larva 组合验收**。
+状态：**候选实现已交付并完成 Nunc 独立行为测试与真实 Larva 组合验收，等待 Orchestrator 最终整合接受**。
 
 用户授权本轮根据 Larva 就绪状态调度实施 nunc-larva-prompt phase；全程禁止修改 Pi core、已安装 Pi 包及私有宿主状态。实现仅在每个独立 main 请求准入前通过公开 `pi.events` 发起 `larva:resolve-system-prompt:v1` 同步解析；请求局部有效 Context 统一用于估算、receipt 建立、native Provider 委托与 Last main 观察。零回复走 legacy 路径；explicit unavailable、重复回复或协议错误在传输前由本地 CONFIG 拒绝。maintenance 与 unknown 调用保持零 resolver 请求。真实 Larva 联合验证通过独立入口 `tests/pi/larva.integration.ts` 显式完成。
 
@@ -125,7 +125,7 @@ emit 返回时关闭本次接收窗口并固定决定。迟到回复不能改变
   /opt/homebrew/bin/node --test dist/tests/pi/larva.integration.js
 ```
 
-该入口尚未实现；由同一 writable owner 创建。使用新隔离合成会话、persona 测试数据与受控 native Provider；不读日常凭据、不重放原对话、不启动真实模型/子 agent。证明普通请求、连续工具、实际 persona 借用/恢复后 idle callback、continuation 过期、真实 reload/旧实例失效、maintenance 隔离。稳定状态下 Larva 末端不改写目标系统文本，Nunc 建立并复用符合条件的 receipt。真实状态变化后不因旧解析而跳过检查。验证 native serializer 的真实目标文本及受影响支持路径；不能从单个 Codex 成功推导所有 provider。
+该入口已在候选实现中交付于 `tests/pi/larva.integration.ts`，由同一 writable owner 创建并通过 TypeScript 编译为 `dist/tests/pi/larva.integration.js`。使用新隔离合成会话、persona 测试数据与受控 native Provider；不读日常凭据、不重放原对话、不启动真实模型/子 agent。证明普通请求、连续工具、实际 persona 借用/恢复后 idle callback、continuation 过期、真实 reload/旧实例失效、maintenance 隔离。稳定状态下 Larva 末端不改写目标系统文本，Nunc 建立并复用符合条件的 receipt。真实状态变化后不因旧解析而跳过检查。验证 native serializer 的真实目标文本及受影响支持路径；不能从单个 Codex 成功推导所有 provider。
 
 完整现有离线库存仍要求最终整合候选的 `scripts/check.mjs all`，环境和 baseline 准备按 [DEVELOPMENT.md](DEVELOPMENT.md)。不固定历史测试总数。上述实组合入口补充 all，不能替代它。owner 必须记录实际执行命令、所加载 Larva 版本/修订、目标候选、观测边界、结果和测试进程/隔离状态清理；原始私人 prompt 不进入报告。
 

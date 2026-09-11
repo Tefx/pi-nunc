@@ -230,10 +230,39 @@ export class Admission {
   }
   private resolveSystemPrompt(rawPrompt: string): { status: "resolved"; systemPrompt: string } | { status: "legacy-no-reply" } | { status: "unavailable"; error: EngineError } | { status: "protocol-error"; error: EngineError } {
     let windowClosed = false;
-    const replies: unknown[] = [];
+    type CapturedReply =
+      | { kind: "ok"; systemPrompt: string }
+      | { kind: "unavailable"; reason: string }
+      | { kind: "invalid" };
+    const replies: CapturedReply[] = [];
     const reply = (result: unknown) => {
       if (windowClosed) return;
-      replies.push(result);
+      try {
+        if (!record(result)) {
+          replies.push({ kind: "invalid" });
+          return;
+        }
+        const status = result.status;
+        if (status === "ok") {
+          const prompt = result.systemPrompt;
+          if (typeof prompt === "string") {
+            replies.push({ kind: "ok", systemPrompt: prompt });
+          } else {
+            replies.push({ kind: "invalid" });
+          }
+        } else if (status === "unavailable") {
+          const reason = result.reason;
+          if (typeof reason === "string" && reason.length > 0) {
+            replies.push({ kind: "unavailable", reason });
+          } else {
+            replies.push({ kind: "invalid" });
+          }
+        } else {
+          replies.push({ kind: "invalid" });
+        }
+      } catch {
+        replies.push({ kind: "invalid" });
+      }
     };
     try {
       this.pi.events.emit(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, {
@@ -259,29 +288,11 @@ export class Admission {
         error: new EngineError("CONFIG", "Larva system prompt resolution received duplicate replies"),
       };
     }
-    const candidate = replies[0];
-    if (!record(candidate)) {
-      return {
-        status: "protocol-error",
-        error: new EngineError("CONFIG", "Larva system prompt resolution returned non-record reply"),
-      };
-    }
-    if (candidate.status === "ok") {
-      if (typeof candidate.systemPrompt !== "string") {
-        return {
-          status: "protocol-error",
-          error: new EngineError("CONFIG", "Larva system prompt resolution returned invalid ok payload"),
-        };
-      }
+    const candidate = replies[0]!;
+    if (candidate.kind === "ok") {
       return { status: "resolved", systemPrompt: candidate.systemPrompt };
     }
-    if (candidate.status === "unavailable") {
-      if (typeof candidate.reason !== "string" || candidate.reason.length === 0) {
-        return {
-          status: "protocol-error",
-          error: new EngineError("CONFIG", "Larva system prompt resolution returned invalid unavailable payload"),
-        };
-      }
+    if (candidate.kind === "unavailable") {
       return {
         status: "unavailable",
         error: new EngineError("CONFIG", "Larva system prompt is currently unavailable"),
@@ -289,7 +300,7 @@ export class Admission {
     }
     return {
       status: "protocol-error",
-      error: new EngineError("CONFIG", "Larva system prompt resolution returned unknown status"),
+      error: new EngineError("CONFIG", "Larva system prompt resolution returned invalid payload"),
     };
   }
 

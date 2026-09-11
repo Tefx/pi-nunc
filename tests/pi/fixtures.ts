@@ -40,7 +40,7 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
     const bus = createEventBus();
     bus.on("nunc:maintenance", data => events.push(data as MaintenanceEvent));
     options.bus?.(bus);
-    const services = await createAgentSessionServices({ ...target, settingsManager: settings, modelRuntime, extensionFlagValues: new Map([["nunc-config", configFile]]), resourceLoaderOptions: {
+    const services = await createAgentSessionServices({ ...target, settingsManager: settings, modelRuntime, extensionFlagValues: new Map([["nunc-config", configFile], ...(options.flagValues ?? [])]), resourceLoaderOptions: {
       eventBus: bus, additionalExtensionPaths: options.publicFactory ? [] : [extensionPath, ...(options.extensions ?? [])], noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
       systemPrompt: "Perform the current task.", extensionFactories: [...(options.publicFactory ? [{ name: "nunc-public", factory: nunc }] : []), ...(options.extras ?? [])],
     } });
@@ -52,8 +52,7 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
       ...(target.sessionStartEvent ? { sessionStartEvent: target.sessionStartEvent } : {}),
       model: faux.getModel(),
       thinkingLevel: "off",
-      tools: (options.tools ?? []).map(t => t.name),
-      ...(options.tools ? { customTools: options.tools } : {}),
+      ...(options.tools ? { tools: options.tools.map(t => t.name), customTools: options.tools } : {}),
       ...(options.flagValues ? { flagValues: new Map(options.flagValues) } : {}),
     } as Parameters<typeof createAgentSessionFromServices>[0]);
     if (!options.diskSettings) bindHostSettings(bus, settings);
