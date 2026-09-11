@@ -3755,37 +3755,48 @@ phases:
       \ transport/保存/清理或目标绑定不明停止关联效果，等待 child/host 退出并先核对，只恢复自己的受控 fixture，保留所有既有\
       \ worktrees/证据/sessions。缺报告从已有材料修复；缺能力/重要产品反例报告 parent，在同一未完成观察步骤处理兼容 producer\
       \ 修复，不自行写 runner、弱化机械判据或重开 DONE。非重要偶发 UNPROVEN 按上述有限判断关闭报告，不自动触发修复或重跑。"
-    verification: "实际公开入口为 scripts/verify-live.mjs；前置生产者已交付完整选择/fixture，docs/LIVE.md\
-      \ 和 examples/guidance-selection.json 为操作合同。运行已跟踪入口，不手写临时替代程序。\n```yaml\nchecks:\n\
-      \  - id: gemini-guidance-preflight\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
-      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
-      \ scripts/verify-live.mjs, --preflight]\n    exit_code: 0\n    covers: [最终candidate与locked\
-      \ build, 真实原生Gemini选择, 新target与全部8类选择, 零调用, 有限总效果]\n  - id: gemini-guidance-runtime\n\
+    verification: "原八类有限观察已经留存；本条替代原完整十场景执行批次条款，仅恢复同一 consumer 的受影响范围判断。description\
+      \ 中八类/两组子场景的全部义务继续适用，通过原始证据、修复结果及必要的有限 Delta 共同判断；不重开 DONE，不增 gate。\n\n先消费 runner-repair\
+      \ 的最终候选、完整离线回归与适用实际 Larva 证据。只读修正报告层归因和适用性即可完成的工作不需要新增 writable producer 或真实调用；在新观察输出中保留原报告，明确修订结论。g6\
+      \ 在低 native usage 下 F 大于可触发 H 是可能合法不可行，不能自动归因为产品/runner bug；真实 split 和后续 unlock/部署未执行则保持\
+      \ UNPROVEN，并按重要性、现有机械证据及后果判断是否阻断。important-behavior 判断只覆盖实际执行片段，不覆盖 unseen later\
+      \ turns。g1 非重要额外 read、g7 预先 reread 避免 conflict 和可选 note 缺席均不要求修复或重跑。\n\n原 runtime\
+      \ report 的有效 Gemini thinking=high，与原 preflight 的 low 有选择漂移。以实际 runtime selection/context\
+      \ 判断旧观察适用性，解释差异，不声称 low 已被测或两次选择相同；两者同属获准 Gemini 不自动作废已观测行为。后续效果前由同一实际 Gemini\
+      \ observer 对当前非秘密 selection 做零调用 preflight 并核对 runtime model/provider/thinking/输出容量一致；差异先核对，不用父\
+      \ Astra 的胶囊替代原生选择。原零调用 TARGET 命名失败无需模型复现。\n\n仅当修复后的因果输入与现有证据仍不足以关闭重要 g4/g8 续做缺口时，Orchestrator\
+      \ 可绑定下述新目标和剩余额度，执行一次必要的受影响子集。先尝试从保留的真实 source/session/context 重判已执行检查；不能通过重分析声称原本未执行的\
+      \ turn 已发生。不得重跑 full10、g1、g6 或 g7-conflict 来制造 optional/冲突/split 资格，不反复 paid\
+      \ calibration。报告仍包含全部八类及子场景和明确限制。\n```yaml\nchecks:\n  - id: gemini-guidance-delta-preflight-if-needed\n\
       \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
-      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs]\n    exit_code:\
-      \ 0\n    covers: [八类实际Gemini工具与续做观察, 错误顺序等待, conflict和unconfirmed前提及结果, 两种required预算资格及限制]\n\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs, --preflight]\n\
+      \    exit_code: 0\n    covers: [最终candidate与locked build, 同一实际Gemini原生选择, 新target及必要子集,\
+      \ 零调用, 剩余额度]\n  - id: gemini-guidance-delta-runtime-if-needed\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/verify-live.mjs]\n    exit_code: 0\n    covers: [修复后重要g4及g8缺口的实际执行片段和资格限制]\n\
       \  - id: final-integrated-offline\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
       \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
-      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers: [最终整合完整适用离线inventory]\n\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers: [消费writable producer在最终候选上的完整离线inventory]\n\
       \  - id: final-actual-larva\n    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1,\
       \ PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
       \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
       \ /opt/homebrew/bin/node, --test, dist/tests/pi/larva.integration.js]\n    exit_code:\
-      \ 0\n    covers: [实际只读Larva组合]\n```\npreflight/runtime 通过 stdin 消费同一非秘密当前 selection，由\
-      \ Orchestrator 绑定核验；target.repository 为 /Users/tefx/Projects/pi-nunc 最终整合候选，stateRoot\
-      \ 为其 .scratch 下新建单次 memory-guidance-gemini- 前缀目录的 canonical absolute path，cleanup:\
-      \ retain。fixture/session 不使用已有保留 worktree 或旧测试 root。仅本候选一组、八类完整选择，7包含 conflict/unconfirmed\
-      \ 两子场景，8包含 fits-required/required-too-large 两子场景；不启动三组比较、其他模型或无关历史cases。\n当前批次\
-      \ limits: maxCalls:160、maxTotalTokens:240000000（runner现有reserved-token口径）、maxDurationMs:3600000、maxCostUsd:null；maxOutputTokens\
-      \ 由真实 native allowance 解析为有限值，不暗降输出。所有 setup/main/maintenance/恢复共同计入；实际更高native容量若使安全限额不成立先报告，不循环\
-      \ paid calibration。example 的512/128-token memory overrides 是有限实验，不能保证语义必要集合、optional竞争或capacity资格。数值为本次有限观察分配，非产品限制；后续有具体执行依据的同权限重分配由\
-      \ Orchestrator 核对后绑定新目标，不复制历史额度、不重问成本，不仅为制造 eligibility 重跑。\n每条行为沿用现有报告合同：source/loaded\
-      \ tools、实际调用及结果/session、前提、M+K/恢复入口、后续动作/产物、PROVEN/DISPROVEN/UNPROVEN 与证据位置；区分模型语义、受控机制、已知/估计/未知费用和\
-      \ usage/cache/reservation、local terminal/远端账单未知。在现有判断/限制文字说明重要性、潜在后果、是否阻断及关闭条件，不增报告\
-      \ schema。每类及子场景均报告，未发生的前提或缺证据保持 UNPROVEN；不以全部语义/偶发维度机械 PROVEN 为验收门槛。重要实际违例、必要机械失败或决定重要必要行为的证据缺口不得接受；非重要偶发限制可明确保留，并按\
-      \ description 作有限整合判断。有限观察结束可报告未接受，不构成完成消费者生命周期的自动许可。\nfinal all/Larva 由 writable\
-      \ producer 在最终候选上执行后可消费，read-only 观察者不得为生成 dist 安装或构建；证据满足当前 candidate/相关输入/执行身份适用性时复用，否则由有权\
-      \ owner 取得缺失离线证明。目标与依赖准备按 docs/DEVELOPMENT.md，不把 ambient venv/PATH/global包或不存在的tracked选择当作已满足。"
+      \ 0\n    covers: [消费适用实际只读Larva组合证据]\nselection_boundary:\n  repository: /Users/tefx/Projects/pi-nunc\n\
+      \  state_root_pattern: /Users/tefx/Projects/pi-nunc/.scratch/memory-guidance-gemini-delta-*/nunc-live-guidance\n\
+      \  cleanup: retain\n  allowed_scenarios: [g4, g8/fits-required, g8/required-too-large]\n\
+      \  model: openrouter/google/gemini-3.8-flash\n  limits_ceiling:\n    maxCalls:\
+      \ 74\n    maxTotalTokens: 144358400\n    maxDurationMs: 3116479\n    maxCostUsd:\
+      \ null\n```\n上限为剩余资源边界，不是必须花完的目标或自动执行许可。Orchestrator 在实际必要子集执行前核对全部已发生 setup/main/maintenance/恢复及未决效果，绑定不超过此上限的当前额度；tokens\
+      \ 使用 runner reservation 口径，不能从 actual tokens 重新获得已保留额度。无新增费用审批，null 仍表示未知/无限额成本授权而非免费。maxOutputTokens\
+      \ 从实际 native allowance 解析，不暗降输出。单次新 root 不复用旧已执行目录、worktree 或 fixtures，preflight/runtime\
+      \ stdin 使用同一实际非秘密 selection。原始 usage、账单未知和原有限批次结果保留在证据中，不复制原整批预算。没有因果输入修复、重要未决问题或效果核对时不执行新的模型调用。\n\
+      \ndocs/LIVE.md、examples/guidance-selection.json 与 scripts/verify-live.mjs 是公开入口；不得临时实现替代\
+      \ runner。受影响 live checks 和最终完整 all 由 writable producer 提供，consumer 不安装/构建；原\
+      \ all 与实际 Larva 未变观察按相关 source/config/lock/执行身份判断复用，不因报告 target 改变全部作废。新 source/lock/config\
+      \ 输入改变时补受影响证明并要求完整最终整合回归；Plan-only 不重跑。\n\n沿用现有报告 schema 和 requirement 结果字段，逐项区分实际证据、自由语义、机械前提及\
+      \ PROVEN/DISPROVEN/UNPROVEN；修正重要性判断而不改原始事实。重要真实违例、必要检查失败或决定重要必要行为的证据缺口阻断接受；非重要偶发资格缺席可明确保留\
+      \ UNPROVEN 并说明后果和限制。受控 PASS、runner OBSERVED、语义关键词和未观察后续行为不建立接受。Orchestrator\
+      \ 消费本阶段全部增量及最终候选证据作唯一末端接受决定；有限观察结束或报告 INCONCLUSIVE 不自动完成消费者生命周期。"
     refs:
     - docs/MEMORY-GUIDANCE.md
     - docs/ACTIVE-MEMORY.md
@@ -3795,7 +3806,7 @@ phases:
     - scripts/verify-live.mjs
     - scripts/check.mjs
     depends_on:
-    - nunc.memory-guidance-observation-support
+    - nunc.memory-guidance-runner-repair
     agent: general
   - id: nunc.memory-guidance-observation-support
     name: 交付工作记忆八类行为的跟踪场景与原生观察能力
@@ -3887,3 +3898,61 @@ phases:
       reconciliation. Producer proves observation capability, not Gemini semantic
       acceptance; uncertainty/importance instruction to be reconciled into pending
       consumer contract by Planner. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/memory-guidance-execution/observation-support/helpers'
+  - id: nunc.memory-guidance-runner-repair
+    name: 修复有效 M 提取证明与原生观察资格报告
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/**\", \"tests/**\", \"scripts/**\", \"docs/**\"\
+      , \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      , \"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"policies/**\", \".scratch/baseline-70dacad/**\"\
+      ]\n\nDeliver: 交付一个可由原 nunc.memory-guidance-gemini-eval 消费的 runner 修复及完整离线证明。checkFullExtraction\
+      \ 必须比较选定原生 active path 的实际有效 M，覆盖首次 compaction 前的 nunc.memory custom 保存、后续手动\
+      \ revision、checkpoint 后的新保存与 kept-range 旧 carrier；不得只取 compaction.details 或把非空\
+      \ M 当成空。保留独立的 B/K 消息来源、顺序、完整性和实际 extraction F/M 核对，真实丢失、过时或错误 M 仍须失败。通过公开 CLI/worker/stock\
+      \ Pi 受控原生路径证明非空手动 M 不再导致 g4/g8 假失败，以及真实缺失/错误 M 仍被检测。当前 native fixture 的 g4/g8\
+      \ 无手动 patch，不能充当该回归的覆盖。\n\n同一 runner 边界内校正观察资格和诊断准确性：g6 的低 native usage 可能无合法自动\
+      \ split，H 必须仍小于 native U 且容纳真实 F、完整 K、M 和 growth。准备失败需要区分合法不可行、缺观察和支持充分的 runner\
+      \ 缺陷；保留 conditional UNPROVEN、实际执行到的位置与缺失后续行为。已有诊断足够时不为改标签改源码。不得提高 H 使 native\
+      \ 不触发、padding、强造容量/竞争资格、改产品预算或 compaction/core 使不可行约束通过。受控可行与低 usage 不可行案例应验证实际公开结果和停机边界，不能仅断言报告用词。报告层对\
+      \ g6 的武断缺陷归因、thinking 选择适用性以及未执行后续 turns 的过宽结论由原只读 consumer 修正，不制造额外 producer\
+      \ 或全量重调查。\n\nBoundary: exact owner principal-engineer，依据用户明确选择 Astra Principal\
+      \ 和只读 consumer 无法修复已完成 producer 的跟踪 runner 能力缺口。仅本仓库可逆 runner/tests/docs/scripts\
+      \ 事务，允许必要的同目标离线依赖/构建准备；所有产品/core、工具/报告/schema、Pi/Larva/外仓、全局路由、认证与日常状态不变。Astra\
+      \ 仅实现 owner，禁止本步骤调用真实模型或执行 paid runner；受控本地协议 fixtures 不代表 Gemini 语义。保留既有 worktrees、refs、logs、sessions\
+      \ 和原始观察报告，不改 DONE 定义或证据。\n\nAdmit: 消费原 observer 的保留证据和 parent 已独立确认的 effective-M\
+      \ 假失败；先核对当前源码和选定 native path 语义，按最小因果修复处理，不重调查有效无关证据。原 g6 仅证明已执行片段没有提前动作，不能证明未执行的\
+      \ unlock/续做。g1 额外只读 memory read 与 g7 预先 reread 避免 conflict 均不构成本修复义务。原 general\
+      \ consumer 保留同一最终整合接受责任；生产者不宣布项目接受。\n\nRecovery: 离线失败在本未完成 writable step 修复。必要修改若越过产品/core/schema\
+      \ 或当前目标边界，停止受影响写入并报告具体证据，不扩大范围。保留有用候选和证据，复用未变 observations；没有模型效果可供本步骤重试。后续真实观察仅由原\
+      \ consumer 在整合完成、因果输入修复且效果核对后按其 verification 的有界 Delta 条款决定。"
+    verification: "按 docs/DEVELOPMENT.md 的 Node 26.7.0、npm 11.19.0、tracked package-lock\
+      \ dev dependencies 与 baseline 准备重现；不得依赖 ambient PATH/global 包或修改旧 baseline。依赖准备如需要采用文档的禁用生命周期脚本\
+      \ npm ci，checks 不自动安装。\n```yaml\nchecks:\n  - id: final-integrated-offline\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [有效M首次与后续revision原生回归, 完整提取错误负例, 可行与不可行split资格, 最终整合完整离线inventory]\n\
+      \  - id: actual-larva-if-affected\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ /opt/homebrew/bin/node, --test, dist/tests/pi/larva.integration.js]\n    exit_code:\
+      \ 0\n    covers: [实际只读Larva组合在相关输入改变时补证]\n```\nall 包含新增 meaningful regression，受影响\
+      \ live/native checks 必须新跑；绑定最终整合候选并跑完整 all。原 all 与 Larva 证据可用于因果未变部分；Larva 相关产品/host/配置/依赖未变时可复用现有实际\
+      \ 8/8 证据并说明适用性，无需为 runner-only 变化重跑实际 Larva。整合若改变证据相关输入，只补受影响证据及必要完整整合回归。\n\
+      完成证据解释 effective-M 根因、公开路径正负例、g6 是已支持缺陷还是资格不可行/未知、修改面、检查命令/结果、最终 candidate 及原\
+      \ consumer 尚待的有限判断。不得以 source token、固定 prose、模型自报 PASS 或受控答案复述充当行为证明。无真实模型调用。"
+    refs:
+    - docs/MEMORY-GUIDANCE.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - src/live/scenarios.ts
+    - src/live/preparation.ts
+    - src/live/calibration.ts
+    - src/pi/projection.ts
+    - tests/live/guidance-native.test.ts
+    - tests/live/memory-guidance-observation.test.ts
+    - scripts/check.mjs
+    depends_on:
+    - nunc.memory-guidance-observation-support
+    agent: principal-engineer
