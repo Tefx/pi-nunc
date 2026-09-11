@@ -711,13 +711,13 @@ test("original Provider Context object is strictly immutable across resolution a
   assert.equal(originalContext.tools, originalTools);
 });
 
-test("independent nested resolves with different signals receive separate resolutions", async t => {
+test("independent sequential resolves with different signals receive separate resolutions", async t => {
   let resolverCalls = 0;
   let capturedCtx: ExtensionContext | undefined;
 
   const f = await fixture({
     extras: [{
-      name: "larva-nested-check",
+      name: "larva-sequential-check",
       factory(pi) {
         pi.on("session_start", (_e, ctx) => { capturedCtx = ctx; });
         pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
@@ -756,4 +756,70 @@ test("independent nested resolves with different signals receive separate resolu
   const res2 = await provider.streamSimple(f.faux.getModel(), ctx2, { signal: c2.signal, sessionId }).result();
   assert.equal(res2.stopReason, "stop");
   assert.equal(resolverCalls, 2);
+});
+
+test("reentrant independent resolve during active callback window and call scope maintains separate identities", async t => {
+  let resolverCalls = 0;
+  let capturedCtx: ExtensionContext | undefined;
+  let providerRef: any;
+  let p2Promise: Promise<any> | undefined;
+
+  const f = await fixture({
+    extras: [{
+      name: "larva-reentrant-check",
+      factory(pi) {
+        pi.on("session_start", (_e, ctx) => { capturedCtx = ctx; });
+        pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => {
+          resolverCalls++;
+          const req = data as ResolveSystemPromptRequest;
+          const currentCall = resolverCalls;
+          if (currentCall === 1) {
+            // While Call 1's callback window is active, launch a reentrant independent call!
+            // Different Context is enough for independent identity and uses the same valid main signal.
+            const ctx2: Context = { systemPrompt: "base prompt 2", messages: [{ role: "user", content: "reentrant call 2", timestamp: 2 }] };
+            p2Promise = providerRef.streamSimple(f.faux.getModel(), ctx2, {
+              signal: capturedCtx!.signal!,
+              sessionId: capturedCtx!.sessionManager.getSessionId(),
+            }).result();
+            req.reply({ status: "ok", systemPrompt: "RESOLVED_CALL_1" });
+            return;
+          }
+          req.reply({ status: "ok", systemPrompt: "RESOLVED_CALL_2" });
+        });
+      },
+    }],
+  });
+  t.after(() => f.close());
+
+  assert(capturedCtx);
+  const registry = new ModelRegistry(f.modelRuntime);
+  providerRef = registry.getRegisteredNativeProvider("nunc-pi-fixture");
+  assert(providerRef);
+
+  const mainController = new AbortController();
+  Object.defineProperty(capturedCtx, "signal", { value: mainController.signal, configurable: true });
+
+  const promptsSeenByProvider: string[] = [];
+  f.respond((context) => {
+    promptsSeenByProvider.push(context.systemPrompt ?? "");
+    return fauxAssistantMessage(`Answer for ${context.systemPrompt}`);
+  });
+
+  const ctx1: Context = { systemPrompt: "base prompt 1", messages: [{ role: "user", content: "main call 1", timestamp: 1 }] };
+  const res1 = await providerRef.streamSimple(f.faux.getModel(), ctx1, {
+    signal: mainController.signal,
+    sessionId: capturedCtx.sessionManager.getSessionId(),
+  }).result();
+
+  assert(p2Promise);
+  const res2 = await p2Promise;
+
+  assert.equal(res1.stopReason, "stop");
+  assert.equal(res2.stopReason, "stop");
+  assert.equal(resolverCalls, 2);
+
+  // Assert both distinct captured results reached their respective calls without overwrite or contamination
+  assert(promptsSeenByProvider.includes("RESOLVED_CALL_1"));
+  assert(promptsSeenByProvider.includes("RESOLVED_CALL_2"));
+  assert.notEqual(promptsSeenByProvider[0], promptsSeenByProvider[1]);
 });

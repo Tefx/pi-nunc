@@ -37,9 +37,7 @@ writeFileSync(
 const args = process.argv.slice(2);
 if (args[0] === "resolve") {
   const id = args[1];
-  const model = id === "synth-codex" ? "openai-codex/gpt-6-astra"
-    : id === "synth-responses" ? "openai/gpt-4.1"
-    : "nunc-pi-fixture/large";
+  const model = id.includes("responses") ? "openai/gpt-4.1" : "openai-codex/gpt-6-astra";
   console.log(JSON.stringify({
     data: {
       id,
@@ -57,10 +55,9 @@ if (args[0] === "resolve") {
 if (args[0] === "list") {
   console.log(JSON.stringify({
     data: [
-      { id: "synth-primary", description: "Primary", prompt: "Primary prompt", model: "nunc-pi-fixture/large", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" },
-      { id: "synth-specialist", description: "Specialist", prompt: "Specialist prompt", model: "nunc-pi-fixture/large", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" },
-      { id: "synth-responses", description: "Responses", prompt: "Responses prompt", model: "openai/gpt-4.1", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" },
-      { id: "synth-codex", description: "Codex", prompt: "Codex prompt", model: "openai-codex/gpt-6-astra", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" }
+      { id: "synth-codex-primary", description: "Primary", prompt: "Primary prompt", model: "openai-codex/gpt-6-astra", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" },
+      { id: "synth-codex-specialist", description: "Specialist", prompt: "Specialist prompt", model: "openai-codex/gpt-6-astra", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" },
+      { id: "synth-responses", description: "Responses", prompt: "Responses prompt", model: "openai/gpt-4.1", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" }
     ]
   }));
   process.exit(0);
@@ -92,12 +89,23 @@ function codexSSE(modelId: string, text: string) {
   const events = [
     { type: "response.created", response: { id: "response-1", model: modelId, status: "in_progress", output: [] } },
     { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
     { type: "response.output_item.done", output_index: 0, item },
     { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 128, output_tokens: 4, total_tokens: 132, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
   ];
   return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+}
+
+// Bounded wait helper to prevent indefinite hanging
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Timeout after ${timeoutMs}ms: ${message}`));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timer);
+  });
 }
 
 after(() => {
@@ -201,13 +209,13 @@ test("stable actual Larva state leaves target instructions unchanged in native C
   new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
   await f.runtime.session.setModel(model);
 
-  await f.runtime.session.prompt("/larva-persona synth-codex");
+  await f.runtime.session.prompt("/larva-persona synth-codex-primary");
 
   // Turn 1: establishes receipt under stable Larva persona
   await f.runtime.session.prompt("Turn 1 Codex prompt");
   assert.equal(bodies.length, 1);
   assert(typeof bodies[0]?.instructions === "string");
-  assert(bodies[0]!.instructions.includes("synth-codex"));
+  assert(bodies[0]!.instructions.includes("synth-codex-primary"));
   assert(bodies[0]!.instructions.includes("Specialized instructions active"));
 
   const turn1 = admissions.filter(a => a.kind === "main").at(-1);
@@ -229,10 +237,11 @@ test("stable actual Larva state leaves target instructions unchanged in native C
   assert.equal(turn2.estimateReason, "matching-receipt");
 });
 
-test("continuous tools, temporary borrow, continuation lifecycle and idle callback", async t => {
+test("continuous tools, temporary borrow, continuation lifecycle and idle callback on native Codex serializer", async t => {
   const admissions: AdmissionObservation[] = [];
+  const bodies: Record<string, unknown>[] = [];
   let piRef: ExtensionAPI | undefined;
-  let resolveSettled: (() => void) | undefined;
+  const settledResolvers: Array<() => void> = [];
 
   const f = await fixture({
     extensions: [larvaExtensionPath],
@@ -242,7 +251,10 @@ test("continuous tools, temporary borrow, continuation lifecycle and idle callba
       factory(pi) {
         piRef = pi;
         pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
-        pi.on("agent_settled", () => resolveSettled?.());
+        pi.on("agent_settled", () => {
+          const r = settledResolvers.shift();
+          r?.();
+        });
       },
     }],
   });
@@ -250,48 +262,115 @@ test("continuous tools, temporary borrow, continuation lifecycle and idle callba
     await f.close();
   });
 
-  await f.runtime.session.prompt("/larva-persona synth-primary");
+  const provider = openaiCodexProvider();
+  const model = provider.getModels().find(m => m.id === "gpt-6-astra");
+  assert(model);
 
-  let turn = 0;
-  f.respond((context) => {
-    turn++;
-    if (turn === 1) {
-      // Turn 1: Assistant calls larva_persona_switch to borrow synth-specialist with continue_task: true
-      assert(context.systemPrompt?.includes("synth-primary"));
-      return fauxAssistantMessage(fauxToolCall("larva_persona_switch", {
-        persona_id: "synth-specialist",
+  function toolCallSSE(modelId: string, toolName: string, args: Record<string, unknown>, callId: string) {
+    const item = {
+      type: "function_call",
+      id: "fc_borrow_1",
+      call_id: callId,
+      name: toolName,
+      arguments: JSON.stringify(args),
+    };
+    const events = [
+      { type: "response.created", response: { id: "r1", model: modelId, status: "in_progress", output: [] } },
+      { type: "response.output_item.added", output_index: 0, item },
+      { type: "response.output_item.done", output_index: 0, item },
+      { type: "response.completed", response: { id: "r1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 120, output_tokens: 25, total_tokens: 145, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+    ];
+    return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  }
+
+  let continuationDelivered: () => void;
+  const continuationPromise = new Promise<void>(resolve => { continuationDelivered = resolve; });
+
+  let sendCount = 0;
+  const transport: typeof fetch = async (resource, init) => {
+    sendCount++;
+    const request = new Request(resource, init);
+    const bytes = Buffer.from(await request.arrayBuffer());
+    const decoded = request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    const body = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
+    bodies.push(body);
+    if (sendCount === 1) {
+      // Turn 1: Return tool call to larva_persona_switch borrowing synth-codex-specialist with continue_task: true
+      return toolCallSSE(model.id, "larva_persona_switch", {
+        persona_id: "synth-codex-specialist",
         reason: "Route rationale: temporary borrow for specialized computation",
         continue_task: true,
-      }, { id: "call-borrow-1" }), { stopReason: "toolUse" });
+      }, "call-borrow-1");
     }
-    if (turn === 2) {
-      // Turn 2: Continuation turn runs under borrowed synth-specialist with continuation prompt block active!
-      assert(context.systemPrompt?.includes("synth-specialist"));
-      assert(context.systemPrompt?.includes("larva_persona_switch_continuation"));
-      assert(context.systemPrompt?.includes("Switched from synth-primary to synth-specialist"));
-      return fauxAssistantMessage("Specialist continuation work completed.");
+    if (sendCount === 2) {
+      // Turn 2: Continuation turn runs under borrowed specialist
+      continuationDelivered();
+      return codexSSE(model.id, "Specialist continuation completed.");
     }
-    // Turn 3: Subsequent turn (e.g. idle callback) after continuation expired and lease restored!
-    assert(context.systemPrompt?.includes("synth-primary"));
-    assert.doesNotMatch(context.systemPrompt ?? "", /larva_persona_switch_continuation/);
-    assert.doesNotMatch(context.systemPrompt ?? "", /synth-specialist/);
-    return fauxAssistantMessage("Restored primary answer.");
-  });
+    // Turn 3: Idle callback turn runs under restored primary persona
+    return codexSSE(model.id, "Idle turn completed.");
+  };
 
-  // Start turn that borrows persona
-  await f.runtime.session.prompt("Please perform specialized calculation");
-  // Allow deferred continuation delivery to trigger and complete turn 2
-  await new Promise(r => setTimeout(r, 250));
+  const credential = oauthFixture();
+  await f.credentials.modify(model.provider, async () => credential);
+  const bound = { apiKey: credential.access, fetch: transport, transport: "sse" as const, maxRetries: 0 as const };
+  const nativeModel = (m: Model<any>): Model<"openai-codex-responses"> => ({ ...m, api: "openai-codex-responses" });
+  const wrapped: Provider = {
+    ...provider,
+    stream: (m, context, options) => provider.stream(nativeModel(m), context, { ...options, ...bound } as Parameters<typeof provider.stream>[2]),
+    streamSimple: (m, context, options) => provider.streamSimple(nativeModel(m), context, { ...options, ...bound }),
+  };
+  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+  await f.runtime.session.setModel(model);
 
-  assert.equal(turn, 2);
+  await f.runtime.session.prompt("/larva-persona synth-codex-primary");
 
-  // Turn 3: Send idle callback, proving lease restored to synth-primary and continuation expired
+  // Step 1: Start turn 1 that triggers tool call to larva_persona_switch
+  const settled1 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 1 settle timeout");
+  await f.runtime.session.prompt("Calculate task requiring specialized borrow");
+  await settled1;
+
+  // Step 2: Await turn 2 continuation delivery and settling via actual lifecycle events
+  const settled2 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 2 settle timeout");
+  await withTimeout(continuationPromise, 15000, "Continuation delivery timeout");
+  await settled2;
+
+  // Turn 2 assertions (Continuation):
+  assert.equal(bodies.length, 2);
+  const contBody = bodies[1]!;
+  assert(typeof contBody.instructions === "string");
+  assert(contBody.instructions.includes("synth-codex-specialist"));
+  assert(contBody.instructions.includes("larva_persona_switch_continuation"));
+  assert(contBody.instructions.includes("Switched from synth-codex-primary to synth-codex-specialist"));
+
+  // Check Nunc admission for continuation turn
+  const contAdmission = admissions.filter(a => a.kind === "main" && a.outcome === "delegate" && a.payload)[1];
+  assert(contAdmission);
+  assert.equal(contAdmission.resolution, "resolved");
+  assert.equal(contAdmission.payload?.mode, "identity");
+
+  // Step 3: Trigger idle callback, proving lease automatically restored to synth-codex-primary and continuation expired
   assert(piRef);
-  const settled = new Promise<void>(resolve => { resolveSettled = resolve; });
-  piRef.sendMessage({ customType: "idle-callback", content: "Background idle check", display: true }, { triggerTurn: true, deliverAs: "steer" });
-  await settled;
+  const settled3 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Idle turn settle timeout");
+  piRef.sendMessage({ customType: "idle-callback", content: "Idle ping", display: true }, { triggerTurn: true, deliverAs: "steer" });
+  await settled3;
 
-  assert.equal(turn, 3);
+  assert.equal(bodies.length, 3);
+  const idleBody = bodies[2]!;
+  assert(typeof idleBody.instructions === "string");
+  assert(idleBody.instructions.includes("synth-codex-primary"));
+  assert.doesNotMatch(idleBody.instructions, /synth-codex-specialist/);
+  assert.doesNotMatch(idleBody.instructions, /larva_persona_switch_continuation/);
+
+  // Wire instructions for idle turn strictly equals the Turn 1 primary wire instructions
+  assert.equal(idleBody.instructions, bodies[0]!.instructions);
+
+  // Check Nunc admission for idle callback turn: restored primary prompt resolved and receipt reused
+  const idleAdmission = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1);
+  assert(idleAdmission);
+  assert.equal(idleAdmission.resolution, "resolved");
+  assert.equal(idleAdmission.estimator, "pi-usage-backed");
+  assert.equal(idleAdmission.estimateReason, "matching-receipt");
 });
 
 test("real resource reload invalidates old resolver listener and native maintenance stays isolated", async t => {
@@ -317,7 +396,7 @@ test("real resource reload invalidates old resolver listener and native maintena
     await f.close();
   });
 
-  await f.runtime.session.prompt("/larva-persona synth-primary");
+  await f.runtime.session.prompt("/larva-persona synth-codex-primary");
 
   // Step 1: Prove exactly ONE resolver reply from initial instance
   let repliesBefore = 0;
