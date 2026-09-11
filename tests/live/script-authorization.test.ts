@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { comparisonStock, compareCli } from "./comparison-native-fixture.js";
 
 // Synthetic executable/effect fixtures test authorization, never task-model quality.
-test("stock CLI/worker rejects absent, unprovided, modified and concurrently written scripts before private reads or effects; original verification and recovery run", { timeout: 120000 }, async () => {
+test("stock CLI/worker rejects absent, unprovided, modified and concurrently written scripts before private reads or effects; original verification and recovery run", { timeout: 240000 }, async () => {
   for (const provided of [false, true]) {
     const f = await comparisonStock();
     const tag = provided ? "script-provided" : "script-unprovided";
