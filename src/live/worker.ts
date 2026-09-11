@@ -234,14 +234,18 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       onMaintenance: event => { const result = maintenanceResult(event); report.maintenance.push(result ? JSON.parse(JSON.stringify(result)) : { invalidEvent: true });
         const row = report.rollovers!.at(-1); if (row && result) row.result = JSON.parse(JSON.stringify(result)); },
       onMaintenanceResponse: data => { if (object(data)) maintenanceResponses.push(data as any); },
-      onContext: (model, context, kind) => report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context }),
+      onContext: (model, context, kind) => {
+        report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context });
+        if (selection.id.startsWith("g") && kind === "main") {
+          const activeTools = context.tools?.map(t => t.name) ?? [];
+          const exposed = ["nunc_memory_read", "nunc_memory_patch"].every(name => activeTools.includes(name));
+          const previous = report.prerequisites.find(p => p.check === "memory tools exposed in session");
+          if (!previous) report.prerequisites.push({ check: "memory tools exposed in session", status: exposed ? "PROVEN" : "UNPROVEN", observed: { activeTools, source: "actual main provider context" } });
+          else if (!exposed) { previous.status = "UNPROVEN"; previous.reason = "A main request omitted memory tool definitions"; }
+        }
+      },
       onAction: event => {
         report.actions.push({ turn, event });
-        if (object(event) && (event as any).type === "lifecycle" && (event as any).phase === "session-tools" && (event as any).memoryToolsExposed === true) {
-          if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {
-            report.prerequisites.push({ check: "memory tools exposed in session", status: "PROVEN", observed: { activeTools: (event as any).activeTools } });
-          }
-        }
         if (object(event) && (event as any).type === "lifecycle" && (event as any).phase === "revision-conflict-injected") {
           if (!report.prerequisites.some(p => p.check === "actual revision conflict triggered on nunc_memory_patch")) {
             report.prerequisites.push({ check: "actual revision conflict triggered on nunc_memory_patch", status: "PROVEN" });
@@ -539,8 +543,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     }
     if (selection.id.startsWith("g")) {
       if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {
-        const memExposed = report.actions.some(a => object(a) && object((a as any).event) && (a as any).event.type === "lifecycle" && (a as any).event.phase === "session-tools" && (a as any).event.memoryToolsExposed === true);
-        report.prerequisites.push({ check: "memory tools exposed in session", status: memExposed ? "PROVEN" : "UNPROVEN", ...(memExposed ? {} : { reason: "nunc_memory_* tools were not exposed" }) });
+        report.prerequisites.push({ check: "memory tools exposed in session", status: "UNPROVEN", reason: "No actual main provider context with memory tool definitions" });
       }
       if (selection.id === "g7") {
         const isConflict = selection.variant === undefined || selection.variant === "conflict";
