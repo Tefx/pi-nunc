@@ -9,30 +9,49 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: 'PLANNING ONLY / WAIT FOR USER DISPATCH. 用户仅授权更新详细文档与创建待实施计划，将在 Larva 修复后亲自调度。不得因
-  pending/available、设计消息或接口变可用自动 claim、dispatch、实施、测试、安装或调用模型。当前新增合同为 docs/LARVA-PROMPT.md，唯一步骤
-  nunc.larva-prompt，owner node-typescript-engineer。只允许未来受授权的 Nunc 仓库 source/tests/runner/docs
-  与新隔离离线 fixture；禁止 Pi core/私有状态/已安装 Pi patch、Larva 或外仓修改、日常 sessions/settings/credentials、原对话重放、真实子
-  agent/peer 联系、live/paid 模型、全局安装/配置、push/publication。保留全部 DONE 定义、证据、生命周期与 retained
-  worktrees；不恢复已撤销的 pi-host-prompt 方案。历史 reporting 执行或 live/publication 权限不解除本次等待条件。真实
-  Larva 实现及声明依赖由用户供应，作为只读联合验收输入，不是产品或默认 all 的强制依赖。最终完整 all 和真实 Larva 组合证据均满足后，由 Orchestrator
-  在同一步完成程序作唯一整合接受；设计 guard/协议替身不能证明联合结果。
+context: 'PLANNING ONLY / WAIT FOR USER DISPATCH. 用户本轮只要求汇总/更新文档并新增计划；不得 claim、dispatch、实施、产品测试、安装或调用模型。用户将在
+  Larva 就绪后亲自调度，pending/available/接口可用不构成执行授权。先行 nunc.larva-prompt 保留原合同与 owner node-typescript-engineer；新增
+  nunc.active-memory（同一 Node 专业 owner）完整交付主动 CRUD、唯一尾置 M、保守 R/M receipt 与自动旧布局转换，phase
+  nunc-active-memory 依赖 nunc-larva-prompt。文档 docs/LARVA-PROMPT.md 与 docs/ACTIVE-MEMORY.md。
+
+  禁止 Pi core/已安装 Pi patch/私有宿主状态、Larva 或其他仓库修改、真实日常 sessions/settings/credentials、原对话重放、live/paid
+  模型、全局安装/配置及 push/publication。未来测试只用新隔离合成状态/受控 Provider，不联系真实 peer 或启动真实模型子 agent。产品
+  source/tests/必要 tracked runner/docs 仅 Nunc 可写；Larva 实现/声明依赖是用户供应的只读实际组合输入，不是默认构建依赖。DONE/历史定义/证据/状态不变，已撤销
+  Pi core 方案不恢复，保留当前工作树与测试 baseline。历史 live/reporting/publication 权限不解除本次等待。
+
+  单一新 M 布局无前置回退和双布局开关，用户接受首次转换 token 开销；模型工具的可选暴露不影响布局。保持 Larva v1 零回复 legacy 与 unavailable/协议错误拒绝，取消
+  M 兼容不取消 F 合同。每个完整交付在自己的步骤完成程序由 Orchestrator 接受，后一接受覆盖实际 F/R/M 组合；不把未来 M 需求反向加入先行
+  Larva 接受或新增重复 gate。最终候选完整 all 与实际 Larva 组合证据必要，设计/替身 PASS 不等于组合通过。真实账单/模型质量和历史 overflow
+  未完成原因单独披露，不虚报已解决、不隐含付费观察。
 
 
-  现行 docs/DESIGN.md、docs/PI.md、docs/CAPACITY.md、docs/DEVELOPMENT.md 与已完成 UI/receipt/reporting
-  适用保护不变。本次通过公开 pi.events 在每个 main 准入前解析 v1 系统指令，构成估算/receipt/实际委托共用的请求局部 Context；零回复保留标明
-  legacy 的旧路径，显式 unavailable/重复/非法回复拒绝，不缓存、不解析 Larva 标记。maintenance/unknown 隔离、ALS
-  同调用去重、payload 末端校验和取消保持。Pi 软阈值/队列/压缩调度不变，不扩大所有 CAPACITY 已修复的结论，历史 overflow 恢复未完成原因独立未证实。一个
-  owner 完成完整实现、必要 tracked 真实组合入口和全部证明，不建人类等待、内部 helper 或重复 gate。缺必要联合证据保持该步骤未完成；兼容缺口由未完成
-  writable owner 原位吸收。未来锁定依赖和 baseline 准备按 DEVELOPMENT.md 在已授权 checkout 独立执行，本轮不执行任何产品准备/测试。'
-project_guidance: PLANNING ONLY / WAIT FOR USER DISPATCH. 用户仅授权更新详细文档与创建待实施计划，将在 Larva
-  修复后亲自调度。不得因 pending/available、设计消息或接口变可用自动 claim、dispatch、实施、测试、安装或调用模型。当前新增合同为
-  docs/LARVA-PROMPT.md，唯一步骤 nunc.larva-prompt，owner node-typescript-engineer。只允许未来受授权的
-  Nunc 仓库 source/tests/runner/docs 与新隔离离线 fixture；禁止 Pi core/私有状态/已安装 Pi patch、Larva
-  或外仓修改、日常 sessions/settings/credentials、原对话重放、真实子 agent/peer 联系、live/paid 模型、全局安装/配置、push/publication。保留全部
-  DONE 定义、证据、生命周期与 retained worktrees；不恢复已撤销的 pi-host-prompt 方案。历史 reporting 执行或 live/publication
-  权限不解除本次等待条件。真实 Larva 实现及声明依赖由用户供应，作为只读联合验收输入，不是产品或默认 all 的强制依赖。最终完整 all 和真实 Larva
-  组合证据均满足后，由 Orchestrator 在同一步完成程序作唯一整合接受；设计 guard/协议替身不能证明联合结果。
+  新增结果是 docs/ACTIVE-MEMORY.md 全部合同：统一 M 的 read/atomic add-update-remove、系统 ID/位置与
+  revision、最终候选预算及缩减超额、maintenance freeze 到 native terminal/unconfirmed/在途快照、唯一请求级
+  F→R→M 数据载体、空 M 零载体、旧格式只读识别自动幂等转换。保存复用原生 CustomEntry/有效投影，无第二笔记库、旧 JSONL 重写或主动 compact/队列重放。
+
+  receipt 匹配稳定 R 和真实 assistant 锚点并单独计 M：U为旧成功响应 input(含cache)+output，新增 R 从锚点之后计算，加当前完整
+  M(空=0)及原有明确额外计费；不扣旧 M、不重复锚点 output、不递归累积旧估算。纯 M 提交人工/模型同规则，不再无条件清空全部 receipt；真实
+  F/tools/R/响应/生命周期和末端 payload 变化保持保护。Current/Last main/Slots/details 反映新预算/来源，不另建状态源。
+
+  已完成 UI/维护/原生 Provider/reporting 适用不变量继续有效；新文档只在本功能交付后覆盖其旧 M 前置、无模型工具和纯 M 全量失效描述。普通准备/检查按
+  docs/DEVELOPMENT.md，现存 .scratch/baseline-70dacad 可复用；已删除旧 worktrees 不成为当前检查目标，历史证据在既有归档映射保留。一个新增
+  writable owner 原位吸收 source/tests/runner/docs 兼容缺口；缺必要证明保持该步骤未完成，不把报告修复变成新 producer
+  或改 DONE。'
+project_guidance: 'PLANNING ONLY / WAIT FOR USER DISPATCH. 用户本轮只要求汇总/更新文档并新增计划；不得
+  claim、dispatch、实施、产品测试、安装或调用模型。用户将在 Larva 就绪后亲自调度，pending/available/接口可用不构成执行授权。先行
+  nunc.larva-prompt 保留原合同与 owner node-typescript-engineer；新增 nunc.active-memory（同一
+  Node 专业 owner）完整交付主动 CRUD、唯一尾置 M、保守 R/M receipt 与自动旧布局转换，phase nunc-active-memory
+  依赖 nunc-larva-prompt。文档 docs/LARVA-PROMPT.md 与 docs/ACTIVE-MEMORY.md。
+
+  禁止 Pi core/已安装 Pi patch/私有宿主状态、Larva 或其他仓库修改、真实日常 sessions/settings/credentials、原对话重放、live/paid
+  模型、全局安装/配置及 push/publication。未来测试只用新隔离合成状态/受控 Provider，不联系真实 peer 或启动真实模型子 agent。产品
+  source/tests/必要 tracked runner/docs 仅 Nunc 可写；Larva 实现/声明依赖是用户供应的只读实际组合输入，不是默认构建依赖。DONE/历史定义/证据/状态不变，已撤销
+  Pi core 方案不恢复，保留当前工作树与测试 baseline。历史 live/reporting/publication 权限不解除本次等待。
+
+  单一新 M 布局无前置回退和双布局开关，用户接受首次转换 token 开销；模型工具的可选暴露不影响布局。保持 Larva v1 零回复 legacy 与 unavailable/协议错误拒绝，取消
+  M 兼容不取消 F 合同。每个完整交付在自己的步骤完成程序由 Orchestrator 接受，后一接受覆盖实际 F/R/M 组合；不把未来 M 需求反向加入先行
+  Larva 接受或新增重复 gate。最终候选完整 all 与实际 Larva 组合证据必要，设计/替身 PASS 不等于组合通过。真实账单/模型质量和历史 overflow
+  未完成原因单独披露，不虚报已解决、不隐含付费观察。'
 clipboard:
   author: vectl-orchestrator
   summary: Gemini Flash费用无限额授权；继续extraction真实比较
@@ -3352,6 +3371,115 @@ phases:
     - tests/pi/fixtures.ts
     - tests/pi/context-view.test.ts
     - tests/pi/reporting.test.ts
+    - scripts/check.mjs
+    - scripts/observe-lifecycle.mjs
+    - package.json
+    - package-lock.json
+    - .node-version
+    agent: node-typescript-engineer
+- id: nunc-active-memory
+  name: 主动 CRUD、唯一尾置 M 与 receipt 适配
+  status: locked
+  gate: 在最终整合候选上，完整all与真实Pi/Larva/Nunc组合证明覆盖ACTIVE-MEMORY.md全部必要合同、先行F桥接和适用既有核心/维护/人工/UI/Provider不变量。无阻断缺陷或必要未证明方可接受。只读模型成本分析不冒充实测；不要求未授权付费cache/账单测试，不宣称所有CAPACITY已修复。
+  context: 用户授权文档与新增计划，等待后续明确调度；前置nunc-larva-prompt及其Larva就绪条件不变。本phase消费其F解析/请求身份，完整交付docs/ACTIVE-MEMORY.md：CRUD、原子统一M、唯一尾部载体、保守R/M
+    receipt和自动旧布局转换。无前置回退或双布局兼容，不改Pi core。一个Node owner持有source/tests/runner/docs，Orchestrator在其完成程序承担本phase及依赖实际组合的唯一接受，不扩展先行接受范围或修改DONE。
+  depends_on:
+  - nunc-larva-prompt
+  steps:
+  - id: nunc.active-memory
+    name: 交付主动记忆 CRUD、单一尾部投影与 R/M 收据计量
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
+      , \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"/Users/tefx/Projects/larva/**\"\
+      , \"/opt/homebrew/lib/node_modules/**\"]\n  read_only_paths: [\"/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts\"\
+      ]\n\nDeliver: 完整实现 docs/ACTIVE-MEMORY.md。提供可选模型工具 nunc_memory_read 和 nunc_memory_patch\
+      \ 的统一 M 读/原子 add-update-remove；默认不改变既有模型工具集合，但所有新版本主请求始终采用唯一 F→R→M 布局。无前置回退/双布局开关。系统分配\
+      \ ID，update 保留 ID/位置，未操作项不变、新项追加；revision 防相关状态冲突、同路径无关推进适用；失败无部分提交，最终候选预算、unknown\
+      \ 禁增长、超额逐步缩减、无变化不写、不自动淘汰未指定项。人工与 agent 共用现有原生 M-only 提交和有效投影；冻结至 Pi native terminal\
+      \ 互斥，unconfirmed 不自动重试，成功不改在途快照，不重写 JSONL，后续 compaction 正确吸收。\n\n公开 Context\
+      \ 投影只移除明确旧 M 载体，尾部加入唯一请求局部工作数据载体，不沿用误导的 compactionSummary 历史包装，不持久化为新消息/turn；真实\
+      \ R、用户/custom、工具关联和媒体不变。空 M 零载体、相同 M 稳定文本、不含 revision/time/random。首次旧格式检测自动采用新布局并失效旧布局内存\
+      \ receipt；每次 Pi 重建旧 carrier 仍幂等转换，不能 migrationDone 后跳过，也不能每请求重置新版 receipt。已知完整旧存储优先复用，保留正文/ID/顺序/nextId；冲突、损坏或不确定旧数据明确失败，无猜测删除。保留历史不承诺旧版运行兼容。\n\
+      \nreceipt 从可信本次投影/调用关联区分 R 与 M，继续匹配 model/有效F/tools、旧R前缀和对应成功assistant的身份/content/usage/generation/payload绑定，正确定位不含旧尾M的响应锚点。保守公式为真实成功\
+      \ U（input含cache+output）+锚点之后新增R估算+当前完整尾M估算（空=0）+原有明确额外计费；不重复锚点output、不扣启发式旧M、不重复F/tools、不以旧估算递归生成新U。仅M提交不再无条件清空receipt或丢弃合法在途旧M响应，人工/agent同规则。真实F/tools/R/响应改写和模型/path/session/compaction等失效保留。onPayload仍校验并计费，非output变化仍不能建绑定receipt，禁止bridgeCalled跳过。保持ALS/wrapper同调用关联、独立/重复/旧捕获调用及取消/单次maintenance。主请求M计量和memory\
+      \ budget/current/Last main/Slots/details一致，诊断区分observed U与新增R/当前M/旧M估算余量，不伪造分项实测或新增私人持久日志。Pi软阈值/硬容量政策、auth/serializer/transport、队列/压缩调度不变。\n\
+      \nBoundary: node-typescript-engineer 持有这一跨 MemorySurface/Context/receipt/原生工具及维护终态的\
+      \ Node 扩展结果，源码、必要真实测试/runner/docs是同一可Git回退事务；不因内部模块或辅助Python/脚本拆步。只修改Nunc，未来受授权后使用新隔离合成session/profile/persona和受控native\
+      \ Provider，实际Larva实现/声明依赖只读。禁止Pi core/已安装Pi patch/私有状态、外仓修改、真实凭据或日常会话/设置、原对话重放、全局安装/配置、live/paid模型和push/publication。测试不联系真实peer/启动真实模型子agent。不扩大persona工具权限，不给模型永久pin或无条件整库覆盖，不引入第二存储/调度器。\n\
+      \nAdmit: 依赖 nunc-larva-prompt 的已接受F解析与请求局部Context/调用绑定结果，保留其v1接口、零回复legacy/显式失败、末端校验及真实Larva证明；不把M功能反向扩大先行步骤接受范围。用户只授权本轮文档+计划，未来明确调度之前不得claim/dispatch/实施/测试。实际Larva输入由用户供应，按既有集成入口只读加载；设计/guard不等于实现就绪。默认all无外仓依赖；本owner把本功能测试纳入all并扩展前置交付的tests/pi/larva.integration.ts，缺实际Larva输入不得静默跳过/替身代替。旧工作树已清理，仅当前baseline是可复用检查依赖。\n\
+      \nProof: docs/ACTIVE-MEMORY.md §8 的全部行为，以实际公开工具注册/执行/取消、原生CustomEntry/重建/compaction终态、Context转换与native\
+      \ serializer/Provider为主要seam。覆盖CRUD/预算/并发、空有M转换、旧格式幂等自动转换、R/tool/media完整、正确响应锚点和四类空非空公式、余量不累积、在途M更新、早先有效receipt/后续不匹配usage、wrapper/reentry/maintenance/取消和末端差异。真实Pi+Larva+Nunc组合证明工具写入M后下一请求尾载体和receipt，以及persona与M变化、idle\
+      \ callback、reload、维护互斥属于正确快照。载体数据语义作源/合同审查；不以标记关键词或教模型答案充当行为证明，不把受控响应当真实模型/账单。完整回归和必要组合检查见verification。\n\
+      \nFinal acceptance: Orchestrator在本步骤完成程序承担nunc-active-memory唯一最终整合接受。包括全部新需求、依赖的nunc-larva-prompt有效F合同，以及所有适用既有Nunc核心、原生Provider/容量/维护、人工记忆、取消与reporting不变量。最终整合候选完整all和实际Larva扩展组合证据必须有效；未变相关底层证据可以复用。阻断缺陷、必要失败或必要未证明保持步骤未完成；前置F结果可独立完成，不另建重复gate/人类等待。真实cache/账单/自由模型记忆质量未实测明确披露，不是此次隐含付费门槛；历史CAPACITY恢复未知也不能借本次PASS宣称解决。接受不授权全局安装、发布或旧版兼容回退。\n\
+      \nRecovery: 未完成writable owner原位吸收兼容实现/测试/docs修复，停止自己的受控进程并清理隔离状态，保留候选/证据，不动日常/外仓/DONE。原生追加未确认先核对，不重复patch或宣称回滚；转换歧义保留来源并报告，不删除历史。无旧布局自动fallback，不通过改Pi/Larva、抬预算/重放队列解除阻塞。新authority/effect/rollback边界交责任Orchestrator/Planner处理。\n"
+    verification: "```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version:\
+      \ 11.19.0\n  stock_pi_version: 0.85.1\n  dependency_manifest: package.json\n\
+      \  dependency_lock: package-lock.json\n  runtime_declaration: .node-version\n\
+      \  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache,\
+      \ npm_config_ignore_scripts=true, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n  tui_python_argv: [/usr/bin/python3]\n\
+      \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n  comparison_baseline:\
+      \ .scratch/baseline-70dacad\n  setup_reference: docs/DEVELOPMENT.md\nchecks:\n\
+      \  - id: active-memory-final-integrated-offline\n    argv: [/usr/bin/env, -u,\
+      \ NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers: [full-engine-pi-live-inventory-and-build,\
+      \ real-memory-tool-read-crud-and-opt-in, atomic-revision-id-order-budget-empty-noop-unconfirmed,\
+      \ manual-agent-freeze-native-terminal-interleaving, single-tail-M-real-R-tool-media-preservation,\
+      \ idempotent-old-layout-conversion-no-fallback, separate-R-anchor-M-usage-no-double-count-or-recursive-allowance,\
+      \ in-flight-M-write-and-wrapper-lifecycle, cancellation-maintenance-final-payload-guards,\
+      \ accurate-current-last-main-budget-observations]\n  - id: active-memory-actual-larva-composition\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ /opt/homebrew/bin/node, --test, dist/tests/pi/larva.integration.js]\n    exit_code:\
+      \ 0\n    covers: [real-Pi-Larva-Nunc-public-integration, model-tool-to-committed-M-to-tail-request-to-success-receipt,\
+      \ persona-and-M-changes-with-shared-request-snapshot, idle-callback-tool-loop-reload-native-freeze-and-maintenance-isolation,\
+      \ inherited-v1-no-reply-unavailable-late-payload-contract, isolated-controlled-service-cleanup]\n\
+      ```\nRun from the authorized checkout with locked development dependencies and\
+      \ the documented reusable baseline. The all entrypoint and native Node test\
+      \ runner are witnessed; all compiles tests/**/*.ts. The larva.integration.ts\
+      \ source/compiled entrypoint is delivered by dependency nunc.larva-prompt, then\
+      \ extended by this owner for actual CRUD/tail/receipt composition. Do not add\
+      \ a mandatory Larva external dependency to default all. NUNC_LARVA_EXTENSION\
+      \ selects the same user-supplied actual read-only implementation/dependencies;\
+      \ missing inputs fail explicitly, no skip or substitute protocol double. Fixture\
+      \ paths are resolved against checkout cwd, not daily profiles. No product checks/setup\
+      \ execute during planning. Final-candidate all and actual composition evidence\
+      \ must cover docs/ACTIVE-MEMORY.md and affected inherited invariants. Record\
+      \ actual argv, candidate and Larva target/version, behavior and cleanup. Reuse\
+      \ applicable unchanged evidence; no fixed old test count, paid cache/billing/model-quality\
+      \ gate, private-history replay or repeated unchanged IME proof. Offline facts\
+      \ and source/contract judgment must not be reported as free-model behavior or\
+      \ real billing.\n"
+    evidence_template: Final Nunc candidate and loaded Larva target/version; actual
+      all and expanded real composition argv/results; CRUD/native-persistence/budget/concurrency/migration/tail-R-tool/receipt-empty-cases-and-nonaccumulation/wrapper/cancellation
+      evidence; cleanup; source/contract judgment and explicit unmeasured model/cache/billing
+      limitations. Orchestrator integrated acceptance required, not component PASS
+      alone.
+    refs:
+    - docs/ACTIVE-MEMORY.md
+    - docs/LARVA-PROMPT.md
+    - docs/DESIGN.md
+    - docs/PI.md
+    - docs/UI.md
+    - docs/CAPACITY.md
+    - docs/DEVELOPMENT.md
+    - src/index.ts
+    - src/pi/manual.ts
+    - src/pi/projection.ts
+    - src/pi/admission.ts
+    - src/pi/payload.ts
+    - src/pi/context.ts
+    - src/pi/config.ts
+    - src/engine/accounting.ts
+    - src/engine/memory.ts
+    - tests/pi/manual-memory.test.ts
+    - tests/pi/request-receipts.test.ts
+    - tests/pi/admission.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/fixtures.ts
     - scripts/check.mjs
     - scripts/observe-lifecycle.mjs
     - package.json
