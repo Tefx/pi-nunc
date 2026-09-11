@@ -124,7 +124,8 @@ export function lastMainLines(last: LastMainContext | undefined): string[] {
   if (last.estimator) lines.push(`Estimator: ${last.estimator}`);
   if (last.receiptBreakdown) {
     const b = last.receiptBreakdown;
-    lines.push(`Receipt breakdown: observed U ${thousands(b.observedU)} + delta R ${thousands(b.deltaRTokens)} + current M ${thousands(b.currentMTokens)}${b.retainedOldMMargin ? " + retained old M margin (estimate)" : ""}`);
+    const oldMText = b.retainedOldMMargin ? ` (includes retained old M estimate ~${thousands(b.oldMTokensEstimate ?? 0)})` : "";
+    lines.push(`Receipt breakdown: observed U ${thousands(b.observedU)}${oldMText} + delta R ${thousands(b.deltaRTokens)} + current M ${thousands(b.currentMTokens)}`);
   }
   if (last.inputTokens !== undefined) {
     lines.push(`Input estimate: ${thousands(last.inputTokens)}${last.inputLimit !== undefined ? ` / enforced ${thousands(last.inputLimit)}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${thousands(last.plannedInputLimit)}` : ""}`);

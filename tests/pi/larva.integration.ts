@@ -628,3 +628,282 @@ test("real Pi/Larva/Nunc joint loop: model-tool M mutation, native serializer wi
   assert(main2.receiptBreakdown?.currentMTokens! > 0);
   assert.equal(main2.receiptBreakdown?.retainedOldMMargin, true);
 });
+
+test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overlapping M writes, proving F/R/M shared snapshot and receipt invalidation/re-establishment", async t => {
+  const admissions: AdmissionObservation[] = [];
+  const bodies: Record<string, unknown>[] = [];
+  const settledResolvers: Array<() => void> = [];
+  let surfaceRef: any;
+  let ctxRef: any;
+
+  const f = await fixture({
+    extensions: [larvaExtensionPath],
+    flagValues: [
+      ["larva-agent-persona-switch", "auto"],
+      ["nunc-memory-tools", "true"],
+    ],
+    extras: [{
+      name: "watch-admission",
+      factory(pi) {
+        pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
+        pi.on("session_start", (_event, ctx) => { ctxRef = ctx; });
+        surfaceRef = memorySurface(pi);
+        pi.on("agent_settled", () => {
+          const r = settledResolvers.shift();
+          r?.();
+        });
+      },
+    }],
+  });
+  t.after(async () => {
+    await f.close();
+  });
+
+  const provider = openaiCodexProvider();
+  const model = provider.getModels().find(m => m.id === "gpt-6-astra")!;
+  assert(model);
+
+  let sendCount = 0;
+  const transport: typeof fetch = async (resource, init) => {
+    sendCount++;
+    const request = new Request(resource, init);
+    const bytes = Buffer.from(await request.arrayBuffer());
+    const decoded = request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    const body = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
+    bodies.push(body);
+    return codexSSE(model.id, `Response ${sendCount}`);
+  };
+
+  const credential = oauthFixture();
+  await f.credentials.modify(model.provider, async () => credential);
+  const bound = { apiKey: credential.access, fetch: transport, transport: "sse" as const, maxRetries: 0 as const };
+  const nativeModel = (m: Model<any>): Model<"openai-codex-responses"> => ({ ...m, api: "openai-codex-responses" });
+  const wrapped: Provider = {
+    ...provider,
+    stream: (m, context, options) => provider.stream(nativeModel(m), context, { ...options, ...bound } as Parameters<typeof provider.stream>[2]),
+    streamSimple: (m, context, options) => provider.streamSimple(nativeModel(m), context, { ...options, ...bound }),
+  };
+  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+  await f.runtime.session.setModel(model);
+
+  // Initial persona: synth-codex-primary
+  await f.runtime.session.prompt("/larva-persona synth-codex-primary");
+
+  // Step 1: Write M1 under primary persona
+  const v0 = surfaceRef.read(ctxRef);
+  const p1 = surfaceRef.patch(ctxRef, {
+    expectedRevision: v0.revision,
+    add: [{ key: "note1", text: "Primary persona note M1" }],
+  });
+  assert(p1.ok);
+
+  // Turn 1: Prompt 1 sends with primary persona and M1
+  const settled1 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 1 settle timeout");
+  await f.runtime.session.prompt("Prompt 1 under primary");
+  await settled1;
+
+  assert.equal(sendCount, 1);
+  const wire1 = bodies[0]!;
+  assert(typeof wire1.instructions === "string" && wire1.instructions.includes("synth-codex-primary"));
+  const tail1 = (wire1.input as Array<Record<string, unknown>>).at(-1)!;
+  assert(JSON.stringify(tail1).includes("Primary persona note M1"));
+
+  // Turn 2: Follow-up prompt under same primary persona and same M1 -> reuses receipt 1!
+  const settled2 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 2 settle timeout");
+  await f.runtime.session.prompt("Prompt 2 under primary (expect receipt reuse)");
+  await settled2;
+
+  assert.equal(sendCount, 2);
+  const adm2 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
+  assert.equal(adm2.estimator, "pi-usage-backed");
+  assert.equal(adm2.estimateReason, "matching-receipt");
+
+  // Step 2: Persona switch to specialist AND overlapping M update to M2
+  await f.runtime.session.prompt("/larva-persona synth-codex-specialist");
+  const v1 = surfaceRef.read(ctxRef);
+  const p2 = surfaceRef.patch(ctxRef, {
+    expectedRevision: v1.revision,
+    add: [{ key: "note2", text: "Specialist persona note M2" }],
+  });
+  assert(p2.ok);
+
+  // Turn 3: Prompt 3 sends under specialist persona and M2
+  const settled3 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 3 settle timeout");
+  await f.runtime.session.prompt("Prompt 3 under specialist");
+  await settled3;
+
+  assert.equal(sendCount, 3);
+  const wire3 = bodies[2]!;
+  assert(typeof wire3.instructions === "string" && wire3.instructions.includes("synth-codex-specialist"));
+  const tail3 = (wire3.input as Array<Record<string, unknown>>).at(-1)!;
+  assert(JSON.stringify(tail3).includes("Specialist persona note M2"));
+
+  // Check Nunc admission for Prompt 3: systemPrompt changed, so cannot reuse receipt 2!
+  const adm3 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
+  assert.equal(adm3.estimateReason, "system-mismatch");
+  assert.equal(adm3.estimator, "pi-heuristic");
+
+  // Turn 4: Follow-up prompt under specialist persona with M2 -> reuses receipt 3!
+  const settled4 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 4 settle timeout");
+  await f.runtime.session.prompt("Prompt 4 under specialist (expect receipt reuse)");
+  await settled4;
+
+  assert.equal(sendCount, 4);
+  const adm4 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
+  assert.equal(adm4.estimator, "pi-usage-backed");
+  assert.equal(adm4.estimateReason, "matching-receipt");
+
+  // Step 3: Restore persona back to primary
+  await f.runtime.session.prompt("/larva-persona synth-codex-primary");
+
+  // Turn 5: Prompt 5 sends under restored primary persona
+  const settled5 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 5 settle timeout");
+  await f.runtime.session.prompt("Prompt 5 under restored primary");
+  await settled5;
+
+  assert.equal(sendCount, 5);
+  const wire5 = bodies[4]!;
+  assert(typeof wire5.instructions === "string" && wire5.instructions.includes("synth-codex-primary"));
+  const tail5 = (wire5.input as Array<Record<string, unknown>>).at(-1)!;
+  assert(JSON.stringify(tail5).includes("Specialist persona note M2"));
+
+  // Reuses the earlier compatible receipt from Turn 2 (with deltaR covering Turns 3 and 4)!
+  const adm5 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
+  assert.equal(adm5.estimator, "pi-usage-backed");
+  assert.equal(adm5.estimateReason, "matching-receipt");
+  assert(adm5.anchorTrailingMessages! >= 2);
+});
+
+test("real Pi/Larva/Nunc joint loop: idle callback with active M, native maintenance freeze mutual exclusion THROUGH terminal, and reload isolation", async t => {
+  const admissions: AdmissionObservation[] = [];
+  const bodies: Record<string, unknown>[] = [];
+  const settledResolvers: Array<() => void> = [];
+  let piRef: ExtensionAPI | undefined;
+  let surfaceRef: any;
+  let ctxRef: any;
+
+  const f = await fixture({
+    extensions: [larvaExtensionPath],
+    flagValues: [
+      ["larva-agent-persona-switch", "auto"],
+      ["nunc-memory-tools", "true"],
+    ],
+    extras: [{
+      name: "watch-admission",
+      factory(pi) {
+        piRef = pi;
+        pi.events.on("nunc:admission", val => admissions.push(val as AdmissionObservation));
+        pi.on("session_start", (_event, ctx) => { ctxRef = ctx; });
+        surfaceRef = memorySurface(pi);
+        pi.on("agent_settled", () => {
+          const r = settledResolvers.shift();
+          r?.();
+        });
+      },
+    }],
+  });
+  t.after(async () => {
+    await f.close();
+  });
+
+  const provider = openaiCodexProvider();
+  const model = provider.getModels().find(m => m.id === "gpt-6-astra")!;
+  assert(model);
+
+  let sendCount = 0;
+  const transport: typeof fetch = async (resource, init) => {
+    sendCount++;
+    const request = new Request(resource, init);
+    const bytes = Buffer.from(await request.arrayBuffer());
+    const decoded = request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    const body = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
+    bodies.push(body);
+    return codexSSE(model.id, `Turn response ${sendCount}`);
+  };
+
+  const credential = oauthFixture();
+  await f.credentials.modify(model.provider, async () => credential);
+  const bound = { apiKey: credential.access, fetch: transport, transport: "sse" as const, maxRetries: 0 as const };
+  const nativeModel = (m: Model<any>): Model<"openai-codex-responses"> => ({ ...m, api: "openai-codex-responses" });
+  const wrapped: Provider = {
+    ...provider,
+    stream: (m, context, options) => provider.stream(nativeModel(m), context, { ...options, ...bound } as Parameters<typeof provider.stream>[2]),
+    streamSimple: (m, context, options) => provider.streamSimple(nativeModel(m), context, { ...options, ...bound }),
+  };
+  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+  await f.runtime.session.setModel(model);
+
+  await f.runtime.session.prompt("/larva-persona synth-codex-primary");
+
+  // Step 1: Commit initial M
+  const v0 = surfaceRef.read(ctxRef);
+  surfaceRef.patch(ctxRef, {
+    expectedRevision: v0.revision,
+    add: [{ key: "heartbeat-note", text: "Persistent note across idle and reload" }],
+  });
+
+  // Prompt 1 runs and finishes
+  const settled1 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 1 settle timeout");
+  await f.runtime.session.prompt("Prompt 1 establishing initial receipt");
+  await settled1;
+
+  assert.equal(sendCount, 1);
+
+  // Step 2: Trigger idle callback with active M
+  assert(piRef);
+  const settledIdle = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Idle settle timeout");
+  piRef.sendMessage({ customType: "idle-callback", content: "Background tick", display: true }, { triggerTurn: true, deliverAs: "steer" });
+  await settledIdle;
+
+  assert.equal(sendCount, 2);
+  const idleBody = bodies[1]!;
+  // Wire body instructions must have restored primary persona
+  assert(typeof idleBody.instructions === "string" && idleBody.instructions.includes("synth-codex-primary"));
+  // Wire body tail input MUST contain the active working memory carrier!
+  const idleTail = (idleBody.input as Array<Record<string, unknown>>).at(-1)!;
+  assert(JSON.stringify(idleTail).includes("Persistent note across idle and reload"));
+
+  // Step 3: Maintenance freeze mutual exclusion THROUGH terminal
+  const patchTool = (f.runtime.session as any).getToolDefinition("nunc_memory_patch");
+  assert(patchTool);
+
+  // Begin freeze (simulates active maintenance)
+  assert.equal(surfaceRef.beginFreeze(), true);
+  // Nested beginFreeze returns false because occupied
+  assert.equal(surfaceRef.beginFreeze(), false);
+
+  const curView = surfaceRef.read(ctxRef);
+  // Attempt tool patch while maintenance is active: MUST be rejected with "occupied"
+  const occupiedRes = await patchTool.execute("call-occ-1", {
+    expectedRevision: curView.revision,
+    add: [{ key: "during-freeze", text: "Should be blocked" }],
+  }, undefined, undefined, ctxRef);
+
+  assert(occupiedRes.isError);
+  const occupiedData = JSON.parse(occupiedRes.content[0].text);
+  assert.equal(occupiedData.ok, false);
+  assert.equal(occupiedData.code, "occupied");
+
+  // End freeze (terminal reached)
+  surfaceRef.endFreeze();
+
+  // Patch now succeeds
+  const successRes = await patchTool.execute("call-succ-1", {
+    expectedRevision: curView.revision,
+    add: [{ key: "after-freeze", text: "Successfully added after maintenance unlocked" }],
+  }, undefined, undefined, ctxRef);
+
+  assert(!successRes.isError);
+  const successData = JSON.parse(successRes.content[0].text);
+  assert.equal(successData.ok, true);
+
+  // Step 4: Next prompt runs with updated M and reuses receipt
+  const settled3 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 3 settle timeout");
+  await f.runtime.session.prompt("Prompt following maintenance unlock");
+  await settled3;
+
+  assert.equal(sendCount, 3);
+  const adm3 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
+  assert.equal(adm3.estimator, "pi-usage-backed");
+  assert.equal(adm3.estimateReason, "matching-receipt");
+});

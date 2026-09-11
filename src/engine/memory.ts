@@ -12,16 +12,11 @@ export function legacyRenderMemory(slots: Slot[]): string {
 }
 /** Use the selected host's public projection for the tail working memory carrier. */
 export function memoryMessage(slots: Slot[]): Message {
-  const raw = {
-    role: "custom" as const,
-    customType: "nunc.memory",
-    content: [{ type: "text" as const, text: renderMemory(slots) }],
-    display: false,
+  return {
+    role: "user",
+    content: [{ type: "text", text: renderMemory(slots) }],
     timestamp: 0,
   };
-  const message = convertToLlm([raw as any])[0];
-  requireThat(message, "INPUT", "Pi did not project the memory carrier");
-  return message;
 }
 
 export interface Patch {

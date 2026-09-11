@@ -8,16 +8,17 @@ import { admissionEstimate, inputLimit, mainAdmissionLimit, memoryTokens, messag
 import { emptyMemory, memoryMessage } from "../engine/memory.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
-import { project } from "./projection.js";
+import { NUNC_CARRIER_MARK, type CarrierTag, project } from "./projection.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = {
   context: Context;
-  effectiveContext?: Context;
+  effectiveContext?: Context | undefined;
   model: Model<Api>;
   signal: AbortSignal | undefined;
   simple: boolean;
   seen: WeakSet<Provider>;
+  binding?: RequestProjectionBinding | undefined;
 };
 interface MainReceipt {
   model: Model<Api>;
@@ -58,6 +59,15 @@ export interface ReceiptBreakdown {
   deltaRTokens: number;
   currentMTokens: number;
   retainedOldMMargin: boolean;
+  oldMTokensEstimate?: number;
+}
+export interface RequestProjectionBinding {
+  sessionId: string;
+  leafId: string | null;
+  memory: Memory;
+  rCount: number;
+  hasM: boolean;
+  carrierMsg?: object | undefined;
 }
 export interface AdmissionObservation {
   kind: "main" | "maintenance" | "unknown";
@@ -103,7 +113,11 @@ export class Admission {
   private cancelledRun = false;
   private generation = 0;
   private receipts: MainReceipt[] = [];
-  invalidateUsage(): void { this.receipts = []; this.generation++; }
+  private activeProjections = new Map<string, RequestProjectionBinding>();
+  bindProjection(binding: RequestProjectionBinding): void {
+    this.activeProjections.set(binding.sessionId, binding);
+  }
+  invalidateUsage(): void { this.receipts = []; this.generation++; this.activeProjections.clear(); }
   private readonly rejected = new Map<string, AbortSignal>();
   constructor(private readonly pi: ExtensionAPI, private readonly config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig, private readonly onLayout?: (event: AdmissionLayoutEvent) => void) {}
 
@@ -136,7 +150,7 @@ export class Admission {
       else if (entry.legacy) { this.pi.unregisterProvider(id); this.pi.registerProvider(id, entry.legacy); }
       else this.pi.unregisterProvider(id);
     }
-    this.installed.clear(); this.rejected.clear(); this.cancelledRun = false; this.invalidateUsage();
+    this.installed.clear(); this.rejected.clear(); this.cancelledRun = false; this.activeProjections.clear(); this.invalidateUsage();
   }
   /** Only errors constructed here are candidates for cancellation precedence. */
   finalized(message: AssistantMessage): AssistantMessage | undefined {
@@ -180,7 +194,13 @@ export class Admission {
       usage: message.usage,
     });
   }
-  private selectReceipt(effectiveContext: Context, model: Model<Api>, currentMemory: Memory, imageTokens?: number): {
+  private selectReceipt(
+    effectiveContext: Context,
+    model: Model<Api>,
+    imageTokens?: number,
+    binding?: RequestProjectionBinding,
+    ctx?: ExtensionContext,
+  ): {
     reason: AdmissionEstimateReason;
     validAssociation: boolean;
     receipt?: MainReceipt;
@@ -191,19 +211,29 @@ export class Admission {
     currentMTokens: number;
     hasM: boolean;
   } {
-    const hasM = currentMemory.slots.length > 0;
-    const currentMTokens = hasM ? memoryTokens(currentMemory.slots, imageTokens) : 0;
-    const mCarrier = hasM ? memoryMessage(currentMemory.slots) : undefined;
-
     let validAssociation = false;
     let rMessages: Context["messages"] = [];
-    if (!hasM) {
-      rMessages = effectiveContext.messages;
-      validAssociation = true;
-    } else {
-      if (effectiveContext.messages.length >= 1 && isDeepStrictEqual(effectiveContext.messages.at(-1), mCarrier)) {
-        rMessages = effectiveContext.messages.slice(0, -1);
-        validAssociation = true;
+    let currentMTokens = 0;
+    let hasM = false;
+
+    const last = effectiveContext.messages.at(-1);
+    const tag = last ? (((last as any)[NUNC_CARRIER_MARK] ?? (last as any).__nunc_carrier__) as CarrierTag | undefined) : undefined;
+
+    if (binding && ctx && binding.sessionId === ctx.sessionManager.getSessionId()) {
+      if (binding.hasM) {
+        if (effectiveContext.messages.length >= 1 && (last === binding.carrierMsg || (tag && isDeepStrictEqual(tag.memory, binding.memory)))) {
+          validAssociation = true;
+          rMessages = effectiveContext.messages.slice(0, -1);
+          hasM = true;
+          currentMTokens = memoryTokens(binding.memory.slots, imageTokens);
+        }
+      } else {
+        if (!tag && last !== binding.carrierMsg) {
+          validAssociation = true;
+          rMessages = effectiveContext.messages;
+          hasM = false;
+          currentMTokens = 0;
+        }
       }
     }
 
@@ -245,6 +275,7 @@ export class Admission {
         deltaRTokens: best.deltaRTokens,
         currentMTokens,
         retainedOldMMargin: best.receipt.hasM,
+        ...(best.receipt.hasM ? { oldMTokensEstimate: best.receipt.mTokens } : {}),
       };
       return {
         reason: "matching-receipt",
@@ -310,15 +341,21 @@ export class Admission {
     }
     const record = this.call.getStore();
     if (this.sameCall(record, model, context, options, simple) && record.seen.has(wrapper)) {
-      return this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream);
+      return this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream, record.binding);
     }
     if (this.sameCall(record, model, context, options, simple) && entry.wrapper !== wrapper) {
       record.seen.add(wrapper);
       return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
     }
-    const next: CallRecord = { context, model, signal: options?.signal, simple, seen: new WeakSet() };
+    const sessionId = options?.sessionId ?? ctx.sessionManager.getSessionId();
+    let binding = record?.binding;
+    if (!binding && sessionId) {
+      binding = this.activeProjections.get(sessionId);
+      if (binding) this.activeProjections.delete(sessionId);
+    }
+    const next: CallRecord = { context, model, signal: options?.signal, simple, seen: new WeakSet(), binding };
     next.seen.add(wrapper);
-    return this.call.run(next, () => this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream));
+    return this.call.run(next, () => this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream, binding));
   }
   private resolveSystemPrompt(rawPrompt: string): { status: "resolved"; systemPrompt: string } | { status: "legacy-no-reply" } | { status: "unavailable"; error: EngineError } | { status: "protocol-error"; error: EngineError } {
     let windowClosed = false;
@@ -396,7 +433,7 @@ export class Admission {
     };
   }
 
-  private enter(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
+  private enter(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean, binding?: RequestProjectionBinding) {
     const scope = this.maintenance.getStore();
     const ownedMaintenance = !simple && scope && !scope.used && scope.request.context === context &&
       scope.request.signal === options?.signal && scope.request.outputTokens === options.maxTokens &&
@@ -451,9 +488,7 @@ export class Admission {
           throw resolved.error;
         }
 
-        const entries = ctx.sessionManager.buildContextEntries ? ctx.sessionManager.buildContextEntries() : [];
-        const effectiveMemory = entries.length ? project(entries).memory : emptyMemory();
-        const selected = this.selectReceipt(effectiveContext, model, effectiveMemory, config.imageTokens);
+        const selected = this.selectReceipt(effectiveContext, model, config.imageTokens, binding, ctx);
         let estimateTokens: number;
         let estimator: "pi-heuristic" | "pi-usage-backed";
         if (selected.receipt) {

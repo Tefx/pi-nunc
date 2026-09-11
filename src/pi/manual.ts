@@ -3,11 +3,11 @@ import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, Memory, Slot } from "../engine/index.js";
 import { memoryPlan, memoryTokens } from "../engine/index.js";
-import { EngineError, integer, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
+import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
 import { engineConfig, readConfig, type HostCompactionSettings } from "./config.js";
 import { MANUAL_MEMORY_TYPE, memoryRevision, project, revisionApplies } from "./projection.js";
 
-export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed";
+export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed" | "cancelled";
 
 export interface MemoryBudgetView {
   tokens: number;
@@ -41,7 +41,7 @@ export interface MemorySurface {
   read(ctx: ExtensionContext): MemoryView;
   replace(ctx: ExtensionContext, revision: string, slotId: string, text: string): ManualSaveResult;
   delete(ctx: ExtensionContext, revision: string, slotId: string): ManualSaveResult;
-  patch(ctx: ExtensionContext, params: MemoryPatchParams): MemoryPatchResult;
+  patch(ctx: ExtensionContext, params: MemoryPatchParams, signal?: AbortSignal): MemoryPatchResult;
 }
 export interface MemoryFreeze extends MemorySurface {
   beginFreeze(): boolean;
@@ -83,30 +83,41 @@ export function createMemorySurface(options: {
       return false;
     },
     read: viewOf,
-    patch(ctx, params) {
+    patch(ctx, params, signal) {
+      if (signal?.aborted) return fail("cancelled", "Memory patch cancelled before commit", viewOf(ctx));
       if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
       if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
       const current = viewOf(ctx);
-      if (!record(params) || typeof params.expectedRevision !== "string") {
+      if (!record(params) || !keys(params, ["expectedRevision", "add", "update", "remove"])) {
+        return fail("invalid", "Invalid patch parameters: must be object containing only allowed fields (expectedRevision, add, update, remove)", current);
+      }
+      if (typeof params.expectedRevision !== "string") {
         return fail("invalid", "Expected expectedRevision string in patch parameters", current);
       }
       if (!revisionApplies(params.expectedRevision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
         return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
       }
+      if (params.add !== undefined && (!Array.isArray(params.add) || params.add === null)) {
+        return fail("invalid", "add must be an array of addition items if provided", current);
+      }
+      if (params.update !== undefined && (!Array.isArray(params.update) || params.update === null)) {
+        return fail("invalid", "update must be an array of update items if provided", current);
+      }
+      if (params.remove !== undefined && (!Array.isArray(params.remove) || params.remove === null)) {
+        return fail("invalid", "remove must be an array of slot ID strings if provided", current);
+      }
+
       const existingSlots = current.memory.slots;
       const existingIdSet = new Set(existingSlots.map(s => s.id));
       const addList = params.add ?? [];
       const updateList = params.update ?? [];
       const removeList = params.remove ?? [];
-      if (!Array.isArray(addList) || !Array.isArray(updateList) || !Array.isArray(removeList)) {
-        return fail("invalid", "add, update, and remove must be arrays if provided", current);
-      }
 
       // Check additions
       const addedKeys = new Set<string>();
       for (const item of addList) {
-        if (!record(item) || typeof item.key !== "string" || typeof item.text !== "string" || !nonempty(item.key) || !nonempty(item.text)) {
-          return fail("invalid", "Invalid addition item: key and text must be non-empty strings", current);
+        if (!record(item) || !keys(item, ["key", "text"]) || typeof item.key !== "string" || typeof item.text !== "string" || !nonempty(item.key) || !nonempty(item.text)) {
+          return fail("invalid", "Invalid addition item: must contain only non-empty string fields key and text", current);
         }
         if (addedKeys.has(item.key) || existingIdSet.has(item.key)) {
           return fail("invalid", `Addition key ${item.key} collides with an existing slot ID or another addition`, current);
@@ -117,8 +128,8 @@ export function createMemorySurface(options: {
       // Check updates
       const updatedIds = new Set<string>();
       for (const item of updateList) {
-        if (!record(item) || typeof item.id !== "string" || typeof item.text !== "string" || !nonempty(item.text)) {
-          return fail("invalid", "Invalid update item: id must be string and text must be non-empty", current);
+        if (!record(item) || !keys(item, ["id", "text"]) || typeof item.id !== "string" || typeof item.text !== "string" || !nonempty(item.id) || !nonempty(item.text)) {
+          return fail("invalid", "Invalid update item: must contain only string id and non-empty string text", current);
         }
         if (!existingIdSet.has(item.id)) {
           return fail("invalid", `Update target slot ${item.id} does not exist`, current);
@@ -132,8 +143,8 @@ export function createMemorySurface(options: {
       // Check removals
       const removedIds = new Set<string>();
       for (const id of removeList) {
-        if (typeof id !== "string") {
-          return fail("invalid", "Invalid remove item: id must be a string", current);
+        if (typeof id !== "string" || !nonempty(id)) {
+          return fail("invalid", "Invalid remove item: slot id must be a non-empty string", current);
         }
         if (!existingIdSet.has(id)) {
           return fail("invalid", `Remove target slot ${id} does not exist`, current);
@@ -162,7 +173,7 @@ export function createMemorySurface(options: {
       // Assign IDs for additions
       let nextId = current.memory.nextId;
       const allIds = new Set(existingSlots.map(s => s.id));
-      const addedMap: Record<string, string> = {};
+      const addedMap: Record<string, string> = Object.create(null);
       const newSlots: Slot[] = [];
       for (const item of addList) {
         let id: string;
@@ -175,7 +186,7 @@ export function createMemorySurface(options: {
           id = `s${nextId++}`;
         } while (allIds.has(id));
         allIds.add(id);
-        addedMap[item.key] = id;
+        Object.defineProperty(addedMap, item.key, { value: id, enumerable: true, writable: true, configurable: true });
         newSlots.push({ id, text: item.text });
       }
 
@@ -211,6 +222,9 @@ export function createMemorySurface(options: {
           budget: { usedTokens: current.budget.tokens, limitTokens: current.budget.limit },
         };
       }
+
+      // Cancellation check before commit
+      if (signal?.aborted) return fail("cancelled", "Memory patch cancelled before commit", current);
 
       const leaf = ctx.sessionManager.getLeafId();
       try {

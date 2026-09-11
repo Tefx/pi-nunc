@@ -113,22 +113,40 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
   return { memory, active, ...(latest ? { latestId: latest.id } : {}) };
 }
 
+export const NUNC_CARRIER_MARK = Symbol.for("nunc.carrier.mark");
+
+export interface CarrierTag {
+  memory: Memory;
+  rCount: number;
+}
+
 export function withEffectiveMemory<T extends { role: string; stopReason?: string; customType?: string; summary?: string }>(messages: readonly T[], memory: Memory): T[] {
   const out: T[] = [];
   for (const message of messages) {
     if (message.role === "assistant" && message.stopReason && ["error", "aborted"].includes(message.stopReason)) continue;
     if (message.role === "compactionSummary") continue;
     if (message.role === "custom" && message.customType === "nunc.memory") continue;
+    if ((message as any)[NUNC_CARRIER_MARK] || (message as any).__nunc_carrier__) continue;
     out.push(message);
   }
   if (memory.slots.length > 0) {
-    out.push({
-      role: "custom",
-      customType: "nunc.memory",
+    const carrier = {
+      role: "user",
       content: [{ type: "text", text: renderMemory(memory.slots) }],
-      display: false,
       timestamp: 0,
-    } as unknown as T);
+    } as unknown as T;
+    const tag: CarrierTag = { memory: structuredClone(memory), rCount: out.length };
+    Object.defineProperty(carrier, NUNC_CARRIER_MARK, {
+      value: tag,
+      enumerable: false,
+      configurable: true,
+    });
+    Object.defineProperty(carrier, "__nunc_carrier__", {
+      value: tag,
+      enumerable: false,
+      configurable: true,
+    });
+    out.push(carrier);
   }
   return out;
 }

@@ -5,8 +5,8 @@
 Nunc is a [Pi](https://pi.dev) **0.85.1** extension for continuing one session inside a finite context. Recent work stays as verbatim history. Information still needed after that window leaves is kept in a small set of working-memory slots. Pi keeps the full JSONL log; Nunc does not search memory, write documents, or carry state across sessions.
 
 ```text
-Before compaction: host instructions/tools | memory M      | retiring B | retained K
-After compaction:  host instructions/tools | updated M     | retained K | new messages
+Before compaction: host instructions/tools F | retiring B | retained K | working memory M
+After compaction:  host instructions/tools F | retained K | new messages | updated memory M
 ```
 
 Maintenance asks what would still be needed with effective host instructions **F**, retained history **K**, and normal working tools. Existing memory **M** fills those gaps. Later evidence in K helps decide which parts of retiring prefix **B** remain useful. Declared necessary items are retained together, or maintenance fails without changing the saved session.
@@ -134,6 +134,7 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 
 - Same-session memory only. `/new` starts empty; `/tree`, `/fork`, and `/clone` follow Pi’s selected path.
 - No cross-session memory database, proactive search, or document-writing service.
+- Memory tools are optional via `--nunc-memory-tools` (`nunc_memory_read` and `nunc_memory_patch`); default off leaves the model toolset untouched while main requests consistently use the tail M carrier.
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
 - Supported host is stock Pi **0.85.1** with persistent sessions. No minimum-version or all-provider claim.

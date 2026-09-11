@@ -104,9 +104,9 @@ export default function nunc(pi: ExtensionAPI): void {
             { description: "Slot IDs to remove" }
           )),
         }),
-        execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+        execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
           const patchParams = (params ?? {}) as Parameters<typeof memory.patch>[1];
-          const res = memory.patch(ctx, patchParams);
+          const res = memory.patch(ctx, patchParams, signal);
           if (res.ok) {
             const payload = {
               ok: true,
@@ -202,7 +202,19 @@ export default function nunc(pi: ExtensionAPI): void {
     // includes earlier checkpoints. Keep that carrier once and every real K.
     admission.ensure(ctx);
     try {
-      return { messages: withEffectiveMemory(event.messages, project(ctx.sessionManager.buildContextEntries()).memory) };
+      const sessionId = ctx.sessionManager.getSessionId();
+      const leafId = ctx.sessionManager.getLeafId();
+      const projected = project(ctx.sessionManager.buildContextEntries());
+      const messages = withEffectiveMemory(event.messages, projected.memory);
+      admission.bindProjection({
+        sessionId,
+        leafId,
+        memory: structuredClone(projected.memory),
+        rCount: projected.memory.slots.length > 0 ? messages.length - 1 : messages.length,
+        hasM: projected.memory.slots.length > 0,
+        carrierMsg: projected.memory.slots.length > 0 ? messages.at(-1) : undefined,
+      });
+      return { messages };
     } catch (error) {
       notify(ctx, error instanceof Error ? error.message : "Invalid memory projection");
       let seen = false;
