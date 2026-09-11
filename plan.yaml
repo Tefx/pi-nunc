@@ -3692,3 +3692,53 @@ phases:
     - docs/ACTIVE-MEMORY.md
     - docs/POLICY.md
     agent: node-typescript-engineer
+  - id: nunc.memory-guidance-gemini-eval
+    name: Gemini 真实模型行为评测与最终整合验收
+    status: pending
+    description: 'step_type: verification
+
+      repo_change_policy: read_only
+
+
+      Deliver: 针对 docs/MEMORY-GUIDANCE.md 列出的 8 类行为场景执行真实模型端到端评测：
+
+      1. 普通短问答：agent 不例行调用 read/patch。
+
+      2. 关键决策/断点：agent 简洁更新有价值的决策与理由，不记录流水账。
+
+      3. 指令修正：用户纠正旧决定时，agent 遵从新指令并修订/删除过时条目。
+
+      4. 多任务插问：主任务未完义务在插问后仍完整保留。
+
+      5. 实现 vs. 验收：代码实现但未验收时不谎报完成。
+
+      6. split-turn 与等待条件：恢复正确的下一步动作并遵守等待前提。
+
+      7. 冲突与未确认：发生 revision 冲突时重新核对，保存未确认时不自动重放。
+
+      8. 预算竞争：必要续做项标为 required，装不下时干净报错而非静默丢失。
+
+
+      MODEL RESTRICTION:
+
+      - 严格限制：只能使用 Google Gemini 模型（如 google/gemini-2.5-flash 或 gemini-1.5-pro 通过授权网关）。
+
+      - 绝对禁止：严禁使用 Astra（openai-codex/gpt-6-astra 或任何 Astra 变体）。
+
+
+      Proof:
+
+      - 检查实际工具调用轨迹、生成的 session JSONL 记录以及后续轮次执行产物。
+
+      - 完整性以 M + K 及已知可靠恢复入口为检查对象。
+
+      - 严禁使用 prompt 关键词扫描、标题存在性或模型自报 PASS 代替真实行为证据。
+
+      - 若调用涉及付费或外部网络，在获得明确调用授权后方可执行。未评测前保持 UNPROVEN，不推测结论。'
+    refs:
+    - docs/MEMORY-GUIDANCE.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/POLICY.md
+    depends_on:
+    - nunc.memory-guidance-implementation
+    agent: integration-verifier
