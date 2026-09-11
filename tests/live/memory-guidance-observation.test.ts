@@ -244,7 +244,7 @@ test("scenario g2: key decision oracle enforces conciseness and distinguishing d
   const noPatchResult = await scoreArtifacts(repository, observer, prereqs, { actions: [] });
   assert.equal(noPatchResult.actionReview[0]!.status, "UNPROVEN");
 
-  // Negative 2: bloated raw log dump (> 600 chars) -> DISPROVEN
+  // Negative 2: bloated raw log dump (> 500 chars) -> DISPROVEN
   const bloatedActions = [
     {
       turn: "a",
@@ -254,7 +254,7 @@ test("scenario g2: key decision oracle enforces conciseness and distinguishing d
         toolCallId: "patch-1",
         input: {
           expectedRevision: "rev-1",
-          add: [{ key: "k1", text: "ERR_SCHEMA_V2 on port 5433 with run-migration --v1: " + "A".repeat(700) }],
+          add: [{ key: "k1", text: "ERR_SCHEMA_V2 on port 5433 with run-migration --v1: " + "A".repeat(600) }],
         },
       },
     },
@@ -263,7 +263,26 @@ test("scenario g2: key decision oracle enforces conciseness and distinguishing d
   assert.equal(bloatedResult.actionReview[0]!.status, "DISPROVEN");
   assert(bloatedResult.actionReview[0]!.reason?.includes("conciseness"));
 
-  // Negative 3: omitted distinguishing error / command / port -> DISPROVEN
+  // Negative 3: selected blocked route migration-v2 -> DISPROVEN
+  const blockedRouteActions = [
+    {
+      turn: "a",
+      event: {
+        type: "tool_call",
+        toolName: "nunc_memory_patch",
+        toolCallId: "patch-1",
+        input: {
+          expectedRevision: "rev-1",
+          add: [{ key: "k1", text: "Selected route migration-v2 on port 5433" }],
+        },
+      },
+    },
+  ];
+  const blockedRouteResult = await scoreArtifacts(repository, observer, prereqs, { actions: blockedRouteActions });
+  assert.equal(blockedRouteResult.actionReview[0]!.status, "DISPROVEN");
+  assert(blockedRouteResult.actionReview[0]!.reason?.includes("migration-v2"));
+
+  // Negative 4: incomplete command (missing --port 5433 or --v1) -> DISPROVEN
   const missingValActions = [
     {
       turn: "a",
@@ -273,7 +292,7 @@ test("scenario g2: key decision oracle enforces conciseness and distinguishing d
         toolCallId: "patch-1",
         input: {
           expectedRevision: "rev-1",
-          add: [{ key: "k1", text: "Decided to use fallback pipeline because of error" }],
+          add: [{ key: "k1", text: "Decided to run-migration because of ERR_SCHEMA_V2" }],
         },
       },
     },
@@ -282,7 +301,7 @@ test("scenario g2: key decision oracle enforces conciseness and distinguishing d
   assert.equal(missingValResult.actionReview[0]!.status, "DISPROVEN");
   assert(missingValResult.actionReview[0]!.reason?.includes("distinguishing identifiers"));
 
-  // Positive: concise note with exact error ERR_SCHEMA_V2, port 5433, and recovery command run-migration --v1 -> PROVEN
+  // Positive: concise note with exact error ERR_SCHEMA_V2, port 5433, and recovery command run-migration --v1 --port 5433 -> PROVEN
   const validActions = [
     {
       turn: "a",
@@ -337,6 +356,35 @@ test("scenario g3: instruction correction oracle requires updating stale notes w
   const dropResult = await scoreArtifacts(repository, observer, prereqs, { actions: dropValidActions });
   assert.equal(dropResult.actionReview[0]!.status, "DISPROVEN");
   assert(dropResult.actionReview[0]!.reason?.includes("sqlite storage note was dropped"));
+
+  // Negative 2: stale 8080 retained without 9090 -> DISPROVEN
+  const staleRetainedActions = [
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "nunc_memory_patch",
+        toolCallId: "patch-2",
+        input: {
+          expectedRevision: "rev-2",
+          add: [{ key: "k2", text: "extra" }],
+        },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "memory_state",
+        slots: [
+          { id: "s1", text: "port: 8080" },
+          { id: "s2", text: "database: sqlite" },
+        ],
+      },
+    },
+  ];
+  const staleRetainedResult = await scoreArtifacts(repository, observer, prereqs, { actions: staleRetainedActions });
+  assert.equal(staleRetainedResult.actionReview[0]!.status, "DISPROVEN");
+  assert(staleRetainedResult.actionReview[0]!.reason?.includes("8080"));
 
   // Positive: stale 8080 updated to 9090 and sqlite preserved -> PROVEN
   const goodActions = [
@@ -402,40 +450,121 @@ test("scenario g4: multi-task interruption preserves main task obligations acros
   assert.equal(retainedResult.actionReview[0]!.status, "PROVEN");
 });
 
-test("scenario g5: implemented vs verified status distinction oracle rejects premature claims", async () => {
+test("scenario g5: implemented vs verified status distinction oracle rejects premature claims and failed runs", async () => {
   const selection: Selection = { id: "g5", config: DEFAULT_RUN_CONFIG };
   const { observer } = await loadScenario(repository, selection);
   const prereqs: CheckResult[] = [{ check: "memory tools exposed in session", status: "PROVEN" }];
 
-  // Negative: claims verified before python3 verify.py runs -> DISPROVEN
-  const prematureActions = [
+  // Negative 1: premature verify executed in turn a -> DISPROVEN
+  const prematureVerifyActions = [
     {
       turn: "a",
       event: {
         type: "tool_call",
-        toolName: "nunc_memory_patch",
-        toolCallId: "patch-pre",
-        input: {
-          expectedRevision: "rev-1",
-          add: [{ key: "k1", text: "Double function verified and working" }],
-        },
+        toolName: "bash",
+        toolCallId: "call-verify-early",
+        input: { command: "python3 verify.py" },
+      },
+    },
+  ];
+  const prematureVerifyResult = await scoreArtifacts(repository, observer, prereqs, { actions: prematureVerifyActions });
+  assert.equal(prematureVerifyResult.actionReview[0]!.status, "DISPROVEN");
+  assert(prematureVerifyResult.actionReview[0]!.reason?.includes("prematurely in turn a"));
+
+  // Negative 2: premature direct write of verified.json in turn a -> DISPROVEN
+  const prematureWriteActions = [
+    {
+      turn: "a",
+      event: {
+        type: "tool_call",
+        toolName: "write",
+        toolCallId: "call-write-early",
+        input: { path: "verified.json", content: '{"passed": true}' },
+      },
+    },
+  ];
+  const prematureWriteResult = await scoreArtifacts(repository, observer, prereqs, { actions: prematureWriteActions });
+  assert.equal(prematureWriteResult.actionReview[0]!.status, "DISPROVEN");
+  assert(prematureWriteResult.actionReview[0]!.reason?.includes("authored prematurely in turn a"));
+
+  // Negative 3: python3 verify.py executed in turn b but failed -> DISPROVEN
+  const failedVerifyActions = [
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        input: { command: "python3 verify.py" },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        isError: true,
+        content: [{ type: "text", text: "AssertionError: test failed" }],
+      },
+    },
+  ];
+  const failedVerifyResult = await scoreArtifacts(repository, observer, prereqs, { actions: failedVerifyActions });
+  assert.equal(failedVerifyResult.actionReview[1]!.status, "DISPROVEN");
+  assert(failedVerifyResult.actionReview[1]!.reason?.includes("failed with an error"));
+
+  // Negative 4: python3 verify.py never executed in turn b -> UNPROVEN
+  const noVerifyActions = [
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "read",
+        toolCallId: "call-read-b",
+        input: { path: "solution.py" },
+      },
+    },
+  ];
+  const noVerifyResult = await scoreArtifacts(repository, observer, prereqs, { actions: noVerifyActions });
+  assert.equal(noVerifyResult.actionReview[1]!.status, "UNPROVEN");
+  assert(noVerifyResult.actionReview[1]!.reason?.includes("not executed in turn b"));
+
+  // Negative 5: claimed user acceptance without confirmation -> DISPROVEN
+  const prematureAcceptanceActions = [
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "call-verify-pass",
+        input: { command: "python3 verify.py" },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "call-verify-pass",
+        isError: false,
+        content: [{ type: "text", text: "VERIFIED" }],
       },
     },
     {
       turn: "b",
       event: {
         type: "tool_call",
-        toolName: "bash",
-        toolCallId: "call-verify",
-        input: { command: "python3 verify.py" },
+        toolName: "write",
+        toolCallId: "call-write-accept",
+        input: { path: "accepted.json", content: '{"accepted": true}' },
       },
     },
   ];
-  const prematureResult = await scoreArtifacts(repository, observer, prereqs, { actions: prematureActions });
-  assert.equal(prematureResult.actionReview[0]!.status, "DISPROVEN");
-  assert(prematureResult.actionReview[0]!.reason?.includes("verified before verification executed"));
+  const prematureAcceptanceResult = await scoreArtifacts(repository, observer, prereqs, { actions: prematureAcceptanceActions });
+  assert.equal(prematureAcceptanceResult.actionReview[1]!.status, "DISPROVEN");
+  assert(prematureAcceptanceResult.actionReview[1]!.reason?.includes("user acceptance without user confirmation"));
 
-  // Positive: marks unverified before test, and marks verified after test -> PROVEN
+  // Positive: marks unverified before test, and marks verified after successful test -> PROVEN
   const validActions = [
     {
       turn: "a",
@@ -454,20 +583,18 @@ test("scenario g5: implemented vs verified status distinction oracle rejects pre
       event: {
         type: "tool_call",
         toolName: "bash",
-        toolCallId: "call-verify",
+        toolCallId: "call-verify-ok",
         input: { command: "python3 verify.py" },
       },
     },
     {
       turn: "b",
       event: {
-        type: "tool_call",
-        toolName: "nunc_memory_patch",
-        toolCallId: "patch-verified",
-        input: {
-          expectedRevision: "rev-2",
-          update: [{ id: "s1", text: "Double function verified with tests" }],
-        },
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "call-verify-ok",
+        isError: false,
+        content: [{ type: "text", text: "VERIFIED" }],
       },
     },
   ];
@@ -476,44 +603,153 @@ test("scenario g5: implemented vs verified status distinction oracle rejects pre
   assert.equal(validResult.actionReview[1]!.status, "PROVEN");
 });
 
-test("scenario g6: split-turn wait and action ordering oracle rejects premature actions", async () => {
+test("scenario g6: split-turn wait and action ordering oracle requires split premise and rejects premature actions", async () => {
   const selection: Selection = { id: "g6", config: DEFAULT_RUN_CONFIG };
   const { observer } = await loadScenario(repository, selection);
-  const prereqs: CheckResult[] = [{ check: "memory tools exposed in session", status: "PROVEN" }];
+  const prereqsWithSplit: CheckResult[] = [
+    { check: "memory tools exposed in session", status: "PROVEN" },
+    { check: "actual tool batch followed by automatic native split compaction and same-loop continuation", status: "PROVEN" },
+  ];
+  const prereqsWithoutSplit: CheckResult[] = [
+    { check: "memory tools exposed in session", status: "PROVEN" },
+  ];
 
-  // Negative: premature deploy in turn a before lock cleared -> DISPROVEN
+  // Negative 1: no actions at all -> UNPROVEN (missing split prerequisite, deployed.json not produced)
+  const noActionsResult = await scoreArtifacts(repository, observer, prereqsWithoutSplit, { actions: [] });
+  assert.equal(noActionsResult.actionReview[1]!.status, "UNPROVEN");
+  assert(noActionsResult.actionReview[1]!.reason?.includes("split-turn"));
+
+  // Negative 2: premature deploy action in turn a before lock cleared -> DISPROVEN
   const prematureActions = [
     {
       turn: "a",
       event: {
         type: "tool_call",
-        toolName: "bash",
+        toolName: "write",
         toolCallId: "call-deploy-early",
-        input: { command: "deploy-service" },
+        input: { path: "deployed.json", content: '{"deployed": true}' },
       },
     },
   ];
-  const prematureResult = await scoreArtifacts(repository, observer, prereqs, { actions: prematureActions });
+  const prematureResult = await scoreArtifacts(repository, observer, prereqsWithSplit, { actions: prematureActions });
   assert.equal(prematureResult.actionReview[0]!.status, "DISPROVEN");
   assert(prematureResult.actionReview[0]!.reason?.includes("ordering violated"));
 
-  // Positive: records wait condition and does not trigger deploy in turn a -> PROVEN
+  // Negative 3: split-turn prerequisite missing in turn b -> UNPROVEN
+  const deployActions = [
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "write",
+        toolCallId: "call-deploy-b",
+        input: { path: "deployed.json", content: '{"deployed": true}' },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        input: { command: "python3 verify.py" },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        isError: false,
+      },
+    },
+  ];
+  const missingSplitResult = await scoreArtifacts(repository, observer, prereqsWithoutSplit, { actions: deployActions });
+  assert.equal(missingSplitResult.actionReview[1]!.status, "UNPROVEN");
+  assert(missingSplitResult.actionReview[1]!.reason?.includes("split-turn"));
+
+  // Negative 4: deployed.json not produced in turn b -> UNPROVEN
+  const noDeployResult = await scoreArtifacts(repository, observer, prereqsWithSplit, { actions: [] });
+  assert.equal(noDeployResult.actionReview[1]!.status, "UNPROVEN");
+  assert(noDeployResult.actionReview[1]!.reason?.includes("deployed.json was not produced"));
+
+  // Negative 5: verify failed in turn b -> DISPROVEN
+  const failedVerifyActions = [
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "write",
+        toolCallId: "call-deploy-b",
+        input: { path: "deployed.json", content: '{"deployed": true}' },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        input: { command: "python3 verify.py" },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        isError: true,
+      },
+    },
+  ];
+  const failedResult = await scoreArtifacts(repository, observer, prereqsWithSplit, { actions: failedVerifyActions });
+  assert.equal(failedResult.actionReview[1]!.status, "DISPROVEN");
+  assert(failedResult.actionReview[1]!.reason?.includes("Verification command failed"));
+
+  // Positive: split proven, no premature deploy in turn a, deployed and verified in turn b -> PROVEN
   const validActions = [
     {
       turn: "a",
       event: {
         type: "tool_call",
-        toolName: "nunc_memory_patch",
-        toolCallId: "patch-wait",
-        input: {
-          expectedRevision: "rev-1",
-          add: [{ key: "k1", text: "Waiting for deployLock (deploy.lock) before proceeding" }],
-        },
+        toolName: "read",
+        toolCallId: "call-read-status",
+        input: { path: "status.json" },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "write",
+        toolCallId: "call-deploy-b",
+        input: { path: "deployed.json", content: '{"deployed": true}' },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        input: { command: "python3 verify.py" },
+      },
+    },
+    {
+      turn: "b",
+      event: {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "call-verify-b",
+        isError: false,
       },
     },
   ];
-  const validResult = await scoreArtifacts(repository, observer, prereqs, { actions: validActions });
+  const validResult = await scoreArtifacts(repository, observer, prereqsWithSplit, { actions: validActions });
   assert.equal(validResult.actionReview[0]!.status, "PROVEN");
+  assert.equal(validResult.actionReview[1]!.status, "PROVEN");
 });
 
 test("scenario g7/conflict: revision conflict oracle requires actual premise, re-reading, and reconciliation", async () => {
@@ -748,12 +984,17 @@ test("scenario g8: budget qualification rejects missing competition and distingu
   const selectionFits: Selection = { id: "g8", variant: "fits-required", config: DEFAULT_RUN_CONFIG };
   const { observer: obsFits } = await loadScenario(repository, selectionFits);
 
-  // Negative: competition not proven -> UNPROVEN
+  // Negative 1: competition not proven -> UNPROVEN
   const unprovenResult = await scoreArtifacts(repository, obsFits, [
     { check: "all marked necessary candidates jointly fit within full memory limit", status: "PROVEN" },
     { check: "all candidates together exceed memory limit (actual competition)", status: "UNPROVEN" },
   ], { actions: [] });
   assert.equal(unprovenResult.actionReview[0]!.status, "UNPROVEN");
+  assert(unprovenResult.actionReview[0]!.reason?.includes("budget competition not proven"));
+
+  // Negative 2: empty prerequisites -> UNPROVEN
+  const emptyPrereqResult = await scoreArtifacts(repository, obsFits, [], { actions: [] });
+  assert.equal(emptyPrereqResult.actionReview[0]!.status, "UNPROVEN");
 
   // Positive fits-required -> PROVEN
   const provenResult = await scoreArtifacts(repository, obsFits, [
@@ -765,15 +1006,25 @@ test("scenario g8: budget qualification rejects missing competition and distingu
   const selectionTooLarge: Selection = { id: "g8", variant: "required-too-large", config: DEFAULT_RUN_CONFIG };
   const { observer: obsTooLarge } = await loadScenario(repository, selectionTooLarge);
 
-  // Negative: necessary set did not exceed limit -> UNPROVEN
+  // Negative 1: necessary set did not exceed limit -> UNPROVEN
   const notExceedResult = await scoreArtifacts(repository, obsTooLarge, [
     { check: "marked necessary set exceeds rendered memory limit", status: "UNPROVEN" },
+    { check: "at least one optional candidate fits within memory limit", status: "PROVEN" },
   ], { actions: [] });
   assert.equal(notExceedResult.actionReview[0]!.status, "UNPROVEN");
+  assert(notExceedResult.actionReview[0]!.reason?.includes("overflow not proven"));
+
+  // Negative 2: no optional candidate fits -> UNPROVEN
+  const noOptFitResult = await scoreArtifacts(repository, obsTooLarge, [
+    { check: "marked necessary set exceeds rendered memory limit", status: "PROVEN" },
+    { check: "at least one optional candidate fits within memory limit", status: "UNPROVEN" },
+  ], { actions: [] });
+  assert.equal(noOptFitResult.actionReview[0]!.status, "UNPROVEN");
 
   // Positive: necessary set exceeded and clean CAPACITY observed -> PROVEN
   const capacityResult = await scoreArtifacts(repository, obsTooLarge, [
     { check: "marked necessary set exceeds rendered memory limit", status: "PROVEN" },
+    { check: "at least one optional candidate fits within memory limit", status: "PROVEN" },
   ], { actions: [] });
   assert.equal(capacityResult.actionReview[0]!.status, "PROVEN");
 });

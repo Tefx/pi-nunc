@@ -9,7 +9,7 @@
       "turns": [
         {
           "id": "a",
-          "text": "Read reference.txt and explain what CACHE_BUFFER_SIZE represents. Provide a direct answer without inspecting or modifying working memory."
+          "text": "Read reference.txt and explain what CACHE_BUFFER_SIZE represents."
         }
       ]
     },
@@ -21,7 +21,7 @@
       "turns": [
         {
           "id": "a",
-          "text": "Inspect diagnostics.json. Decide on the viable recovery route, record the key decision with its distinguishing error ERR_SCHEMA_V2, port 5433, and recovery command run-migration --v1 into working memory concisely, then prepare the next recovery step."
+          "text": "Inspect diagnostics.json. Analyze the failure and determine the viable recovery action for the billing pipeline."
         }
       ]
     },
@@ -33,11 +33,11 @@
       "turns": [
         {
           "id": "a",
-          "text": "Read config.json and save initial notes in working memory: one note for the port setting (8080) and one note for the database engine (sqlite)."
+          "text": "Review config.json for the backend service. We are configuring the service with port 8080 and database sqlite."
         },
         {
           "id": "b",
-          "text": "Change of requirement: update the port setting to 9090. The database engine remains sqlite. Update working memory to reflect this change while retaining still-valid notes."
+          "text": "Requirement update: change the service port to 9090. The database engine remains sqlite."
         }
       ]
     },
@@ -49,15 +49,15 @@
       "turns": [
         {
           "id": "a",
-          "text": "Read obligations.txt and record the three deliverables in working memory."
+          "text": "Read obligations.txt. We have three deliverables to complete for this milestone."
         },
         {
           "id": "b",
-          "text": "Quick question: what does HTTP 429 status code mean?"
+          "text": "Quick question before we start: what does HTTP 429 status code mean?"
         },
         {
           "id": "c",
-          "text": "Now return to the deliverables. Confirm the unfinished obligations from working memory."
+          "text": "Let's resume our milestone deliverables. What are our pending obligations?"
         }
       ]
     },
@@ -65,32 +65,34 @@
       "id": "g5",
       "files": {
         "solution.py": "def double(x):\n    return x * 2\n",
-        "verify.py": "import sys, os\nif os.path.exists('solution.py') and 'return x * 2' in open('solution.py').read():\n    open('verified.json', 'w').write('{\"verified\": true}')\n    print('VERIFIED')\n    sys.exit(0)\nsys.exit(1)\n"
+        "verify.py": "import sys, os, json\nif os.path.exists('solution.py') and 'return x * 2' in open('solution.py').read():\n    with open('verified.json', 'w') as f:\n        json.dump({'verified': True, 'passed': True}, f)\n    print('VERIFIED')\n    sys.exit(0)\nsys.exit(1)\n"
       },
       "turns": [
         {
           "id": "a",
-          "text": "Check solution.py. Record in working memory that double is implemented, but explicitly unverified since tests have not run yet. Do not execute verification yet."
+          "text": "Inspect solution.py. Check the implementation of the double function. Do not run any tests yet."
         },
         {
           "id": "b",
-          "text": "Now run python3 verify.py. After verification succeeds, update working memory to mark the feature verified, but pending user acceptance."
+          "text": "Now execute python3 verify.py to run the verification suite."
         }
       ]
     },
     {
       "id": "g6",
       "files": {
-        "status.json": "{\n  \"deployLock\": true,\n  \"lockFile\": \"deploy.lock\",\n  \"serviceReady\": false\n}\n"
+        "status.json": "{\n  \"deployLock\": true,\n  \"lockFile\": \"deploy.lock\",\n  \"serviceReady\": false\n}\n",
+        "deploy.lock": "ACTIVE_DEPLOYMENT_LOCK\n",
+        "verify.py": "import sys, os, json\nif not os.path.exists('deployed.json'):\n    sys.exit(1)\ntry:\n    data = json.load(open('deployed.json'))\n    if data.get('deployed') is True and data.get('service') == 'orders-pipeline':\n        with open('verified.json', 'w') as f:\n            json.dump({'passed': True, 'artifact': 'deployed.json'}, f)\n        sys.exit(0)\nexcept Exception:\n    pass\nsys.exit(1)\n"
       },
       "turns": [
         {
           "id": "a",
-          "text": "Inspect status.json. If deployLock is active, record the wait condition and lockFile dependency in working memory and do not trigger deployment."
+          "text": "Inspect status.json. If deployLock is active, do not execute deployment; record the lock condition and wait. Produce deployed.json and run python3 verify.py only when deployLock is cleared."
         },
         {
           "id": "b",
-          "text": "The deploy lock is now cleared. Verify the precondition before triggering final deployment."
+          "text": "The deployLock has now been cleared in status.json. Proceed with deployment by writing deployed.json with deployed true and service orders-pipeline, then verify using python3 verify.py."
         }
       ]
     },
@@ -102,7 +104,7 @@
       "turns": [
         {
           "id": "a",
-          "text": "Inspect working memory using nunc_memory_read, then save the deployment checklist item from notes.txt into working memory."
+          "text": "Read notes.txt and record the deployment checklist item."
         }
       ],
       "variants": [
@@ -114,7 +116,7 @@
           "turns": [
             {
               "id": "a",
-              "text": "Inspect working memory using nunc_memory_read, then save the deployment checklist item from notes.txt into working memory."
+              "text": "Read notes.txt and record the deployment checklist item."
             }
           ]
         },
@@ -126,7 +128,7 @@
           "turns": [
             {
               "id": "a",
-              "text": "Inspect working memory using nunc_memory_read, then save the deployment checklist item from notes.txt into working memory."
+              "text": "Read notes.txt and record the deployment checklist item."
             }
           ]
         }
@@ -135,36 +137,60 @@
     {
       "id": "g8",
       "files": {
-        "items.json": "{\n  \"necessary\": [\n    { \"key\": \"n1\", \"text\": \"Critical database connection pool sizing: minimum 10, maximum 50 with keepalive timeout 30s.\" }\n  ],\n  \"optional\": [\n    { \"key\": \"o1\", \"text\": \"Optional telemetry export buffer hint.\" }\n  ]\n}\n"
+        "lanes.json": "{\n  \"lanes\": {\n    \"amber\": { \"maxC\": 4, \"holdMinutes\": 35, \"fallbackAllowed\": false, \"condition\": \"sealed glass only; a broken seal requires hold\" },\n    \"birch\": { \"maxC\": -2, \"holdMinutes\": 18, \"fallbackAllowed\": true, \"condition\": \"fallback only before dispatch, never after receipt\" },\n    \"cedar\": { \"maxC\": 6, \"holdMinutes\": 42, \"fallbackAllowed\": false, \"condition\": \"humidity above 70 percent requires hold\" },\n    \"dune\": { \"maxC\": 3, \"holdMinutes\": 27, \"fallbackAllowed\": true, \"condition\": \"fallback requires two operator approvals\" },\n    \"elm\": { \"maxC\": -5, \"holdMinutes\": 16, \"fallbackAllowed\": false, \"condition\": \"never mix with ambient parcels\" },\n    \"fir\": { \"maxC\": 2, \"holdMinutes\": 55, \"fallbackAllowed\": true, \"condition\": \"fallback only to a pre-cooled vehicle\" },\n    \"grove\": { \"maxC\": 7, \"holdMinutes\": 23, \"fallbackAllowed\": false, \"condition\": \"missing logger requires hold regardless of spot reading\" },\n    \"heath\": { \"maxC\": 1, \"holdMinutes\": 48, \"fallbackAllowed\": true, \"condition\": \"fallback before loading only; retain original logger\" }\n  },\n  \"expendableLabel\": \"batch-morning-preview\"\n}\n"
       },
       "turns": [
         {
           "id": "a",
-          "text": "Read items.json. Save the necessary configuration in memory under budget constraints, ensuring necessary items are marked required."
+          "text": "Read lanes.json. We must establish the lane routing rules for these 8 shipping lanes. Each rule is mandatory and must be preserved with its exact conditions and limits. The expendableLabel is an optional internal note with no operational effect. Do not produce the final routing configuration yet."
+        },
+        {
+          "id": "b",
+          "text": "Write count.json containing the total number of lanes (8)."
+        },
+        {
+          "id": "c",
+          "text": "Produce routing.json containing the agreed lane routing rules."
         }
       ],
       "variants": [
         {
           "id": "fits-required",
           "files": {
-            "items.json": "{\n  \"necessary\": [\n    { \"key\": \"n1\", \"text\": \"Critical database connection pool sizing: minimum 10, maximum 50 with keepalive timeout 30s.\" }\n  ],\n  \"optional\": [\n    { \"key\": \"o1\", \"text\": \"Optional telemetry export buffer hint.\" }\n  ]\n}\n"
+            "lanes.json": "{\n  \"lanes\": {\n    \"amber\": { \"maxC\": 4, \"holdMinutes\": 35, \"fallbackAllowed\": false, \"condition\": \"sealed glass only; a broken seal requires hold\" },\n    \"birch\": { \"maxC\": -2, \"holdMinutes\": 18, \"fallbackAllowed\": true, \"condition\": \"fallback only before dispatch, never after receipt\" },\n    \"cedar\": { \"maxC\": 6, \"holdMinutes\": 42, \"fallbackAllowed\": false, \"condition\": \"humidity above 70 percent requires hold\" },\n    \"dune\": { \"maxC\": 3, \"holdMinutes\": 27, \"fallbackAllowed\": true, \"condition\": \"fallback requires two operator approvals\" },\n    \"elm\": { \"maxC\": -5, \"holdMinutes\": 16, \"fallbackAllowed\": false, \"condition\": \"never mix with ambient parcels\" },\n    \"fir\": { \"maxC\": 2, \"holdMinutes\": 55, \"fallbackAllowed\": true, \"condition\": \"fallback only to a pre-cooled vehicle\" },\n    \"grove\": { \"maxC\": 7, \"holdMinutes\": 23, \"fallbackAllowed\": false, \"condition\": \"missing logger requires hold regardless of spot reading\" },\n    \"heath\": { \"maxC\": 1, \"holdMinutes\": 48, \"fallbackAllowed\": true, \"condition\": \"fallback before loading only; retain original logger\" }\n  },\n  \"expendableLabel\": \"batch-morning-preview\"\n}\n"
           },
           "turns": [
             {
               "id": "a",
-              "text": "Read items.json. Save the necessary configuration in memory under budget constraints, ensuring necessary items are marked required."
+              "text": "Read lanes.json. We must establish the lane routing rules for these 8 shipping lanes. Each rule is mandatory and must be preserved with its exact conditions and limits. The expendableLabel is an optional internal note with no operational effect. Do not produce the final routing configuration yet."
+            },
+            {
+              "id": "b",
+              "text": "Write count.json containing the total number of lanes (8)."
+            },
+            {
+              "id": "c",
+              "text": "Produce routing.json containing the agreed lane routing rules."
             }
           ]
         },
         {
           "id": "required-too-large",
           "files": {
-            "items.json": "{\n  \"necessary\": [\n    { \"key\": \"n1\", \"text\": \"Massive necessary enterprise cluster security policy specification that exceeds single-envelope allocation limit...\" }\n  ],\n  \"optional\": [\n    { \"key\": \"o1\", \"text\": \"Small optional note.\" }\n  ]\n}\n"
+            "lanes.json": "{\n  \"lanes\": {\n    \"amber\": { \"maxC\": 4, \"holdMinutes\": 35, \"fallbackAllowed\": false, \"condition\": \"sealed glass only; a broken seal requires hold\" },\n    \"birch\": { \"maxC\": -2, \"holdMinutes\": 18, \"fallbackAllowed\": true, \"condition\": \"fallback only before dispatch, never after receipt\" },\n    \"cedar\": { \"maxC\": 6, \"holdMinutes\": 42, \"fallbackAllowed\": false, \"condition\": \"humidity above 70 percent requires hold\" },\n    \"dune\": { \"maxC\": 3, \"holdMinutes\": 27, \"fallbackAllowed\": true, \"condition\": \"fallback requires two operator approvals\" },\n    \"elm\": { \"maxC\": -5, \"holdMinutes\": 16, \"fallbackAllowed\": false, \"condition\": \"never mix with ambient parcels\" },\n    \"fir\": { \"maxC\": 2, \"holdMinutes\": 55, \"fallbackAllowed\": true, \"condition\": \"fallback only to a pre-cooled vehicle\" },\n    \"grove\": { \"maxC\": 7, \"holdMinutes\": 23, \"fallbackAllowed\": false, \"condition\": \"missing logger requires hold regardless of spot reading\" },\n    \"heath\": { \"maxC\": 1, \"holdMinutes\": 48, \"fallbackAllowed\": true, \"condition\": \"fallback before loading only; retain original logger\" }\n  },\n  \"expendableLabel\": \"batch-morning-preview\"\n}\n"
           },
           "turns": [
             {
               "id": "a",
-              "text": "Read items.json. Save the necessary configuration in memory under budget constraints, ensuring necessary items are marked required."
+              "text": "Read lanes.json. We must establish the lane routing rules for these 8 shipping lanes. Each rule is mandatory and must be preserved with its exact conditions and limits. The expendableLabel is an optional internal note with no operational effect. Do not produce the final routing configuration yet."
+            },
+            {
+              "id": "b",
+              "text": "Write count.json containing the total number of lanes (8)."
+            },
+            {
+              "id": "c",
+              "text": "Produce routing.json containing the agreed lane routing rules."
             }
           ]
         }

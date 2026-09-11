@@ -279,7 +279,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", last?.role === "assistant" && last.errorMessage ? last.errorMessage : "Main run did not end in a complete stop state");
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
 
-      if (selection.id === "e4" && selection.variant === "required-too-large" && turn === "c") {
+      if ((selection.id === "e4" || selection.id === "g8") && selection.variant === "required-too-large" && turn === "c") {
         if (group === "candidate") (capacityFailure ? report.prerequisites : (report.setupChecks ??= [])).push(checkCapacityRecovery({
           capacityFailed: capacityFailure !== undefined,
           deliveredCount: deliveredUserIds(sm.getBranch(), inputTurn.text).length,
@@ -420,7 +420,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             const file = session.sessionFile; requireValue(file, "PERSISTENCE", "No persistent session file");
             const saved = SessionManager.open(file, join(caseRoot, "sessions"));
             const after = saved.getBranch();
-            if (selection.id === "e4" && group === "candidate") {
+            if ((selection.id === "e4" || selection.id === "g8") && group === "candidate") {
               report.setupChecks ??= [];
               report.setupChecks.push(...qualifyCapacity(selection.variant as "fits-required" | "required-too-large",
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
@@ -430,7 +430,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
               const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots) && isDeepStrictEqual(saved.buildContextEntries(), beforeActive);
               report.prerequisites.push({ check: "failed maintenance preserved prior saved memory/boundary", status: unchanged ? "PROVEN" : "DISPROVEN" });
-              if (selection.id === "e4" && selection.variant === "required-too-large") {
+              if ((selection.id === "e4" || selection.id === "g8") && selection.variant === "required-too-large") {
                 const req = result?.observations.required;
                 const reqPass = Boolean(result && !result.ok && result.code === "CAPACITY" && req?.failed);
                 if (group === "candidate" && reqPass && unchanged && report.maintenance.length === eventCount + 1) {
@@ -453,7 +453,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.prerequisites.push(...checkRollover(before, after, saved, result, control, turns));
               if (selection.config.retentionCalibration || mode === "matched") report.prerequisites.push({ check: "Nunc/Pi independently selected and persisted calibrated boundary", status: result.candidate.firstKeptEntryId === report.rollovers!.at(-1)?.prepared?.firstKeptEntryId ? "PROVEN" : "UNPROVEN" });
               if (result.observations.omissions.length === 0) report.prerequisites.push(checkFullExtraction(beforeActive, report.contexts.findLast(c => c.turn === turn && c.kind === "maintenance")?.context));
-              if (selection.id === "e4") {
+              if (selection.id === "e4" || selection.id === "g8") {
                 if (group === "candidate") {
                   report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "candidate", guardApplicability: "APPLICABLE" } });
                   const req = result?.observations.required;
@@ -558,7 +558,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     if (error instanceof RunnerError) report.diagnostic = error.message;
   }
   finally {
-    if (selection.id === "e4" && group === "candidate" && !report.setupChecks?.some(c => c.check === "capacity predicate bound to one frozen request and complete response")) {
+    if ((selection.id === "e4" || selection.id === "g8") && group === "candidate" && !report.setupChecks?.some(c => c.check === "capacity predicate bound to one frozen request and complete response")) {
       (report.setupChecks ??= []).push({ check: "capacity predicate bound to one frozen request and complete response", status: "UNPROVEN", reason: "No qualifying current maintenance transaction was observed" });
     }
     if (runtime) {

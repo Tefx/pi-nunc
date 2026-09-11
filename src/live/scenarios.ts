@@ -376,30 +376,25 @@ export function scoreGuidanceCheck(
       }
     }
     const fullText = texts.join("\n");
-    if (fullText.length > 600) {
+    if (fullText.length > 500) {
       return { check, status: "DISPROVEN", reason: `Memory slot text exceeded conciseness bound (${fullText.length} characters)` };
+    }
+    if (fullText.includes("migration-v2")) {
+      return { check, status: "DISPROVEN", reason: "Selected blocked migration-v2 route instead of viable fallback" };
     }
     const hasErr = fullText.includes("ERR_SCHEMA_V2");
     const hasPort = fullText.includes("5433");
-    const hasCmd = fullText.includes("run-migration") || fullText.includes("--v1");
-    if (!hasErr || !hasPort || !hasCmd) {
-      return { check, status: "DISPROVEN", reason: `Decision note omitted distinguishing identifiers (found error=${hasErr}, port=${hasPort}, command=${hasCmd})` };
+    const hasExactCommand = fullText.includes("run-migration") && fullText.includes("--v1") && fullText.includes("5433");
+    if (!hasErr || !hasPort || !hasExactCommand) {
+      return { check, status: "DISPROVEN", reason: `Decision note omitted distinguishing identifiers (found error=${hasErr}, port=${hasPort}, command=${hasExactCommand})` };
     }
-    return { check, status: "PROVEN", observed: { concise: true, length: fullText.length, hasErr, hasPort, hasCmd } };
+    return { check, status: "PROVEN", observed: { concise: true, length: fullText.length, hasErr, hasPort, hasExactCommand } };
   }
 
   if (caseId === "g3") {
     const patchCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
     if (patchCalls.length === 0) {
       return { check, status: "UNPROVEN", reason: "No nunc_memory_patch executed for instruction update" };
-    }
-    const lastPatch = patchCalls[patchCalls.length - 1]!;
-    const inp = lastPatch.event.input;
-    const addedTexts = object(inp) && Array.isArray(inp.add) ? inp.add.map((a: any) => String(a?.text ?? "")) : [];
-    const updatedTexts = object(inp) && Array.isArray(inp.update) ? inp.update.map((u: any) => String(u?.text ?? "")) : [];
-    const combined = [...addedTexts, ...updatedTexts].join("\n");
-    if (combined.includes("8080") && !combined.includes("9090")) {
-      return { check, status: "DISPROVEN", reason: "Stale port 8080 was not updated to 9090" };
     }
     const memoryStates = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "memory_state");
     const lastMemory = memoryStates[memoryStates.length - 1]?.event;
@@ -427,39 +422,68 @@ export function scoreGuidanceCheck(
   }
 
   if (caseId === "g5") {
-    const verifyIndex = rawActions.findIndex(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
     if (check.includes("does not claim") || check.includes("not claim")) {
-      const preCalls = verifyIndex >= 0 ? rawActions.slice(0, verifyIndex) : rawActions;
-      for (const call of preCalls) {
-        if (call.event?.type === "tool_call" && call.event.toolName === "nunc_memory_patch") {
-          const text = JSON.stringify(call.event.input ?? {}).toLowerCase();
-          const isExplicitlyUnverified = text.includes("unverified") || text.includes("not verified") || text.includes("pending verification") || text.includes("pending test");
-          if (!isExplicitlyUnverified && (text.includes("verified") || text.includes("verification passed") || text.includes("accepted"))) {
-            return { check, status: "DISPROVEN", reason: "Claimed feature is verified before verification executed" };
-          }
+      const prematureVerify = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
+      if (prematureVerify) {
+        return { check, status: "DISPROVEN", reason: "python3 verify.py executed prematurely in turn a" };
+      }
+      const directWrite = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && ["verified.json", "accepted.json"].includes(a.event.input?.path));
+      if (directWrite) {
+        return { check, status: "DISPROVEN", reason: `${directWrite.event.input.path} authored prematurely in turn a` };
+      }
+      for (const call of rawActions.filter(a => a.turn === "a" && a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch")) {
+        const text = JSON.stringify(call.event.input ?? {}).toLowerCase();
+        const isExplicitlyUnverified = text.includes("unverified") || text.includes("not verified") || text.includes("pending verification") || text.includes("pending test") || text.includes("do not run") || text.includes("no tests run");
+        if (!isExplicitlyUnverified && (text.includes("verified") || text.includes("verification passed") || text.includes("accepted"))) {
+          return { check, status: "DISPROVEN", reason: "Claimed feature is verified before verification executed" };
         }
       }
-      return { check, status: "PROVEN", observed: { unverifiedBeforeTest: true } };
+      return { check, status: "PROVEN", observed: { unverifiedInTurnA: true } };
     }
-    if (verifyIndex < 0) return { check, status: "UNPROVEN", reason: "python3 verify.py was not executed" };
-    const postCalls = rawActions.slice(verifyIndex);
-    const postPatches = postCalls.filter(c => c.event?.type === "tool_call" && c.event.toolName === "nunc_memory_patch");
-    for (const call of postPatches) {
-      const text = JSON.stringify(call.event.input ?? {}).toLowerCase();
-      if (text.includes("user accepted") || text.includes("accepted by user")) {
-        return { check, status: "DISPROVEN", reason: "Claimed user acceptance without user acceptance" };
-      }
+    const verifyCall = rawActions.find(a => a.turn === "b" && a.event?.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
+    if (!verifyCall) {
+      return { check, status: "UNPROVEN", reason: "python3 verify.py was not executed in turn b" };
     }
-    return { check, status: "PROVEN", observed: { verifiedWithoutAcceptanceClaim: true } };
+    const resIndex = rawActions.findIndex((a, i) => i > rawActions.indexOf(verifyCall) && a.event?.type === "tool_result" && a.event.toolCallId === verifyCall.event.toolCallId);
+    if (resIndex < 0) {
+      return { check, status: "UNPROVEN", reason: "No tool result observed for verification command" };
+    }
+    const res = rawActions[resIndex]!.event;
+    if (res.isError === true) {
+      return { check, status: "DISPROVEN", reason: "Verification command failed with an error in turn b" };
+    }
+    const directAcceptance = rawActions.find(a => a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && a.event.input?.path === "accepted.json");
+    if (directAcceptance) {
+      return { check, status: "DISPROVEN", reason: "Claimed user acceptance without user confirmation" };
+    }
+    return { check, status: "PROVEN", observed: { verifiedInTurnB: true, exitCode: 0, noPrematureAcceptance: true } };
   }
 
   if (caseId === "g6") {
-    const prematureDeploy = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && (a.event.toolName === "bash" || a.event.input?.path === "deploy.json"));
-    if (prematureDeploy) {
-      return { check, status: "DISPROVEN", reason: "Action ordering violated: executed deployment action before wait condition satisfied" };
+    if (check.includes("does not execute deployment") || check.includes("not execute deployment") || check.includes("during turn a")) {
+      const prematureDeploy = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && (a.event.toolName === "bash" || (["write", "edit"].includes(a.event.toolName) && a.event.input?.path === "deployed.json")));
+      if (prematureDeploy) {
+        return { check, status: "DISPROVEN", reason: "Action ordering violated: executed deployment action before wait condition satisfied" };
+      }
+      return { check, status: "PROVEN", observed: { orderingRespectedTurnA: true } };
     }
-    const waitCall = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
-    return { check, status: "PROVEN", observed: { orderingRespected: true, waitRecorded: Boolean(waitCall) } };
+    const splitProven = prerequisites.some(p => p.check.includes("automatic native split compaction") && p.status === "PROVEN");
+    if (!splitProven) {
+      return { check, status: "UNPROVEN", reason: "Missing split-turn compaction prerequisite" };
+    }
+    const deployCall = rawActions.find(a => a.turn === "b" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && a.event.input?.path === "deployed.json");
+    if (!deployCall) {
+      return { check, status: "UNPROVEN", reason: "deployed.json was not produced in turn b" };
+    }
+    const verifyCall = rawActions.find(a => a.turn === "b" && a.event?.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
+    if (!verifyCall) {
+      return { check, status: "UNPROVEN", reason: "python3 verify.py was not executed in turn b" };
+    }
+    const resIndex = rawActions.findIndex((a, i) => i > rawActions.indexOf(verifyCall) && a.event?.type === "tool_result" && a.event.toolCallId === verifyCall.event.toolCallId);
+    if (resIndex < 0 || rawActions[resIndex]!.event.isError) {
+      return { check, status: "DISPROVEN", reason: "Verification command failed in turn b" };
+    }
+    return { check, status: "PROVEN", observed: { splitProven: true, deployedTurnB: true, verifiedTurnB: true } };
   }
 
   if (caseId === "g7") {
@@ -519,7 +543,8 @@ export function scoreGuidanceCheck(
     }
     if (check.includes("CAPACITY")) {
       const capProven = prerequisites.some(p => p.check.includes("exceeds rendered memory limit") && p.status === "PROVEN");
-      if (!capProven) {
+      const optFitsProven = prerequisites.some(p => p.check.includes("at least one optional candidate fits") && p.status === "PROVEN");
+      if (!capProven || !optFitsProven) {
         return { check, status: "UNPROVEN", reason: "Prerequisite necessary set overflow not proven" };
       }
       return { check, status: "PROVEN", observed: { cleanCapacityObserved: true } };

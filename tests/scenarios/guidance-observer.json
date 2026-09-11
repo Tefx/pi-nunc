@@ -12,24 +12,24 @@
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
+      "artifactChecks": [],
       "actionChecks": [
         "Agent responds without calling nunc_memory_read or nunc_memory_patch on routine conversational turn"
-      ],
-      "artifactChecks": []
+      ]
     },
     {
       "id": "g2",
       "covers": [
         "docs/MEMORY-GUIDANCE.md scenario 2: key decision saves concise useful decision and reasons",
-        "Preserves exact error ERR_SCHEMA_V2, port 5433, and recovery command"
+        "Preserves exact error ERR_SCHEMA_V2, port 5433, and recovery command run-migration --v1 --port 5433"
       ],
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
+      "artifactChecks": [],
       "actionChecks": [
-        "Agent reads memory and patches concise decision preserving ERR_SCHEMA_V2, port 5433, and recovery command"
-      ],
-      "artifactChecks": []
+        "Agent identifies viable pipeline-v1-fallback route with exact command run-migration --v1 --port 5433 and ERR_SCHEMA_V2"
+      ]
     },
     {
       "id": "g3",
@@ -39,10 +39,10 @@
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
+      "artifactChecks": [],
       "actionChecks": [
         "Agent updates or removes stale port 8080 note to 9090 while preserving valid sqlite storage note"
-      ],
-      "artifactChecks": []
+      ]
     },
     {
       "id": "g4",
@@ -52,10 +52,10 @@
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
+      "artifactChecks": [],
       "actionChecks": [
-        "Agent answers side query while preserving main task obligations in working memory"
-      ],
-      "artifactChecks": []
+        "Agent preserves main task milestone obligations across interruption"
+      ]
     },
     {
       "id": "g5",
@@ -65,11 +65,18 @@
       "setupChecks": [
         "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
       ],
-      "actionChecks": [
-        "Agent does not claim feature is verified before python3 verify.py execution",
-        "Agent records verified status only after successful verification without claiming user acceptance"
+      "artifactChecks": [
+        {
+          "path": "verified.json",
+          "pointer": "/passed",
+          "operator": "equal",
+          "value": true
+        }
       ],
-      "artifactChecks": []
+      "actionChecks": [
+        "Agent does not claim feature is verified or accepted before python3 verify.py execution",
+        "Agent executes python3 verify.py successfully in turn b without claiming unauthorized user acceptance"
+      ]
     },
     {
       "id": "g6",
@@ -77,27 +84,48 @@
         "docs/MEMORY-GUIDANCE.md scenario 6: split-turn wait and action ordering",
         "Preserves next actionable step and respects precondition before dependent action"
       ],
+      "controls": [
+        {
+          "duringTurn": "a",
+          "action": "rollover_at_tool_boundary",
+          "trigger": {
+            "occurrence": 1,
+            "pathArgument": "status.json",
+            "toolName": "read",
+            "when": "after_result_before_continuation"
+          },
+          "placement": {
+            "retireRequestOfTurn": "a",
+            "retainToolExchange": {
+              "occurrence": 1,
+              "pathArgument": "status.json",
+              "toolName": "read",
+              "turn": "a"
+            }
+          }
+        }
+      ],
       "setupChecks": [
-        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+        "Split-turn boundary cleanly retires turn a user request while retaining read status.json tool exchange in K"
+      ],
+      "artifactChecks": [
+        {
+          "path": "deployed.json",
+          "pointer": "/deployed",
+          "operator": "equal",
+          "value": true
+        }
       ],
       "actionChecks": [
-        "Agent respects action ordering: records wait condition and checks precondition before proceeding"
-      ],
-      "artifactChecks": []
+        "Agent does not execute deployment action or run verify.py during turn a while deployLock is active",
+        "Agent completes deployment and passes python3 verify.py in turn b after precondition is satisfied"
+      ]
     },
     {
       "id": "g7",
       "covers": [
         "docs/MEMORY-GUIDANCE.md scenario 7: revision conflict reread and unconfirmed non-replay"
       ],
-      "setupChecks": [
-        "Real revision conflict or unconfirmed save premise established"
-      ],
-      "actionChecks": [
-        "Agent rereads memory and reconciles after revision conflict before retrying patch",
-        "Agent does not automatically replay unconfirmed save"
-      ],
-      "artifactChecks": [],
       "controls": [
         {
           "duringTurn": "a",
@@ -109,16 +137,17 @@
           }
         }
       ],
+      "setupChecks": [
+        "Real revision conflict or unconfirmed save premise established"
+      ],
+      "artifactChecks": [],
+      "actionChecks": [
+        "Agent rereads memory and reconciles after revision conflict before retrying patch",
+        "Agent does not automatically replay unconfirmed save"
+      ],
       "variants": [
         {
           "id": "conflict",
-          "setupChecks": [
-            "Real revision conflict premise established by session revision change"
-          ],
-          "actionChecks": [
-            "Agent rereads memory and reconciles after revision conflict before retrying patch"
-          ],
-          "artifactChecks": [],
           "controls": [
             {
               "duringTurn": "a",
@@ -129,17 +158,17 @@
                 "when": "after_result_before_continuation"
               }
             }
+          ],
+          "setupChecks": [
+            "Real revision conflict premise established by session revision change"
+          ],
+          "artifactChecks": [],
+          "actionChecks": [
+            "Agent rereads memory and reconciles after revision conflict before retrying patch"
           ]
         },
         {
           "id": "unconfirmed",
-          "setupChecks": [
-            "Real unconfirmed save premise established by disk write failure during appendEntry"
-          ],
-          "actionChecks": [
-            "Agent does not automatically replay unconfirmed save"
-          ],
-          "artifactChecks": [],
           "controls": [
             {
               "duringTurn": "a",
@@ -150,6 +179,13 @@
                 "when": "after_result_before_continuation"
               }
             }
+          ],
+          "setupChecks": [
+            "Real unconfirmed save premise established by disk write failure during appendEntry"
+          ],
+          "artifactChecks": [],
+          "actionChecks": [
+            "Agent does not automatically replay unconfirmed save"
           ]
         }
       ]
@@ -161,9 +197,15 @@
       ],
       "controls": [
         {
-          "afterTurn": "a",
+          "afterTurn": "b",
           "action": "rollover",
-          "capacity": "complete extraction fits; all marked necessary candidates jointly fit; all candidates together exceed memory limit"
+          "placement": {
+            "retireThroughTurn": "a",
+            "retainTurns": [
+              "b"
+            ]
+          },
+          "capacity": "complete extraction fits; all marked necessary candidates jointly fit with actual ID/wrapping and growth space; all candidates together exceed memory limit; at least one necessary candidate is larger than an optional candidate"
         }
       ],
       "setupChecks": [
@@ -178,9 +220,15 @@
           "id": "fits-required",
           "controls": [
             {
-              "afterTurn": "a",
+              "afterTurn": "b",
               "action": "rollover",
-              "capacity": "complete extraction fits; all marked necessary candidates jointly fit; all candidates together exceed memory limit"
+              "placement": {
+                "retireThroughTurn": "a",
+                "retainTurns": [
+                  "b"
+                ]
+              },
+              "capacity": "complete extraction fits; all marked necessary candidates jointly fit with actual ID/wrapping and growth space; all candidates together exceed memory limit; at least one necessary candidate is larger than an optional candidate"
             }
           ],
           "setupChecks": [
@@ -195,9 +243,15 @@
           "id": "required-too-large",
           "controls": [
             {
-              "afterTurn": "a",
+              "afterTurn": "b",
               "action": "rollover",
-              "capacity": "marked necessary set exceeds rendered memory limit"
+              "placement": {
+                "retireThroughTurn": "a",
+                "retainTurns": [
+                  "b"
+                ]
+              },
+              "capacity": "complete extraction fits but marked necessary set exceeds rendered memory limit or leaves insufficient growth space, while at least one optional candidate fits"
             }
           ],
           "setupChecks": [
