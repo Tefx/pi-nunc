@@ -49,7 +49,7 @@
 - 允许一次显式 remove 列出所有当前 IDs；结果可为空。没有绕过 revision 的隐式 clear-all。
 - 成功返回新 revision、新增 key→ID 映射及预算摘要，不重复回传完整 M。失败沿用/扩展现有稳定类别 invalid/conflict/occupied/overbudget/unknown-budget/unconfirmed，并给出有界恢复信息；文案不是判断协议。
 
-笔记是 session 工作数据。工具说明提示记录已确认决策、必要理由、当前阻塞/恢复入口，并标明推测与未完成状态；编辑笔记不改变原用户指令或历史事实。不以特定措辞、笔记频率或模型复述作为行为覆盖。关于工具描述与使用指导的进一步优化规范见 [MEMORY-GUIDANCE.md](MEMORY-GUIDANCE.md)（文本实现已在 `nunc.memory-guidance-implementation` 落地于 `src/index.ts`，Gemini 真实模型行为评测挂起待执行于 `nunc.memory-guidance-gemini-eval`）。
+笔记是 session 工作数据。工具说明提示记录已确认决策、必要理由、当前阻塞/恢复入口，并标明推测与未完成状态；编辑笔记不改变原用户指令或历史事实。不以特定措辞、笔记频率或模型复述作为行为覆盖。关于工具描述与使用指导的进一步优化规范见 [MEMORY-GUIDANCE.md](MEMORY-GUIDANCE.md)（文本实现已在 `nunc.memory-guidance-implementation` 落地于 `src/index.ts`，跟踪观察能力已在 `nunc.memory-guidance-observation-support` 交付，Gemini 真实模型行为评测挂起待执行于 `nunc.memory-guidance-gemini-eval`；下游评测选用 OpenRouter `google/gemini-3.8-flash`，早期 1.5/2.5 仅为旧示例）。
 
 ## 3. 统一提交、并发与持久化
 
@@ -148,9 +148,7 @@ M 预算仍由现有模型、F、工具和配置计算，新增工具 schema 本
 
 ## 9. 实施责任与调度
 
-新增 phase `nunc-active-memory`，依赖 `nunc-larva-prompt`；唯一新实施步骤 `nunc.active-memory`。Node/TypeScript owner 完整交付 CRUD、单一新布局、自动转换、receipt/预算、测试与文档。此依赖是对已接受 F/请求身份桥接结果的消费，不把 M 功能反向塞进其先行接受范围。
-
-只做当前文档/Plan 更新；未来必须有用户明确调度才 claim/dispatch/实施/验证。既有 Larva 调度条件仍有效。测试只用新隔离受控状态，外仓/Larva 只读，不改 Pi、不安装全局扩展、不读日常凭据、不重放历史、不联系真实 peer/启动真实模型子 agent，不发布/push。
+`nunc.active-memory` 步骤已完整交付 CRUD、单一新布局、自动转换、receipt/预算、测试与文档并已被接受。后续的 `nunc-memory-guidance` 阶段进一步落实工作记忆工具说明与提取策略优化，并在 `nunc.memory-guidance-observation-support` 交付了八类行为的跟踪场景与原生观察能力，为后续 `nunc.memory-guidance-gemini-eval` 的只读 Gemini 观察者提供直接消费接口（选用 OpenRouter `google/gemini-3.8-flash`）。测试只用新隔离受控状态，外仓/Larva 只读，不改 Pi、不安装全局扩展、不读日常凭据、不重放历史、不联系真实 peer/启动真实模型子 agent，不发布/push。
 
 Orchestrator 在新步骤完成程序承担最终整合接受：范围是 nunc-active-memory 全部需求、其所依赖的 nunc-larva-prompt F 合同及所有适用的既有 Nunc 核心/原生兼容/维护/人工记忆/报告不变量。前置结果可独立接受，本次追加结果必须在最终候选上具备完整适用检查与真实组合证据。存在阻断缺陷或必要未证明则保持本步骤未完成；不创建重复 gate 或人类等待节点。DONE 历史不可修改。
 

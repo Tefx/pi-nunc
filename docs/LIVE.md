@@ -28,11 +28,11 @@ The exact public schema is:
 
 - `target: {repository, stateRoot, cleanup: "retain" | "remove"}` with canonical absolute paths.
 - `limits: {maxCalls, maxTotalTokens, maxDurationMs, maxOutputTokens, maxCostUsd}`. `maxCalls` and `maxTotalTokens` may be omitted or `null`; the runner normalizes each to `number | null`. `null` disables that cumulative gate: there is no finite fallback, `Infinity` sentinel, or reserved-token substitute for a call count. An explicit positive safe integer remains opt-in and is enforced before the corresponding effect, including across comparison groups, segments and stock subjobs. There is no agent `maxCalls <= 1000` ceiling. `maxDurationMs` and `maxOutputTokens` stay positive finite integers. `maxCostUsd` is positive for a known-cost reservation or null for unknown billing. Codex defaults an omitted cost ceiling to null. Omitted `maxOutputTokens` resolves to the selected native output allowance; it never lowers Pi's main output. Per-request native input/output/context capacity, independent time/cost, cancellation, unknown-terminal refusal, endpoint/auth/identity and cleanup stay in force even when both totals are omitted.
-- `scenarios: [{id: "c1" | "c2" | "c3" | "c4" | "c5", variant?: "full" | "capacity" | "late-d"}]`; c4 requires `full` or `capacity`. c1 may select `late-d`. Other cases have no variant.
+- `scenarios: [{id: "c1" | "c2" | "c3" | "c4" | "c5" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8", variant?: "full" | "capacity" | "late-d" | "conflict" | "unconfirmed" | "fits-required" | "required-too-large"}]`; c4 requires `full` or `capacity`. c1 may select `late-d`. g7 may select `conflict` or `unconfirmed`. g8 requires `fits-required` or `required-too-large`. Other cases have no variant.
 - Optional `overrides: [{requirement, reason, model?: {provider,id}, smallerModel?: {provider,id}, thinking?, config?: {nunc?, compaction?, retentionCalibration?}}]`. Partial compaction overrides merge with native defaults. Calibration supplies `minFraction`/`maxFraction`; c5 requires a named smaller-model selection. Reports include before/after differences.
 - Optional `observations`: `continuation` alone (default), or `stock_rpc`/`stock_tui` for controlled-only observations.
 
-`examples/live-selection.json` is a path template using native defaults. Named live-route overrides bind catalog ids without probing accounts: `openai-codex`/`gpt-5.6-luna`, `openrouter`/`google/gemini-3.8-flash`, and `xai`/`grok-4.6` for Grok 500k reproduction, with `thinking: "low"` when the model advertises that level. No `authorization`, `models`, `credentials`, `receipt`, credential path or preparation fields are accepted on public stdin. Internal synthetic job fixtures under `tests/live` include normalized metadata solely to test private quota/worker interfaces; they are not operator templates.
+`examples/live-selection.json` is a path template using native defaults. `examples/guidance-selection.json` provides a template for working-memory guidance scenarios (`g1`–`g8`). Named live-route overrides bind catalog ids without probing accounts: `openai-codex`/`gpt-5.6-luna`, `openrouter`/`google/gemini-3.8-flash`, and `xai`/`grok-4.6` for Grok 500k reproduction, with `thinking: "low"` when the model advertises that level. For guidance scenarios, OpenRouter `google/gemini-3.8-flash` is the authorized live model; Astra and non-Gemini models are rejected. No `authorization`, `models`, `credentials`, `receipt`, credential path or preparation fields are accepted on public stdin. Internal synthetic job fixtures under `tests/live` include normalized metadata solely to test private quota/worker interfaces; they are not operator templates.
 
 Public `ModelRuntime.create` with an empty in-memory credential store and `refreshOnCreate:false` resolves nonsecret model configuration, including native models.json endpoint/capacity overrides, without opening native auth or constructing a session. The runner carries that native-resolved metadata; it does not reconstruct a provider-name or API support catalog or fall back to a hardcoded factory. Unsupported model headers/sampling overrides or endpoints containing credentials/query data fail before effects.
 
@@ -63,6 +63,35 @@ Each scenario uses a fresh persistent session and task cwd. Public tools are bou
 - c5: A named smaller-model override changes only task runtime state, then checks native model-change persistence and recalculated budgets.
 
 Optional retention calibration is a named test override within its declared fraction interval. It derives legal source placement from actual F/M/R and tool units, then changes only task configuration. Impossible placement stops before maintenance. Nunc still selects its own K and Pi persists one native snapshot. Actual checks confirm candidate/summary/boundary agreement, unchanged K/order, no retired source, and only the latest summary carrier.
+
+## Working-memory guidance observation scenarios (g1–g8)
+
+`tests/scenarios/guidance-inputs.json` and `tests/scenarios/guidance-observer.json` supply tracked assets for the eight behavioral dimensions defined in [docs/MEMORY-GUIDANCE.md](MEMORY-GUIDANCE.md):
+
+- `g1`: Routine short answers do not make routine `nunc_memory_read` or `nunc_memory_patch` calls. Active session tools explicitly expose `nunc_memory_*`; zero calls without tool exposure fails.
+- `g2`: Key decisions and recovery checkpoints save concise, useful decisions and rationale while preserving exact error identifiers (`ERR_SCHEMA_V2`), port (`5433`), and commands (`run-migration --v1`); bloated transcript dumps fail conciseness.
+- `g3`: Instruction correction updates or removes stale notes (port 8080 to 9090) while preserving still-valid notes (sqlite database).
+- `g4`: Multi-task interruptions and side queries preserve primary task obligations across turns without losing unfinished work.
+- `g5`: Accurately distinguishes implemented code, verified status, and user acceptance. Feature is not marked verified before `python3 verify.py` succeeds, and user acceptance is not claimed without explicit user confirmation.
+- `g6`: Split-turn execution preserves the next actionable step and respects ordering and wait conditions (e.g. lock file / service readiness dependencies) before proceeding with dependent actions.
+- `g7` (variants `conflict` and `unconfirmed`):
+  - `g7/conflict`: Tests real revision conflict handling. A real session revision change is injected between read and patch, triggering Nunc's native `conflict` error. The agent must re-read memory and reconcile before retrying; retrying with a stale revision fails.
+  - `g7/unconfirmed`: Tests real unconfirmed save handling. A temporary I/O append failure marks the session unconfirmed. The agent must not automatically replay the unconfirmed save.
+- `g8` (variants `fits-required` and `required-too-large`):
+  - `g8/fits-required`: Verifies budget competition where marked `required` items fit within limit and are jointly retained without silent omission.
+  - `g8/required-too-large`: Verifies that an oversized necessary set cleanly triggers required `CAPACITY` failure rather than silent dropping or invalid/CONFIG errors, and subsequent recovery binds the failure.
+
+Guidance scenarios authorize OpenRouter `google/gemini-3.8-flash` only (`openrouter` provider); OpenAI Astra and non-Gemini models are rejected before execution. Use `examples/guidance-selection.json` as a nonsecret template:
+
+```sh
+# Preflight without model calls or side effects:
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  /opt/homebrew/bin/node scripts/verify-live.mjs --preflight < examples/guidance-selection.json
+
+# Execute the guidance observation scenarios:
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  /opt/homebrew/bin/node scripts/verify-live.mjs < examples/guidance-selection.json
+```
 
 Reports record resolved nonsecret defaults, named override differences, call/token/time and known/unknown costs, usage/cache usage, budgets/omissions, tool actions/artifacts, native session/lifecycle observations and limitations. Artifact checks require real files and setup prerequisites; semantic criteria remain independent judgments. `OBSERVED` establishes completed mechanical observations only. Real-model continuation, policy effectiveness and final integrated acceptance require downstream evidence.
 

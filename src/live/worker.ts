@@ -125,7 +125,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   let pendingAdmission: any;
   report.rollovers = []; report.requests = []; report.preparations = [];
   const boundaryControl = observer.controls.find(c => c.action === "rollover_at_tool_boundary");
-  const boundary = boundaryControl ? { control: boundaryControl, requestText: scenario.turns.find(t => t.id === boundaryControl.duringTurn)!.text, fixtureContent: scenario.files[boundaryControl.trigger!.pathArgument]! } : undefined;
+  const boundary = boundaryControl ? { control: boundaryControl, requestText: scenario.turns.find(t => t.id === boundaryControl.duringTurn)!.text, fixtureContent: scenario.files[boundaryControl.trigger!.pathArgument!]! } : undefined;
+  const guidanceControls = observer.controls
+    ?.filter(c => c.action === "revision_conflict" || c.action === "unconfirmed_save")
+    .map(c => ({ action: c.action as "revision_conflict" | "unconfirmed_save", turn: c.duringTurn ?? c.afterTurn, trigger: c.trigger }));
   const targetRepository = group === "native" ? undefined : input.comparison?.targets[group].repository ?? input.target.repository;
   const prepare = async (branch: SessionEntry[], active: SessionEntry[], control: typeof observer.controls[number], trigger?: Parameters<typeof prepareBoundary>[0]["trigger"]) => {
     const result = await prepareBoundary({ branch, active, control, turns, turnOrder: scenario.turns.map(t => t.id), config: runConfig,
@@ -162,11 +165,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
       boundary, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
+      ...(guidanceControls?.length ? { guidanceControls } : {}),
       onBoundary: async data => {
         try {
           boundaryRestoreConfig = structuredClone(runConfig);
           const result = await prepare(data.branch, data.active, boundaryControl!, { callId: data.triggerId, requestText: boundary!.requestText,
-            path: boundaryControl!.trigger!.pathArgument, cwd: join(caseRoot, "task"), fixtureContent: boundary!.fixtureContent, contextTokens: data.usage?.tokens ?? null });
+            path: boundaryControl!.trigger!.pathArgument!, cwd: join(caseRoot, "task"), fixtureContent: boundary!.fixtureContent, contextTokens: data.usage?.tokens ?? null });
           await runtime!.releaseBoundary({ firstKeptEntryId: result.firstKeptEntryId });
         } catch (error) {
           const failure = error instanceof Error ? error.message : "Boundary preparation failed";
@@ -230,7 +234,24 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         const row = report.rollovers!.at(-1); if (row && result) row.result = JSON.parse(JSON.stringify(result)); },
       onMaintenanceResponse: data => { if (object(data)) maintenanceResponses.push(data as any); },
       onContext: (model, context, kind) => report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context }),
-      onAction: event => report.actions.push({ turn, event }),
+      onAction: event => {
+        report.actions.push({ turn, event });
+        if (object(event) && (event as any).type === "lifecycle" && (event as any).phase === "session-tools" && (event as any).memoryToolsExposed === true) {
+          if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {
+            report.prerequisites.push({ check: "memory tools exposed in session", status: "PROVEN", observed: { activeTools: (event as any).activeTools } });
+          }
+        }
+        if (object(event) && (event as any).type === "lifecycle" && (event as any).phase === "revision-conflict-injected") {
+          if (!report.prerequisites.some(p => p.check === "actual revision conflict triggered on nunc_memory_patch")) {
+            report.prerequisites.push({ check: "actual revision conflict triggered on nunc_memory_patch", status: "PROVEN" });
+          }
+        }
+        if (object(event) && (event as any).type === "lifecycle" && (event as any).phase === "unconfirmed-injected") {
+          if (!report.prerequisites.some(p => p.check === "actual unconfirmed save triggered on nunc_memory_patch")) {
+            report.prerequisites.push({ check: "actual unconfirmed save triggered on nunc_memory_patch", status: "PROVEN" });
+          }
+        }
+      },
     });
     report.pid = runtime.pid ?? process.pid;
     const session = runtime.session, sm = session.sessionManager;
@@ -496,6 +517,31 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     }
     if (selection.id === "e2") {
       report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts, report.actions, join(caseRoot, "task"), scenario.files["probe.json"], group === "native" ? report.rollovers : undefined);
+    }
+    if (selection.id.startsWith("g")) {
+      if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {
+        const memExposed = report.actions.some(a => object(a) && object((a as any).event) && (a as any).event.type === "lifecycle" && (a as any).event.phase === "session-tools" && (a as any).event.memoryToolsExposed === true);
+        report.prerequisites.push({ check: "memory tools exposed in session", status: memExposed ? "PROVEN" : "UNPROVEN", ...(memExposed ? {} : { reason: "nunc_memory_* tools were not exposed" }) });
+      }
+      if (selection.id === "g7") {
+        const isConflict = selection.variant === undefined || selection.variant === "conflict";
+        const isUnconfirmed = selection.variant === "unconfirmed";
+        if (isConflict && !report.prerequisites.some(p => p.check.includes("conflict"))) {
+          report.prerequisites.push({ check: "actual revision conflict triggered on nunc_memory_patch", status: "UNPROVEN", reason: "No conflict premise observed" });
+        }
+        if (isUnconfirmed && !report.prerequisites.some(p => p.check.includes("unconfirmed"))) {
+          report.prerequisites.push({ check: "actual unconfirmed save triggered on nunc_memory_patch", status: "UNPROVEN", reason: "No unconfirmed premise observed" });
+        }
+      }
+      if (selection.id === "g8") {
+        const variant = selection.variant === "required-too-large" ? "required-too-large" : "fits-required";
+        const memEntries = sm.buildContextEntries();
+        const projected = project(memEntries);
+        if (report.maintenance.length > 0) {
+          const qual = qualifyCapacity(variant, projected.memory, report.maintenance[0] as MaintenanceResult | undefined, report.contexts.map(c => c.context), maintenanceResponses, firstModel.id);
+          report.prerequisites.push(...qual);
+        }
+      }
     }
     const scoreContext = { actions: report.actions, requireVerificationReceipt: true };
     if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);

@@ -1,0 +1,174 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "id": "g1",
+      "files": {
+        "reference.txt": "CACHE_BUFFER_SIZE = 4096\nMAX_CONCURRENT_STREAMS = 64\nDEFAULT_TIMEOUT_MS = 5000\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Read reference.txt and explain what CACHE_BUFFER_SIZE represents. Provide a direct answer without inspecting or modifying working memory."
+        }
+      ]
+    },
+    {
+      "id": "g2",
+      "files": {
+        "diagnostics.json": "{\n  \"service\": \"billing-pipeline\",\n  \"observedError\": \"ERR_SCHEMA_V2\",\n  \"port\": 5433,\n  \"options\": [\n    { \"route\": \"migration-v2\", \"status\": \"blocked\", \"reason\": \"ERR_SCHEMA_V2 incompatible with port 5433\" },\n    { \"route\": \"pipeline-v1-fallback\", \"status\": \"available\", \"command\": \"run-migration --v1 --port 5433\" }\n  ]\n}\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Inspect diagnostics.json. Decide on the viable recovery route, record the key decision with its distinguishing error ERR_SCHEMA_V2, port 5433, and recovery command run-migration --v1 into working memory concisely, then prepare the next recovery step."
+        }
+      ]
+    },
+    {
+      "id": "g3",
+      "files": {
+        "config.json": "{\n  \"port\": 8080,\n  \"database\": \"sqlite\"\n}\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Read config.json and save initial notes in working memory: one note for the port setting (8080) and one note for the database engine (sqlite)."
+        },
+        {
+          "id": "b",
+          "text": "Change of requirement: update the port setting to 9090. The database engine remains sqlite. Update working memory to reflect this change while retaining still-valid notes."
+        }
+      ]
+    },
+    {
+      "id": "g4",
+      "files": {
+        "obligations.txt": "Project Deliverables:\n1. Implement authentication token rotation\n2. Add rate limiting middleware\n3. Execute regression security suite\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Read obligations.txt and record the three deliverables in working memory."
+        },
+        {
+          "id": "b",
+          "text": "Quick question: what does HTTP 429 status code mean?"
+        },
+        {
+          "id": "c",
+          "text": "Now return to the deliverables. Confirm the unfinished obligations from working memory."
+        }
+      ]
+    },
+    {
+      "id": "g5",
+      "files": {
+        "solution.py": "def double(x):\n    return x * 2\n",
+        "verify.py": "import sys, os\nif os.path.exists('solution.py') and 'return x * 2' in open('solution.py').read():\n    open('verified.json', 'w').write('{\"verified\": true}')\n    print('VERIFIED')\n    sys.exit(0)\nsys.exit(1)\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Check solution.py. Record in working memory that double is implemented, but explicitly unverified since tests have not run yet. Do not execute verification yet."
+        },
+        {
+          "id": "b",
+          "text": "Now run python3 verify.py. After verification succeeds, update working memory to mark the feature verified, but pending user acceptance."
+        }
+      ]
+    },
+    {
+      "id": "g6",
+      "files": {
+        "status.json": "{\n  \"deployLock\": true,\n  \"lockFile\": \"deploy.lock\",\n  \"serviceReady\": false\n}\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Inspect status.json. If deployLock is active, record the wait condition and lockFile dependency in working memory and do not trigger deployment."
+        },
+        {
+          "id": "b",
+          "text": "The deploy lock is now cleared. Verify the precondition before triggering final deployment."
+        }
+      ]
+    },
+    {
+      "id": "g7",
+      "files": {
+        "notes.txt": "Initial deployment checklist item 1: run schema migration\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Inspect working memory using nunc_memory_read, then save the deployment checklist item from notes.txt into working memory."
+        }
+      ],
+      "variants": [
+        {
+          "id": "conflict",
+          "files": {
+            "notes.txt": "Initial deployment checklist item 1: run schema migration\n"
+          },
+          "turns": [
+            {
+              "id": "a",
+              "text": "Inspect working memory using nunc_memory_read, then save the deployment checklist item from notes.txt into working memory."
+            }
+          ]
+        },
+        {
+          "id": "unconfirmed",
+          "files": {
+            "notes.txt": "Initial deployment checklist item 1: run schema migration\n"
+          },
+          "turns": [
+            {
+              "id": "a",
+              "text": "Inspect working memory using nunc_memory_read, then save the deployment checklist item from notes.txt into working memory."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g8",
+      "files": {
+        "items.json": "{\n  \"necessary\": [\n    { \"key\": \"n1\", \"text\": \"Critical database connection pool sizing: minimum 10, maximum 50 with keepalive timeout 30s.\" }\n  ],\n  \"optional\": [\n    { \"key\": \"o1\", \"text\": \"Optional telemetry export buffer hint.\" }\n  ]\n}\n"
+      },
+      "turns": [
+        {
+          "id": "a",
+          "text": "Read items.json. Save the necessary configuration in memory under budget constraints, ensuring necessary items are marked required."
+        }
+      ],
+      "variants": [
+        {
+          "id": "fits-required",
+          "files": {
+            "items.json": "{\n  \"necessary\": [\n    { \"key\": \"n1\", \"text\": \"Critical database connection pool sizing: minimum 10, maximum 50 with keepalive timeout 30s.\" }\n  ],\n  \"optional\": [\n    { \"key\": \"o1\", \"text\": \"Optional telemetry export buffer hint.\" }\n  ]\n}\n"
+          },
+          "turns": [
+            {
+              "id": "a",
+              "text": "Read items.json. Save the necessary configuration in memory under budget constraints, ensuring necessary items are marked required."
+            }
+          ]
+        },
+        {
+          "id": "required-too-large",
+          "files": {
+            "items.json": "{\n  \"necessary\": [\n    { \"key\": \"n1\", \"text\": \"Massive necessary enterprise cluster security policy specification that exceeds single-envelope allocation limit...\" }\n  ],\n  \"optional\": [\n    { \"key\": \"o1\", \"text\": \"Small optional note.\" }\n  ]\n}\n"
+          },
+          "turns": [
+            {
+              "id": "a",
+              "text": "Read items.json. Save the necessary configuration in memory under budget constraints, ensuring necessary items are marked required."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

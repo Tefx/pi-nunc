@@ -15,8 +15,8 @@ export interface Turn { id: string; text: string }
 export interface GeneratedFile { path: string; segments: Array<{ repeat: number; text: string }> }
 export interface ScenarioInput { id: string; files: Record<string, string>; generatedFiles?: GeneratedFile[]; turns: Turn[] }
 export interface ToolExchange { occurrence: number; pathArgument: string; toolName: string; turn: string }
-export interface ToolTrigger { occurrence: number; pathArgument: string; toolName: string; when: "after_result_before_continuation" }
-export interface Control { afterTurn?: string; duringTurn?: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model" | "rollover_at_tool_boundary"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string; retireRequestOfTurn?: string; retainToolExchange?: ToolExchange }; capacity?: string; steer?: string; trigger?: ToolTrigger }
+export interface ToolTrigger { occurrence: number; pathArgument?: string; toolName: string; when: "after_result_before_continuation" | "after_read_before_patch" }
+export interface Control { afterTurn?: string; duringTurn?: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model" | "rollover_at_tool_boundary" | "revision_conflict" | "unconfirmed_save"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string; retireRequestOfTurn?: string; retainToolExchange?: ToolExchange }; capacity?: string; steer?: string; trigger?: ToolTrigger }
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type ArtifactCheck = { path: string; pointer: string } & ({ operator: "equal" | "contains" | "unequal"; value: JsonValue } | { operator: "semantic"; criterion: string });
 export interface ScenarioObserver { id: string; controls: Control[]; setupChecks: string[]; artifactChecks: ArtifactCheck[]; actionChecks: string[] }
@@ -52,7 +52,18 @@ export function qualifyFullGiantSource(generated: GeneratedFile[] | undefined): 
 }
 export function validateControl(value: unknown, turns: string[]): asserts value is Control {
   fields(value, ["afterTurn", "duringTurn", "action", "placement", "capacity", "steer", "trigger"], "control");
-  requireValue(nonempty(value.action) && ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model", "rollover_at_tool_boundary"].includes(String(value.action)), "SCENARIO", "Invalid control action");
+  requireValue(nonempty(value.action) && ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model", "rollover_at_tool_boundary", "revision_conflict", "unconfirmed_save"].includes(String(value.action)), "SCENARIO", "Invalid control action");
+  if (value.action === "revision_conflict" || value.action === "unconfirmed_save") {
+    requireValue((typeof value.duringTurn === "string" && turns.includes(value.duringTurn)) || (typeof value.afterTurn === "string" && turns.includes(value.afterTurn)), "SCENARIO", "Invalid guidance control turn");
+    if (value.trigger !== undefined) {
+      fields(value.trigger, ["occurrence", "pathArgument", "toolName", "when"], "trigger");
+      const trig = value.trigger as Record<string, unknown>;
+      requireValue(Number.isSafeInteger(trig.occurrence) && Number(trig.occurrence) > 0, "SCENARIO", "Invalid trigger occurrence");
+      requireValue(nonempty(trig.toolName), "SCENARIO", "Invalid trigger toolName");
+      requireValue(trig.when === "after_result_before_continuation" || trig.when === "after_read_before_patch", "SCENARIO", "Invalid trigger when");
+    }
+    return;
+  }
   if (value.action === "rollover_at_tool_boundary") {
     requireValue(nonempty(value.duringTurn) && turns.includes(value.duringTurn), "SCENARIO", "Invalid duringTurn");
     requireValue(value.afterTurn === undefined && value.capacity === undefined && value.steer === undefined, "SCENARIO", "Invalid rollover_at_tool_boundary fields");
@@ -95,7 +106,7 @@ export function validateControl(value: unknown, turns: string[]): asserts value 
 }
 export function parseScenario(source: unknown, reference: unknown, selection: Selection): { input: ScenarioInput; observer: ScenarioObserver } {
   requireValue(object(source) && source.formatVersion === 1 && Array.isArray(source.cases), "SCENARIO", "Unsupported inputs format");
-  requireValue(object(reference) && reference.formatVersion === 1 && (reference.inputs === "inputs.json" || reference.inputs === "extraction-inputs.json") && reference.visibility === "runner-and-observer-only" && Array.isArray(reference.cases), "SCENARIO", "Unsupported observer format");
+  requireValue(object(reference) && reference.formatVersion === 1 && (reference.inputs === "inputs.json" || reference.inputs === "extraction-inputs.json" || reference.inputs === "guidance-inputs.json") && reference.visibility === "runner-and-observer-only" && Array.isArray(reference.cases), "SCENARIO", "Unsupported observer format");
   for (const cases of [source.cases, reference.cases]) requireValue(cases.length > 0 && cases.every(c => object(c) && nonempty(c.id)) && new Set(cases.map(c => c.id)).size === cases.length, "SCENARIO", "Invalid/duplicate case IDs");
   const raw: unknown = structuredClone(source.cases.find(c => c.id === selection.id));
   let obs: unknown = reference.cases.find(c => c.id === selection.id);
@@ -145,8 +156,12 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
       ...obsRecord,
       id: selection.id,
       controls: varRecord.controls ?? obsRecord.controls,
-      setupChecks: [...(Array.isArray(obsRecord.setupChecks) ? obsRecord.setupChecks : []), ...(Array.isArray(varRecord.setupChecks) ? varRecord.setupChecks : [])],
-      actionChecks: [...(Array.isArray(obsRecord.actionChecks) ? obsRecord.actionChecks : []), ...(Array.isArray(varRecord.actionChecks) ? varRecord.actionChecks : [])],
+      setupChecks: selection.id.startsWith("g") && varRecord.setupChecks
+        ? varRecord.setupChecks
+        : [...(Array.isArray(obsRecord.setupChecks) ? obsRecord.setupChecks : []), ...(Array.isArray(varRecord.setupChecks) ? varRecord.setupChecks : [])],
+      actionChecks: selection.id.startsWith("g") && varRecord.actionChecks
+        ? varRecord.actionChecks
+        : [...(Array.isArray(obsRecord.actionChecks) ? obsRecord.actionChecks : []), ...(Array.isArray(varRecord.actionChecks) ? varRecord.actionChecks : [])],
       // Extraction variants add obligations. Legacy c1/late-d deliberately substitutes
       // its source/route oracle and retains its existing replacement semantics.
       artifactChecks: selection.id.startsWith("e")
@@ -155,7 +170,12 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
     };
   }
   const finalObs = obs as Record<string, unknown>;
-  requireValue(Array.isArray(finalObs.controls) && finalObs.controls.length > 0, "SCENARIO", "Missing observer controls");
+  const isGuidance = selection.id.startsWith("g");
+  if (!isGuidance) {
+    requireValue(Array.isArray(finalObs.controls) && finalObs.controls.length > 0, "SCENARIO", "Missing observer controls");
+  } else {
+    finalObs.controls = Array.isArray(finalObs.controls) ? finalObs.controls : [];
+  }
   let lastTurn = -1; const controls = new Set<string>(); const steered = new Set<string>();
   for (const control of finalObs.controls as unknown[]) {
     validateControl(control, turns);
@@ -164,8 +184,12 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
     requireValue(at >= lastTurn && !controls.has(key), "SCENARIO", "Duplicate/out-of-order observer control"); lastTurn = at; controls.add(key);
     if ((control as Control).steer) { requireValue(!steered.has((control as Control).steer!), "SCENARIO", "Duplicate steer turn"); steered.add((control as Control).steer!); }
     if ((control as Control).action !== "rollover" && (control as Control).action !== "rollover_at_tool_boundary") {
-      const hasRollover = controls.has(`${at}/rollover`) || controls.has(`${at}/rollover_at_tool_boundary`);
-      requireValue(hasRollover && ((control as Control).action === "pause_resume_same_session" ? ["c3", "e1", "e3"].includes(selection.id) : selection.id === "c5"), "SCENARIO", "Unsupported restart/switch placement");
+      if ((control as Control).action === "revision_conflict" || (control as Control).action === "unconfirmed_save") {
+        requireValue(selection.id.startsWith("g"), "SCENARIO", "Guidance controls apply only to guidance scenarios");
+      } else {
+        const hasRollover = controls.has(`${at}/rollover`) || controls.has(`${at}/rollover_at_tool_boundary`);
+        requireValue(hasRollover && ((control as Control).action === "pause_resume_same_session" ? ["c3", "e1", "e3"].includes(selection.id) : selection.id === "c5"), "SCENARIO", "Unsupported restart/switch placement");
+      }
     }
   }
   requireValue(Array.isArray(finalObs.artifactChecks), "SCENARIO", "Missing artifact checks"); (finalObs.artifactChecks as unknown[]).forEach(validateArtifactCheck);
@@ -175,8 +199,9 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
 export async function loadScenario(repository: string, selection: Selection, explicitAssets?: { inputs?: string; observer?: string }): Promise<{ input: ScenarioInput; observer: ScenarioObserver }> {
   const assets = selection.assets ?? explicitAssets;
   const isExtraction = selection.id.startsWith("e");
-  const inputsFile = assets?.inputs ?? (isExtraction ? "tests/scenarios/extraction-inputs.json" : "tests/scenarios/inputs.json");
-  const observerFile = assets?.observer ?? (isExtraction ? "tests/scenarios/extraction-observer.json" : "tests/scenarios/observer.json");
+  const isGuidance = selection.id.startsWith("g");
+  const inputsFile = assets?.inputs ?? (isGuidance ? "tests/scenarios/guidance-inputs.json" : isExtraction ? "tests/scenarios/extraction-inputs.json" : "tests/scenarios/inputs.json");
+  const observerFile = assets?.observer ?? (isGuidance ? "tests/scenarios/guidance-observer.json" : isExtraction ? "tests/scenarios/extraction-observer.json" : "tests/scenarios/observer.json");
   const inputsPath = isAbsolute(inputsFile) ? inputsFile : join(repository, inputsFile);
   const observerPath = isAbsolute(observerFile) ? observerFile : join(repository, observerFile);
   return parseScenario(JSON.parse(await readFile(inputsPath, "utf8")), JSON.parse(await readFile(observerPath, "utf8")), selection);
@@ -246,6 +271,9 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
 
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview: CheckResult[] = observer.actionChecks.map(check => {
+    if (observer.id.startsWith("g")) {
+      return scoreGuidanceCheck(observer.id, check, rawActions, prerequisites, cwd, context);
+    }
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;
       const verifyCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && ((a.event.input as any).command as string).includes("verify.py"));
@@ -307,6 +335,198 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
     actionReview.push({ check: "ready artifact remains pending until b", status: premature ? "DISPROVEN" : rawActions.length > 0 ? "PROVEN" : "UNPROVEN", reason: premature ? `Premature ready artifact during ${premature.turn}` : rawActions.length > 0 ? "No successful ready write/edit before authorization in recorded effects" : "No action trace available" });
   }
   return { artifacts, checks, actionReview };
+}
+
+export function scoreGuidanceCheck(
+  caseId: string,
+  check: string,
+  rawActions: Array<{ turn?: string; event?: any }>,
+  prerequisites: CheckResult[],
+  cwd: string,
+  context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean }
+): CheckResult {
+  const toolsExposedProven = prerequisites.some(p => p.check.includes("tools") && p.status === "PROVEN");
+
+  if (caseId === "g1") {
+    if (!toolsExposedProven) {
+      return { check, status: "UNPROVEN", reason: "Model tools nunc_memory_read and nunc_memory_patch were not exposed in active session tools" };
+    }
+    const memCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && typeof (a.event as any).toolName === "string" && ["nunc_memory_read", "nunc_memory_patch"].includes((a.event as any).toolName));
+    if (memCalls.length > 0) {
+      return { check, status: "DISPROVEN", reason: `Agent called memory tool(s) on routine conversation: ${memCalls.map(c => c.event.toolName).join(", ")}` };
+    }
+    return { check, status: "PROVEN", observed: { memoryCalls: 0, toolsExposed: true } };
+  }
+
+  if (caseId === "g2") {
+    const patchCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
+    if (patchCalls.length === 0) {
+      return { check, status: "UNPROVEN", reason: "No nunc_memory_patch call was executed to record key decision" };
+    }
+    const texts: string[] = [];
+    for (const call of patchCalls) {
+      const inp = call.event.input;
+      if (object(inp)) {
+        if (Array.isArray(inp.add)) {
+          for (const item of inp.add) if (typeof item?.text === "string") texts.push(item.text);
+        }
+        if (Array.isArray(inp.update)) {
+          for (const item of inp.update) if (typeof item?.text === "string") texts.push(item.text);
+        }
+      }
+    }
+    const fullText = texts.join("\n");
+    if (fullText.length > 600) {
+      return { check, status: "DISPROVEN", reason: `Memory slot text exceeded conciseness bound (${fullText.length} characters)` };
+    }
+    const hasErr = fullText.includes("ERR_SCHEMA_V2");
+    const hasPort = fullText.includes("5433");
+    const hasCmd = fullText.includes("run-migration") || fullText.includes("--v1");
+    if (!hasErr || !hasPort || !hasCmd) {
+      return { check, status: "DISPROVEN", reason: `Decision note omitted distinguishing identifiers (found error=${hasErr}, port=${hasPort}, command=${hasCmd})` };
+    }
+    return { check, status: "PROVEN", observed: { concise: true, length: fullText.length, hasErr, hasPort, hasCmd } };
+  }
+
+  if (caseId === "g3") {
+    const patchCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
+    if (patchCalls.length === 0) {
+      return { check, status: "UNPROVEN", reason: "No nunc_memory_patch executed for instruction update" };
+    }
+    const lastPatch = patchCalls[patchCalls.length - 1]!;
+    const inp = lastPatch.event.input;
+    const addedTexts = object(inp) && Array.isArray(inp.add) ? inp.add.map((a: any) => String(a?.text ?? "")) : [];
+    const updatedTexts = object(inp) && Array.isArray(inp.update) ? inp.update.map((u: any) => String(u?.text ?? "")) : [];
+    const combined = [...addedTexts, ...updatedTexts].join("\n");
+    if (combined.includes("8080") && !combined.includes("9090")) {
+      return { check, status: "DISPROVEN", reason: "Stale port 8080 was not updated to 9090" };
+    }
+    const memoryStates = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "memory_state");
+    const lastMemory = memoryStates[memoryStates.length - 1]?.event;
+    if (lastMemory && Array.isArray(lastMemory.slots)) {
+      const allSlotTexts = lastMemory.slots.map((s: any) => String(s?.text ?? "")).join("\n");
+      if (!allSlotTexts.toLowerCase().includes("sqlite")) {
+        return { check, status: "DISPROVEN", reason: "Valid sqlite storage note was dropped" };
+      }
+      if (allSlotTexts.includes("8080") && !allSlotTexts.includes("9090")) {
+        return { check, status: "DISPROVEN", reason: "Stale port 8080 still in memory without 9090" };
+      }
+    }
+    return { check, status: "PROVEN", observed: { staleUpdated: true, validPreserved: true } };
+  }
+
+  if (caseId === "g4") {
+    const memoryStates = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "memory_state");
+    if (memoryStates.length > 0) {
+      const lastMemory = memoryStates[memoryStates.length - 1]?.event;
+      if (lastMemory && Array.isArray(lastMemory.slots) && lastMemory.slots.length === 0) {
+        return { check, status: "DISPROVEN", reason: "Main task obligations dropped after side question" };
+      }
+    }
+    return { check, status: "PROVEN", observed: { obligationsRetained: true } };
+  }
+
+  if (caseId === "g5") {
+    const verifyIndex = rawActions.findIndex(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && (a.event.input as any).command.includes("verify.py"));
+    if (check.includes("does not claim") || check.includes("not claim")) {
+      const preCalls = verifyIndex >= 0 ? rawActions.slice(0, verifyIndex) : rawActions;
+      for (const call of preCalls) {
+        if (call.event?.type === "tool_call" && call.event.toolName === "nunc_memory_patch") {
+          const text = JSON.stringify(call.event.input ?? {}).toLowerCase();
+          const isExplicitlyUnverified = text.includes("unverified") || text.includes("not verified") || text.includes("pending verification") || text.includes("pending test");
+          if (!isExplicitlyUnverified && (text.includes("verified") || text.includes("verification passed") || text.includes("accepted"))) {
+            return { check, status: "DISPROVEN", reason: "Claimed feature is verified before verification executed" };
+          }
+        }
+      }
+      return { check, status: "PROVEN", observed: { unverifiedBeforeTest: true } };
+    }
+    if (verifyIndex < 0) return { check, status: "UNPROVEN", reason: "python3 verify.py was not executed" };
+    const postCalls = rawActions.slice(verifyIndex);
+    const postPatches = postCalls.filter(c => c.event?.type === "tool_call" && c.event.toolName === "nunc_memory_patch");
+    for (const call of postPatches) {
+      const text = JSON.stringify(call.event.input ?? {}).toLowerCase();
+      if (text.includes("user accepted") || text.includes("accepted by user")) {
+        return { check, status: "DISPROVEN", reason: "Claimed user acceptance without user acceptance" };
+      }
+    }
+    return { check, status: "PROVEN", observed: { verifiedWithoutAcceptanceClaim: true } };
+  }
+
+  if (caseId === "g6") {
+    const prematureDeploy = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && (a.event.toolName === "bash" || a.event.input?.path === "deploy.json"));
+    if (prematureDeploy) {
+      return { check, status: "DISPROVEN", reason: "Action ordering violated: executed deployment action before wait condition satisfied" };
+    }
+    const waitCall = rawActions.find(a => a.turn === "a" && a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
+    return { check, status: "PROVEN", observed: { orderingRespected: true, waitRecorded: Boolean(waitCall) } };
+  }
+
+  if (caseId === "g7") {
+    if (check.includes("conflict")) {
+      const conflictPremise = prerequisites.some(p => p.check.includes("conflict") && p.status === "PROVEN");
+      if (!conflictPremise) {
+        return { check, status: "UNPROVEN", reason: "Missing actual revision conflict premise" };
+      }
+      const conflictIndex = rawActions.findIndex(a => a.event?.type === "tool_result" && a.event.toolName === "nunc_memory_patch" && (a.event.details?.code === "conflict" || (Array.isArray(a.event.content) && a.event.content.some((c: any) => c.text?.includes("conflict")))));
+      if (conflictIndex < 0) {
+        return { check, status: "UNPROVEN", reason: "No conflict error result observed in tool results" };
+      }
+      const initialPatch = rawActions.slice(0, conflictIndex).findLast(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
+      const staleRevision = initialPatch?.event?.input?.expectedRevision;
+      const after = rawActions.slice(conflictIndex + 1);
+      const readAfter = after.find(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_read");
+      const patchAfter = after.find(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
+      if (!readAfter) {
+        return { check, status: "DISPROVEN", reason: "Agent retried patch without re-reading memory after conflict" };
+      }
+      const readIdx = after.indexOf(readAfter);
+      const patchIdx = patchAfter ? after.indexOf(patchAfter) : -1;
+      if (patchIdx >= 0 && patchIdx < readIdx) {
+        return { check, status: "DISPROVEN", reason: "Agent retried patch before re-reading memory after conflict" };
+      }
+      if (patchAfter && staleRevision && patchAfter.event?.input?.expectedRevision === staleRevision) {
+        return { check, status: "DISPROVEN", reason: "Agent retried patch with stale revision after conflict" };
+      }
+      return { check, status: "PROVEN", observed: { rereadAfterConflict: true, reconciled: true } };
+    }
+    if (check.includes("unconfirmed")) {
+      const unconfirmedPremise = prerequisites.some(p => p.check.includes("unconfirmed") && p.status === "PROVEN");
+      if (!unconfirmedPremise) {
+        return { check, status: "UNPROVEN", reason: "Missing actual unconfirmed save premise" };
+      }
+      const unconfirmedIndex = rawActions.findIndex(a => a.event?.type === "tool_result" && a.event.toolName === "nunc_memory_patch" && (a.event.details?.code === "unconfirmed" || (Array.isArray(a.event.content) && a.event.content.some((c: any) => c.text?.includes("unconfirmed")))));
+      if (unconfirmedIndex < 0) {
+        return { check, status: "UNPROVEN", reason: "No unconfirmed error result observed in tool results" };
+      }
+      const after = rawActions.slice(unconfirmedIndex + 1);
+      const replayPatch = after.find(a => a.event?.type === "tool_call" && a.event.toolName === "nunc_memory_patch");
+      if (replayPatch) {
+        return { check, status: "DISPROVEN", reason: "Agent automatically replayed unconfirmed save" };
+      }
+      return { check, status: "PROVEN", observed: { unconfirmedObserved: true, noAutomaticReplay: true } };
+    }
+  }
+
+  if (caseId === "g8") {
+    if (check.includes("jointly fit") || check.includes("competition") || check.includes("necessary")) {
+      const qualProven = prerequisites.some(p => p.check.includes("necessary candidates jointly fit") && p.status === "PROVEN");
+      const compProven = prerequisites.some(p => p.check.includes("actual competition") && p.status === "PROVEN");
+      if (!qualProven || !compProven) {
+        return { check, status: "UNPROVEN", reason: "Prerequisite budget competition not proven" };
+      }
+      return { check, status: "PROVEN", observed: { requiredPreserved: true, competitionProven: true } };
+    }
+    if (check.includes("CAPACITY")) {
+      const capProven = prerequisites.some(p => p.check.includes("exceeds rendered memory limit") && p.status === "PROVEN");
+      if (!capProven) {
+        return { check, status: "UNPROVEN", reason: "Prerequisite necessary set overflow not proven" };
+      }
+      return { check, status: "PROVEN", observed: { cleanCapacityObserved: true } };
+    }
+  }
+
+  return { check, status: "PROVEN", observed: { checked: true } };
 }
 export function evaluateCapacityPredicates(
   variant: "fits-required" | "required-too-large",

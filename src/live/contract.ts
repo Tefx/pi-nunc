@@ -53,7 +53,7 @@ export interface Limits { maxCalls: number | null; maxTotalTokens: number | null
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout"; config: RunConfig; assets?: ScenarioAssets }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string }
@@ -132,16 +132,24 @@ export function parseInput(value: unknown, execution = false): RunInput {
   requireValue(Number(value.limits.maxDurationMs) <= 86400000 && (value.limits.maxCostUsd === null || typeof value.limits.maxCostUsd === "number" && Number.isFinite(value.limits.maxCostUsd) && value.limits.maxCostUsd > 0), "LIMIT", "Invalid time/cost ceiling");
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
+  const isGuidance = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("g"));
   for (const model of value.models) {
     keys(model, ["provider", "id", "contextWindow", "maxTokens", "baseUrl"], "model");
     requireValue(text(model.provider) && text(model.id) && positive(model.contextWindow) && positive(model.maxTokens) && text(model.baseUrl), "MODEL", "Authorize provider/id with native capacity and endpoint");
+    if (isGuidance) {
+      const id = String(model.id).toLowerCase();
+      const provider = String(model.provider).toLowerCase();
+      const isForbidden = id.includes("astra") || provider === "openai-codex" || id.includes("codex");
+      const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden;
+      requireValue(!isForbidden && isGemini, "MODEL", "Guidance scenarios authorize OpenRouter google/gemini-3.8-flash only; Astra and non-Gemini models are forbidden");
+    }
     const key = `${model.provider}/${model.id}`; requireValue(!modelKeys.has(key), "MODEL", "Duplicate model"); modelKeys.add(key);
   }
   requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0, "SCENARIO", "Nonempty scenario selection required");
   const ids = new Set<string>();
   for (const selection of value.scenarios) {
     keys(selection, ["id", "variant", "config", "assets"], "scenario");
-    requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
+    requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
     if (selection.id === "c4") {
       requireValue(["full", "capacity"].includes(String(selection.variant)), "SCENARIO", "c4 requires full/capacity");
     } else if (selection.id === "c1") {
@@ -150,6 +158,10 @@ export function parseInput(value: unknown, execution = false): RunInput {
       requireValue(selection.variant === undefined || selection.variant === "archive-closeout", "SCENARIO", "e3 may select archive-closeout");
     } else if (selection.id === "e4") {
       requireValue(["fits-required", "required-too-large"].includes(String(selection.variant)), "SCENARIO", "e4 requires fits-required or required-too-large");
+    } else if (selection.id === "g7") {
+      requireValue(selection.variant === undefined || ["conflict", "unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g7 may select conflict or unconfirmed");
+    } else if (selection.id === "g8") {
+      requireValue(["fits-required", "required-too-large"].includes(String(selection.variant)), "SCENARIO", "g8 requires fits-required or required-too-large");
     } else {
       requireValue(selection.variant === undefined, "SCENARIO", `${selection.id} has no variant`);
     }

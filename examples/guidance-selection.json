@@ -1,0 +1,36 @@
+{
+  "target": {
+    "repository": "__CHECKOUT__",
+    "stateRoot": "__NEW_CANONICAL_TASK_ROOT__",
+    "cleanup": "retain"
+  },
+  "limits": {
+    "maxDurationMs": 180000,
+    "maxOutputTokens": 65536,
+    "maxCalls": 20,
+    "maxTotalTokens": 200000,
+    "maxCostUsd": null
+  },
+  "scenarios": [
+    { "id": "g1" },
+    { "id": "g2" },
+    { "id": "g3" },
+    { "id": "g4" },
+    { "id": "g5" },
+    { "id": "g6" },
+    { "id": "g7", "variant": "conflict" },
+    { "id": "g7", "variant": "unconfirmed" },
+    { "id": "g8", "variant": "fits-required" },
+    { "id": "g8", "variant": "required-too-large" }
+  ],
+  "overrides": [
+    {
+      "requirement": "gemini-live-observation",
+      "reason": "docs/MEMORY-GUIDANCE.md phase 3 behavioral evaluation",
+      "model": {
+        "provider": "openrouter",
+        "id": "google/gemini-3.8-flash"
+      }
+    }
+  ]
+}

@@ -1,11 +1,13 @@
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Control } from "./scenarios.js";
+import type { Control, ToolTrigger } from "./scenarios.js";
+import { memorySurface } from "../pi/manual.js";
+import { MANUAL_MEMORY_TYPE } from "../pi/projection.js";
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string }
+export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
 export function observerState(source: string): ObserverState | undefined { return states.get(source); }
@@ -30,7 +32,7 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string } };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; turn?: string; trigger?: ToolTrigger }> };
   const signal = AbortSignal.timeout(Math.max(1, binding.deadline - Date.now()));
   const log = (type: string, data: unknown) => appendFileSync(binding.events, JSON.stringify({ type, data }) + "\n", { mode: 0o600 });
   const ledger = new BudgetLedger(binding.ledger, binding.input.limits, binding.deadline, signal, binding.caseKey);
@@ -38,6 +40,10 @@ export default function observer(pi: ExtensionAPI): void {
   states.set(source, state);
   pi.on("session_start", (_event, ctx) => {
     state.ctx = ctx;
+    const activeTools = pi.getActiveTools();
+    const memoryToolsExposed = activeTools.includes("nunc_memory_read") && activeTools.includes("nunc_memory_patch");
+    state.memoryToolsExposed = memoryToolsExposed;
+    log("lifecycle", { phase: "session-tools", activeTools, memoryToolsExposed });
     for (const id of new Set(binding.models.map(m => m.provider))) {
       let base = ctx.modelRegistry.getProvider(id);
       requireValue(base, "MODEL", "Authorized native provider unavailable");
@@ -69,7 +75,13 @@ export default function observer(pi: ExtensionAPI): void {
   // The registry can wrap registered providers in models.json overlays, so object
   // identity alone cannot unwrap a prior decorator. Remove this registration at
   // public runtime teardown; the refreshed native registry remains auth/config owner.
-  pi.on("session_shutdown", () => { for (const id of new Set(binding.models.map(m => m.provider))) pi.unregisterProvider(id); });
+  pi.on("session_shutdown", () => {
+    if (state.unconfirmedFile) {
+      try { chmodSync(state.unconfirmedFile, 0o600); } catch { /* ignore */ }
+      delete state.unconfirmedFile;
+    }
+    for (const id of new Set(binding.models.map(m => m.provider))) pi.unregisterProvider(id);
+  });
   pi.events.on("nunc:maintenance", event => {
     log("maintenance", event);
     const result = object(event) && object(event.result) ? event.result : undefined;
@@ -144,7 +156,7 @@ export default function observer(pi: ExtensionAPI): void {
     await held;
   });
   pi.on("tool_call", async (event, ctx) => {
-    if (binding.boundary && !state.boundaryDone && event.toolName === binding.boundary.control.trigger?.toolName && typeof (event.input as any).path === "string" && resolve(binding.cwd, (event.input as any).path) === resolve(binding.cwd, binding.boundary.control.trigger.pathArgument)) {
+    if (binding.boundary && !state.boundaryDone && event.toolName === binding.boundary.control.trigger?.toolName && typeof (event.input as any).path === "string" && binding.boundary.control.trigger?.pathArgument && resolve(binding.cwd, (event.input as any).path) === resolve(binding.cwd, binding.boundary.control.trigger.pathArgument)) {
       const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
       const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
       if (text === binding.boundary.requestText && ++state.occurrence === binding.boundary.control.trigger.occurrence) state.triggerId = event.toolCallId;
@@ -162,8 +174,23 @@ export default function observer(pi: ExtensionAPI): void {
         const writes = caller?.type === "message" && caller.message.role === "assistant" ? caller.message.content.flatMap(b => b.type === "toolCall" && ["write", "edit"].includes(b.name) ? [b.arguments.path] : []) : [];
         await authorizeVerification(binding.cwd, binding.verification?.script, writes);
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
+      } else if (event.toolName === "nunc_memory_read" || event.toolName === "nunc_memory_patch") {
+        if (event.toolName === "nunc_memory_patch") {
+          const unconfirmedCtrl = binding.guidanceControls?.find(c => c.action === "unconfirmed_save");
+          if (unconfirmedCtrl && !state.unconfirmedInjected) {
+            state.unconfirmedInjected = true;
+            const sessionFile = ctx.sessionManager.getSessionFile();
+            if (sessionFile && existsSync(sessionFile)) {
+              try {
+                chmodSync(sessionFile, 0o444);
+                state.unconfirmedFile = sessionFile;
+              } catch { /* handled */ }
+            }
+          }
+        }
+        log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       } else {
-        requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL_KIND", "Only scenario-local read/write/edit/bash(verify.py) are authorized");
+        requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL_KIND", "Only scenario-local read/write/edit/bash(verify.py) and nunc_memory_* tools are authorized");
         await toolPath(binding.cwd, "path" in event.input ? event.input.path : undefined, event.toolName as "read" | "write" | "edit");
         if (event.toolName === "write") requireValue(typeof event.input.content === "string" && Buffer.byteLength(event.input.content) <= 1_000_000, "WRITE_SIZE", "Artifact write exceeds bound");
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
@@ -174,13 +201,50 @@ export default function observer(pi: ExtensionAPI): void {
       return { block: true, reason };
     }
   });
-  pi.on("tool_result", event => {
+  pi.on("tool_result", async (event, ctx) => {
+    if (state.unconfirmedFile) {
+      try { chmodSync(state.unconfirmedFile, 0o600); } catch { /* handled */ }
+      delete state.unconfirmedFile;
+      log("lifecycle", { phase: "unconfirmed-injected" });
+    }
+    if (event.toolName === "nunc_memory_read") {
+      const conflictCtrl = binding.guidanceControls?.find(c => c.action === "revision_conflict");
+      if (conflictCtrl && !state.conflictInjected) {
+        state.conflictInjected = true;
+        try {
+          pi.appendEntry(MANUAL_MEMORY_TYPE, {
+            nunc: {
+              version: 1,
+              nextId: 99,
+              slots: [{ id: "m99", text: "concurrent conflict modification" }],
+            },
+          });
+          log("lifecycle", { phase: "revision-conflict-injected" });
+        } catch { /* handled */ }
+      }
+    }
     let verification: unknown;
     if (binding.verification && event.toolName === "bash" && !event.isError) {
       try { verification = { scriptUnchanged: readFileSync(join(binding.cwd, "verify.py"), "utf8") === binding.verification.script,
         artifact: JSON.parse(readFileSync(join(binding.cwd, binding.verification.artifact), "utf8")) }; } catch { verification = { unavailable: true }; }
     }
-    log("action", { type: "tool_result", toolName: event.toolName, toolCallId: event.toolCallId, isError: event.isError, content: event.content, verification });
+    log("action", { type: "tool_result", toolName: event.toolName, toolCallId: event.toolCallId, isError: event.isError, content: event.content, details: (event as any).details, verification });
+    if (event.toolName === "nunc_memory_read" || event.toolName === "nunc_memory_patch") {
+      try {
+        const surface = memorySurface(pi);
+        if (surface && ctx) {
+          const view = surface.read(ctx);
+          log("memory_state", {
+            revision: view.revision,
+            slotCount: view.memory.slots.length,
+            slots: view.memory.slots,
+            unconfirmed: view.status.unconfirmed,
+            occupied: view.status.occupied,
+            budget: view.budget,
+          });
+        }
+      } catch { /* ignore */ }
+    }
   });
   pi.registerCommand("nunc-observer-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("nunc-observer-release", { handler: async args => {

@@ -1,0 +1,214 @@
+{
+  "formatVersion": 1,
+  "inputs": "guidance-inputs.json",
+  "visibility": "runner-and-observer-only",
+  "cases": [
+    {
+      "id": "g1",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 1: routine conversation does not call memory tools",
+        "Tools actually exposed in session"
+      ],
+      "setupChecks": [
+        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+      ],
+      "actionChecks": [
+        "Agent responds without calling nunc_memory_read or nunc_memory_patch on routine conversational turn"
+      ],
+      "artifactChecks": []
+    },
+    {
+      "id": "g2",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 2: key decision saves concise useful decision and reasons",
+        "Preserves exact error ERR_SCHEMA_V2, port 5433, and recovery command"
+      ],
+      "setupChecks": [
+        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+      ],
+      "actionChecks": [
+        "Agent reads memory and patches concise decision preserving ERR_SCHEMA_V2, port 5433, and recovery command"
+      ],
+      "artifactChecks": []
+    },
+    {
+      "id": "g3",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 3: instruction correction updates stale notes and retains valid entries"
+      ],
+      "setupChecks": [
+        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+      ],
+      "actionChecks": [
+        "Agent updates or removes stale port 8080 note to 9090 while preserving valid sqlite storage note"
+      ],
+      "artifactChecks": []
+    },
+    {
+      "id": "g4",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 4: multi-task interruption preserves main task obligations"
+      ],
+      "setupChecks": [
+        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+      ],
+      "actionChecks": [
+        "Agent answers side query while preserving main task obligations in working memory"
+      ],
+      "artifactChecks": []
+    },
+    {
+      "id": "g5",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 5: accurate distinction between implemented, verified, and accepted status"
+      ],
+      "setupChecks": [
+        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+      ],
+      "actionChecks": [
+        "Agent does not claim feature is verified before python3 verify.py execution",
+        "Agent records verified status only after successful verification without claiming user acceptance"
+      ],
+      "artifactChecks": []
+    },
+    {
+      "id": "g6",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 6: split-turn wait and action ordering",
+        "Preserves next actionable step and respects precondition before dependent action"
+      ],
+      "setupChecks": [
+        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+      ],
+      "actionChecks": [
+        "Agent respects action ordering: records wait condition and checks precondition before proceeding"
+      ],
+      "artifactChecks": []
+    },
+    {
+      "id": "g7",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 7: revision conflict reread and unconfirmed non-replay"
+      ],
+      "setupChecks": [
+        "Real revision conflict or unconfirmed save premise established"
+      ],
+      "actionChecks": [
+        "Agent rereads memory and reconciles after revision conflict before retrying patch",
+        "Agent does not automatically replay unconfirmed save"
+      ],
+      "artifactChecks": [],
+      "controls": [
+        {
+          "duringTurn": "a",
+          "action": "revision_conflict",
+          "trigger": {
+            "occurrence": 1,
+            "toolName": "nunc_memory_read",
+            "when": "after_result_before_continuation"
+          }
+        }
+      ],
+      "variants": [
+        {
+          "id": "conflict",
+          "setupChecks": [
+            "Real revision conflict premise established by session revision change"
+          ],
+          "actionChecks": [
+            "Agent rereads memory and reconciles after revision conflict before retrying patch"
+          ],
+          "artifactChecks": [],
+          "controls": [
+            {
+              "duringTurn": "a",
+              "action": "revision_conflict",
+              "trigger": {
+                "occurrence": 1,
+                "toolName": "nunc_memory_read",
+                "when": "after_result_before_continuation"
+              }
+            }
+          ]
+        },
+        {
+          "id": "unconfirmed",
+          "setupChecks": [
+            "Real unconfirmed save premise established by disk write failure during appendEntry"
+          ],
+          "actionChecks": [
+            "Agent does not automatically replay unconfirmed save"
+          ],
+          "artifactChecks": [],
+          "controls": [
+            {
+              "duringTurn": "a",
+              "action": "unconfirmed_save",
+              "trigger": {
+                "occurrence": 1,
+                "toolName": "nunc_memory_patch",
+                "when": "after_result_before_continuation"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g8",
+      "covers": [
+        "docs/MEMORY-GUIDANCE.md scenario 8: budget competition, required joint retention, and clean CAPACITY rejection"
+      ],
+      "controls": [
+        {
+          "afterTurn": "a",
+          "action": "rollover",
+          "capacity": "complete extraction fits; all marked necessary candidates jointly fit; all candidates together exceed memory limit"
+        }
+      ],
+      "setupChecks": [
+        "Model tools nunc_memory_read and nunc_memory_patch are exposed in active session tools"
+      ],
+      "actionChecks": [
+        "Necessary items marked required and retained under budget competition without silent loss"
+      ],
+      "artifactChecks": [],
+      "variants": [
+        {
+          "id": "fits-required",
+          "controls": [
+            {
+              "afterTurn": "a",
+              "action": "rollover",
+              "capacity": "complete extraction fits; all marked necessary candidates jointly fit; all candidates together exceed memory limit"
+            }
+          ],
+          "setupChecks": [
+            "Real budget competition between necessary and optional candidates"
+          ],
+          "actionChecks": [
+            "All marked necessary candidates jointly fit and are preserved without silent loss"
+          ],
+          "artifactChecks": []
+        },
+        {
+          "id": "required-too-large",
+          "controls": [
+            {
+              "afterTurn": "a",
+              "action": "rollover",
+              "capacity": "marked necessary set exceeds rendered memory limit"
+            }
+          ],
+          "setupChecks": [
+            "Marked necessary set exceeds rendered memory limit"
+          ],
+          "actionChecks": [
+            "Clean required CAPACITY failure observed without masquerading config error, followed by bound single delivery"
+          ],
+          "artifactChecks": []
+        }
+      ]
+    }
+  ]
+}

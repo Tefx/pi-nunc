@@ -2,8 +2,8 @@
 
 This document specifies accepted guidance refinements for Nunc's active working memory tools and maintenance extraction policy.
 
-**Status:** Tool and policy guidance text modifications implemented in `nunc.memory-guidance-implementation`; Gemini behavioral validation pending in `nunc.memory-guidance-gemini-eval`.
-**Scope:** Tool descriptions (`src/index.ts`), built-in semantic policy (`policies/default.md`), associated test evidence, and plan specification.
+**Status:** Tool and policy guidance text modifications implemented in `nunc.memory-guidance-implementation`; tracked observation support delivered in `nunc.memory-guidance-observation-support`; live Gemini behavioral validation pending in `nunc.memory-guidance-gemini-eval`.
+**Scope:** Tool descriptions (`src/index.ts`), built-in semantic policy (`policies/default.md`), live observation runner and scenarios (`src/live/**`, `tests/scenarios/**`), associated test evidence, and plan specification.
 **Invariants:** No changes to public tool names, parameters schemas, wire JSON contracts, slot IDs, revision algorithms, budget calculations, `required` joint protection, F → R → M carrier projection, or Pi native compaction scheduling.
 
 ---
@@ -86,16 +86,16 @@ Nunc's built-in policy (`policies/default.md`) already covers all these semantic
 
 ### Phase 3: Behavioral Evaluation with Live Model
 - **MODEL BOUNDARY CONSTRAINT:**
-  - **Permitted model family:** Google Gemini only (`google/gemini-...`, e.g. `google/gemini-2.5-flash` or `gemini-1.5-pro`).
-  - **Forbidden models:** OpenAI Astra (`openai-codex/gpt-6-astra` or any Astra variant) is **strictly forbidden** for this evaluation.
+  - **Permitted model family & exact selection:** Google Gemini only via OpenRouter (`openrouter` with `google/gemini-3.8-flash`). Earlier mentions of `1.5-pro` or `2.5-flash` were illustrative examples; `google/gemini-3.8-flash` is the authoritative model choice for this evaluation.
+  - **Forbidden models:** OpenAI Astra (`openai-codex/gpt-6-astra` or any Astra variant) and all non-Gemini models are **strictly forbidden** for this evaluation.
 - **Behavioral Scenarios to Observe:**
-  1. *Routine conversation:* Agent answers directly without calling `nunc_memory_read` or `nunc_memory_patch`.
-  2. *Key decision:* Agent patches concise reasoning and decision points rather than full transcript logs.
-  3. *Instruction correction:* When user changes a requirement, agent updates/removes stale notes and follows current instruction.
-  4. *Multi-task interruption:* Unfinished tasks remain recorded across side discussions.
-  5. *Implemented vs. verified:* Completed code without verification is not claimed as verified/accepted.
-  6. *Split-turn wait:* Preconditions and pending user input are respected before subsequent actions.
-  7. *Revision conflict:* Agent rereads and reconciles instead of looping on failed revisions.
-  8. *Budget competition:* Declared `required` items fit within limit or trigger clean capacity failure.
+  1. *Routine conversation (g1):* Agent answers directly without calling `nunc_memory_read` or `nunc_memory_patch` (memory tools actively exposed in session tools).
+  2. *Key decision & diagnostic precision (g2):* Agent patches concise reasoning and decision points rather than full transcript logs, preserving distinguishing error messages (e.g. `ERR_SCHEMA_V2`), ports (`5433`), and recovery commands (`run-migration --v1`).
+  3. *Instruction correction (g3):* When user changes a requirement, agent updates/removes stale notes and retains still-valid entries.
+  4. *Multi-task interruption (g4):* Unfinished main task obligations remain preserved across side discussions.
+  5. *Implemented vs. verified status distinction (g5):* Completed code without verification is not claimed as verified or accepted; verified status is recorded only after successful verification without premature acceptance claims.
+  6. *Split-turn wait & action ordering (g6):* Next actionable step and wait conditions/dependencies are respected before subsequent actions.
+  7. *Revision conflict & unconfirmed save (g7):* Real revision conflict leads to re-reading memory and reconciling before retrying; real unconfirmed save is not automatically replayed.
+  8. *Budget competition & required capacity qualification (g8):* Necessary items marked `required`, jointly retained under budget competition without silent loss (`fits-required`), or cleanly trigger required `CAPACITY` failure without masquerading as config/invalid errors (`required-too-large`).
 - **Evaluation Evidence:**
   Observe actual tool call parameters, session JSONL entries, and subsequent turn actions. Do not rely on prompt keyword presence or self-reported model claims.
