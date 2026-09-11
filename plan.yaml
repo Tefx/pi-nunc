@@ -3646,7 +3646,7 @@ phases:
       explicitly authorized remaining Plan; proceed to active-memory after reconciliation.'
 - id: nunc-memory-guidance
   name: 工作记忆工具说明与提取策略优化
-  status: in_progress
+  status: done
   gate: nunc.memory-guidance-gemini-eval 是本阶段已完成文本修改、跟踪场景/driver 和有限 Gemini 观察的唯一最终整合判断，Orchestrator
     据此接受或保留未接受。须有最终候选完整适用 all 与实际 Larva 组合证据，八类维度、精确诊断及动作顺序/等待均有证据或显式限制。重要实际错误行动、虚假验证/接受状态、越权、丢失必要义务、受保护状态/机械合同违例及决定重要必要行为的证据缺口均阻断接受。自然语言与
     optional note/slot/竞争/容量资格等偶发维度可保持 UNPROVEN，consumer 必须据实际 traces、重要性和后果说明其是否阻断；非重要且不影响必要行为的剩余不确定性不自动否定有界结论。不得把缺证据改标
@@ -3710,7 +3710,7 @@ phases:
       directory consumers.'
   - id: nunc.memory-guidance-gemini-eval
     name: Gemini 真实模型行为评测与最终整合验收
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -3810,6 +3810,32 @@ phases:
     agent: general
     claimed_by: general
     claimed_at: '2026-09-11T19:55:11.279449Z'
+    done_at: '2026-09-11T20:15:32.847824+00:00'
+    evidence: 'Bounded final acceptance at git:75a01a3feff93f68c6e5eab898b19ce32372b638;
+      parent validated gemini-delta/final-report.json against binding.json: valid=true
+      binding_checked=true POSITIVE_EVIDENCE. Same exact current HEAD, source unchanged
+      after repair dfddbc76. Gemini observer assessed all8 dimensions/10 selections
+      using initial86 plus scoped55=141 calls, zero unreconciled; actual thinking
+      high (not earlier low preflight), Gemini3.8Flash only; costs unknown/null, runtime1076764ms,
+      reserved156745728 within240000000. Final all528/52863files and applicable actualLarva8
+      accepted. Finite g4/g8 live repair proved continuation, preserved requirements
+      and accurate effectiveM; g2 recovery/g3 current config/g5 verification sequencing/g7-unconfirmed
+      nonreplay observed. Important observed behavior judged adequate under user''s
+      explicit importance/uncertainty allowance; no claim of universal model reliability.
+      g1 extra readonly memory read remains DISPROVEN/nonblocking guidance deviation;
+      g3 old-note update, g7 conflict retry, g8 competition/overflow premises remain
+      unproven. Real g6 unlocked suffix remains UNPROVEN due H<U but F>H; feasible
+      native controlled split plus actual lock-respect and other live continuation
+      support bounded acceptance. Parent does NOT adopt observer''s overly broad assertion
+      that all production budgets must be positive; accepted reasoning limited to
+      this measured fixture and checked mechanisms. Original reports immutable; final
+      report/analysis at .scratch/memory-guidance-execution/gemini-delta/final-report.json
+      and final-acceptance.md. No more model calls required. All test children terminal;
+      no matching effects observed. Worktree scratch evidence will be archived with
+      original absolute-path-to-archive mapping before eligible cleanup; refs/branches
+      preserved. Actual Astra Principal implementation explicitly user-authorized;
+      all tested models/observer Gemini. This completes current increment, not historical
+      billing/cache/overflow claims.'
   - id: nunc.memory-guidance-observation-support
     name: 交付工作记忆八类行为的跟踪场景与原生观察能力
     status: done
