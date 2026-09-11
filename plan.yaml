@@ -3650,3 +3650,10 @@ phases:
       in worktree-scratch.tar.gz: old worktree .scratch paths map to same archive
       members; baseline symlink not followed. Worktree cleanup follows. Current user
       explicitly authorized remaining Plan; proceed to active-memory after reconciliation.'
+- id: nunc-memory-guidance
+  name: 工作记忆工具说明与提取策略优化
+  status: pending
+  gate: 工具描述与提取策略文本修改完成；全量离线回归测试（scripts/check.mjs all）与 Larva 联合测试通过；若执行真实模型行为评测，仅使用
+    Gemini（禁止 Astra）且有可重现的工具调用与任务续做行为证据。
+  context: 基于 docs/MEMORY-GUIDANCE.md 规范，落实 nunc_memory_read / nunc_memory_patch 的防滥用与过时处理指导说明，以及
+    policies/default.md 中关于行动步骤顺序条件与诊断精度的两处提取策略补充。验证严格遵守 Gemini-only 限制，严禁使用 Astra。
