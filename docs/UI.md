@@ -6,6 +6,8 @@
 
 本设计延续 [DESIGN.md](DESIGN.md) 的 session、来源、原文、容量与 Pi 所有权边界。人工保存按 §5 扩展原先仅在 CompactionEntry 保存 M 的合同。[PI.md](PI.md) 与 [ENGINE.md](ENGINE.md) 中当前预算及 Provider 组合合同仍适用。示意文案、尺寸起点、私有数据格式和模块文件划分是推荐；实现可以替换它们，但须保持本文明确的用户行为、状态所有权、观察边界与兼容限制。
 
+新增待实施范围见 [ACTIVE-MEMORY.md](ACTIVE-MEMORY.md)：模型 CRUD 与现有人工操作共享提交，全部新请求统一尾置 M，并调整预算/receipt 展示。本文当前 UI 已交付状态不变，旧“无模型工具/前缀变化全量失效”描述在该功能交付后按新合同更新；本轮不扩展 UI 批量编辑器。
+
 ## 1. 用户能力与命令
 
 交付一个 footer 状态项和一个仅含 Slots、Context 两个 tab 的 overlay。查看、编辑、删除不调用模型，不触发 compaction，不发送用户消息。`/nunc status` 及旧的三行短报告已被完整文字报告取代，不再是兼容别名。

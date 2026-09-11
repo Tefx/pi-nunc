@@ -4,6 +4,8 @@
 
 用户授权本轮更新详细文档并创建实施计划；用户会在 Larva 修复完成后亲自调度实施。不得因收到 Larva 设计、接口变为可用或 Plan 步骤处于 pending 就自动 claim、dispatch、实现、测试、安装或调用模型。全程禁止修改 Pi core、已安装 Pi 包及私有宿主状态。
 
+后续独立交付：[ACTIVE-MEMORY.md](ACTIVE-MEMORY.md) 在本桥接完成后加入主动 CRUD、唯一尾 M 和新的 R/M receipt。它保留本文件 v1 接口及先行步骤的接受范围；M 的自动旧布局转换不会取消这里的零回复 legacy 或显式失败合同。
+
 ## 1. 问题、证据与交付边界
 
 当前 `src/pi/admission.ts` 在 Provider Context 上进行主请求容量检查；Larva 可能随后在 `before_provider_request` 修改系统指令。当前 Codex mapper（兼容修复 `79d2904`）允许受限的文本改写并计入增长，但该响应不能为原 Context 建立 usage receipt。
