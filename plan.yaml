@@ -3386,7 +3386,7 @@ phases:
   context: 用户授权文档与新增计划，等待后续明确调度；前置nunc-larva-prompt及其Larva就绪条件不变。本phase消费其F解析/请求身份，完整交付docs/ACTIVE-MEMORY.md：CRUD、原子统一M、唯一尾部载体、保守R/M
     receipt和自动旧布局转换。无前置回退或双布局兼容，不改Pi core。一个Node owner持有source/tests/runner/docs，Orchestrator在其完成程序承担本phase及依赖实际组合的唯一接受，不扩展先行接受范围或修改DONE。
   depends_on:
-  - nunc-larva-prompt
+  - nunc-tool-call-repair
   steps:
   - id: nunc.active-memory
     name: 交付主动记忆 CRUD、单一尾部投影与 R/M 收据计量
@@ -3484,6 +3484,96 @@ phases:
     - tests/pi/fixtures.ts
     - scripts/check.mjs
     - scripts/observe-lifecycle.mjs
+    - package.json
+    - package-lock.json
+    - .node-version
+    agent: node-typescript-engineer
+- id: nunc-tool-call-repair
+  name: 工具调用 ID 作用域与关联兼容修复
+  status: locked
+  gate: Orchestrator 在唯一实现步骤完成程序接受本修复：最终整合候选完整 all、真实 stock Pi/native serializer 受控服务证明与适用前置
+    Larva 桥接证据共同覆盖合法 ID 复用和非法关联拒绝。不得因组件 PASS 或仅放宽校验宣称解决；实际用户会话来源未知单独披露。仅规划，等待用户明确调度，不授权安装或发布。
+  context: 用户要求在 nunc-larva-prompt 后插入修复步骤；本 phase 位于该前置已接受结果与 nunc-active-memory
+    之间，不改变正在执行的 nunc.larva-prompt 合同、claim、候选、证据或验收。诊断已确认 legalCuts 的历史 seenCalls
+    会拒绝两个顺序完整且同 ID 的 call/result 对；实际会话的 ID 产生/重复注入来源及 Pi/provider 作用域仍须核实。pending
+    替换只是候选实现，不能作为已接受设计。单一 Node owner 交付诊断、Nunc 修复、行为测试及必要文档；当前只授权计划，未来执行仍需用户明确调度。
+  depends_on:
+  - nunc-larva-prompt
+  steps:
+  - id: nunc.tool-call-repair
+    name: 修复合法工具调用 ID 复用并保持完整关联校验
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
+      , \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"/Users/tefx/Projects/larva/**\"\
+      , \"/opt/homebrew/lib/node_modules/**\"]\n\nDeliver: 消除 Nunc 对宿主/provider 合法工具调用历史的\
+      \ Duplicate tool call 本地误拒绝，保留真实非法关联的拒绝和维护切点完整性。先核实所选 stock Pi/pi-ai 公开接口及 native\
+      \ adapter 对 ID 的作用域、重用/归一化行为，区分跨轮次已完成调用的合法复用、尚未完成调用冲突和消息重复注入。已有反例是 legalCuts\
+      \ 使用整个历史的 seenCalls，第二个顺序完整同 ID call/result 对也抛 INPUT；这证明当前拒绝机制，不证明具体用户会话由 Pi/Larva\
+      \ 产生缺陷。不得直接把 seenCalls→pending 当作充分修复或预先归责外部扩展。\n\n按查明合同交付最小 Nunc 兼容修复：合法复用能够完成主请求准入、实际\
+      \ native 请求构造、来源投影/提取及合法 K 切点选择；每个结果仍准确关联对应调用，工具名、参数、结果正文、状态和媒体不丢失、不合并、不错配。保留同批/未完成调用的歧义冲突、孤立/重复/工具名不符结果、未完成调用和非法来源边界的适用拒绝。检查所有受影响\
+      \ ID 消费者，特别是 Context 关联展示及 receipt/后续历史使用，不以单点放行把错误推到 serializer 或展示层。普通方法与必要内部修正由\
+      \ owner 决定，不重写真实会话 JSONL、不猜测删除历史、不靠丢消息或取消关联检查通过。同步必要用户合同/诊断文档。\n\nBoundary:\
+      \ node-typescript-engineer 持有这一 Node/Pi 消息关联兼容结果，含工程诊断、source/tests/必要 tracked\
+      \ runner/docs 的同一可 Git 回退事务。仅 Nunc 可写；依赖准备沿用锁和 docs/DEVELOPMENT.md。未来授权后测试只用新隔离合成\
+      \ session/profile、真实 stock Pi 公开 loader/接口和受控 native 服务。禁止 Pi core/安装包 patch、Larva/其他仓库写入、日常\
+      \ sessions/settings/credentials、原对话重放、全局安装/配置、live/paid 模型、真实 peer/模型子 agent\
+      \ 联系及 push/publication。若证据表明必要修复只能跨仓或改变已接受公共合同，提交根因及最小所需决定，不擅自扩大权限。\n\nAdmit:\
+      \ 本轮仅新增计划，用户明确调度前不得 claim/dispatch/实施/产品测试。消费已接受 nunc-larva-prompt，继承有效 F、请求身份、wrapper/receipt\
+      \ 和末端 payload 保护；修复不反向扩大前置接受，也不提前实现主动 M。实际出错会话尚未提供，不扫描日常私有会话寻找 ID；可用公开合同和合成反例证明兼容修复，不能将其冒充原会话根因已确认。若来源未知影响修复正确性，指出缺少的最小已脱敏观察并继续独立可证明工作。\n\
+      \nProof: 将回归纳入现有 all：顺序完整同 ID 对、同轮/并行冲突、交错结果、错误结果状态、孤立/重复/名称不符/未完成负例，及复用前后维护切点、保留来源完整、Context\
+      \ 每次调用各自关联。针对所声明支持且本变更影响的 native 映射，通过真实 stock Pi loader/公开消息路径与 native serializer\
+      \ 对接受控服务，证明完整合法工具循环可送达并继续，非法关联在发送前拒绝；不替换被证明的准入/serializer seam，不以一个 provider\
+      \ 结果推断其他不同映射。若某合法历史必须由宿主进行请求局部 ID 归一化，证明其配对和后续调用行为而不伪造跨请求全局唯一合同。根据受影响范围复用或补齐前置\
+      \ Larva 组合证据，未变有效证据无需自动重跑。受控服务只证明机制，不宣称真实模型/付费服务或原用户会话实测。\n\nFinal acceptance:\
+      \ Orchestrator 在本步骤完成程序承担 nunc-tool-call-repair 的唯一整合接受，覆盖本修复与其实际依赖的既有引擎、投影/维护、provider/admission/receipt、Context\
+      \ 和 Larva 请求桥接不变量。最终整合候选必须通过完整适用 all，必要 native 关联行为与前置组合证据对该候选适用；阻断缺陷、必要失败或必要行为未证明时保持步骤未完成。nunc-active-memory\
+      \ 后续消费这一可独立修复的合法工具历史能力，其新 M 需求不在本修复验收内。用户原错误来源未确认和历史 CAPACITY 未解决分别披露，不作扩大完成声明。接受不授权安装/发布，不新增重复\
+      \ gate。\n\nRecovery: 当前未完成 writable owner 原位吸收兼容诊断、实现及测试缺口；保留候选/证据，停止自己的受控进程、清理隔离测试状态，不改日常数据或\
+      \ DONE。外部宿主真实缺陷需要外仓修复时报告边界；不得靠关闭校验、删历史或私有 host patch 绕过。新的目标/效果/恢复边界交由负责 Orchestrator/Planner\
+      \ 处理。"
+    verification: "```yaml\ncheck_environment:\n  node_version: 26.7.0\n  npm_version:\
+      \ 11.19.0\n  stock_pi_version: 0.85.1\n  dependency_manifest: package.json\n\
+      \  dependency_lock: package-lock.json\n  runtime_declaration: .node-version\n\
+      \  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS, npm_config_cache=.npm-cache,\
+      \ npm_config_ignore_scripts=true, /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --no-audit, --no-fund]\n  tui_python_argv: [/usr/bin/python3]\n\
+      \  tui_prerequisites: [POSIX PTY, Python 3 standard library]\n  comparison_baseline:\
+      \ .scratch/baseline-70dacad\n  setup_reference: docs/DEVELOPMENT.md\nchecks:\n\
+      \  - id: tool-call-repair-final-integrated-offline\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers: [full-engine-pi-live-inventory-and-build,\
+      \ legal-completed-call-id-reuse, ambiguous-pending-and-invalid-result-zero-send,\
+      \ extraction-retained-cuts-source-fidelity, per-occurrence-context-associations,\
+      \ real-stock-host-native-serializer-controlled-tool-loop, affected-admission-receipt-Larva-bridge-invariants]\n\
+      ```\nRun from the assigned checkout with pinned development dependencies and\
+      \ the documented comparison baseline. The all entrypoint is witnessed and compiles/discovers\
+      \ tests/**/*.test.ts; the owner adds missing meaningful regression and native\
+      \ integration cases to that inventory in this same delivery. Record actual commands/results,\
+      \ final candidate applicability, adapter scope, retained inherited evidence\
+      \ and isolated-process cleanup. No product tests or setup run during planning.\
+      \ Prior Larva composition observations may be reused only when inputs and affected\
+      \ behavior remain applicable; changed relevant seams require affected proof\
+      \ using the inherited real composition entrypoint and read-only supplied Larva\
+      \ inputs. Missing observations never become source-token assertions, skips,\
+      \ paid-model requirements or claims that the user's original session was reproduced."
+    refs:
+    - src/engine/validation.ts
+    - src/engine/engine.ts
+    - src/pi/admission.ts
+    - src/pi/context.ts
+    - src/pi/projection.ts
+    - tests/engine/source.test.ts
+    - tests/pi/admission.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/request-receipts.test.ts
+    - tests/pi/fixtures.ts
+    - docs/DESIGN.md
+    - docs/PI.md
+    - docs/LARVA-PROMPT.md
+    - docs/DEVELOPMENT.md
+    - scripts/check.mjs
     - package.json
     - package-lock.json
     - .node-version
