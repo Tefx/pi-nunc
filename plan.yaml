@@ -3511,7 +3511,7 @@ phases:
     agent: node-typescript-engineer
 - id: nunc-tool-call-repair
   name: 工具调用 ID 作用域与关联兼容修复
-  status: pending
+  status: in_progress
   gate: Orchestrator 在唯一实现步骤完成程序接受本修复：最终整合候选完整 all、真实 stock Pi/native serializer 受控服务证明与适用前置
     Larva 桥接证据共同覆盖合法 ID 复用和非法关联拒绝。不得因组件 PASS 或仅放宽校验宣称解决；实际用户会话来源未知单独披露。仅规划，等待用户明确调度，不授权安装或发布。
   context: 用户要求在 nunc-larva-prompt 后插入修复步骤；本 phase 位于该前置已接受结果与 nunc-active-memory
@@ -3523,7 +3523,7 @@ phases:
   steps:
   - id: nunc.tool-call-repair
     name: 修复合法工具调用 ID 复用并保持完整关联校验
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
@@ -3599,3 +3599,5 @@ phases:
     - package-lock.json
     - .node-version
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-11T10:16:03.511917Z'
