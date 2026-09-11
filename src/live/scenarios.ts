@@ -1,4 +1,5 @@
 import { scoreGuidance } from "./guidance.js";
+import { project } from "../pi/projection.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -533,10 +534,13 @@ export function checkFullExtraction(beforeActive: SessionEntry[], context: Conte
   }
   // JSON transport omits undefined host metadata (e.g. toolResult.details/usage); it carries no evidence bytes.
   const actual = records.filter(r => r.region === "B" || r.region === "K").map(r => ({ entryId: r.entryId, messages: r.messages }));
-  const latest = beforeActive.find(e => e.type === "compaction");
-  const slots: unknown = latest?.type === "compaction" && object(latest.details) && object(latest.details.nunc) ? latest.details.nunc.slots : [];
-  const memory = records.find(r => r.source === "F/M");
-  return { check: "actual full extraction contains all Pi-visible source messages and saved M without loss", status: expected.length > 0 && isDeepStrictEqual(actual, expected.map(e => ({ ...e, messages: e.messages.map(semanticEvidence) }))) && isDeepStrictEqual(memory?.M, slots) ? "PROVEN" : "UNPROVEN" };
+  // beforeActive is the selected native buildContextEntries() view. Its effective
+  // M includes manual saves after the latest checkpoint (or before the first),
+  // while older carriers replayed inside the kept range must not override it.
+  // Keep the independent B/K projection above; only M selection shares semantics.
+  const slots = project(beforeActive).memory.slots;
+  const memory = records.filter(r => r.source === "F/M");
+  return { check: "actual full extraction contains all Pi-visible source messages and saved M without loss", status: expected.length > 0 && isDeepStrictEqual(actual, expected.map(e => ({ ...e, messages: e.messages.map(semanticEvidence) }))) && memory.length === 1 && isDeepStrictEqual(memory[0]?.M, slots) ? "PROVEN" : "UNPROVEN" };
 }
 export function checkRollover(before: SessionEntry[], after: SessionEntry[], persisted: SessionManager, result: MaintenanceResult | undefined, control: Control, turnEntries: Record<string, string[]>): CheckResult[] {
   const checks: CheckResult[] = [];
