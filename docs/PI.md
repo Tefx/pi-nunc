@@ -72,7 +72,7 @@ Nunc validates tool call associations and ID scoping without falsely rejecting l
 
 ## Main-request admission
 
-**Implemented:** [Active memory and tail-M receipts](ACTIVE-MEMORY.md) delivers optional model CRUD (`--nunc-memory-tools`), a single request-tail memory carrier (`F → R → M`), automatic old-layout conversion and conservative R/M-separated receipts. There is no front-layout fallback. It preserves the Larva v1 zero-reply/unavailable contract and leaves Pi core untouched.
+**Implemented:** [Active memory and tail-M receipts](ACTIVE-MEMORY.md) delivers optional model CRUD (`--nunc-memory-tools` or `settings.json` `{"nunc": {"memoryTools": true}}`), a single request-tail memory carrier (`F → R → M`), automatic old-layout conversion and conservative R/M-separated receipts. There is no front-layout fallback. It preserves the Larva v1 zero-reply/unavailable contract and leaves Pi core untouched.
 
 **Implemented:** [Larva request-level prompt resolution](LARVA-PROMPT.md) implements the synchronous public `pi.events` (`larva:resolve-system-prompt:v1`) bridge before Nunc main admission. Its request-local effective Context is used consistently for estimation, receipts and delegation, leaving original Context and Pi host state untouched. Maintenance and unknown paths perform zero resolver calls. Zero replies fall back to legacy-no-reply; explicit unavailable, duplicate replies, or protocol errors trigger local CONFIG rejection before provider dispatch.
 

@@ -10,7 +10,21 @@ import { sourceRecords, answer } from "../engine/fixtures.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url)); // emitted dist/tests/pi -> worktree
 export const extensionPath = resolve(root, "dist/src/index.js");
-export async function fixture(options: { config?: NuncConfig; enabled?: boolean; tools?: ToolDefinition[]; extras?: InlineExtension[]; ephemeral?: boolean; diskSettings?: boolean; publicFactory?: boolean; bus?: (bus: EventBus) => void; extensions?: string[]; flagValues?: [string, string][] } = {}) {
+export async function fixture(options: {
+  config?: NuncConfig;
+  enabled?: boolean;
+  tools?: ToolDefinition[];
+  extras?: InlineExtension[];
+  ephemeral?: boolean;
+  diskSettings?: boolean;
+  publicFactory?: boolean;
+  bus?: (bus: EventBus) => void;
+  extensions?: string[];
+  flagValues?: [string, string][];
+  globalSettings?: Record<string, unknown>;
+  projectSettings?: Record<string, unknown>;
+  projectTrusted?: boolean;
+} = {}) {
   const scratch = resolve(root, ".scratch"); await mkdir(scratch, { recursive: true });
   const dir = await mkdtemp(join(scratch, "pi-"));
   const cwd = join(dir, "work"), agentDir = join(dir, "agent"), sessionDir = join(dir, "sessions");
@@ -19,9 +33,20 @@ export async function fixture(options: { config?: NuncConfig; enabled?: boolean;
   const config: NuncConfig = { rolling: { keepRecentFraction: 0.25 }, ...options.config };
   await writeFile(configFile, JSON.stringify(config));
   const settings = SettingsManager.inMemory({ compaction: { enabled: options.enabled ?? false, reserveTokens: 36000, keepRecentTokens: 1 }, retry: { enabled: false, provider: { maxRetries: 0 } } });
+  if (options.projectTrusted !== undefined) {
+    settings.setProjectTrusted(options.projectTrusted);
+  }
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   if (options.diskSettings) {
-    await writeFile(join(agentDir, "settings.json"), JSON.stringify({ compaction: settings.getCompactionSettings() }));
+    const globalSettingsContent = {
+      compaction: settings.getCompactionSettings(),
+      ...(options.globalSettings ?? {}),
+    };
+    await writeFile(join(agentDir, "settings.json"), JSON.stringify(globalSettingsContent));
+    if (options.projectSettings) {
+      await mkdir(join(cwd, ".pi"), { recursive: true });
+      await writeFile(join(cwd, ".pi", "settings.json"), JSON.stringify(options.projectSettings));
+    }
     process.env.PI_CODING_AGENT_DIR = agentDir; // Process-local isolated CLI settings selection.
   }
   const faux = fauxProvider({ api: "openai-completions", provider: "nunc-pi-fixture", models: [{ id: "large", reasoning: true, input: ["text", "image"], contextWindow: 60000, maxTokens: 8192 }, { id: "small", contextWindow: 45000, maxTokens: 8192 }] });

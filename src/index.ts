@@ -5,7 +5,7 @@ import type { FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
-import { engineConfig, readConfig } from "./pi/config.js";
+import { engineConfig, readConfig, resolveMemoryTools, validateNuncSettings } from "./pi/config.js";
 import { eligibleStarts, project, withEffectiveMemory } from "./pi/projection.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
@@ -13,7 +13,16 @@ import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
 import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines } from "./ui/index.js";
 
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
-export interface HostSettingsSource { readSettings: () => { compaction: Required<CompactionSettings>; blockImages: boolean } }
+export interface HostSettingsSource {
+  readSettings: () => {
+    compaction: Required<CompactionSettings>;
+    blockImages: boolean;
+    nunc?: unknown;
+  };
+  getGlobalSettings?: () => Record<string, unknown>;
+  getProjectSettings?: () => Record<string, unknown>;
+  isProjectTrusted?: () => boolean;
+}
 export interface MaintenanceEvent { reason: SessionBeforeCompactEvent["reason"]; willRetry: boolean; result: MaintenanceResult }
 
 export default function nunc(pi: ExtensionAPI): void {
@@ -28,15 +37,41 @@ export default function nunc(pi: ExtensionAPI): void {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
     invalidate(); hostSettings = value as HostSettingsSource;
   });
-  const settings = (ctx: ExtensionContext) => {
-    if (hostSettings) return structuredClone(hostSettings.readSettings());
+  const getHostSettings = (ctx: ExtensionContext) => {
+    if (hostSettings) {
+      const read = hostSettings.readSettings();
+      const projectTrusted = hostSettings.isProjectTrusted ? hostSettings.isProjectTrusted() : ctx.isProjectTrusted();
+      const globalNunc = hostSettings.getGlobalSettings ? hostSettings.getGlobalSettings()?.nunc : read.nunc;
+      const projectNunc = projectTrusted ? (hostSettings.getProjectSettings ? hostSettings.getProjectSettings()?.nunc : read.nunc) : undefined;
+      return {
+        compaction: read.compaction,
+        blockImages: read.blockImages,
+        globalNunc,
+        projectNunc,
+        projectTrusted,
+      };
+    }
     const manager = SettingsManager.create(ctx.cwd, getAgentDir(), { projectTrusted: ctx.isProjectTrusted() });
-    return { compaction: manager.getCompactionSettings(), blockImages: manager.getBlockImages() };
+    const globalSettings = manager.getGlobalSettings() as Record<string, unknown>;
+    const projectSettings = manager.getProjectSettings() as Record<string, unknown>;
+    return {
+      compaction: manager.getCompactionSettings(),
+      blockImages: manager.getBlockImages(),
+      globalNunc: globalSettings.nunc,
+      projectNunc: projectSettings.nunc,
+      projectTrusted: manager.isProjectTrusted(),
+    };
+  };
+  const settings = (ctx: ExtensionContext) => {
+    const s = getHostSettings(ctx);
+    return { compaction: s.compaction, blockImages: s.blockImages };
   };
   const supported = (ctx: ExtensionContext) => {
     if (VERSION !== "0.85.1") throw new EngineError("CONFIG", `Supported Pi target is 0.85.1; found ${VERSION}`);
     if (!ctx.sessionManager.getSessionFile()) throw new EngineError("CONFIG", "Persistent sessions only; start Pi without --no-session");
-    if (settings(ctx).blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");
+    const s = getHostSettings(ctx);
+    if (s.blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");
+    validateNuncSettings(s);
   };
   let observeLayout = (_event: AdmissionLayoutEvent) => {};
   const admission = new Admission(pi, (ctx, model) => {
@@ -56,8 +91,7 @@ export default function nunc(pi: ExtensionAPI): void {
   let toolsRegistered = false;
   const registerMemoryTools = () => {
     if (toolsRegistered) return;
-    if (Boolean(pi.getFlag("nunc-memory-tools"))) {
-      pi.registerTool({
+    pi.registerTool({
         name: "nunc_memory_read",
         label: "Read Memory",
         description: "Read the current session-local working memory slots, revision, budget and writable status.",
@@ -140,9 +174,10 @@ export default function nunc(pi: ExtensionAPI): void {
         },
       });
       toolsRegistered = true;
-    }
   };
-  registerMemoryTools();
+  if (Boolean(pi.getFlag("nunc-memory-tools"))) {
+    registerMemoryTools();
+  }
   const contextView = createContextSurface({
     pi, memory, fixed,
     config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction),
@@ -169,10 +204,18 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   pi.on("session_start", (_event, ctx) => {
-    registerMemoryTools();
     invalidate(); contextView.resetPath();
     try {
-      admission.ensure(ctx); supported(ctx);
+      supported(ctx);
+      const s = getHostSettings(ctx);
+      const memoryToolsEnabled = resolveMemoryTools({
+        cliFlag: pi.getFlag("nunc-memory-tools"),
+        projectNunc: s.projectNunc,
+        globalNunc: s.globalNunc,
+        projectTrusted: s.projectTrusted,
+      });
+      if (memoryToolsEnabled) registerMemoryTools();
+      admission.ensure(ctx);
       const selected = ctx.model ? readConfig(pi.getFlag("nunc-config"), ctx.cwd).config : undefined;
       if (ctx.model && selected) engineConfig(selected, ctx.model, settings(ctx).compaction);
       project(ctx.sessionManager.buildContextEntries());

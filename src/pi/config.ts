@@ -80,3 +80,54 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
   validateConfig(result);
   return result;
 }
+
+export interface NuncSettings {
+  memoryTools?: boolean;
+}
+
+export function parseNuncSettings(value: unknown, label: string = "settings.json: nunc"): NuncSettings {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new EngineError("CONFIG", `${label} must be an object`);
+  }
+  const obj = value as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (key !== "memoryTools") throw new EngineError("CONFIG", `Unknown ${label}.${key}`);
+  }
+  if (obj.memoryTools !== undefined && typeof obj.memoryTools !== "boolean") {
+    throw new EngineError("CONFIG", `Invalid ${label}.memoryTools: expected boolean, got ${typeof obj.memoryTools}`);
+  }
+  return obj.memoryTools !== undefined ? { memoryTools: obj.memoryTools as boolean } : {};
+}
+
+export function validateNuncSettings(settings: {
+  projectTrusted: boolean;
+  projectNunc?: unknown;
+  globalNunc?: unknown;
+}): void {
+  if (settings.projectTrusted && settings.projectNunc !== undefined) {
+    parseNuncSettings(settings.projectNunc, "project settings.json: nunc");
+  }
+  if (settings.globalNunc !== undefined) {
+    parseNuncSettings(settings.globalNunc, "global settings.json: nunc");
+  }
+}
+
+export function resolveMemoryTools(options: {
+  cliFlag?: unknown;
+  projectNunc?: unknown;
+  globalNunc?: unknown;
+  projectTrusted?: boolean;
+}): boolean {
+  if (Boolean(options.cliFlag)) return true;
+  if (options.projectTrusted !== false && options.projectNunc !== undefined) {
+    const project = parseNuncSettings(options.projectNunc, "project settings.json: nunc");
+    if (project.memoryTools !== undefined) return project.memoryTools;
+  }
+  if (options.globalNunc !== undefined) {
+    const global = parseNuncSettings(options.globalNunc, "global settings.json: nunc");
+    if (global.memoryTools !== undefined) return global.memoryTools;
+  }
+  return false;
+}
+

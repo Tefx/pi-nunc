@@ -12,7 +12,7 @@
 
 唯一 M、slot ID、revision、有效路径投影由 Nunc 管理；Pi 独占原生追加、checkpoint、模型/auth/serializer/transport、工具、队列与压缩调度。普通 compaction 必须独立正常工作，不要求主 agent 先记笔记。无第二笔记库、跨 session store、永久 pin、后台保存队列、额外摘要模型或自动调用频次要求。
 
-可选模型工具开关仅控制工具暴露，不控制 M 布局。采用与现有扩展 flag 相同的入口，建议布尔 `--nunc-memory-tools` 默认关闭；公开工具名称及以下行为为交付接口，私有文件/类布局由 owner 决定。即使工具关闭，新版本仍统一使用尾置 M，人工编辑与 compaction 继续工作。工具启用不授权扩大 Pi/Larva 的工具权限，实际可见集合继续服从宿主管理；不要求运行时热切换开关。
+可选模型工具开关仅控制工具暴露，不控制 M 布局。支持 CLI 标志 `--nunc-memory-tools` 或 Pi 配置 `settings.json`（全局 `~/.pi/agent/settings.json` 或受信任项目 `.pi/settings.json` 中 `{"nunc": {"memoryTools": true}}`），默认关闭。优先级为：显式 `--nunc-memory-tools` > 受信任项目布尔配置 > 全局布尔配置 > false。项目未受信时不生效；配置非布尔值按 CONFIG 诊断模式明确拒绝，不通过布尔弱类型转换误启用。即使工具关闭，新版本仍统一使用尾置 M，人工编辑与 compaction 继续工作。工具启用不授权扩大 Pi/Larva 的工具权限，实际可见集合继续服从宿主管理；不要求运行时热切换开关。
 
 ## 2. 模型工具合同
 
