@@ -3402,7 +3402,7 @@ phases:
       remain unproved.'
 - id: nunc-active-memory
   name: 主动 CRUD、唯一尾置 M 与 receipt 适配
-  status: in_progress
+  status: done
   gate: 在最终整合候选上，完整all与真实Pi/Larva/Nunc组合证明覆盖ACTIVE-MEMORY.md全部必要合同、先行F桥接和适用既有核心/维护/人工/UI/Provider不变量。无阻断缺陷或必要未证明方可接受。只读模型成本分析不冒充实测；不要求未授权付费cache/账单测试，不宣称所有CAPACITY已修复。
   context: 用户授权文档与新增计划，等待后续明确调度；前置nunc-larva-prompt及其Larva就绪条件不变。本phase消费其F解析/请求身份，完整交付docs/ACTIVE-MEMORY.md：CRUD、原子统一M、唯一尾部载体、保守R/M
     receipt和自动旧布局转换。无前置回退或双布局兼容，不改Pi core。一个Node owner持有source/tests/runner/docs，Orchestrator在其完成程序承担本phase及依赖实际组合的唯一接受，不扩展先行接受范围或修改DONE。
@@ -3411,7 +3411,7 @@ phases:
   steps:
   - id: nunc.active-memory
     name: 交付主动记忆 CRUD、单一尾部投影与 R/M 收据计量
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
@@ -3511,6 +3511,33 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-11T11:05:06.146965Z'
+    done_at: '2026-09-11T14:37:06.405642+00:00'
+    evidence: 'Orchestrator final integrated acceptance: exact git:50f6247d08d33b6e8d61f707f0668328a1e54806,
+      fast-forward from basis9fc3f39, no rebase input changes. Final retained ref
+      refs/retained/nunc-active-memory-final; original Node contribution through d5a7ca0
+      retained at refs/retained/nunc-active-memory-before-takeover. Planned owner/claim
+      node-typescript-engineer unchanged; actual final executor principal-engineer
+      via reconciled same-step takeover after repeated provenance/native-proof gaps.
+      Parent inspected actual corrected binding/ALS/carrier snapshot code, actual
+      compact engine-return-to-native-terminal freeze and reload tests, actual logs
+      and takeover report. Final required offline all exit0:502 tests/59 files; explicit
+      isolated actual Larva composition exit0:8 tests. Read-only Larva cleanf10271b5f47eb24f9b9685eb93af2e2011d23819.
+      Complete evidence .scratch/active-memory-execution/takeover-delivery.md, takeover-all-final.log,
+      takeover-larva-final.log. Covers atomic unified CRUD/flags/validation/cancellation/budget/revision/unconfirmed,
+      unique tail M/empty zero/legacy selected-path reconstruction and nextId preservation,
+      request provenance/mutation fallback/unknown/nested/wrapper isolation, observed
+      component U+deltaR+currentM+extras/nonaccumulation/earlier receipts, sent-M
+      vs Current reporting, real tool→M→native payload→receipt, temporary borrow/automatic
+      restoration with M1/M2/M3/idle, real maintenance terminal exclusion and reload.
+      Ambiguous/cloned/no-surviving-origin Context uses fresh accounting/no receipt,
+      never guesses. All inherited tool-call repair/native/admission/maintenance/payload
+      regressions pass. No residual test processes or open worktree consumers observed.
+      Scratch preserved in .scratch/active-memory-execution/worktree-scratch.tar.gz;
+      old absolute worktree .scratch paths map to same .scratch archive members, baseline
+      symlink not followed. Eligible checkout removal follows completion. No live/paid
+      product-model calls, Pi/Larva edits, global installation or publication. Real
+      billing/cache/model quality and original CAPACITY recovery remain unproven.
+      User authorization for remaining Plan consumed; source outcome complete.'
 - id: nunc-tool-call-repair
   name: 工具调用 ID 作用域与关联兼容修复
   status: done
