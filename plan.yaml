@@ -3652,7 +3652,7 @@ phases:
       explicitly authorized remaining Plan; proceed to active-memory after reconciliation.'
 - id: nunc-memory-guidance
   name: 工作记忆工具说明与提取策略优化
-  status: pending
+  status: in_progress
   gate: 工具描述与提取策略文本修改完成；全量离线回归测试（scripts/check.mjs all）与 Larva 联合测试通过；若执行真实模型行为评测，仅使用
     Gemini（禁止 Astra）且有可重现的工具调用与任务续做行为证据。
   context: 基于 docs/MEMORY-GUIDANCE.md 规范，落实 nunc_memory_read / nunc_memory_patch 的防滥用与过时处理指导说明，以及
@@ -3660,7 +3660,7 @@ phases:
   steps:
   - id: nunc.memory-guidance-implementation
     name: 落实记忆工具说明与提取策略优化及离线机械回归
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"policies/default.md\", \"tests/**\",\
       \ \"docs/**\", \"README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -3692,6 +3692,8 @@ phases:
     - docs/ACTIVE-MEMORY.md
     - docs/POLICY.md
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-11T16:53:59.680360Z'
   - id: nunc.memory-guidance-gemini-eval
     name: Gemini 真实模型行为评测与最终整合验收
     status: pending
