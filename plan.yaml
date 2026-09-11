@@ -3784,7 +3784,7 @@ phases:
     agent: general
   - id: nunc.memory-guidance-observation-support
     name: 交付工作记忆八类行为的跟踪场景与原生观察能力
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/**\", \"scripts/**\", \"docs/**\"\
       , \"examples/**\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
@@ -3851,3 +3851,24 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-11T17:19:53.634180Z'
+    done_at: '2026-09-11T19:07:23.782502+00:00'
+    evidence: 'Accepted producer only, integrated exact97e3bdb04a87626c3905f4fc1c7b6ee0b0efb227
+      by checked fast-forward from basisdc2022f74642af65c130e69af9f368b49ae79e3f;
+      rebase unchanged. Actual executor Principal Engineer (user explicitly authorized
+      Astra implementation, real tested models remain Gemini-only), original Node
+      contributions through748de54 preserved; planned owner/claim unchanged. Retained
+      refs/retained/nunc-memory-guidance-observation-principal and ...-748de54. Parent
+      inspected guidance.ts actual result/turn/save-revision binding, removal of keyword/length
+      false PROVEN, separate UNPROVEN semantic criteria; inspected final diff paths,
+      logs and Larva applicability. Final all525/525 across62 files, zero fail/cancel/skip;
+      stock ten selections60 controlled loopback calls reported with no unreconciled
+      IDs. Actual Larva8/8 at ea734b3 retained: only subsequent guidance scorer/path
+      test changes, not imported by Larva suite; related source/deps/config unchanged.
+      Evidence .scratch/memory-guidance-execution/observation-support/takeover-result.md
+      takeover-check-all-2.log takeover-larva-1.log. No live model or judge calls.
+      No matching test descendants, clean tree. Worktree retained because final controlled
+      guidance report and sessions at .scratch/stock/run-cOuYVg/guidance-report.json
+      inside it are downstream evidence consumers; release after migration or consumer
+      reconciliation. Producer proves observation capability, not Gemini semantic
+      acceptance; uncertainty/importance instruction to be reconciled into pending
+      consumer contract by Planner. Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/memory-guidance-execution/observation-support/helpers'
