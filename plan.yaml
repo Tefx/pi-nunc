@@ -3660,7 +3660,7 @@ phases:
   steps:
   - id: nunc.memory-guidance-implementation
     name: 落实记忆工具说明与提取策略优化及离线机械回归
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"policies/default.md\", \"tests/**\",\
       \ \"docs/**\", \"README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -3694,6 +3694,22 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-11T16:53:59.680360Z'
+    done_at: '2026-09-11T17:12:16.808732+00:00'
+    evidence: 'Integrated exact candidate 443d9f5b2af1143c7de2ab080f7a272489db9f0a
+      by compare-and-fast-forward from integration_basis 3c22e8678d4b48838d194f20c9b3974e4166edc1;
+      rebase was up-to-date, evidence inputs unchanged. Original retained refs/retained/nunc-memory-guidance-original.
+      Parent inspected complete six-file diff plus follow-up anti-routine patch clause,
+      preserving executable logic/schema/budgets. Node engineer implemented tool/parameter
+      guidance and two policy additions, docs distinguish implementation from pending
+      Gemini evidence. Required all log inspected: 513/513, 60 files, zero fail/cancel/skip;
+      actual read-only Larva integration 8/8; build reported successful. Logs .scratch/memory-guidance-execution/check-all.log
+      and larva.integration.log, prior observations retained with .5ddc054 suffix.
+      No matching running test processes observed; worktree clean. Gemini behavior
+      remains UNPROVEN and belongs separate downstream consumer; missing dedicated
+      harness needs bounded investigation/planning, never verifier source writes.
+      No live model calls, Astra testing, global configuration, external repo changes
+      or push. Worktree cleanup pending inspection of ignored artifacts and downstream
+      directory consumers.'
   - id: nunc.memory-guidance-gemini-eval
     name: Gemini 真实模型行为评测与最终整合验收
     status: pending
