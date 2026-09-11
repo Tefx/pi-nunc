@@ -68,7 +68,7 @@ Nunc validates tool call associations and ID scoping without falsely rejecting l
 - **Unresolved calls:** Any tool call left without a matching result at the end of visible history is rejected before dispatch (`INPUT: Unresolved tool calls: <id>`).
 - **Maintenance cut legality:** In `legalCuts(active)`, entry boundaries where tool calls are pending are never legal cuts (`pending.size === 0` required). Maintenance will never separate a tool call from its result during compaction.
 - **Context occurrence linkage:** In `contextSurface(pi).read(ctx)`, `associationsOf` pairs each tool result with its specific call occurrence by message order, ensuring distinct `callOrder` and `resultOrder` linkage even when tool call IDs are reused across completed turns.
-- **Session origin disclosure:** Historical `seenCalls` across the entire history explained Nunc's rejection of sequential completed pairs; the actual origin of the repeated ID in the original user's session (model vs gateway vs host) was not confirmed because raw session data was not provided. Nunc guarantees local compatibility for valid repeated IDs regardless of upstream source.
+- **Evidence boundary:** Local serializers emitting repeated IDs and controlled loopback transports returning success prove stock host/native adapter behavior, serialization compliance and local admission/cut invariants, NOT an unverified remote vendor guarantee across arbitrary external models. Different remote providers and models define their own server-side validation rules. Nunc validates and admits only complete, unambiguous, non-conflicting completed tool call pairs in accordance with its consumer contract. The actual origin of repeated IDs in the original user session remains unknown.
 
 ## Main-request admission
 

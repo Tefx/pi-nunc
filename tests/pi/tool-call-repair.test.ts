@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { zstdDecompressSync } from "node:zlib";
-import type { Api, AssistantMessage, Context, Model, Provider } from "@earendil-works/pi-ai";
+import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
@@ -12,40 +12,70 @@ import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
 
-const dummyUsage = { input: 10, output: 5, totalTokens: 15, cacheRead: 0, cacheWrite: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+const frame = (v: unknown) => `data: ${JSON.stringify(v)}\n\n`;
+const chunk = (delta: unknown, finish_reason: string | null = null) =>
+  frame({ id: "resp-chunk", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason }] });
 
-function assistantMsg(options: { model: string; api: Api; provider: string; stopReason: "stop" | "toolUse"; timestamp: number; content: AssistantMessage["content"] }): AssistantMessage {
-  return { role: "assistant", usage: dummyUsage, ...options };
+function completionsToolCallSSE(callId: string, name: string, args: Record<string, unknown>) {
+  const sse =
+    chunk({ role: "assistant", content: null }) +
+    chunk({ tool_calls: [{ index: 0, id: callId, type: "function", function: { name, arguments: JSON.stringify(args) } }] }) +
+    chunk({}, "tool_calls") +
+    frame({ id: "resp-chunk", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } }) +
+    "data: [DONE]\n\n";
+  return new Response(sse, { headers: { "content-type": "text/event-stream" } });
 }
 
-function completionsSSE(text: string) {
-  const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
-  const chunk = (delta: unknown, finish_reason: string | null = null) =>
-    frame({ id: "resp-1", object: "chat.completion.chunk", created: 1, model: "test-model", choices: [{ index: 0, delta, finish_reason }] });
-  return new Response(
-    chunk({ role: "assistant", content: "" }) + chunk({ content: text }) + chunk({}, "stop") +
-    frame({ id: "resp-1", object: "chat.completion.chunk", model: "test-model", choices: [], usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } }) +
-    "data: [DONE]\n\n",
-    { headers: { "content-type": "text/event-stream" } },
-  );
+function completionsTextSSE(text: string) {
+  const sse =
+    chunk({ role: "assistant", content: "" }) +
+    chunk({ content: text }) +
+    chunk({}, "stop") +
+    frame({ id: "resp-chunk", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } }) +
+    "data: [DONE]\n\n";
+  return new Response(sse, { headers: { "content-type": "text/event-stream" } });
 }
 
-function responsesSSE(text: string) {
-  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
+function responsesToolCallSSE(modelId: string, callId: string, name: string, args: Record<string, unknown>) {
+  const item = { type: "function_call", id: "fc-1", call_id: callId, name, arguments: JSON.stringify(args), status: "completed" };
   const events = [
-    { type: "response.created", response: { id: "resp-1", model: "test-model", status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
+    { type: "response.created", response: { id: "resp-1", model: modelId, status: "in_progress", output: [] } },
+    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", arguments: "" } },
+    { type: "response.function_call_arguments.delta", item_id: item.id, output_index: 0, delta: item.arguments },
     { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "resp-1", model: "test-model", status: "completed", output: [item], usage: { input_tokens: 50, output_tokens: 10, total_tokens: 60, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+    { type: "response.completed", response: { id: "resp-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 50, output_tokens: 10, total_tokens: 60, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
   ];
   return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 }
 
-function anthropicSSE(text: string) {
+function responsesTextSSE(modelId: string, text: string) {
+  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
   const events = [
-    { type: "message_start", message: { id: "resp-1", type: "message", role: "assistant", model: "claude-test", content: [], stop_reason: null, usage: { input_tokens: 50, output_tokens: 0 } } },
+    { type: "response.created", response: { id: "resp-1", model: modelId, status: "in_progress", output: [] } },
+    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
+    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
+    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
+    { type: "response.output_item.done", output_index: 0, item },
+    { type: "response.completed", response: { id: "resp-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 50, output_tokens: 10, total_tokens: 60, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+  ];
+  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+}
+
+function anthropicToolCallSSE(modelId: string, callId: string, name: string, args: Record<string, unknown>) {
+  const events = [
+    { type: "message_start", message: { id: "resp-1", type: "message", role: "assistant", model: modelId, content: [], stop_reason: null, usage: { input_tokens: 50, output_tokens: 0 } } },
+    { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: callId, name, input: {} } },
+    { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(args) } },
+    { type: "content_block_stop", index: 0 },
+    { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 10 } },
+    { type: "message_stop" },
+  ];
+  return new Response(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+}
+
+function anthropicTextSSE(modelId: string, text: string) {
+  const events = [
+    { type: "message_start", message: { id: "resp-1", type: "message", role: "assistant", model: modelId, content: [], stop_reason: null, usage: { input_tokens: 50, output_tokens: 0 } } },
     { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
     { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
     { type: "content_block_stop", index: 0 },
@@ -55,7 +85,111 @@ function anthropicSSE(text: string) {
   return new Response(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 }
 
-test("sequential completed tool calls reusing the same ID complete across multiple turns with valid admission and receipts", async t => {
+interface NativeAdapterSpec {
+  name: string;
+  setup: (transport: typeof fetch) => {
+    provider: Provider;
+    model: Model<Api>;
+    isCodex?: boolean;
+    toolCallSSE: (callId: string, name: string, args: Record<string, unknown>) => Response;
+    textSSE: (txt: string) => Response;
+    extractCalls: (body: unknown) => Array<{ id: string; args: unknown }>;
+    extractResults: (body: unknown) => Array<{ id: string; content?: unknown }>;
+  };
+}
+
+const nativeAdapters: NativeAdapterSpec[] = [
+  {
+    name: "openai-completions",
+    setup: () => {
+      const p = openrouterProvider();
+      const m = p.getModels().find(model => model.id === "x-ai/grok-4.6");
+      assert(m && m.api === "openai-completions");
+      return {
+        provider: p, model: m,
+        toolCallSSE: (id, name, args) => completionsToolCallSSE(id, name, args),
+        textSSE: (txt) => completionsTextSSE(txt),
+        extractCalls: (body: any) => body.messages.flatMap((msg: any) =>
+          (msg.tool_calls || []).map((tc: any) => ({
+            id: tc.id,
+            args: typeof tc.function?.arguments === "string" ? JSON.parse(tc.function.arguments) : tc.function?.arguments,
+          }))
+        ),
+        extractResults: (body: any) => body.messages.filter((msg: any) => msg.role === "tool").map((msg: any) => ({
+          id: msg.tool_call_id,
+          content: msg.content,
+        })),
+      };
+    },
+  },
+  {
+    name: "openai-responses",
+    setup: () => {
+      const p = openaiProvider();
+      const m = p.getModels().find(model => model.id === "gpt-4.1");
+      assert(m && m.api === "openai-responses");
+      return {
+        provider: p, model: m,
+        toolCallSSE: (id, name, args) => responsesToolCallSSE(m.id, id, name, args),
+        textSSE: (txt) => responsesTextSSE(m.id, txt),
+        extractCalls: (body: any) => body.input.filter((i: any) => i.type === "function_call").map((i: any) => ({
+          id: i.call_id,
+          args: typeof i.arguments === "string" ? JSON.parse(i.arguments) : i.arguments,
+        })),
+        extractResults: (body: any) => body.input.filter((i: any) => i.type === "function_call_output").map((i: any) => ({
+          id: i.call_id,
+          content: i.output,
+        })),
+      };
+    },
+  },
+  {
+    name: "anthropic-messages",
+    setup: () => {
+      const p = anthropicProvider();
+      const m = p.getModels().find(model => model.id.includes("claude"));
+      assert(m && m.api === "anthropic-messages");
+      return {
+        provider: p, model: m,
+        toolCallSSE: (id, name, args) => anthropicToolCallSSE(m.id, id, name, args),
+        textSSE: (txt) => anthropicTextSSE(m.id, txt),
+        extractCalls: (body: any) => body.messages.flatMap((msg: any) =>
+          Array.isArray(msg.content)
+            ? msg.content.filter((b: any) => b.type === "tool_use").map((b: any) => ({ id: b.id, args: b.input }))
+            : []
+        ),
+        extractResults: (body: any) => body.messages.flatMap((msg: any) =>
+          Array.isArray(msg.content)
+            ? msg.content.filter((b: any) => b.type === "tool_result").map((b: any) => ({ id: b.tool_use_id, content: b.content }))
+            : []
+        ),
+      };
+    },
+  },
+  {
+    name: "openai-codex-responses",
+    setup: () => {
+      const p = openaiCodexProvider();
+      const m = p.getModels().find(model => model.id === "gpt-6-astra");
+      assert(m && m.api === "openai-codex-responses");
+      return {
+        provider: p, model: m, isCodex: true,
+        toolCallSSE: (id, name, args) => responsesToolCallSSE(m.id, id, name, args),
+        textSSE: (txt) => responsesTextSSE(m.id, txt),
+        extractCalls: (body: any) => body.input.filter((i: any) => i.type === "function_call").map((i: any) => ({
+          id: i.call_id,
+          args: typeof i.arguments === "string" ? JSON.parse(i.arguments) : i.arguments,
+        })),
+        extractResults: (body: any) => body.input.filter((i: any) => i.type === "function_call_output").map((i: any) => ({
+          id: i.call_id,
+          content: i.output,
+        })),
+      };
+    },
+  },
+];
+
+test("stock Pi session with faux provider: sequential completed tool calls reuse ID across turns with receipt reuse", async t => {
   let toolExecutions = 0;
   const admissions: AdmissionObservation[] = [];
   const extras: InlineExtension[] = [{
@@ -86,101 +220,87 @@ test("sequential completed tool calls reusing the same ID complete across multip
   t.after(() => f.close());
 
   let turn = 0;
-  f.respond((context) => {
+  f.respond(() => {
     turn++;
-    // Turn 1 prompt -> request 1: assistant emits tool call with ID "call-reused"
     if (turn === 1) {
       return fauxAssistantMessage(fauxToolCall("read_fixture", { path: "turn1.txt" }, { id: "call-reused" }), { stopReason: "toolUse" });
     }
-    // Turn 1 continuation -> request 2: assistant returns final answer
     if (turn === 2) {
       return fauxAssistantMessage("Finished turn 1 with tool.");
     }
-    // Turn 2 prompt -> request 3: assistant emits tool call with the EXACT SAME ID "call-reused"
     if (turn === 3) {
       return fauxAssistantMessage(fauxToolCall("read_fixture", { path: "turn2.txt" }, { id: "call-reused" }), { stopReason: "toolUse" });
     }
-    // Turn 2 continuation -> request 4: assistant returns final answer
     if (turn === 4) {
       return fauxAssistantMessage("Finished turn 2 with tool.");
     }
     return fauxAssistantMessage("Default response.");
   });
 
-  // Prompt turn 1
   await f.runtime.session.prompt("Please read turn1.txt");
   const turn1Assistant = f.runtime.session.messages.findLast(m => m.role === "assistant");
   assert.equal(turn1Assistant?.role, "assistant");
   assert.equal(turn1Assistant?.stopReason, "stop");
   assert.equal(toolExecutions, 1);
 
-  // Prompt turn 2 - reuses the completed tool call ID
   await f.runtime.session.prompt("Please read turn2.txt");
   const turn2Assistant = f.runtime.session.messages.findLast(m => m.role === "assistant");
   assert.equal(turn2Assistant?.role, "assistant");
   assert.equal(turn2Assistant?.stopReason, "stop");
   assert.equal(toolExecutions, 2);
 
-  // Check admission observations: all 4 requests were delegated successfully
   const delegated = admissions.filter(o => o.kind === "main" && o.outcome === "delegate");
   assert.equal(delegated.length, 4, "all 4 main/continuation requests delegated without duplicate rejection");
-
-  // Verify that turn 2 tool continuation re-used the receipt anchor from turn 2 call
   assert(delegated.some(o => o.estimator === "pi-usage-backed" && o.estimateReason === "matching-receipt"),
     "usage receipt was successfully established and matched across tool loop");
 });
 
-test("ambiguous duplicate pending tool call IDs are rejected before transport with zero provider calls", async t => {
-  let callCount = 0;
-  const admissions: AdmissionObservation[] = [];
-  const extras: InlineExtension[] = [
-    {
-      name: "watch-admission",
-      factory(pi) { pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation)); },
-    },
-    {
-      name: "inject-duplicate-pending",
-      factory(pi) {
-        (pi as any).on("context", (event: { messages: unknown[] }) => ({
-          messages: [
-            ...event.messages,
-            {
-              role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture",
-              stopReason: "toolUse", timestamp: 10,
-              content: [
-                { type: "toolCall", id: "ambig-id", name: "read", arguments: { path: "a.txt" } },
-                { type: "toolCall", id: "ambig-id", name: "read", arguments: { path: "b.txt" } },
-              ],
-            },
-          ],
-        }));
-      },
-    },
-  ];
-  const f = await fixture({ extras });
-  t.after(() => f.close());
-  f.respond(() => { callCount++; return fauxAssistantMessage("Must not be called"); });
-
-  await f.runtime.session.prompt("Trigger duplicate pending check");
-  const last = f.runtime.session.messages.at(-1);
-  assert.equal(callCount, 0, "provider must not be called when ambiguous pending calls exist");
-  assert(last?.role === "assistant");
-  assert.equal(last.stopReason, "error");
-  assert.match(last.errorMessage ?? "", /Duplicate tool call ambig-id|Nunc local INPUT/);
-});
-
-test("orphan, duplicate, name-mismatched, and unresolved tool results reject before transport", async t => {
-  // 1. Orphan result
+test("stock Pi session: ambiguous duplicate pending calls, orphan results, mismatched tool names, unresolved calls reject locally before transport", async t => {
+  // 1. Ambiguous duplicate pending calls in same assistant message
   {
     let callCount = 0;
-    const f = await fixture({ extras: [{
-      name: "orphan-test",
-      factory(pi) {
-        (pi as any).on("context", (event: { messages: unknown[] }) => ({
-          messages: [...event.messages, { role: "toolResult", toolCallId: "nonexistent", toolName: "read", isError: false, content: [{ type: "text", text: "orphan" }], timestamp: 10 }],
-        }));
-      },
-    }] });
+    const f = await fixture({
+      extras: [{
+        name: "duplicate-pending",
+        factory(pi) {
+          (pi as any).on("context", (event: { messages: unknown[] }) => ({
+            messages: [
+              ...event.messages,
+              {
+                role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture",
+                stopReason: "toolUse", timestamp: 10,
+                content: [
+                  { type: "toolCall", id: "ambig-id", name: "read", arguments: { path: "a.txt" } },
+                  { type: "toolCall", id: "ambig-id", name: "read", arguments: { path: "b.txt" } },
+                ],
+              },
+            ],
+          }));
+        },
+      }],
+    });
+    t.after(() => f.close());
+    f.respond(() => { callCount++; return fauxAssistantMessage("Must not call"); });
+    await f.runtime.session.prompt("Trigger duplicate pending");
+    assert.equal(callCount, 0);
+    const last = f.runtime.session.messages.at(-1);
+    assert(last?.role === "assistant" && last.stopReason === "error");
+    assert.match(last.errorMessage ?? "", /Duplicate tool call ambig-id|Nunc local INPUT/);
+  }
+
+  // 2. Orphan result
+  {
+    let callCount = 0;
+    const f = await fixture({
+      extras: [{
+        name: "orphan-test",
+        factory(pi) {
+          (pi as any).on("context", (event: { messages: unknown[] }) => ({
+            messages: [...event.messages, { role: "toolResult", toolCallId: "nonexistent", toolName: "read", isError: false, content: [{ type: "text", text: "orphan" }], timestamp: 10 }],
+          }));
+        },
+      }],
+    });
     t.after(() => f.close());
     f.respond(() => { callCount++; return fauxAssistantMessage("No call"); });
     await f.runtime.session.prompt("Prompt with orphan");
@@ -190,21 +310,23 @@ test("orphan, duplicate, name-mismatched, and unresolved tool results reject bef
     assert.match(last.errorMessage ?? "", /Orphan|Nunc local INPUT/);
   }
 
-  // 2. Name-mismatched result
+  // 3. Name-mismatched result
   {
     let callCount = 0;
-    const f = await fixture({ extras: [{
-      name: "mismatched-test",
-      factory(pi) {
-        (pi as any).on("context", (event: { messages: unknown[] }) => ({
-          messages: [
-            ...event.messages,
-            { role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture", stopReason: "toolUse", timestamp: 10, content: [{ type: "toolCall", id: "call-mismatch", name: "read", arguments: {} }] },
-            { role: "toolResult", toolCallId: "call-mismatch", toolName: "write", isError: false, content: [{ type: "text", text: "mismatched" }], timestamp: 11 },
-          ],
-        }));
-      },
-    }] });
+    const f = await fixture({
+      extras: [{
+        name: "mismatched-test",
+        factory(pi) {
+          (pi as any).on("context", (event: { messages: unknown[] }) => ({
+            messages: [
+              ...event.messages,
+              { role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture", stopReason: "toolUse", timestamp: 10, content: [{ type: "toolCall", id: "call-mismatch", name: "read", arguments: {} }] },
+              { role: "toolResult", toolCallId: "call-mismatch", toolName: "write", isError: false, content: [{ type: "text", text: "mismatched" }], timestamp: 11 },
+            ],
+          }));
+        },
+      }],
+    });
     t.after(() => f.close());
     f.respond(() => { callCount++; return fauxAssistantMessage("No call"); });
     await f.runtime.session.prompt("Prompt with mismatch");
@@ -214,22 +336,24 @@ test("orphan, duplicate, name-mismatched, and unresolved tool results reject bef
     assert.match(last.errorMessage ?? "", /mismatched|Nunc local INPUT/);
   }
 
-  // 3. Duplicate result for same call
+  // 4. Duplicate result for same call
   {
     let callCount = 0;
-    const f = await fixture({ extras: [{
-      name: "duplicate-result-test",
-      factory(pi) {
-        (pi as any).on("context", (event: { messages: unknown[] }) => ({
-          messages: [
-            ...event.messages,
-            { role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture", stopReason: "toolUse", timestamp: 10, content: [{ type: "toolCall", id: "call-dup", name: "read", arguments: {} }] },
-            { role: "toolResult", toolCallId: "call-dup", toolName: "read", isError: false, content: [{ type: "text", text: "res1" }], timestamp: 11 },
-            { role: "toolResult", toolCallId: "call-dup", toolName: "read", isError: false, content: [{ type: "text", text: "res2" }], timestamp: 12 },
-          ],
-        }));
-      },
-    }] });
+    const f = await fixture({
+      extras: [{
+        name: "duplicate-result-test",
+        factory(pi) {
+          (pi as any).on("context", (event: { messages: unknown[] }) => ({
+            messages: [
+              ...event.messages,
+              { role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture", stopReason: "toolUse", timestamp: 10, content: [{ type: "toolCall", id: "call-dup", name: "read", arguments: {} }] },
+              { role: "toolResult", toolCallId: "call-dup", toolName: "read", isError: false, content: [{ type: "text", text: "res1" }], timestamp: 11 },
+              { role: "toolResult", toolCallId: "call-dup", toolName: "read", isError: false, content: [{ type: "text", text: "res2" }], timestamp: 12 },
+            ],
+          }));
+        },
+      }],
+    });
     t.after(() => f.close());
     f.respond(() => { callCount++; return fauxAssistantMessage("No call"); });
     await f.runtime.session.prompt("Prompt with duplicate result");
@@ -239,20 +363,22 @@ test("orphan, duplicate, name-mismatched, and unresolved tool results reject bef
     assert.match(last.errorMessage ?? "", /duplicate|Nunc local INPUT/);
   }
 
-  // 4. Unresolved tool call at end of context
+  // 5. Unresolved tool call at end of context
   {
     let callCount = 0;
-    const f = await fixture({ extras: [{
-      name: "unresolved-test",
-      factory(pi) {
-        (pi as any).on("context", (event: { messages: unknown[] }) => ({
-          messages: [
-            ...event.messages,
-            { role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture", stopReason: "toolUse", timestamp: 10, content: [{ type: "toolCall", id: "call-unresolved", name: "read", arguments: {} }] },
-          ],
-        }));
-      },
-    }] });
+    const f = await fixture({
+      extras: [{
+        name: "unresolved-test",
+        factory(pi) {
+          (pi as any).on("context", (event: { messages: unknown[] }) => ({
+            messages: [
+              ...event.messages,
+              { role: "assistant", model: "large", api: "openai-completions", provider: "nunc-pi-fixture", stopReason: "toolUse", timestamp: 10, content: [{ type: "toolCall", id: "call-unresolved", name: "read", arguments: {} }] },
+            ],
+          }));
+        },
+      }],
+    });
     t.after(() => f.close());
     f.respond(() => { callCount++; return fauxAssistantMessage("No call"); });
     await f.runtime.session.prompt("Prompt with unresolved call");
@@ -263,257 +389,171 @@ test("orphan, duplicate, name-mismatched, and unresolved tool results reject bef
   }
 });
 
-test("native serializers format sequential completed same-ID tool loops into valid wire protocol", async t => {
-  // Test OpenAI Completions serializer
-  {
-    const bodies: unknown[] = [];
-    const openrouter = openrouterProvider();
-    const catalog = openrouter.getModels().find(m => m.api === "openai-completions");
-    assert(catalog);
-    const targetModel: Model<Api> = catalog;
-    const transport: typeof fetch = async (resource, init) => {
-      bodies.push(await new Request(resource, init).json());
-      return completionsSSE("Completions tool loop ok.");
-    };
-    const bound = { apiKey: "offline-test-key", fetch: transport, maxRetries: 0 as const };
-    const wrapped: Provider = {
-      ...openrouter,
-      streamSimple: (m, context, options) => openrouter.streamSimple(m as never, context, { ...options, ...bound } as never),
-      stream: (m, context, options) => openrouter.stream(m as never, context, { ...options, ...bound } as never),
-    };
-    const context: Context = {
-      messages: [
-        { role: "user", content: "turn 1 request", timestamp: 1 },
-        assistantMsg({ model: targetModel.id, api: targetModel.api, provider: targetModel.provider, stopReason: "toolUse", timestamp: 2, content: [{ type: "toolCall", id: "reused-tool-id", name: "read", arguments: { path: "first.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-tool-id", toolName: "read", isError: false, timestamp: 3, content: [{ type: "text", text: "first result" }] },
-        assistantMsg({ model: targetModel.id, api: targetModel.api, provider: targetModel.provider, stopReason: "stop", timestamp: 4, content: [{ type: "text", text: "turn 1 done" }] }),
-        { role: "user", content: "turn 2 request", timestamp: 5 },
-        assistantMsg({ model: targetModel.id, api: targetModel.api, provider: targetModel.provider, stopReason: "toolUse", timestamp: 6, content: [{ type: "toolCall", id: "reused-tool-id", name: "read", arguments: { path: "second.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-tool-id", toolName: "read", isError: false, timestamp: 7, content: [{ type: "text", text: "second result" }] },
-      ],
-    };
-    const stream = wrapped.stream(targetModel as never, context, {} as never);
-    const result = await stream.result();
-    assert.equal(result.role, "assistant");
-    assert.equal(bodies.length, 1);
-    const wireBody = bodies[0] as { messages: Array<{ role: string; tool_calls?: Array<{ id: string }>; tool_call_id?: string }> };
-    assert(Array.isArray(wireBody.messages));
-    const toolCalls = wireBody.messages.flatMap(m => m.tool_calls ?? []);
-    assert.equal(toolCalls.length, 2);
-    assert.equal(toolCalls[0]?.id, "reused-tool-id");
-    assert.equal(toolCalls[1]?.id, "reused-tool-id");
-    const toolResults = wireBody.messages.filter(m => m.role === "tool");
-    assert.equal(toolResults.length, 2);
-    assert.equal(toolResults[0]?.tool_call_id, "reused-tool-id");
-    assert.equal(toolResults[1]?.tool_call_id, "reused-tool-id");
-  }
+test("combined seam for all 4 native mapping families: stock Pi session tool loop -> Nunc admission/receipt -> native serialization -> controlled transport -> repeated-ID continuation", async t => {
+  for (const adapter of nativeAdapters) {
+    let toolExecs = 0;
+    const toolParams: unknown[] = [];
+    const tools = [{
+      name: "read_fixture", label: "read_fixture", description: "Read a fixture file",
+      parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      execute: async (_toolCallId: string, params: unknown) => {
+        toolExecs++;
+        toolParams.push(params);
+        return { content: [{ type: "text" as const, text: `Content of ${(params as any)?.path}` }], details: {} };
+      },
+    }];
 
-  // Test OpenAI Responses serializer
-  {
+    let httpRequests = 0;
     const bodies: unknown[] = [];
-    const openai = openaiProvider();
-    const catalog = openai.getModels().find(m => m.id === "gpt-4.1");
-    assert(catalog);
+    let spec: ReturnType<typeof adapter.setup>;
     const transport: typeof fetch = async (resource, init) => {
-      bodies.push(await new Request(resource, init).json());
-      return responsesSSE("Responses tool loop ok.");
+      httpRequests++;
+      const req = new Request(resource, init);
+      let body: unknown;
+      if (req.headers.get("content-encoding") === "zstd") {
+        const raw = Buffer.from(await req.arrayBuffer());
+        body = JSON.parse(zstdDecompressSync(raw).toString("utf8"));
+      } else {
+        body = await req.json();
+      }
+      bodies.push(body);
+      if (httpRequests === 1) return spec.toolCallSSE("reused-call-id", "read_fixture", { path: "alpha.txt" });
+      if (httpRequests === 2) return spec.textSSE("Done with alpha.");
+      if (httpRequests === 3) return spec.toolCallSSE("reused-call-id", "read_fixture", { path: "beta.txt" });
+      if (httpRequests === 4) return spec.textSSE("Done with beta.");
+      return spec.textSSE("Default.");
     };
-    const bound = { apiKey: "offline-test-key", fetch: transport, maxRetries: 0 as const };
-    const wrapped: Provider = {
-      ...openai,
-      streamSimple: (m, context, options) => openai.streamSimple(m as never, context, { ...options, ...bound } as never),
-      stream: (m, context, options) => openai.stream(m as never, context, { ...options, ...bound } as never),
-    };
-    const context: Context = {
-      messages: [
-        { role: "user", content: "turn 1 request", timestamp: 1 },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "toolUse", timestamp: 2, content: [{ type: "toolCall", id: "reused-call-id", name: "read", arguments: { path: "first.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-call-id", toolName: "read", isError: false, timestamp: 3, content: [{ type: "text", text: "first result" }] },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "stop", timestamp: 4, content: [{ type: "text", text: "turn 1 done" }] }),
-        { role: "user", content: "turn 2 request", timestamp: 5 },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "toolUse", timestamp: 6, content: [{ type: "toolCall", id: "reused-call-id", name: "read", arguments: { path: "second.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-call-id", toolName: "read", isError: false, timestamp: 7, content: [{ type: "text", text: "second result" }] },
-      ],
-    };
-    const stream = wrapped.stream(catalog as never, context, {} as never);
-    const result = await stream.result();
-    assert.equal(result.role, "assistant");
-    assert.equal(bodies.length, 1);
-    const wireBody = bodies[0] as { input: Array<{ type: string; call_id?: string }> };
-    assert(Array.isArray(wireBody.input));
-    const calls = wireBody.input.filter(item => item.type === "function_call");
-    const outputs = wireBody.input.filter(item => item.type === "function_call_output");
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0]?.call_id, "reused-call-id");
-    assert.equal(calls[1]?.call_id, "reused-call-id");
-    assert.equal(outputs.length, 2);
-    assert.equal(outputs[0]?.call_id, "reused-call-id");
-    assert.equal(outputs[1]?.call_id, "reused-call-id");
-  }
 
-  // Test Anthropic Messages serializer
-  {
-    const bodies: unknown[] = [];
-    const anthropic = anthropicProvider();
-    const catalog = anthropic.getModels().find(m => m.id.includes("claude"));
-    assert(catalog);
-    const transport: typeof fetch = async (resource, init) => {
-      bodies.push(await new Request(resource, init).json());
-      return anthropicSSE("Anthropic tool loop ok.");
-    };
-    const bound = { apiKey: "offline-test-key", fetch: transport, maxRetries: 0 as const };
+    spec = adapter.setup(transport);
+    const cred = spec.isCodex ? oauthFixture() : undefined;
+    const bound = { apiKey: cred ? cred.access : "offline-key", fetch: transport, transport: "sse" as const, maxRetries: 0 as const };
     const wrapped: Provider = {
-      ...anthropic,
-      streamSimple: (m, context, options) => anthropic.streamSimple(m as never, context, { ...options, ...bound } as never),
-      stream: (m, context, options) => anthropic.stream(m as never, context, { ...options, ...bound } as never),
+      ...spec.provider,
+      stream: (m, ctx, opt) => spec.provider.stream(m as never, ctx, { ...opt, ...bound } as never),
+      streamSimple: (m, ctx, opt) => spec.provider.streamSimple(m as never, ctx, { ...opt, ...bound } as never),
     };
-    const context: Context = {
-      messages: [
-        { role: "user", content: "turn 1 request", timestamp: 1 },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "toolUse", timestamp: 2, content: [{ type: "toolCall", id: "reused-anthropic-id", name: "read", arguments: { path: "first.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-anthropic-id", toolName: "read", isError: false, timestamp: 3, content: [{ type: "text", text: "first result" }] },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "stop", timestamp: 4, content: [{ type: "text", text: "turn 1 done" }] }),
-        { role: "user", content: "turn 2 request", timestamp: 5 },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "toolUse", timestamp: 6, content: [{ type: "toolCall", id: "reused-anthropic-id", name: "read", arguments: { path: "second.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-anthropic-id", toolName: "read", isError: false, timestamp: 7, content: [{ type: "text", text: "second result" }] },
-      ],
-    };
-    const stream = wrapped.stream(catalog as never, context, {} as never);
-    const result = await stream.result();
-    assert.equal(result.role, "assistant");
-    assert.equal(bodies.length, 1);
-    const wireBody = bodies[0] as { messages: Array<{ role: string; content: Array<{ type: string; id?: string; tool_use_id?: string }> }> };
-    assert(Array.isArray(wireBody.messages));
-    const uses = wireBody.messages.flatMap(m => Array.isArray(m.content) ? m.content.filter(b => b.type === "tool_use") : []);
-    const results = wireBody.messages.flatMap(m => Array.isArray(m.content) ? m.content.filter(b => b.type === "tool_result") : []);
-    assert.equal(uses.length, 2);
-    assert.equal(uses[0]?.id, "reused-anthropic-id");
-    assert.equal(uses[1]?.id, "reused-anthropic-id");
-    assert.equal(results.length, 2);
-    assert.equal(results[0]?.tool_use_id, "reused-anthropic-id");
-    assert.equal(results[1]?.tool_use_id, "reused-anthropic-id");
-  }
 
-  // Test OpenAI Codex Responses serializer
-  {
-    const bodies: unknown[] = [];
-    const codex = openaiCodexProvider();
-    const catalog = codex.getModels().find(m => m.id === "gpt-6-astra");
-    assert(catalog);
-    const transport: typeof fetch = async (resource, init) => {
-      const request = new Request(resource, init);
-      const raw = Buffer.from(await request.arrayBuffer());
-      const decoded = request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(raw) : raw;
-      bodies.push(JSON.parse(decoded.toString("utf8")));
-      return responsesSSE("Codex tool loop ok.");
-    };
-    const credential = oauthFixture();
-    const bound = { apiKey: credential.access, fetch: transport, transport: "sse" as const, maxRetries: 0 as const };
-    const wrapped: Provider = {
-      ...codex,
-      streamSimple: (m, context, options) => codex.streamSimple(m as never, context, { ...options, ...bound } as never),
-      stream: (m, context, options) => codex.stream(m as never, context, { ...options, ...bound } as never),
-    };
-    const context: Context = {
-      messages: [
-        { role: "user", content: "turn 1 request", timestamp: 1 },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "toolUse", timestamp: 2, content: [{ type: "toolCall", id: "reused-codex-id", name: "read", arguments: { path: "first.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-codex-id", toolName: "read", isError: false, timestamp: 3, content: [{ type: "text", text: "first result" }] },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "stop", timestamp: 4, content: [{ type: "text", text: "turn 1 done" }] }),
-        { role: "user", content: "turn 2 request", timestamp: 5 },
-        assistantMsg({ model: catalog.id, api: catalog.api, provider: catalog.provider, stopReason: "toolUse", timestamp: 6, content: [{ type: "toolCall", id: "reused-codex-id", name: "read", arguments: { path: "second.txt" } }] }),
-        { role: "toolResult", toolCallId: "reused-codex-id", toolName: "read", isError: false, timestamp: 7, content: [{ type: "text", text: "second result" }] },
-      ],
-    };
-    const stream = wrapped.stream(catalog as never, context, {} as never);
-    const result = await stream.result();
-    assert.equal(result.role, "assistant");
-    assert.equal(bodies.length, 1);
-    const wireBody = bodies[0] as { input: Array<{ type: string; call_id?: string }> };
-    assert(Array.isArray(wireBody.input));
-    const calls = wireBody.input.filter(item => item.type === "function_call");
-    const outputs = wireBody.input.filter(item => item.type === "function_call_output");
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0]?.call_id, "reused-codex-id");
-    assert.equal(calls[1]?.call_id, "reused-codex-id");
-    assert.equal(outputs.length, 2);
-    assert.equal(outputs[0]?.call_id, "reused-codex-id");
-    assert.equal(outputs[1]?.call_id, "reused-codex-id");
+    const admissions: AdmissionObservation[] = [];
+    const f = await fixture({
+      tools,
+      extras: [{
+        name: "watch-admission",
+        factory(pi) { pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation)); },
+      }],
+    });
+    t.after(() => f.close());
+
+    new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+    if (spec.isCodex && cred) {
+      await f.credentials.modify(spec.model.provider, async () => cred);
+    } else {
+      await f.modelRuntime.setRuntimeApiKey(spec.model.provider, "offline-key");
+    }
+    await f.runtime.session.setModel(spec.model);
+
+    // Turn 1 prompt -> tool execution -> tool continuation
+    await f.runtime.session.prompt("Prompt 1: read alpha.txt");
+    const a1 = f.runtime.session.messages.findLast(m => m.role === "assistant");
+    assert.equal(a1?.role, "assistant");
+    assert.equal(a1?.stopReason, "stop");
+    assert.equal(a1?.errorMessage, undefined);
+    assert.equal(toolExecs, 1);
+    assert.deepEqual(toolParams[0], { path: "alpha.txt" });
+
+    // Turn 2 prompt -> tool execution (reusing ID "reused-call-id") -> tool continuation
+    await f.runtime.session.prompt("Prompt 2: read beta.txt");
+    const a2 = f.runtime.session.messages.findLast(m => m.role === "assistant");
+    assert.equal(a2?.role, "assistant");
+    assert.equal(a2?.stopReason, "stop");
+    assert.equal(a2?.errorMessage, undefined);
+    assert.equal(toolExecs, 2);
+    assert.deepEqual(toolParams[1], { path: "beta.txt" });
+
+    // Verify exactly 4 HTTP requests reached transport
+    assert.equal(httpRequests, 4, `expected exactly 4 HTTP requests on ${adapter.name}`);
+
+    // Verify all admissions were delegated (no Duplicate tool call rejection)
+    const delegates = admissions.filter(o => o.kind === "main" && o.outcome === "delegate");
+    assert(delegates.length >= 4, `expected at least 4 delegated main admissions on ${adapter.name}`);
+
+    // Verify captured wire body on request 4 (continuation of turn 2)
+    const lastBody = bodies[3];
+    const calls = spec.extractCalls(lastBody);
+    const results = spec.extractResults(lastBody);
+    assert.equal(calls.length, 2, `expected 2 tool calls in wire body on ${adapter.name}`);
+    assert.equal(calls[0]?.id, "reused-call-id");
+    assert.equal(calls[1]?.id, "reused-call-id");
+    assert.deepEqual(calls[0]?.args, { path: "alpha.txt" });
+    assert.deepEqual(calls[1]?.args, { path: "beta.txt" });
+
+    assert.equal(results.length, 2, `expected 2 tool results in wire body on ${adapter.name}`);
+    assert.equal(results[0]?.id, "reused-call-id");
+    assert.equal(results[1]?.id, "reused-call-id");
+    assert.match(JSON.stringify(results[0]?.content), /Content of alpha\.txt/);
+    assert.match(JSON.stringify(results[1]?.content), /Content of beta\.txt/);
   }
 });
 
-test("native serializers with Nunc admission reject invalid tool associations before HTTP transport", async t => {
-  // Test that for each native adapter, an invalid association (e.g. orphan result)
-  // is rejected locally by Nunc Admission with zero HTTP network requests.
-  const adapters: Array<{ name: string; setup: (transport: typeof fetch) => { provider: Provider; model: Model<Api> } }> = [
-    {
-      name: "openai-completions",
-      setup: (transport) => {
-        const p = openrouterProvider();
-        const m = p.getModels().find(model => model.api === "openai-completions")!;
-        const bound = { apiKey: "offline-key", fetch: transport, maxRetries: 0 as const };
-        return {
-          provider: { ...p, stream: (mod, ctx, opt) => p.stream(mod as never, ctx, { ...opt, ...bound } as never) },
-          model: m,
-        };
-      },
-    },
-    {
-      name: "openai-responses",
-      setup: (transport) => {
-        const p = openaiProvider();
-        const m = p.getModels().find(model => model.id === "gpt-4.1")!;
-        const bound = { apiKey: "offline-key", fetch: transport, maxRetries: 0 as const };
-        return {
-          provider: { ...p, stream: (mod, ctx, opt) => p.stream(mod as never, ctx, { ...opt, ...bound } as never) },
-          model: m,
-        };
-      },
-    },
-    {
-      name: "anthropic-messages",
-      setup: (transport) => {
-        const p = anthropicProvider();
-        const m = p.getModels().find(model => model.id.includes("claude"))!;
-        const bound = { apiKey: "offline-key", fetch: transport, maxRetries: 0 as const };
-        return {
-          provider: { ...p, stream: (mod, ctx, opt) => p.stream(mod as never, ctx, { ...opt, ...bound } as never) },
-          model: m,
-        };
-      },
-    },
-  ];
-
-  for (const adapter of adapters) {
+test("negative matrix for all 4 native mapping families: both stream and streamSimple bound to controlled transport, positive delivery succeeds, then invalid association rejected before transport with zero HTTP sends", async t => {
+  for (const adapter of nativeAdapters) {
     let httpCalls = 0;
+    let spec: ReturnType<typeof adapter.setup>;
     const transport: typeof fetch = async () => {
       httpCalls++;
-      return new Response("must not reach here", { status: 500 });
+      return spec.textSSE("Positive delivery ok.");
     };
-    const { provider, model: adapterModel } = adapter.setup(transport);
+
+    spec = adapter.setup(transport);
+    const cred = spec.isCodex ? oauthFixture() : undefined;
+    const bound = { apiKey: cred ? cred.access : "offline-key", fetch: transport, transport: "sse" as const, maxRetries: 0 as const };
+    const wrapped: Provider = {
+      ...spec.provider,
+      stream: (m, ctx, opt) => spec.provider.stream(m as never, ctx, { ...opt, ...bound } as never),
+      streamSimple: (m, ctx, opt) => spec.provider.streamSimple(m as never, ctx, { ...opt, ...bound } as never),
+    };
+
+    let injectOrphan = false;
     const f = await fixture({
       extras: [{
-        name: `orphan-injection-${adapter.name}`,
+        name: `test-injector-${adapter.name}`,
         factory(pi) {
-          (pi as any).on("context", (event: { messages: unknown[] }) => ({
-            messages: [
-              ...event.messages,
-              { role: "toolResult", toolCallId: "orphan-id", toolName: "read", isError: false, content: [{ type: "text", text: "orphan" }], timestamp: 10 },
-            ],
-          }));
+          (pi as any).on("context", (event: { messages: unknown[] }) => {
+            if (!injectOrphan) return;
+            return {
+              messages: [
+                ...event.messages,
+                { role: "toolResult", toolCallId: "orphan-id", toolName: "read", isError: false, content: [{ type: "text", text: "orphan" }], timestamp: 10 },
+              ],
+            };
+          });
         },
       }],
     });
     t.after(() => f.close());
-    new ModelRegistry(f.modelRuntime).registerProvider(provider);
-    await f.modelRuntime.setRuntimeApiKey(adapterModel.provider, "offline-key");
-    await f.runtime.session.setModel(adapterModel);
 
-    await f.runtime.session.prompt(`Test invalid association on ${adapter.name}`);
-    const last = f.runtime.session.messages.at(-1);
-    assert.equal(httpCalls, 0, `zero HTTP calls before rejection on ${adapter.name}`);
-    assert(last?.role === "assistant");
-    assert.equal(last.stopReason, "error");
-    assert.match(last.errorMessage ?? "", /Orphan|Nunc local INPUT/);
+    new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+    if (spec.isCodex && cred) {
+      await f.credentials.modify(spec.model.provider, async () => cred);
+    } else {
+      await f.modelRuntime.setRuntimeApiKey(spec.model.provider, "offline-key");
+    }
+    await f.runtime.session.setModel(spec.model);
+
+    // 1. Positive delivery: establish that the wrapped path with bound transport executes and sends HTTP
+    await f.runtime.session.prompt("Positive prompt");
+    const a1 = f.runtime.session.messages.findLast(m => m.role === "assistant");
+    assert.equal(httpCalls, 1, `positive delivery must reach transport once on ${adapter.name}`);
+    assert.equal(a1?.role, "assistant");
+    assert.equal(a1?.stopReason, "stop");
+    assert.equal(a1?.errorMessage, undefined);
+
+    // 2. Negative delivery: inject orphan tool result and verify local rejection with zero additional HTTP sends
+    injectOrphan = true;
+    await f.runtime.session.prompt("Negative prompt with orphan");
+    assert.equal(httpCalls, 1, `zero additional HTTP calls after invalid association rejection on ${adapter.name}`);
+    const a2 = f.runtime.session.messages.findLast(m => m.role === "assistant");
+    assert.equal(a2?.role, "assistant");
+    assert.equal(a2?.stopReason, "error");
+    assert.match(a2?.errorMessage || "", /Orphan|Nunc local INPUT/);
   }
 });
