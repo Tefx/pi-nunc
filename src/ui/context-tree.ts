@@ -35,7 +35,7 @@ function scopeCurrent(current: CurrentContext, add: (node: CtxNode) => string): 
     label: "Current projection",
     description: current.model ? `${current.model.provider}/${current.model.id}` : "no model",
     preview: [
-      "Scope: current delivered F/M/R. Later context/payload hooks are not included.",
+      "Scope: current delivered F/R/M. Later context/payload hooks are not included.",
       bars(current),
       current.occupied ? "Maintenance occupied" : "",
       current.unconfirmed ? "Save unconfirmed" : "",
@@ -193,18 +193,18 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
       ],
     }),
     add({
-      id: `${prefix}:M`,
-      label: "M · Memory",
-      description: `${slots?.length ?? 0} slots`,
-      preview: slots ? `M (Memory): current working memory (${slots.length} slots)\n${slots.length} slots` : "M not in this observation",
-      children: mIds,
-    }),
-    add({
       id: `${prefix}:R`,
       label: "R · Raw history",
       description: `${layout.messageCount} messages / ${layout.blockCount} blocks`,
       preview: `R (Raw history): delivered active verbatim history\n${layout.messageCount} messages / ${layout.blockCount} blocks`,
       children: rIds,
+    }),
+    add({
+      id: `${prefix}:M`,
+      label: "M · Memory",
+      description: `${slots?.length ?? 0} slots`,
+      preview: slots ? `M (Memory): current working memory (${slots.length} slots)\n${slots.length} slots` : "M not in this observation",
+      children: mIds,
     }),
   ];
 }
@@ -337,8 +337,8 @@ function bars(current: CurrentContext): string {
   const cap = current.budget.modelWindow;
   return [
     `F ${meter(fUnknown ? null : f, cap)} ${tokenLabel(f, fUnknown)}`,
-    `M ${meter(current.budget.memoryUnknown ? null : current.budget.memoryOccupied, current.budget.memoryLimit)} ${memoryLine(current)}`,
     `R ${meter(rUnknown ? null : rKnown, cap)} ${tokenLabel(rKnown, rUnknown)}`,
+    `M ${meter(current.budget.memoryUnknown ? null : current.budget.memoryOccupied, current.budget.memoryLimit)} ${memoryLine(current)}`,
   ].join("\n");
 }
 

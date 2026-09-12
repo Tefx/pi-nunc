@@ -117,7 +117,7 @@ test("list Ctrl+D confirms once, neighbor stays selected, Esc closes nested firs
   assert.equal(memory().read(ctx()).memory.slots.length, before.length - 1);
 });
 
-test("context tab shows F/M/R and jumps M to slots without writing", async t => {
+test("context tab shows F/R/M and jumps M to slots without writing", async t => {
   const { overlay, memory, ctx, f } = await prepared(t);
   const entries = f.runtime.session.sessionManager.getEntries();
   overlay.handleInput("\t");
@@ -130,6 +130,7 @@ test("context tab shows F/M/R and jumps M to slots without writing", async t => 
   assert.match(drilled, /\bF\b/);
   assert.match(drilled, /\bM\b/);
   assert.match(drilled, /\bR\b/);
+  overlay.handleInput("\x1b[B");
   overlay.handleInput("\x1b[B");
   overlay.handleInput("\r");
   overlay.handleInput("\r");
