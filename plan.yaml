@@ -9,43 +9,36 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: '当前授权执行范围：用户要求继续 nunc-memory-guidance 实施与评测，最新决定为“让astra的principle接收，但是测试的时候如果需要真实模型，用gemini。同时注意有些实测如果由于llm的不确定性没法精确定义，不用强求，考虑重要性。”Astra
-  Principal 已在原步骤/claim 内完成实现接管；这项实现授权不放宽真实模型测试边界。文本与观察能力生产者均 DONE，保留其定义、证据、状态与历史，仅原
-  nunc.memory-guidance-gemini-eval 继续本增量唯一末端观察和整合判断。旧 planning-only、Gemini-only 实施限制及全部自然语言维度必须机械
-  PROVEN 的表述不再约束当前工作。
+context: '当前用户授权：更新完整方案文档并创建稳定记忆位置/降低滚动保留比例的 Vectl 实施计划；本轮不 claim、dispatch、实施生产代码或运行真实模型测试。后续由用户明确要求执行本计划后再调度。docs/STABLE-MEMORY.md
+  是本增量完整设计与验收依据，覆盖旧文档中每次必须尾置 M 的要求；当前代码仍为尾置 M、默认 keepRecentFraction=0.67。已完成的十四个 phase
+  及所有 DONE 定义、证据、状态和历史保持不变，旧 context 中 memory-guidance 消费者尚待执行的描述已过期。
 
 
-  保留单一 F→R→M、统一 M/slot ID/revision、原子提交、required 联合保护、既有 budget/receipt/原生持久化/队列/维护及
-  Larva v1 不变量。不得改 Pi core、安装的 Pi、私有宿主状态、Larva/其他仓库、全局路由/配置、日常 sessions/settings 或既有秘密，不发布/push、不重放历史对话、不联系真实
-  peer。当前 consumer 对 source/config/docs/Plan 只读，仅新隔离任务状态与私有观察输出可变。
+  新目标：内容不变时稳定合法锚点；实际发送内容、位置有效性、原 CAS 写入校验分别判断；统一 projection/admission/receipt/UI 的实际
+  M 位置和快照；完整真实 R、工具组和原生持久化保留；默认保留比例改为0.5，显式配置和触发阈值不变；patch 提示允许及时必要保存、无频率限制。保留 Larva
+  v1、previous_response_id 严格检查、保守 U+deltaR+当前M 估算及 Pi 调度/认证/队列/输出/恢复所有权。只有 nunc-stable-memory
+  的末端消费者判断该增量在最终整合 Nunc 上是否接受，不重开无关历史接受或新增发布效果。
 
 
-  真实模型测试主请求、维护和模型观察者均限 OpenRouter google/gemini-3.8-flash，无 Astra 或其他模型回退；沿用 maxCostUsd:null
-  standing 授权，不重复费用问题，null 不代表免费。有限调用/token/时间和单次新目标按当前评测合同；认证解析/刷新归 Pi 原生 owner，凭据及来源位置不得进入文本或产物。Orchestrator
-  在效果前核验实际原生非秘密选择、目标与边界。
+  最新实际模型测试约束优先于旧测试要求：Gemini 优先，GPT Luna 仅有限使用，禁止 Astra 主请求、maintenance、模型观察者或默认/回退调用。历史
+  Astra 证据和无网络受控 fixture 的模型名称不授权新的真实 Astra 测试。Gemini 既有 maxCostUsd:null standing
+  授权保留，不代表免费；后续有限总效果边界见末端步骤。Nunc 据用户已在日常 settings 停用，集成测试须显式加载到新隔离任务。禁止修改 Pi core/安装包、Larva/外仓、全局配置/路由、日常
+  sessions/settings/秘密；实际 Larva 仅作为已存在的只读组合输入。无发布、push、新账号、凭据管理或历史对话重放。'
+project_guidance: '用户本轮只要求文档更新与创建实施计划，等待后续明确执行指令，不自动 claim/dispatch。使用 docs/STABLE-MEMORY.md
+  的完整增量合同；保持 DONE 历史不变。两个 writable 交付分别拥有稳定布局及其必要观察工具、默认保留比例及其检查；共享文档由 Orchestrator
+  协调整合，不把文件冲突制造为产品依赖。最后整合的 writable producer 在最终 candidate 上取得完整适用离线 inventory 和实际
+  Larva 组合证据，末端只读消费者复用其适用结果，不安装或补写 runner。
 
 
-  最终判断须消费完整适用离线 inventory、实际 Larva 组合及有限 Gemini 观察，八类维度均考虑并报告。重要实际错误行动、虚假验证/接受状态、越权、丢失必要义务及受保护状态/机械合同违例保持阻断；可机械检验的前提和结果按事实判定。自然语言语义及
-  optional note/slot/竞争/容量资格等偶发结果可显式 UNPROVEN，按重要性、后果及现有证据作有界接受判断，不追求精确措辞、固定槽数或为制造资格反复实验。缺证据不得改标
-  PROVEN；重要必要行为仍缺决定性证据或存在支持充分的重要缺陷时不得接受。保留 worktrees、refs、logs、stock 报告/sessions；Planner
-  不清理，不新增阶段或接受循环。历史模型质量、账单收益或 overflow 未证明项不被本轮结论覆盖。'
-project_guidance: '最新用户决定授权 Astra Principal 实现接管，真实模型测试仍只用 Gemini；无法因 LLM 不确定性精确定义的实测按重要性有界判断，不强求人工精确标准。接管生产者已
-  DONE，当前仅 nunc.memory-guidance-gemini-eval 待执行，保留 general owner，其实际路由须为 OpenRouter
-  google/gemini-3.8-flash。Orchestrator 消费此唯一末端消费者的整合判断完成生命周期，不增加 gate、重试阶段或 review
-  loop；DONE 历史不可修改。
+  真实测试主请求、maintenance 和模型观察者优先 Gemini，有限 Luna 仅用于必要 Codex 缓存路径，禁止 Astra 和隐式回退。当前专业
+  verifier/gate/LLM评测角色的登记路由为 Astra；已选择 Gemini 路由的 general 承担只读动态观察和本增量唯一最终整合判断，不改任何注册路由。Orchestrator
+  dispatch 前核验所选 observer 实际 Gemini 路由，效果前核验原生模型、配置、输出、transport、新目标和有限预算；不得沿用父会话模型暗设。认证查找/刷新保存由
+  Pi 原生 owner 负责，凭据及来源位置不得进入文本或产物。不启用日常 Nunc、不复制 profile、不改 protected state。
 
 
-  当前 consumer 只读 source/config/docs/Plan，仅新隔离任务 sessions/cwd/files/私有观察输出可变；使用已跟踪
-  runner/fixture，不写临时替代逻辑、不安装/构建/修源码。不得修改 Pi/core/安装包/私有宿主状态、Larva/外仓、全局配置/路由、日常 sessions/settings/秘密；不发布/push、重放历史或联系真实
-  peer。主请求/维护/模型观察者全 Gemini，无 Astra/其他模型回退；maxCostUsd:null standing 授权有效、不重复询问费用，有限
-  call/token/time 与新目标按当前合同。认证解析/刷新归 Pi 原生 owner，凭据及来源位置不进文本。
-
-
-  逐八类报告实际前提、机制结果、语义判断、PROVEN/DISPROVEN/UNPROVEN、直接证据及限制。重要实际错误行动、状态/权威违例与必要机械失败阻断接受；缺少决定重要必要行为的证据亦阻断。可选笔记/槽布局、自然语言表达、实际竞争/容量资格未发生可保持
-  UNPROVEN，由 consumer 说明重要性、后果和为何不阻断有限观察结论，不能标为通过或宣称一般规律。不要强制 padding、预置笔记/标准答案或循环
-  paid calibration 来制造资格；runner semantic: UNPROVEN 由下游读真实 traces 判断，不用 token heuristics。最终
-  candidate full all 与实际 Larva 证据须适用，复用未变的有效观察；Plan-only 改动不触发重跑。保留已有 worktrees/refs/logs/stock
-  sessions，缺能力或重要反例报告 parent，在原未完成 consumer 下处理兼容修复，勿重开 DONE。'
+  源码/projection 测试证明机制，真实模型任务产物证明记忆使用，缓存 usage 证明该次缓存情况；ACK、提示词存在、模型自报 PASS 不证明语义。固定布局与0.67/0.5分别对照，禁止自动
+  calibration 改掉指定比例。必要行为无证据或重要反例阻断接受，随机措辞/槽数或非重要偶发条件不制造无限实验。兼容修复留在未完成 writable owner；已完成
+  producer 需要修复时保留历史、由 Planner 按正常边界复用/增加一个合适 producer，继续原 consumer，禁止逐 finding 节点或第二接受循环。'
 clipboard:
   author: vectl-orchestrator
   summary: Gemini Flash费用无限额授权；继续extraction真实比较
@@ -4003,3 +3996,210 @@ phases:
       calls or original Gemini report edits. Original eval remains incomplete; limited
       important-behavior judgment and causally justified scoped Gemini observation
       next.
+- id: nunc-stable-memory
+  name: 稳定记忆位置与滚动保留比例修正
+  status: pending
+  gate: 唯一 nunc.stable-memory-acceptance 消费本 phase 的稳定布局/观察支持与默认0.5两个交付，在最终整合 candidate
+    上结合完整适用离线 inventory、实际 Larva 组合和有限真实模型证据，判断 docs/STABLE-MEMORY.md 全部材料要求及受影响的已有
+    Nunc 不变量。普通追加revision变化不移动M、CAS不弱化、工具组/真实R完整、位置与预算/UI一致、及时patch、有效0.5覆盖与真实压缩/质量对照均须有适用证据。重要缺陷、必要检查失败或必要行为未证明不接受；不以runner
+    OBSERVED或缓存百分比单独完成。Orchestrator据此完成生命周期，无另加gate、发布或历史全量重评。
+  context: '依据当前用户确认的完整方案及最新模型测试限制创建待实施增量。nunc.stable-memory 交付跨 projection/admission/UI
+    的单一布局能力及其必要 tracked 观察支持；nunc.retention-default 独立交付默认比例合同，已有显式配置支持使其无需等待锚点实现。末端消费者依赖两者完成，真实效果与仓库实现分开；三个步骤不代表当前已获启动执行授权。
+
+
+    共同环境：Node26.7.0、npm11.19.0、Pi/pi-ai0.85.1、TypeScript5.9.3，按 package-lock.json
+    与 docs/DEVELOPMENT.md 复现。新 worktree 的同目标依赖/基线准备属于 writable owner；可复用已适用环境，不依赖
+    ambient virtualenv 或全局安装变更。完整 all 要求 .scratch/baseline-70dacad 的指定历史 baseline
+    自有 lockdeps/build；该路径只作既有回归输入，不能当作本增量移动布局实验基线（本次布局对照必须隔离变量）。实际 Larva 组合只读加载既有公开扩展，无修改外仓授权。当前已有
+    baseline 保留，不清理其工作树或证据。
+
+
+    文档记录的是已接受待实施合同。执行后由相应 producer 更新已交付状态和命令说明，不能仅因计划创建宣称代码、缓存收益、任务质量或默认0.5已生效。'
+  depends_on:
+  - nunc-active-memory
+  - nunc-memory-guidance
+  steps:
+  - id: nunc.stable-memory
+    name: 稳定记忆锚点、布局消费者与可执行观察支持
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"src/ui/**\"\
+      , \"src/live/**\", \"scripts/**\", \"tests/**\", \"examples/**\", \"docs/**\"\
+      , \"README.md\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
+      .pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver:\
+      \ 按 docs/STABLE-MEMORY.md §2–§7、§9–§11 交付完整稳定布局能力及源码/tests/docs和必要的跟踪观察支持。有效\
+      \ M 非空时请求恰好一个 user-role/reference-only 载体；首次构造使用新内容的请求在合法尾边界固定，之后真实历史追加不移动它。实际\
+      \ renderMemory(slots) 内容（含ID/顺序/正文）、锚点的选中路径/可见性/工具合法边界、原CAS写入保护分别处理。完整revision/leafId/nextId或manual\
+      \ head变化不能直接驱动位置；无内容变化patch仍先CAS。保持原revision格式及revisionApplies允许的祖先leaf语义，过期头/跨分支冲突不绕过。\n\
+      \n锚点由Pi projection adapter持有，进程内状态即可；分支/压缩/恢复验证仍有效则保留，失效或缺失合法重建，不承诺跨重启热缓存，不新增JSONL迁移、记忆store或生产双布局开关。保留实际hook输入和其他扩展变换；Pi\
+      \ emitContext的clone使跨请求对象identity不能定位锚点，buildContextEntries的首项checkpoint也不是时间位置。映射不能靠重复文本猜测，不能重建整份session请求覆盖hook；合法旧位置不可恢复则明确重建，工具关联非法走现有错误边界，不丢M/R。\n\
+      \n插入前从完整真实R选择无pending工具调用的边界，含所有并行结果，不能直接用memory持久entry位置；仅对插入后数组运行legalCuts不足以避免原生serializer合成No\
+      \ result provided。当前M位置、detached snapshot和来源关系贯通projection→admission→context/UI；移除at(-1)、slice(0,-1)、前rCount即R等假设。保留一次性model/signal/provenance及载体内容校验；无receipt关联回完整Context新估算。Current/Last\
+      \ main/Last maintenance按真实范围显示，UI读取不推进锚点，在途请求发送快照不受后续patch改变。真正lookalike user始终属于R。\n\
+      \n全部R与一个当前M计量；保留现有U+deltaR+当前M+extras保守receipt，不扣旧M、不递归累积、不松previous_response_id。Engine不拥有session锚点，maintenance仍用原M/B/K。更新patch工具提示：只在有持续价值的信息实质变化时修改，合并已确定修改、避免过程日志和无意义重写，但不延迟必要保存/纠错/删除，不设频率/冷却/配额。当前已接受完整语义保持，工具提示属于这一产品行为的必要说明，不新建agent/prompt系统。\n\
+      \n交付本结果验收所需最小tracked runner/fixture能力，优先扩展现有 scripts/verify-live.mjs 及其公开选择/观察接口：隔离移动/固定布局对照、内容更新/删除后的任务使用、完整扩展组合、固定布局下显式0.67/0.5压缩比较。已有config覆盖允许这些观察独立于默认值修改开发。模型选择/实际M位置和唯一性/输入与cache\
+      \ usage/生效比例/切点/压缩后输入与间隔/任务行动与产物/总成本应能被末端消费者取得；定义看实际产物的判据，不把答案给被测模型。ACK仅证缓存，禁止用标题或自报PASS充当行为测试。不要用自动retentionCalibration覆盖两个固定比例。观察适配代码和material\
+      \ predicates须跟踪且有机械行为测试，不依赖临时脚本实施效果或验收。提供可复现公开selection示例和文档，所有live模型限制在送出前可验证；保留原有其他场景权限，不把本增量限制推广成产品模型白名单。只实现本增量必要支持，不开发泛化benchmark平台。\n\
+      \nBoundary: 该Node/Pi跨模块生命周期结果由node-typescript-engineer负责，含本地测试、文档、同目标可逆环境准备；属Git可回退仓库事务。不执行实际模型测试，不改用户saved\
+      \ settings/sessions、Pi/core/安装包、Larva/外仓、全局路由、凭据或发布。实际Larva只读作为既有集成输入；controlled模型fixture不代表live。独立默认0.5归nunc.retention-default，本步骤不提前改该默认。scope.allowed_paths是预计面，不是隔离worktree内禁止必要关联修正的沙箱。\n\
+      \nAdmit: 用户后续明确要求执行本计划才调度。当前已交付active-memory/required/guidance/Larva是基础；docs/STABLE-MEMORY.md覆盖旧tail要求，其余兼容边界保留。必要测试和观察支持随本producer交付，不让只读consumer补代码。若最终集成发生在本producer之后，最后整合的writable\
+      \ producer负责在最终candidate补完整all与适用真实Larva证据；单独component PASS不代表整体接受。\n\nRecovery:\
+      \ 未完成兼容缺陷在本step修复；保留真实R/M、失败报告和既有工作树。重试需新因果输入或区分性证据，保持原native取消/失败恢复。若公开host能力不能满足已接受布局，报告具体反例和最小替代，不私自减少范围或松CAS。producer完成仅表示实现和本地证明交付，缓存/语义/压缩真实收益留给末端消费者。"
+    verification: "```yaml\nchecks:\n  - id: stable-memory-complete-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [新布局状态转换, CAS不变与no-op, 全工具组合法插入, hook克隆与变换, 全R及中段M的receipt和UI,\
+      \ 跟踪观察支持与模型限制, 既有原生库存]\n  - id: stable-memory-actual-larva-composition\n   \
+      \ argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ /opt/homebrew/bin/node, --test, dist/tests/pi/larva.integration.js]\n    exit_code:\
+      \ 0\n    covers: [实际只读Larva扩展与Nunc组合, M变更与请求快照, 原生序列化及恢复]\nenvironment:\n  node:\
+      \ 26.7.0\n  npm: 11.19.0\n  pi: 0.85.1\n  dependency_setup_argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, npm_config_cache=.npm-cache, npm_config_ignore_scripts=true,\
+      \ /opt/homebrew/bin/node, /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js,\
+      \ ci, --include=dev, --ignore-scripts, --no-audit, --no-fund]\n  baseline_path:\
+      \ .scratch/baseline-70dacad\n  baseline_ref: 70dacad1f065a70b29f565b5bfcf02d31cec2bdc\n\
+      \  baseline_prepare_argv: [git, worktree, add, --detach, .scratch/baseline-70dacad,\
+      \ 70dacad1f065a70b29f565b5bfcf02d31cec2bdc]\n  baseline_build_argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, /opt/homebrew/bin/node, node_modules/typescript/bin/tsc,\
+      \ --project, tsconfig.json]\n  tui_python_argv: [/usr/bin/python3]\n```\n从干净checkout按docs/DEVELOPMENT.md复现；candidate依赖使用其lock，baseline仅在缺失时创建并在其cwd用自己的lock执行同样dependency\
+      \ setup和build，保留已存在适用baseline。all负责编译完整tests闭包；Larva入口另跑，不用协议替身代替实际扩展。检查当前明确禁止的是真实Astra调用，不要求改名已有无网络fixture。\n\
+      \n新测试须直接断言完整revision已变化而rendered M和相对锚点不变；分别证明内容更新、no-op/invalid/conflict/cancel、空M、分支/压缩/恢复、在途快照、lookalike、并行tool、实际serialized顺序与无合成缺失结果。验收消费者所需输入模板、选择字段、具体命令和输出判据随tracked代码文档交付。此处all、Node\
+      \ native test和verify-live公开入口已存在；未实现的新选择不能报告已运行。优先保持公开verify-live argv；确有新入口边界时，交付真实入口后由Planner有界修正未开始consumer检查合同，不能以未跟踪临时程序替代。"
+    evidence_template: 交付与整合candidate：…；变化文件/公开观察入口：…；all与实际Larva命令、结果及适用target：…；关键布局/CAS/序列化行为：…；真实模型未调用：…；遗留及下游证据边界：…
+    refs:
+    - docs/STABLE-MEMORY.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/PI.md
+    - docs/UI.md
+    - docs/ENGINE.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - src/pi/projection.ts
+    - src/pi/admission.ts
+    - src/pi/context.ts
+    - src/pi/manual.ts
+    - src/index.ts
+    - src/engine/accounting.ts
+    - src/engine/validation.ts
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - tests/pi/projection-binding.test.ts
+    - tests/pi/active-memory.test.ts
+    - tests/pi/larva.integration.ts
+    agent: node-typescript-engineer
+  - id: nunc.retention-default
+    name: 默认滚动历史保留比例改为0.5
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/pi/config.ts\", \"src/engine/accounting.ts\", \"tests/pi/config.test.ts\"\
+      , \"tests/engine/**\", \"tests/pi/**\", \"docs/**\", \"README.md\", \"examples/**\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
+      .pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver:\
+      \ 按docs/STABLE-MEMORY.md §8将缺省rolling.keepRecentFraction从0.67改为0.5，并交付实际配置解析/预算行为测试与用户文档。未提供配置选择0.5，显式0.67或其他原合法值保持有效，原无效配置继续拒绝。继续floor(q*(available-memoryLimit))、全部真实R计费、合法完整消息/工具边界和最小可行超目标suffix规则。相同边界可能使两个比例选择相同K，不强求每次严格更小。压缩触发、memory比例、增长/输出/安全预算和Pi调度不变，不改用户现存配置或日常Nunc启用状态。\n\
+      \n该默认配置合同可独立交付并由直接本地检查判断，owner为executor；不要求为这项确定的local修改重新设计retention算法。更新README和受影响文档的实际默认及0.5待实施状态，保持稳定锚点部分在尚未交付时为pending。示例中有意演示显式覆盖的0.67应保留并说明，不能批量替换所有0.67常量或改历史证据。缓存布局与真实实验runner归nunc.stable-memory，两者无技术前置依赖；共享文档由Orchestrator协调整合。\n\
+      \nBoundary: 本项目可Git回退的源码/tests/docs事务；支持本地locked环境及已有baseline准备，不使用实际模型、外部效果、凭据、全局配置、Pi/core/Larva外仓或发布。材料源文件范围可随必要的本地合同保持修正，不能扩大为新业务意义。scope.allowed_paths为预计变更面。\n\
+      \nAdmit: 后续用户明确要求执行计划才调度。现有engineConfig/memoryPlan/chooseCut为已见实现，docs/STABLE-MEMORY.md定义新默认和不变项。真实压缩后输入、间隔与任务质量不由配置测试证明；由末端消费者在固定布局上显式0.67/0.5对照。若本step最后整合，完成前在最终candidate取得完整all及适用实际Larva组合证据，复用未变观察，不将未来接受作为本producer依赖。\n\
+      \nRecovery: 未完成兼容问题原step内修正，不降低测试强度。若发现需要改触发语义、容量算法或缺失跨模块工程能力，报告具体证据和边界，保留改动；不擅自选owner/创建Plan/运行paid实验。"
+    verification: "```yaml\nchecks:\n  - id: retention-default-complete-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    covers: [缺省0.5, 显式覆盖不变, 无效配置不变, 原公式与合法完整suffix, 触发及其他预算未变, 完整原生库存]\n\
+      \  - id: final-actual-larva-if-last-integrated-producer\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ /opt/homebrew/bin/node, --test, dist/tests/pi/larva.integration.js]\n    exit_code:\
+      \ 0\n    covers: [最后整合candidate的适用实际Larva组合]\nenvironment:\n  node: 26.7.0\n\
+      \  npm: 11.19.0\n  pi: 0.85.1\n  dependency_setup_argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ npm_config_cache=.npm-cache, npm_config_ignore_scripts=true, /opt/homebrew/bin/node,\
+      \ /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js, ci, --include=dev, --ignore-scripts,\
+      \ --no-audit, --no-fund]\n  baseline_path: .scratch/baseline-70dacad\n  baseline_ref:\
+      \ 70dacad1f065a70b29f565b5bfcf02d31cec2bdc\n  baseline_prepare_argv: [git, worktree,\
+      \ add, --detach, .scratch/baseline-70dacad, 70dacad1f065a70b29f565b5bfcf02d31cec2bdc]\n\
+      \  baseline_build_argv: [/usr/bin/env, -u, NODE_OPTIONS, /opt/homebrew/bin/node,\
+      \ node_modules/typescript/bin/tsc, --project, tsconfig.json]\n  tui_python_argv:\
+      \ [/usr/bin/python3]\n```\n按docs/DEVELOPMENT.md复现；baseline缺失才创建，在其cwd使用自身lock\
+      \ setup/build，已有适用环境与证据复用。配置测试必须调用实际解析/预算/切点行为，不能只搜索0.5文字。缺省0.5与显式0.67分开测试，断言触发及非目标预算未改变。all负责构建，最后整合producer提供最终完整all与适用实际Larva证据；无改变相关输入时不重复证明。未运行真实压缩或模型观察，不宣称实际释放量、间隔或质量收益。"
+    evidence_template: 交付与整合candidate：…；缺省/覆盖/合法边界行为与文档：…；all命令与结果、最终candidate适用性：…；实际Larva证明或复用理由：…；未执行真实模型：…；遗留：…
+    refs:
+    - docs/STABLE-MEMORY.md
+    - docs/DEVELOPMENT.md
+    - docs/ENGINE.md
+    - README.md
+    - src/pi/config.ts
+    - src/engine/accounting.ts
+    - tests/pi/config.test.ts
+    - tests/engine/budget.test.ts
+    - scripts/check.mjs
+    - tests/pi/larva.integration.ts
+    agent: executor
+  - id: nunc.stable-memory-acceptance
+    name: Gemini优先的真实观察与稳定记忆增量整合验收
+    status: pending
+    description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
+      , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
+      , \".node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \"\
+      .env.*\", \"**/auth.json\", \".scratch/baseline-70dacad/**\"]\n\nDeliver: 消费本phase两个producer在最终整合candidate上的代码/合同、完整适用离线库存及实际Larva组合证据，运行有限真实观察，对nunc-stable-memory全部增量给出唯一终端整合接受判断，Orchestrator据此完成生命周期；不另加gate。范围覆盖docs/STABLE-MEMORY.md全部材料要求，包括稳定M与独立CAS/锚点、完整R与工具组、hook与在途快照、admission/receipt/UI一致、及时必要patch及默认0.5合同，和缓存/真实记忆使用/固定布局比例对照。旧active-memory/guidance/required/Larva/原生调度与容量不变量仅在本增量实际消费或影响处判断，不重做无关历史实验、发布或一般模型可靠性结论。\n\
+      \n先检查producer真实loader/serializer/state证据的范围与适用性，不能用源文本或内部单函数PASS替代真实宿主边界。固定锚点普通append的实际请求序列必须稳定；真实内容更新后新M唯一、合法并在后续保持，CAS保护不能因内容比较消失。受控程序证明机制，实测补充缓存和模型任务语义，两者分别报告。\n\
+      \n实际观察分开两个变量：在固定其他条件下比较移动/固定M及内容更新后的预热；再在固定布局下显式0.67与0.5比较，记录有效模型/effort/transport/F-tools/config、输入/cache\
+      \ usage、实际切点/压缩后输入/释放空间/压缩间隔、遗漏/重读/返工与主请求加maintenance总成本。禁止retentionCalibration改掉指定比例。使用有可判定任务产物的M-only必要事实、更新/纠错/删除和续做，不向被测模型提供期望答案或重复补喂遗忘要求；ACK只证明缓存现象。不能把原始baseline70dacad与完整新candidate的多项差异冒充仅布局变量对照。完整扩展组合须显式加载Nunc及需要的实际Larva，不以直接import\
+      \ projection替代。\n\n模型边界：实际测试优先OpenRouter Gemini，Luna仅在当前Codex缓存/更新转换观察确有必要且历史证据不足时有限使用；禁止Astra主请求、maintenance和模型观察者，也禁止默认/回退/子进程绕过。历史Astra可作有范围证据，不标成新实现Astra集成通过。Gemini不能替代Codex特定路径的未取得事实；缺必要路径证据仍明确未证明，不凭多模型名字推断支持。首选已登记openrouter/google/gemini-3.8-flash；当前Luna路径openai-codex/gpt-5.6-luna，效果前以原生实际选择核验而非重建目录。\n\
+      \nBoundary: source/config/docs/Plan/既有报告只读，只在新隔离任务sessions/cwd/files和私有观察输出内产生必要测试效果。运行producer已跟踪且测试的runner/fixtures，不安装、构建、补写程序、改全局注册/配置/日常状态或外仓，不重放历史对话。实际Larva仅只读输入。registered\
+      \ integration-verifier/client-runtime-verifier/gate-reviewer/blind-tester/llm-agent-expert当前实际模型路由均为Astra，无法按此次模型评测边界派发；general已解析为Gemini且具动态执行和证据判断能力，因此承担这个受限fallback结果，其通常仓库写权限在本step不生效。无需新角色或额外监督节点。\n\
+      \nAdmit: 用户后续明确授权执行本计划后才调度。两个producer交付且最终candidate构建/lock/完整all/实际Larva证据就绪；尚未具备的tracked观察支持必须先由writable\
+      \ producer交付，不能在consumer临时补齐。Orchestrator在dispatch前确认实际observer为Gemini，在每类效果前核验原生非秘密model/options、完整选择、允许provider、有限总边界、新单次目标及清理/核对方法。Gemini\
+      \ maxCostUsd:null standing授权保留，不重复已批准的费用问题，null非免费；Luna只用已有原生路径与有限预算，不开新账户。认证查找/刷新保存由Pi原生owner处理，凭据及来源位置不写入stdin/argv/提示/报告。Nunc已日常停用，不通过测试重新开启日常settings。\n\
+      \n最终接受条件：本phase两个结果整合后，完整适用scripts/check.mjs all与实际Larva组合适用；必要机械合同及实际任务使用有正面证据，缓存和压缩收益的实测足以支持有范围结论。重要任务遗漏、错误行动、虚假验证状态、CAS/工具/原文/持久化/权限/容量违例、必要check失败或决定必要行为的证据缺口阻断接受。逐项区分事实、判断、PROVEN/DISPROVEN/UNPROVEN和限制；自然语言自由表达不强求固定措辞/slot数，非重要偶发条件可保留未证明并说明后果，不把未知标PASS。原始比例目标、cache百分比、runner\
+      \ OBSERVED或调用结束都不能单独完成。不能承诺每次patch只冷一轮、跨重启热缓存、0.5最优或全session无条件命中率。\n\nRecovery:\
+      \ 有限正常失败保留全部原始观察，其他独立场景仅在剩余额度及安全边界内继续；不复用已执行root，不为资格/更好结果反复paid calibration或无变化重试。取消、额度耗尽、未决请求/保存/清理或绑定不明时停止关联效果，等待本次child/host退出并核对，保留既有worktrees/refs/证据。报告缺项用已有材料修复；产品缺陷或缺tracked能力报告parent，由正常writable\
+      \ producer修复后继续同一consumer，以受影响Delta和有效旧证据判断，不重开DONE或新增接受循环。有限观察结束但必要证据不足时报告未接受，不能提前complete。"
+    verification: "```yaml\nchecks:\n  - id: stable-memory-no-effect-preflight\n \
+      \   argv: [/usr/bin/env, -u, NODE_OPTIONS, -u, PI_PROVIDER, -u, PI_MODEL, -u,\
+      \ PI_REASONING_LEVEL, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
+      \ /opt/homebrew/bin/node, scripts/verify-live.mjs, --preflight]\n    exit_code:\
+      \ 0\n    covers: [最终candidate与locked build, 原生实际获准model选择, 跟踪观察输入, 新target和有限额度,\
+      \ 零模型调用]\n  - id: stable-memory-bounded-runtime\n    argv: [/usr/bin/env, -u,\
+      \ NODE_OPTIONS, -u, PI_PROVIDER, -u, PI_MODEL, -u, PI_REASONING_LEVEL, PI_OFFLINE=1,\
+      \ PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/verify-live.mjs]\n\
+      \    exit_code: 0\n    covers: [完整扩展缓存与M更新转换, 实际记忆使用和纠错删除, 固定布局0.67与0.5实际压缩及质量成本]\n\
+      \  - id: final-integrated-complete-offline\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    covers: [消费writable producer在最终整合candidate取得的完整适用离线inventory]\n\
+      \  - id: final-integrated-actual-larva\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ /opt/homebrew/bin/node, --test, dist/tests/pi/larva.integration.js]\n    exit_code:\
+      \ 0\n    covers: [消费最终candidate适用的真实只读Larva组合证据]\nselection_boundary:\n  repository:\
+      \ /Users/tefx/Projects/pi-nunc\n  cleanup: retain\n  model: openrouter/google/gemini-3.8-flash\n\
+      \  limits_ceiling:\n    maxCalls: 160\n    maxTotalTokens: 200000000\n    maxDurationMs:\
+      \ 5400000\n    maxCostUsd: null\n  optional_luna_model: openai-codex/gpt-5.6-luna\n\
+      \  optional_luna_limits_ceiling:\n    maxCalls: 12\n    maxTotalTokens: 6000000\n\
+      \    maxDurationMs: 900000\n    maxCostUsd: null\n```\n上限是本次计划选择的有限执行边界，不是必须花完的目标或当前自动执行许可。Gemini用于主要缓存/语义/保留对照；Luna最多12次仅用于必要Codex缓存与更新转换，不执行另一整套质量benchmark。每类上限跨其所有选择、setup/main/maintenance/恢复/观察调用合计，不能用新root重置额度；tokens按runner\
+      \ reservation口径，不能按actual usage退款。maxOutputTokens从实际native allowance解析，不暗降输出。达到足够证据即停止；额度不足不允许私自改成无限额或声称通过。\n\
+      \n两个live argv的stdin由producer交付的tracked选择示例/工具生成，Orchestrator绑定最终不可变target、新canonical\
+      \ stateRoot、最小必要场景、limits和显式命名model override（provider/id），然后同一非秘密selection先preflight后runtime。清除父PI_PROVIDER/PI_MODEL/PI_REASONING_LEVEL是避免继承父模型的执行选择，最终实际模型仍必须来自显式override且符合限制；PI_OFFLINE不阻止真实model调用。预检不得消费凭据或创建任务状态。禁止Astra模型选择、自动fallback和任意更换未批准模型，不把旧g场景Gemini-only限制改成所有场景通用权限。\n\
+      \n目前verify-live公开入口存在，stable/cache/retention所需选择由nunc.stable-memory交付；不能假称现有c/g场景已经覆盖该行为。如实现发现现有入口无法表达必要观察，须在producer交付真实tracked入口后、consumer开始前有界修正其检查合同，不临时发明CLI/flags。完整all和实际Larva由最后整合的writable\
+      \ producer提供，consumer不安装/构建；按source/lock/config/真实执行输入判断适用性，Plan-only修改不重跑。先分类所有必要要求，再给唯一有范围整合接受结论；无必要正面证据时保持未接受。"
+    evidence_template: 最终整合target及实际模型/effort/transport：…；完整all和实际Larva证据及适用性：…；布局/CAS/工具/R/receipt/UI：…；缓存与更新转换：…；真实M任务使用：…；固定0.67/0.5压缩/间隔/质量/总成本：…；调用/预留/费用未知/效果核对：…；逐必要要求结论、限制与唯一整合接受判断：…
+    refs:
+    - docs/STABLE-MEMORY.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/PI.md
+    - docs/UI.md
+    - docs/ENGINE.md
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - docs/MEMORY-GUIDANCE.md
+    - scripts/verify-live.mjs
+    - scripts/check.mjs
+    - src/live/contract.ts
+    - src/live/defaults.ts
+    - tests/pi/larva.integration.ts
+    depends_on:
+    - nunc.stable-memory
+    - nunc.retention-default
+    agent: general
