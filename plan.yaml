@@ -4021,7 +4021,7 @@ phases:
   steps:
   - id: nunc.stable-memory
     name: 稳定记忆锚点、布局消费者与可执行观察支持
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"src/ui/**\"\
       , \"src/live/**\", \"scripts/**\", \"tests/**\", \"examples/**\", \"docs/**\"\
@@ -4090,6 +4090,8 @@ phases:
     - tests/pi/active-memory.test.ts
     - tests/pi/larva.integration.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-13T12:34:16.232580Z'
   - id: nunc.retention-default
     name: 默认滚动历史保留比例改为0.5
     status: done
