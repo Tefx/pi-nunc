@@ -101,7 +101,9 @@ export default function observer(pi: ExtensionAPI): void {
   pi.events.on("nunc:admission", event => log("admission", event));
   pi.on("before_provider_request", event => {
     const payload = event.payload;
-    log("payload", { mode: "observe", keys: payload && typeof payload === "object" && !Array.isArray(payload) ? Object.keys(payload) : [] });
+    let syntheticMissing = false;
+    try { syntheticMissing = JSON.stringify(payload).includes("No result provided"); } catch { /* Observation only. */ }
+    log("payload", { mode: "observe", keys: payload && typeof payload === "object" && !Array.isArray(payload) ? Object.keys(payload) : [], syntheticMissing });
   });
   pi.on("before_provider_request", event => event.payload);
   pi.on("session_before_compact", (event, ctx) => {

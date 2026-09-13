@@ -8,14 +8,15 @@
       "covers": ["STABLE-MEMORY 11.2 moving vs fixed layout"],
       "controls": [],
       "setupChecks": [
-        "Each main request has at most one injected M carrier.",
-        "Record model, memory index, input, cacheRead/cacheWrite, and message count from the actual request context."
+        "Each main request records admission memoryIndex from projection identity, not envelope text.",
+        "Unchanged-M warmup turns precede the update, and at least one turn follows the update.",
+        "Bind each request's layout to that request's completed usage."
       ],
       "artifactChecks": [
         { "path": "status.json", "pointer": "/project", "operator": "semantic", "criterion": "Uses the brief's project name from memory or still-visible files; do not coach the name in later turns." }
       ],
       "actionChecks": [
-        "semantic: cache and task quality require independent Gemini observation of actual usage and actions; ACK-only cache is not memory-use quality."
+        "semantic: cache and task quality require independent Gemini observation of actual per-request usage; ACK-only cache is not memory-use quality."
       ],
       "failureExample": "The same unchanged M is relocated every turn in the fixed variant, or a lookalike user string is treated as M.",
       "variants": [
@@ -26,29 +27,33 @@
     {
       "id": "m2",
       "covers": ["STABLE-MEMORY 11.2 M-only update/correction/deletion task use"],
-      "controls": [],
+      "controls": [
+        { "afterTurn": "b", "action": "rollover", "placement": { "retireThroughTurn": "a", "retainTurns": ["b"] } },
+        { "afterTurn": "d", "action": "rollover", "placement": { "retireThroughTurn": "c", "retainTurns": ["d"] } }
+      ],
       "setupChecks": [
-        "Successful memory patches are bound to saved revisions when they occur.",
-        "Later turns do not restate lock codes in the prompt."
+        "lock.txt is removed after turn a and lock-correction.txt exists only for turn c.",
+        "Rollover retires the lock-file tool evidence before later memory-only turns.",
+        "Turn e deletes the stored code without a replacement."
       ],
       "artifactChecks": [
-        { "path": "unlock.json", "pointer": "/code", "operator": "semantic", "criterion": "Equals the corrected unlock code from current working memory after turn b; a missing file is not a coached pass." }
+        { "path": "unlock.json", "pointer": "/code", "operator": "semantic", "criterion": "After deletion, code is null or absent unless current working memory still holds it; do not score a restated prompt or retired file body." }
       ],
       "actionChecks": [
         "semantic: judge whether update, correction and deletion changed later actions; do not score prompt restatement."
       ],
-      "failureExample": "Turn c writes the obsolete lock.txt code after a correction was saved, or the expected code is copied into the prompt."
+      "failureExample": "Turn f writes a lock-file code after those files and their results were retired and the note was deleted."
     },
     {
       "id": "m3",
       "covers": ["STABLE-MEMORY 11.2 complete tracked extension composition"],
       "controls": [],
       "setupChecks": [
-        "The live observer and Nunc load together with any named payload-append/provider-wrap overrides.",
-        "Unique M and real tool associations remain after composition."
+        "The live observer and Nunc load together with named payload-append.",
+        "Admission memoryIndex remains unique after composition."
       ],
       "artifactChecks": [
-        { "path": "composed.json", "pointer": "/status", "operator": "semantic", "criterion": "Task completed under the composed extensions; mechanical presence of the file is not model-quality proof." }
+        { "path": "composed.json", "pointer": "/status", "operator": "semantic", "criterion": "Task completed under the composed extensions; a ready token is not model-quality proof." }
       ],
       "actionChecks": [
         "semantic: composition must not drop real history or synthesize missing tool results."
@@ -59,15 +64,17 @@
       "id": "m4",
       "covers": ["STABLE-MEMORY 11.3 explicit 0.67 vs 0.5 under fixed layout"],
       "controls": [
-        { "afterTurn": "b", "action": "rollover", "placement": { "retireThroughTurn": "a", "retainTurns": ["b"] } }
+        { "afterTurn": "b", "action": "rollover", "placement": { "retireThroughTurn": "a", "retainTurns": ["b"] } },
+        { "afterTurn": "c", "action": "rollover", "placement": { "retireThroughTurn": "b", "retainTurns": ["c"] } },
+        { "afterTurn": "d", "action": "rollover", "placement": { "retireThroughTurn": "c", "retainTurns": ["d"] } }
       ],
       "setupChecks": [
         "The selected keepRecentFraction is the explicit variant value.",
         "retentionCalibration is not applied.",
-        "Record the legal cut, post-compaction input, and interval from the actual rollover."
+        "Record legal cuts, post-compaction input, and intervals from actual rollovers."
       ],
       "artifactChecks": [
-        { "path": "kept.json", "pointer": "/nodeMajor", "operator": "semantic", "criterion": "Retains the policy Node requirement if it was still needed after the rollover; do not treat token savings alone as success." }
+        { "path": "kept.json", "pointer": "/nodeMajor", "operator": "semantic", "criterion": "Retains the policy Node requirement if it was still needed after the rollovers; do not treat token savings alone as success." }
       ],
       "actionChecks": [
         "semantic: compare omissions, rereads, rework and combined main/maintenance cost between the two explicit fractions."

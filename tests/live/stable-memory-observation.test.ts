@@ -5,13 +5,19 @@ import { join } from "node:path";
 import { loadScenario, seedScenario } from "../../src/live/scenarios.js";
 import { parseInput } from "../../src/live/contract.js";
 import {
-  layoutFromContext,
+  layoutsFromRequests,
   movingUsesTail,
+  noSyntheticMissing,
   positionStable,
   scoreStableMemory,
-  uniqueCarrierIndex,
+  uniqueCarriers,
+  explicitKeepFraction,
+  unchangedContentEpochs,
 } from "../../src/live/stable-memory-observation.js";
+import type { RequestObservation } from "../../src/live/comparison-observation.js";
+import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, repository } from "./fixtures.js";
+import type { Context, Model } from "@earendil-works/pi-ai";
 
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 
@@ -26,43 +32,66 @@ test("stable-memory assets seed public task files without observer criteria or f
       { id: "m4" as const, variant: "keep-0.5" as const },
       { id: "m4" as const, variant: "keep-0.67" as const },
     ]) {
-      const { input } = await loadScenario(repository, { ...selection, config: selection.id === "m4"
+      const { input, observer } = await loadScenario(repository, { ...selection, config: selection.id === "m4"
         ? { ...config, nunc: { rolling: { keepRecentFraction: selection.variant === "keep-0.67" ? 0.67 : 0.5 } } }
         : config });
       const cwd = join(dir, `${selection.id}-${"variant" in selection && selection.variant ? selection.variant : "base"}`);
       await seedScenario(input, cwd);
       assert.deepEqual((await readdir(cwd)).sort(), Object.keys(input.files).sort());
-      assert(!input.turns.some(turn => /cedar-17|maple-29|orchard-router/.test(turn.text) && turn.id !== "a"));
+      assert(!input.turns.some(turn => /cedar-17|maple-29|orchard-router/.test(turn.text)));
+      if (selection.id === "m1") {
+        assert(input.turns.length >= 6);
+        assert.equal(input.turns[4]?.id, "e");
+      }
+      if (selection.id === "m2") {
+        assert.equal(input.files["lock-correction.txt"], undefined);
+        assert.equal(observer.controls.length, 2);
+      }
+      if (selection.id === "m4") assert.equal(observer.controls.length, 3);
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("carrier index uses timestamp 0 envelope; lookalike users remain distinct", () => {
-  const carrier = { role: "user" as const, timestamp: 0, content: [{ type: "text" as const, text: "Nunc working memory (session-local, reference only):\n[{\"id\":\"s1\",\"text\":\"real\"}]" }] };
-  const lookalike = { role: "user" as const, timestamp: 9, content: "Nunc working memory (session-local, reference only):\n[{\"id\":\"fake\",\"text\":\"lookalike\"}]" };
-  const user = { role: "user" as const, timestamp: 1, content: "hello" };
-  assert.equal(uniqueCarrierIndex([user, carrier, lookalike]), 1);
-  assert.equal(uniqueCarrierIndex([lookalike]), undefined);
-});
-
-test("material predicates distinguish moving tail from a fixed index and reject calibration", () => {
-  const carrier = (text: string) => ({ role: "user" as const, timestamp: 0, content: [{ type: "text" as const, text: `Nunc working memory (session-local, reference only):\n${text}` }] });
-  const fixed = [
-    layoutFromContext({ turn: "a", model: "openrouter/google/gemini-3.8-flash", kind: "main", messages: [{ role: "user", content: "a", timestamp: 1 }, carrier("x")] }),
-    layoutFromContext({ turn: "b", model: "openrouter/google/gemini-3.8-flash", kind: "main", messages: [{ role: "user", content: "a", timestamp: 1 }, carrier("x"), { role: "assistant", content: [{ type: "text", text: "ok" }], timestamp: 2 }, { role: "user", content: "b", timestamp: 3 }] }),
+test("predicates require admission identity, expected content epochs, explicit fractions, and serialized scans", () => {
+  const model = { provider: "openrouter", id: "google/gemini-3.8-flash", api: "openai-completions" } as Model<"openai-completions">;
+  const context = (messages: Context["messages"]): Context => ({ messages });
+  const req = (turn: string, callId: number, extra: Partial<RequestObservation> & { admission?: AdmissionObservation }): RequestObservation => ({
+    callId, turn, kind: "main", model, thinking: null, reasoning: null, outputPlanning: null,
+    context: context([{ role: "user", content: turn, timestamp: 1 }]),
+    ...extra,
+  });
+  const content = "Nunc working memory (session-local, reference only):\n[{\"id\":\"s1\",\"text\":\"x\"}]";
+  const later = "Nunc working memory (session-local, reference only):\n[{\"id\":\"s1\",\"text\":\"y\"}]";
+  const requests: RequestObservation[] = [
+    req("b", 1, { admission: { kind: "main", outcome: "delegate", memoryIndex: 1, memoryContent: content }, syntheticMissing: false }),
+    req("c", 2, { admission: { kind: "main", outcome: "delegate", memoryIndex: 1, memoryContent: content }, syntheticMissing: false }),
+    req("e", 3, { admission: { kind: "main", outcome: "delegate", memoryIndex: 5, memoryContent: later }, syntheticMissing: false }),
+    req("f", 4, { admission: { kind: "main", outcome: "delegate", memoryIndex: 5, memoryContent: later }, syntheticMissing: false }),
   ];
-  const moving = [
-    layoutFromContext({ turn: "a", model: "fixture", kind: "main", messages: [{ role: "user", content: "a", timestamp: 1 }, carrier("x")] }),
-    layoutFromContext({ turn: "b", model: "fixture", kind: "main", messages: [{ role: "user", content: "a", timestamp: 1 }, { role: "assistant", content: [{ type: "text", text: "ok" }], timestamp: 2 }, { role: "user", content: "b", timestamp: 3 }, carrier("x")] }),
-  ];
-  assert.equal(positionStable(fixed), true);
-  assert.equal(movingUsesTail(fixed), false);
-  assert.equal(positionStable(moving), false);
-  assert.equal(movingUsesTail(moving), true);
-  const scored = scoreStableMemory({ id: "m4", variant: "keep-0.5", layouts: fixed, config: { nunc: { rolling: { keepRecentFraction: 0.5 } } } });
+  const layouts = layoutsFromRequests(requests, [
+    { kind: "terminal", id: 1, at: 1, latencyMs: 1, stopReason: "stop", usage: { input: 10, cacheRead: 8, cacheWrite: 0, contextInput: 18, output: 2, reasoning: null, totalTokens: 20, cost: null } },
+    { kind: "terminal", id: 2, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 12, cacheRead: 10, cacheWrite: 0, contextInput: 22, output: 2, reasoning: null, totalTokens: 24, cost: null } },
+    { kind: "terminal", id: 3, at: 3, latencyMs: 1, stopReason: "stop", usage: { input: 20, cacheRead: 0, cacheWrite: 4, contextInput: 24, output: 2, reasoning: null, totalTokens: 26, cost: null } },
+    { kind: "terminal", id: 4, at: 4, latencyMs: 1, stopReason: "stop", usage: { input: 22, cacheRead: 18, cacheWrite: 0, contextInput: 40, output: 2, reasoning: null, totalTokens: 42, cost: null } },
+  ], 0.5);
+  assert.equal(layouts[0]?.cacheRead, 8);
+  assert.equal(layouts[2]?.cacheRead, 0);
+  assert.equal(uniqueCarriers(layouts, content), true);
+  assert.equal(uniqueCarriers(layouts), true);
+  assert.equal(positionStable(layouts, content), true);
+  assert.equal(unchangedContentEpochs(layouts).length, 2);
+  assert.equal(noSyntheticMissing(layouts), true);
+  assert.equal(explicitKeepFraction({ nunc: {} }, 0.5), false);
+  assert.equal(explicitKeepFraction({ nunc: { rolling: { keepRecentFraction: 0.5 } } }, 0.5), true);
+  const empty = layoutsFromRequests([req("z", 9, { admission: { kind: "main", outcome: "delegate" } })], [], 0.5);
+  assert.equal(uniqueCarriers(empty, content), false);
+  assert.equal(positionStable(empty), false);
+  assert.equal(noSyntheticMissing(empty), undefined);
+  const lookalike = layoutsFromRequests([req("z", 9, {})], [], 0.5);
+  assert.equal(lookalike[0]?.uniqueCarrier, false);
+  const scored = scoreStableMemory({ id: "m4", variant: "keep-0.5", layouts, config: { nunc: { rolling: { keepRecentFraction: 0.5 } } } });
   assert.equal(scored.find(c => c.check.includes("keepRecentFraction"))?.status, "PROVEN");
-  const calibrated = scoreStableMemory({ id: "m4", variant: "keep-0.5", layouts: fixed, config: { nunc: { rolling: { keepRecentFraction: 0.5 } }, retentionCalibration: { minFraction: 0.1, maxFraction: 0.9 } } });
-  assert.equal(calibrated.find(c => c.check.includes("keepRecentFraction"))?.status, "UNPROVEN");
+  assert.equal(movingUsesTail(layouts, content), false);
 });
 
 test("public parseInput admits m* with explicit fractions and refuses Astra or calibrated m4", async () => {

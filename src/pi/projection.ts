@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ActiveEntry, Memory } from "../engine/index.js";
 import { emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
@@ -119,19 +120,12 @@ const LAYOUT_KEY = Symbol.for("nunc.memory.observer-layout");
 const anchors = new Map<string, MemoryAnchor>();
 const CARRIER_PREFIX = "Nunc working memory (session-local, reference only)";
 
-interface PrefixMark {
-  role: string;
-  timestamp: number;
-  toolCallId?: string;
-  toolName?: string;
-  toolCallIds?: string[];
-}
 interface MemoryAnchor {
   sessionId: string;
-  checkpointId: string;
   content: string;
   prefixLength: number;
-  prefixMarks: PrefixMark[];
+  prefixSnapshot: unknown[];
+  prefixEntryIds: string[];
 }
 type LayoutMessage = {
   role: string;
@@ -142,6 +136,11 @@ type LayoutMessage = {
   timestamp?: number;
   toolCallId?: string;
   toolName?: string;
+};
+export type MemorySession = {
+  sessionId: string;
+  latestId?: string | undefined;
+  entries?: readonly SessionEntry[];
 };
 
 /** Observer/test baseline only. Production never sets this; missing/other values stay stable. */
@@ -155,9 +154,18 @@ export function clearMemoryAnchors(sessionId?: string): void {
   if (sessionId === undefined) anchors.clear();
   else anchors.delete(sessionId);
 }
-export function peekMemoryAnchor(sessionId: string): { content: string; prefixLength: number } | undefined {
+export function peekMemoryAnchor(sessionId: string): { content: string; prefixLength: number; prefixEntryIds: string[] } | undefined {
   const anchor = anchors.get(sessionId);
-  return anchor ? { content: anchor.content, prefixLength: anchor.prefixLength } : undefined;
+  return anchor ? { content: anchor.content, prefixLength: anchor.prefixLength, prefixEntryIds: [...anchor.prefixEntryIds] } : undefined;
+}
+/** Current UI index only when the stored prefix still corresponds to visible selected-path entries. */
+export function currentMemoryIndex(sessionId: string, memory: Memory, active: readonly { entryId: string; messages: readonly unknown[] }[]): number | undefined {
+  const anchor = anchors.get(sessionId);
+  if (!anchor || memory.slots.length === 0 || anchor.content !== renderMemory(memory.slots)) return;
+  if (!idsStillOnPath(anchor.prefixEntryIds, active.map(entry => entry.entryId))) return;
+  const mapped = active.filter(entry => anchor.prefixEntryIds.includes(entry.entryId)).reduce((n, entry) => n + entry.messages.length, 0);
+  if (mapped !== anchor.prefixLength) return;
+  return anchor.prefixLength;
 }
 export function isNuncCarrier(message: object): boolean {
   return carriers.has(message);
@@ -179,17 +187,6 @@ function carrierText(message: LayoutMessage): string {
   if (typeof message.content === "string") return message.content;
   if (!Array.isArray(message.content)) return "";
   return message.content.filter((block): block is { type: "text"; text: string } => !!block && block.type === "text" && typeof block.text === "string").map(block => block.text).join("");
-}
-function prefixMark(message: LayoutMessage): PrefixMark {
-  const mark: PrefixMark = { role: message.role, timestamp: Number(message.timestamp ?? 0) };
-  if (message.role === "toolResult") {
-    mark.toolCallId = String(message.toolCallId ?? "");
-    mark.toolName = String(message.toolName ?? "");
-  }
-  if (message.role === "assistant" && Array.isArray(message.content)) {
-    mark.toolCallIds = message.content.flatMap(block => recordToolId(block));
-  }
-  return mark;
 }
 function recordToolId(block: unknown): string[] {
   if (!block || typeof block !== "object" || !("type" in block) || block.type !== "toolCall") return [];
@@ -216,17 +213,54 @@ function legalTail(messages: readonly LayoutMessage[]): number {
   }
   return last;
 }
-function prefixMatches(messages: readonly LayoutMessage[], anchor: MemoryAnchor): boolean {
-  if (anchor.prefixMarks.length !== anchor.prefixLength) return false;
-  return anchor.prefixMarks.every((mark, i) => {
-    const actual = prefixMark(messages[i]!);
-    return actual.role === mark.role && actual.timestamp === mark.timestamp &&
-      actual.toolCallId === mark.toolCallId && actual.toolName === mark.toolName &&
-      JSON.stringify(actual.toolCallIds ?? []) === JSON.stringify(mark.toolCallIds ?? []);
-  });
+function snapshot(value: unknown): unknown {
+  try { return JSON.parse(JSON.stringify(value)); } catch { return undefined; }
+}
+function sameMessage(left: unknown, right: unknown): boolean {
+  const a = snapshot(left), b = snapshot(right);
+  return a !== undefined && b !== undefined && isDeepStrictEqual(a, b);
+}
+function sourceUnits(entries: readonly SessionEntry[]): { entryId: string; messages: ReturnType<typeof sessionEntryToContextMessages> }[] {
+  const units: { entryId: string; messages: ReturnType<typeof sessionEntryToContextMessages> }[] = [];
+  for (const entry of entries) {
+    if (entry.type === "compaction") continue;
+    if (entry.type === "message" && entry.message.role === "assistant" && ["error", "aborted"].includes(entry.message.stopReason)) continue;
+    const raw = sessionEntryToContextMessages(entry).filter(message => message.role !== "compactionSummary" && !(message.role === "custom" && message.customType === "nunc.memory"));
+    if (!raw.length) continue;
+    units.push({ entryId: entry.id, messages: raw });
+  }
+  return units;
+}
+function matchesAt(hook: readonly LayoutMessage[], start: number, unit: readonly object[]): boolean {
+  return unit.every((message, offset) => sameMessage(hook[start + offset], message));
+}
+function mappedEntryIds(hook: readonly LayoutMessage[], end: number, units: readonly { entryId: string; messages: readonly object[] }[]): string[] {
+  const prefix = hook.slice(0, end);
+  let cursor = 0;
+  const ids: string[] = [];
+  for (const unit of units) {
+    while (cursor + unit.messages.length <= prefix.length && !matchesAt(prefix, cursor, unit.messages)) cursor++;
+    if (cursor + unit.messages.length > prefix.length || !matchesAt(prefix, cursor, unit.messages)) break;
+    ids.push(unit.entryId);
+    cursor += unit.messages.length;
+  }
+  return ids;
+}
+function idsStillOnPath(needed: readonly string[], current: readonly string[]): boolean {
+  let start = 0;
+  for (const id of needed) {
+    const found = current.findIndex((entryId, index) => index >= start && entryId === id);
+    if (found < 0) return false;
+    start = found + 1;
+  }
+  return true;
+}
+function prefixSnapshotEqual(messages: readonly LayoutMessage[], anchor: MemoryAnchor): boolean {
+  if (anchor.prefixSnapshot.length !== anchor.prefixLength) return false;
+  return anchor.prefixSnapshot.every((item, index) => sameMessage(messages[index], item));
 }
 
-export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly T[], memory: Memory, session?: { sessionId: string; latestId?: string | undefined }): T[] {
+export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly T[], memory: Memory, session?: MemorySession): T[] {
   const stripped: T[] = [];
   for (const message of messages) {
     if (message.role === "assistant" && message.stopReason && ["error", "aborted"].includes(message.stopReason)) continue;
@@ -240,14 +274,14 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
     return stripped;
   }
   const content = renderMemory(memory.slots);
-  const checkpointId = session?.latestId ?? "";
+  const units = session?.entries ? sourceUnits(session.entries) : [];
   const existing = session && !observerMoving() ? anchors.get(session.sessionId) : undefined;
   const reusable = existing &&
-    existing.checkpointId === checkpointId &&
     existing.content === content &&
     existing.prefixLength <= stripped.length &&
-    prefixMatches(stripped, existing) &&
-    !hasPendingTools(stripped, existing.prefixLength);
+    prefixSnapshotEqual(stripped, existing) &&
+    !hasPendingTools(stripped, existing.prefixLength) &&
+    idsStillOnPath(existing.prefixEntryIds, units.map(unit => unit.entryId));
   const index = reusable ? existing.prefixLength : legalTail(stripped);
   const carrier = {
     role: "user",
@@ -256,12 +290,14 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
   } as unknown as T;
   carriers.add(carrier);
   if (session) {
+    const prefix = stripped.slice(0, index);
+    const ids = mappedEntryIds(prefix, prefix.length, units);
     anchors.set(session.sessionId, {
       sessionId: session.sessionId,
-      checkpointId,
       content,
       prefixLength: index,
-      prefixMarks: stripped.slice(0, index).map(prefixMark),
+      prefixSnapshot: prefix.map(message => snapshot(message)),
+      prefixEntryIds: ids,
     });
   }
   return [...stripped.slice(0, index), carrier, ...stripped.slice(index)];

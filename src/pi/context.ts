@@ -2,13 +2,12 @@ import type { Api, Context, Message, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, Slot } from "../engine/index.js";
 import { mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
-import { renderMemory } from "../engine/memory.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
 import type { MemorySurface } from "./manual.js";
 import type { PayloadObservation } from "./payload.js";
-import { peekMemoryAnchor, project } from "./projection.js";
+import { currentMemoryIndex, project } from "./projection.js";
 
 export interface TokenCount { tokens: number | null; unknown: boolean }
 export interface ContextBlock {
@@ -203,9 +202,7 @@ export function createContextSurface(options: {
           budget = unknownBudget(memory.budget.tokens, true);
         }
       }
-      const anchor = peekMemoryAnchor(sessionId);
-      const rendered = renderMemory(memory.memory.slots);
-      const memoryIndex = memory.memory.slots.length && anchor && anchor.content === rendered ? anchor.prefixLength : undefined;
+      const memoryIndex = currentMemoryIndex(sessionId, memory.memory, projected.active);
       const layout = layoutFromProjection(options.fixed(ctx), memory.memory, projected.active, imageTokens, extraInputTokens, memoryIndex);
       const current: CurrentContext = {
         scope: "current",

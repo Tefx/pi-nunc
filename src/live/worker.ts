@@ -17,7 +17,7 @@ import type { RetentionCalibration } from "./calibration.js";
 import { compactionAssociationError } from "./compaction-identity.js";
 import { prepareBoundary, type PreparedBoundary, type MatchReference } from "./preparation.js";
 import { rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
-import { layoutFromContext, scoreStableMemory, usageFromAssistant, type LayoutObservation } from "./stable-memory-observation.js";
+import { layoutsFromRequests, scoreStableMemory, type LayoutObservation } from "./stable-memory-observation.js";
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined; matchReferences?: MatchReference[] | undefined }
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig; actions?: unknown[]; lastBeforeActive?: SessionEntry[]; rollovers?: RolloverObservation[]; requests?: RequestObservation[]; runConfig?: Selection["config"]; noWork?: NonNullable<SegmentReport["noWork"]> }
@@ -224,6 +224,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           if (row && data.kind === "maintenance") row.callIds.push(data.callId);
           if (row?.snapshot && data.kind === "main" && row.continuationCallId === undefined) row.continuationCallId = data.callId;
         }
+        if (type === "payload") {
+          const req = report.requests!.at(-1);
+          if (req && data.syntheticMissing !== undefined) req.syntheticMissing = data.syntheticMissing === true;
+        }
         if (type === "request-cap") { const req = report.requests!.find(r => r.callId === data.callId); if (req) req.cap = data.cap; }
         if (type === "commit" && row) {
           row.reported = data.reported;
@@ -238,14 +242,6 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       onMaintenanceResponse: data => { if (object(data)) maintenanceResponses.push(data as any); },
       onContext: (model, context, kind) => {
         report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context });
-        if (selection.id.startsWith("m")) {
-          const usage = usageFromAssistant(context.messages);
-          (report.layouts ??= []).push(layoutFromContext({
-            turn, model: `${model.provider}/${model.id}`, kind, messages: context.messages,
-            keepRecentFraction: runConfig.nunc.rolling?.keepRecentFraction ?? 0.5,
-            ...(usage ? { usage } : {}),
-          }));
-        }
         if (selection.id.startsWith("g") && kind === "main") {
           const activeTools = context.tools?.map(t => t.name) ?? [];
           const exposed = ["nunc_memory_read", "nunc_memory_patch"].every(name => activeTools.includes(name));
@@ -284,6 +280,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         turns[turn] = delivered; report.nextTurn = index + 1;
         continue;
       }
+      if (selection.id === "m2" && turn === "c") {
+        const correction = join(caseRoot, "task", "lock-correction.txt");
+        await writeFile(correction, "unlock-code: maple-29\n", { mode: 0o600 });
+        report.actions.push({ turn, event: { type: "fixture_state", path: "lock-correction.txt", written: true } });
+      }
       if (selection.id === "g6" && turn === "b") {
         const statusPath = join(caseRoot, "task", "status.json"), lockPath = join(caseRoot, "task", "deploy.lock");
         const before = JSON.parse(await readFile(statusPath, "utf8"));
@@ -302,6 +303,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const last = session.messages.findLast(m => m.role === "assistant");
       requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", last?.role === "assistant" && last.errorMessage ? last.errorMessage : "Main run did not end in a complete stop state");
       requireValue(ledgerSummary(readLedger(join(input.target.stateRoot, "calls.jsonl"))).unreconciledCallIds.length === 0, "RECONCILIATION", "A request is still unresolved");
+      if (selection.id === "m2" && (turn === "a" || turn === "c")) {
+        const path = join(caseRoot, "task", turn === "a" ? "lock.txt" : "lock-correction.txt");
+        try { await unlink(path); report.actions.push({ turn, event: { type: "fixture_state", path: turn === "a" ? "lock.txt" : "lock-correction.txt", removed: true } }); }
+        catch { report.prerequisites.push({ check: `task file ${turn === "a" ? "lock.txt" : "lock-correction.txt"} removed after its read`, status: "UNPROVEN" }); }
+      }
 
       if (selection.id.startsWith("g")) {
         const active = sm.buildContextEntries();
@@ -552,7 +558,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts, report.actions, join(caseRoot, "task"), scenario.files["probe.json"], group === "native" ? report.rollovers : undefined);
     }
     if (selection.id.startsWith("m")) {
-      report.prerequisites.push(...scoreStableMemory({ id: selection.id, ...(selection.variant !== undefined ? { variant: selection.variant } : {}), layouts: report.layouts ?? [], config: runConfig }));
+      const keep = runConfig.nunc.rolling?.keepRecentFraction;
+      report.layouts = keep === undefined
+        ? layoutsFromRequests(report.requests ?? [], readLedger(join(input.target.stateRoot, "calls.jsonl")))
+        : layoutsFromRequests(report.requests ?? [], readLedger(join(input.target.stateRoot, "calls.jsonl")), keep);
+      report.prerequisites.push(...scoreStableMemory({ id: selection.id, ...(selection.variant !== undefined ? { variant: selection.variant } : {}), layouts: report.layouts, config: runConfig }));
     }
     if (selection.id.startsWith("g")) {
       if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {

@@ -4,24 +4,30 @@
     {
       "id": "m1",
       "files": {
-        "brief.txt": "Keep the project name orchard-router in working memory. Later turns add only new constraints; they do not restated the name.\n"
+        "brief.txt": "Keep the project name orchard-router in working memory. Later turns add only new constraints; they do not restate the name.\n"
       },
       "turns": [
-        { "id": "a", "text": "Read brief.txt. Save any name you must keep using, then wait." },
-        { "id": "b", "text": "Add that the retry budget is two attempts. Do not rewrite unrelated notes." },
-        { "id": "c", "text": "Write status.json with fields project and retries using only what you still need. Do not invent a new project name." }
+        { "id": "a", "text": "Read brief.txt. Save any identifier you must keep using, then wait." },
+        { "id": "b", "text": "Write round-b.json with field n equal to 1. Do not change saved notes unless they are wrong." },
+        { "id": "c", "text": "Write round-c.json with field n equal to 2. Do not change saved notes unless they are wrong." },
+        { "id": "d", "text": "Write round-d.json with field n equal to 3. Do not change saved notes unless they are wrong." },
+        { "id": "e", "text": "The retry budget is two attempts. Update saved notes only if that constraint is newly necessary." },
+        { "id": "f", "text": "Write round-f.json with field n equal to 4. Do not change saved notes unless they are wrong." },
+        { "id": "g", "text": "Write status.json with fields project and retries using only what you still need." }
       ]
     },
     {
       "id": "m2",
       "files": {
-        "lock.txt": "unlock-code: cedar-17\n",
-        "lock-correction.txt": "unlock-code: maple-29\n"
+        "lock.txt": "unlock-code: cedar-17\n"
       },
       "turns": [
         { "id": "a", "text": "Read lock.txt. Keep the unlock code in working memory. Do not write unlock.json yet." },
-        { "id": "b", "text": "Read lock-correction.txt. Replace any stored unlock code with the corrected value and drop the obsolete one." },
-        { "id": "c", "text": "Write unlock.json with a code field taken from current working memory. This turn does not repeat the code." }
+        { "id": "b", "text": "Write waiting.json with a status field of pending. Do not read lock files." },
+        { "id": "c", "text": "A correction file is now in the task directory. Read lock-correction.txt, replace the stored unlock code, and drop the obsolete code. Do not write unlock.json." },
+        { "id": "d", "text": "Write waiting2.json with a status field of ready. Do not read lock files." },
+        { "id": "e", "text": "Delete the unlock code from working memory. Do not write it down." },
+        { "id": "f", "text": "Write unlock.json with a code field taken from current working memory only. If none remains, use null." }
       ]
     },
     {
@@ -30,19 +36,21 @@
         "note.txt": "Compose the tracked observer, Nunc, and named payload-append extensions on this task.\n"
       },
       "turns": [
-        { "id": "a", "text": "Read note.txt and acknowledge the composition task. Save any continuing constraint." },
+        { "id": "a", "text": "Read note.txt and save any continuing constraint." },
         { "id": "b", "text": "Write composed.json with a status field of ready." }
       ]
     },
     {
       "id": "m4",
       "files": {
-        "policy.txt": "Retention comparison uses the same fixed memory layout. Node 20 remains required. Do not restated this in later scratch turns.\n"
+        "policy.txt": "Retention comparison uses the same fixed memory layout. Node 20 remains required after later scratch turns.\n"
       },
       "turns": [
         { "id": "a", "text": "Read policy.txt. Keep the continuing Node requirement in working memory and wait." },
-        { "id": "b", "text": "Write scratch.json with n equal to 4. Do not drop the Node requirement." },
-        { "id": "c", "text": "Write kept.json with field nodeMajor from what you still need after compaction." }
+        { "id": "b", "text": "Write sum.json containing the sum of 17 and 29." },
+        { "id": "c", "text": "Write product.json containing the product of 8 and 13." },
+        { "id": "d", "text": "Write difference.json containing 101 minus 38." },
+        { "id": "e", "text": "Write kept.json with field nodeMajor from what you still need after compaction." }
       ]
     }
   ]

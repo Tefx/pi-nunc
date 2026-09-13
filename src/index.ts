@@ -202,7 +202,7 @@ export default function nunc(pi: ExtensionAPI): void {
     }
     ui.refresh(event.ctx);
   };
-  pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); dropAnchors(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
+  pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   pi.on("session_start", (_event, ctx) => {
     invalidate(); dropAnchors(); contextView.resetPath();
@@ -226,9 +226,9 @@ export default function nunc(pi: ExtensionAPI): void {
       }
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid startup configuration"); }
   });
-  pi.on("session_before_switch", () => { invalidate(); dropAnchors(); contextView.resetPath(); });
-  pi.on("session_before_fork", () => { invalidate(); dropAnchors(); contextView.resetPath(); });
-  pi.on("session_before_tree", () => { invalidate(); dropAnchors(); contextView.resetPath(); });
+  pi.on("session_before_switch", () => { invalidate(); contextView.resetPath(); });
+  pi.on("session_before_fork", () => { invalidate(); contextView.resetPath(); });
+  pi.on("session_before_tree", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_tree", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); dropAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
   pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); ui.refresh(ctx); });
@@ -247,8 +247,9 @@ export default function nunc(pi: ExtensionAPI): void {
     admission.ensure(ctx);
     try {
       const sessionId = ctx.sessionManager.getSessionId();
-      const projected = project(ctx.sessionManager.buildContextEntries());
-      const messages = withEffectiveMemory(event.messages, projected.memory, { sessionId, ...(projected.latestId !== undefined ? { latestId: projected.latestId } : {}) });
+      const entries = ctx.sessionManager.buildContextEntries();
+      const projected = project(entries);
+      const messages = withEffectiveMemory(event.messages, projected.memory, { sessionId, entries, ...(projected.latestId !== undefined ? { latestId: projected.latestId } : {}) });
       // Inspect Pi's public native mapping without changing real AgentMessages
       // that later context hooks still consume. Native user/assistant/toolResult
       // objects (and our carrier) survive conversion and witness this projection.

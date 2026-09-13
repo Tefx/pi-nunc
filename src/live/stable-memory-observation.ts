@@ -1,93 +1,104 @@
-import type { Message } from "@earendil-works/pi-ai";
 import type { CheckResult } from "./scenarios.js";
 import type { NuncConfig } from "../pi/config.js";
-
-export const CARRIER_PREFIX = "Nunc working memory (session-local, reference only)";
+import type { RequestObservation } from "./comparison-observation.js";
+import type { CallEnd, LedgerRecord } from "./budget.js";
 
 export interface LayoutObservation {
   turn: string;
   model: string;
   kind: string;
+  callId?: number;
   messageCount: number;
   memoryIndex?: number;
+  memoryContent?: string;
   uniqueCarrier: boolean;
-  syntheticMissingResults: number;
+  payloadSyntheticMissing?: boolean;
   input?: number;
   cacheRead?: number;
   cacheWrite?: number;
   keepRecentFraction?: number;
 }
 
-function messageText(message: { content?: unknown }): string {
-  if (typeof message.content === "string") return message.content;
-  if (!Array.isArray(message.content)) return "";
-  return message.content.filter((block: { type?: string; text?: string }) => block?.type === "text" && typeof block.text === "string").map((block: { text: string }) => block.text).join("");
+export interface PositionEpoch {
+  content: string;
+  indexes: number[];
 }
 
-/** Cloned/serialized request view. Timestamp 0 plus the envelope identifies the injected carrier; lookalike users keep real timestamps. */
-export function uniqueCarrierIndex(messages: readonly { role?: string; timestamp?: number; content?: unknown }[]): number | undefined {
-  const hits: number[] = [];
-  for (const [index, message] of messages.entries()) {
-    if (message.role !== "user" || Number(message.timestamp ?? 0) !== 0) continue;
-    if (messageText(message).startsWith(CARRIER_PREFIX)) hits.push(index);
-  }
-  return hits.length === 1 ? hits[0] : undefined;
-}
-
-export function syntheticMissingResults(messages: readonly { role?: string; content?: unknown }[]): number {
-  return messages.filter(message => message.role === "toolResult" && messageText(message).includes("No result provided")).length;
-}
-
-export function layoutFromContext(input: {
-  turn: string;
-  model: string;
-  kind: string;
-  messages: readonly { role?: string; timestamp?: number; content?: unknown }[];
-  keepRecentFraction?: number;
-  usage?: { input?: number; cacheRead?: number; cacheWrite?: number };
-}): LayoutObservation {
-  const memoryIndex = uniqueCarrierIndex(input.messages);
-  return {
-    turn: input.turn,
-    model: input.model,
-    kind: input.kind,
-    messageCount: input.messages.length,
-    uniqueCarrier: memoryIndex !== undefined || !input.messages.some(message => messageText(message).startsWith(CARRIER_PREFIX)),
-    syntheticMissingResults: syntheticMissingResults(input.messages),
-    ...(memoryIndex !== undefined ? { memoryIndex } : {}),
-    ...(input.usage?.input !== undefined ? { input: input.usage.input } : {}),
-    ...(input.usage?.cacheRead !== undefined ? { cacheRead: input.usage.cacheRead } : {}),
-    ...(input.usage?.cacheWrite !== undefined ? { cacheWrite: input.usage.cacheWrite } : {}),
-    ...(input.keepRecentFraction !== undefined ? { keepRecentFraction: input.keepRecentFraction } : {}),
-  };
+export function layoutsFromRequests(
+  requests: readonly RequestObservation[],
+  ledger: readonly LedgerRecord[],
+  keepRecentFraction?: number,
+): LayoutObservation[] {
+  const terminals = ledger.filter((row): row is CallEnd => row.kind === "terminal");
+  return requests.filter(request => request.kind === "main").map(request => {
+    const admission = request.admission;
+    const terminal = terminals.find(row => row.id === request.callId);
+    const memoryIndex = admission?.memoryIndex;
+    const memoryContent = admission?.memoryContent;
+    const usage = terminal?.usage;
+    const synthetic = (request as RequestObservation & { syntheticMissing?: boolean }).syntheticMissing;
+    return {
+      turn: request.turn,
+      model: `${request.model.provider}/${request.model.id}`,
+      kind: request.kind,
+      callId: request.callId,
+      messageCount: request.context.messages.length,
+      uniqueCarrier: memoryIndex !== undefined,
+      ...(memoryIndex !== undefined ? { memoryIndex } : {}),
+      ...(memoryContent !== undefined ? { memoryContent } : {}),
+      ...(synthetic !== undefined ? { payloadSyntheticMissing: synthetic } : {}),
+      ...(usage?.input !== null && usage?.input !== undefined ? { input: usage.input } : {}),
+      ...(usage?.cacheRead !== null && usage?.cacheRead !== undefined ? { cacheRead: usage.cacheRead } : {}),
+      ...(usage?.cacheWrite !== null && usage?.cacheWrite !== undefined ? { cacheWrite: usage.cacheWrite } : {}),
+      ...(keepRecentFraction !== undefined ? { keepRecentFraction } : {}),
+    };
+  });
 }
 
 export function mainLayouts(rows: readonly LayoutObservation[]): LayoutObservation[] {
   return rows.filter(row => row.kind === "main");
 }
 
-export function positionStable(rows: readonly LayoutObservation[]): boolean {
-  const indexes = mainLayouts(rows).map(row => row.memoryIndex).filter((index): index is number => index !== undefined);
-  return indexes.length >= 2 && indexes.every(index => index === indexes[0]);
+export function unchangedContentEpochs(rows: readonly LayoutObservation[], expectedContent?: string): PositionEpoch[] {
+  const epochs: PositionEpoch[] = [];
+  for (const row of mainLayouts(rows)) {
+    if (row.memoryIndex === undefined || row.memoryContent === undefined) continue;
+    if (expectedContent !== undefined && row.memoryContent !== expectedContent) continue;
+    const last = epochs.at(-1);
+    if (last && last.content === row.memoryContent) last.indexes.push(row.memoryIndex);
+    else epochs.push({ content: row.memoryContent, indexes: [row.memoryIndex] });
+  }
+  return epochs;
 }
 
-export function movingUsesTail(rows: readonly LayoutObservation[]): boolean {
-  const placed = mainLayouts(rows).filter(row => row.memoryIndex !== undefined);
+export function positionStable(rows: readonly LayoutObservation[], expectedContent?: string): boolean {
+  const epochs = unchangedContentEpochs(rows, expectedContent).filter(epoch => epoch.indexes.length >= 2);
+  return epochs.length > 0 && epochs.every(epoch => epoch.indexes.every(index => index === epoch.indexes[0]));
+}
+
+export function movingUsesTail(rows: readonly LayoutObservation[], expectedContent?: string): boolean {
+  const placed = mainLayouts(rows).filter(row => row.memoryIndex !== undefined && (expectedContent === undefined || row.memoryContent === expectedContent));
   return placed.length >= 2 && placed.every(row => row.memoryIndex === row.messageCount - 1);
 }
 
-export function noSyntheticMissing(rows: readonly LayoutObservation[]): boolean {
-  return rows.length > 0 && rows.every(row => row.syntheticMissingResults === 0);
+export function noSyntheticMissing(rows: readonly LayoutObservation[]): boolean | undefined {
+  const scanned = rows.filter(row => row.payloadSyntheticMissing !== undefined);
+  if (!scanned.length) return undefined;
+  return scanned.every(row => row.payloadSyntheticMissing === false);
 }
 
-export function uniqueCarriers(rows: readonly LayoutObservation[]): boolean {
-  return mainLayouts(rows).length > 0 && mainLayouts(rows).every(row => row.uniqueCarrier);
+export function uniqueCarriers(rows: readonly LayoutObservation[], expectedContent?: string): boolean {
+  const main = mainLayouts(rows);
+  if (!main.length) return false;
+  if (expectedContent !== undefined) {
+    const expected = main.filter(row => row.memoryContent === expectedContent);
+    return expected.length > 0 && expected.every(row => row.uniqueCarrier && row.memoryIndex !== undefined);
+  }
+  return main.every(row => row.memoryContent ? row.uniqueCarrier && row.memoryIndex !== undefined : !row.uniqueCarrier);
 }
 
 export function explicitKeepFraction(config: { nunc?: NuncConfig }, expected: 0.5 | 0.67): boolean {
-  const value = config.nunc?.rolling?.keepRecentFraction;
-  if (expected === 0.5) return value === 0.5 || value === undefined;
-  return value === expected;
+  return config.nunc?.rolling?.keepRecentFraction === expected;
 }
 
 export function scoreStableMemory(input: {
@@ -95,30 +106,30 @@ export function scoreStableMemory(input: {
   variant?: string;
   layouts: LayoutObservation[];
   config: { nunc?: NuncConfig; retentionCalibration?: unknown };
+  expectedContent?: string;
 }): CheckResult[] {
   const results: CheckResult[] = [
-    { check: "unique injected M carrier on main requests", status: uniqueCarriers(input.layouts) ? "PROVEN" : "UNPROVEN", observed: { layouts: input.layouts } },
-    { check: "no serializer-synthesized missing tool results", status: noSyntheticMissing(input.layouts) ? "PROVEN" : "UNPROVEN" },
+    { check: "unique injected M carrier on main requests", status: uniqueCarriers(input.layouts, input.expectedContent) ? "PROVEN" : "UNPROVEN", observed: { layouts: input.layouts } },
   ];
+  const synthetic = noSyntheticMissing(input.layouts);
+  results.push({
+    check: "no serializer-synthesized missing tool results",
+    status: synthetic === true ? "PROVEN" : "UNPROVEN",
+    ...(synthetic === undefined ? { reason: "No serialized payload scan is bound to these requests" } : {}),
+  });
   if (input.id === "m1" && input.variant === "fixed") {
-    results.push({ check: "fixed layout keeps M at a stable request index", status: positionStable(input.layouts) ? "PROVEN" : "UNPROVEN" });
+    results.push({ check: "fixed layout keeps M at a stable request index across an unchanged-content epoch", status: positionStable(input.layouts, input.expectedContent) ? "PROVEN" : "UNPROVEN" });
   }
   if (input.id === "m1" && input.variant === "moving") {
-    results.push({ check: "moving baseline places M at the request tail", status: movingUsesTail(input.layouts) ? "PROVEN" : "UNPROVEN" });
+    results.push({ check: "moving baseline places M at the request tail", status: movingUsesTail(input.layouts, input.expectedContent) ? "PROVEN" : "UNPROVEN" });
   }
   if (input.id === "m4") {
     const expected = input.variant === "keep-0.67" ? 0.67 : 0.5;
     results.push({
       check: `explicit keepRecentFraction ${expected} without retentionCalibration`,
       status: explicitKeepFraction(input.config, expected) && input.config.retentionCalibration === undefined ? "PROVEN" : "UNPROVEN",
-      observed: { keepRecentFraction: input.config.nunc?.rolling?.keepRecentFraction ?? 0.5 },
+      observed: { keepRecentFraction: input.config.nunc?.rolling?.keepRecentFraction },
     });
   }
   return results;
-}
-
-export function usageFromAssistant(messages: readonly Message[]): { input?: number; cacheRead?: number; cacheWrite?: number } | undefined {
-  const last = [...messages].reverse().find(message => message.role === "assistant" && message.usage);
-  if (!last || last.role !== "assistant" || !last.usage) return;
-  return { input: last.usage.input, cacheRead: last.usage.cacheRead, cacheWrite: last.usage.cacheWrite };
 }

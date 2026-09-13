@@ -5,6 +5,7 @@ import { createAssistantMessageEventStream, type Api, type AssistantMessage, typ
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Complete, EngineConfig, Memory } from "../engine/index.js";
 import { admissionEstimate, inputLimit, mainAdmissionLimit, memoryTokens, messageTokens, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
+import { renderMemory } from "../engine/memory.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
@@ -97,6 +98,8 @@ export interface AdmissionObservation {
   receiptBreakdown?: ReceiptBreakdown;
   code?: string;
   payload?: PayloadObservation;
+  memoryIndex?: number;
+  memoryContent?: string;
 }
 export interface AdmissionLayoutEvent {
   ctx: ExtensionContext;
@@ -474,7 +477,7 @@ export class Admission {
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
     let initialMetadataTokens = 0;
-    let budgetObservation: Pick<AdmissionObservation, "resolution" | "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages"> = {};
+    let budgetObservation: Pick<AdmissionObservation, "resolution" | "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages" | "receiptBreakdown" | "memoryIndex" | "memoryContent"> = {};
     let snapshot: MainSnapshot | undefined;
     let projection: AdmissionLayoutEvent["projection"];
     let effectiveContext = context;
@@ -539,6 +542,8 @@ export class Admission {
           ...(hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest }),
           ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}),
           ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
+          ...(binding?.memoryIndex !== undefined ? { memoryIndex: binding.memoryIndex } : {}),
+          ...(binding && binding.memory.slots.length ? { memoryContent: renderMemory(binding.memory.slots) } : {}),
         };
         limit = mainAdmissionLimit(model, config.main);
         if (selected.validAssociation) projection = { memory: structuredClone(binding!.memory), rCount: selected.rMessages.length, ...(binding!.memoryIndex !== undefined ? { memoryIndex: binding!.memoryIndex } : {}) };

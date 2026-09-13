@@ -7,14 +7,16 @@ import { ModelRegistry, type ExtensionContext } from "@earendil-works/pi-coding-
 import { emptyMemory, renderMemory } from "../../src/engine/memory.js";
 import {
   clearMemoryAnchors,
+  currentMemoryIndex,
   injectedCarrierIndex,
   peekMemoryAnchor,
+  project,
   setObserverMemoryLayout,
   withEffectiveMemory,
 } from "../../src/pi/projection.js";
 import { contextSurface, memorySurface, type MemorySurface } from "pi-nunc/pi";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
-import { fixture } from "./fixtures.js";
+import { fixture, memoryPatch } from "./fixtures.js";
 
 function user(text: string, timestamp = 1) {
   return { role: "user" as const, content: text, timestamp };
@@ -36,6 +38,17 @@ test("withEffectiveMemory: first construction uses the legal tail; later history
   assert.equal(injectedCarrierIndex(second), 1);
   assert.notEqual(injectedCarrierIndex(second), second.length - 1);
   assert.equal(JSON.stringify(second[1]), JSON.stringify(first[1]));
+  clearMemoryAnchors();
+});
+
+test("withEffectiveMemory: same timestamp with replaced prefix content rebuilds at the legal tail", () => {
+  clearMemoryAnchors();
+  const session = { sessionId: "s-collide" };
+  const note = memory([{ id: "s1", text: "fixed note" }]);
+  const first = withEffectiveMemory([user("original", 1)], note, session);
+  assert.equal(injectedCarrierIndex(first), 1);
+  const next = withEffectiveMemory([user("different history", 1), user("later", 2)], note, session);
+  assert.equal(injectedCarrierIndex(next), 2);
   clearMemoryAnchors();
 });
 
@@ -282,4 +295,83 @@ test("lookalike user text stays in R while the unique injected carrier is M", as
   const last = admissions.filter(o => o.kind === "main").at(-1)!;
   assert.equal(last.outcome, "delegate");
   assert(last.receiptBreakdown?.currentMTokens! > 0);
+});
+
+test("cancelled tree navigation does not drop a still-valid anchor", async t => {
+  let ctx: ExtensionContext | undefined;
+  let surface: MemorySurface | undefined;
+  const f = await fixture({
+    flagValues: [["nunc-memory-tools", "true"]],
+    extras: [
+      { name: "cancel-tree", factory(pi) { pi.on("session_before_tree", () => ({ cancel: true })); } },
+      { name: "stable-tree", factory(pi) {
+        pi.on("session_start", (_event, next) => { ctx = next; });
+        surface = memorySurface(pi);
+      } },
+    ],
+  });
+  t.after(() => f.close());
+  assert(ctx && surface);
+  assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "stay" }] }).ok, true);
+  await f.runtime.session.prompt("anchor");
+  const index = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const parent = f.runtime.session.sessionManager.getBranch()[0]?.id;
+  assert(parent);
+  const result = await f.runtime.session.navigateTree(parent, { summarize: false });
+  assert.equal(result.cancelled, true);
+  await f.runtime.session.prompt("after cancelled tree");
+  assert.equal(injectedCarrierIndex(f.calls.at(-1)!.messages), index);
+});
+
+test("compact that keeps the prefix retains the M boundary; retiring the prefix rebuilds", async t => {
+  let ctx: ExtensionContext | undefined;
+  let surface: MemorySurface | undefined;
+  const f = await fixture({
+    enabled: true,
+    flagValues: [["nunc-memory-tools", "true"]],
+    extras: [{ name: "stable-compact", factory(pi) {
+      pi.on("session_start", (_event, next) => { ctx = next; });
+      surface = memorySurface(pi);
+    } }],
+  });
+  t.after(() => f.close());
+  assert(ctx && surface);
+  f.seed();
+  assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "kept-prefix" }] }).ok, true);
+  await f.runtime.session.prompt("recent keep");
+  const before = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const keepId = f.runtime.session.sessionManager.getBranch().find(e => e.type === "message" && e.message.role === "user" && String(e.message.content).includes("recent keep"))?.id;
+  f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const projected = project(f.runtime.session.sessionManager.buildContextEntries());
+  await f.runtime.session.prompt("after compact");
+  const after = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  if (keepId && projected.active.some(e => e.entryId === keepId)) {
+    assert.equal(after, before);
+  } else {
+    assert.equal(after, f.calls.at(-1)!.messages.length - 1);
+  }
+});
+
+test("genuine branch change rebuilds M when prefix entries leave the selected path", async t => {
+  let ctx: ExtensionContext | undefined;
+  let surface: MemorySurface | undefined;
+  const f = await fixture({
+    flagValues: [["nunc-memory-tools", "true"]],
+    extras: [{ name: "stable-branch", factory(pi) {
+      pi.on("session_start", (_event, next) => { ctx = next; });
+      surface = memorySurface(pi);
+    } }],
+  });
+  t.after(() => f.close());
+  assert(ctx && surface);
+  const firstUser = f.runtime.session.sessionManager.appendMessage({ role: "user", content: "old branch", timestamp: 1 });
+  f.runtime.session.sessionManager.appendMessage({ role: "assistant", content: [{ type: "text", text: "old reply" }], timestamp: 2, api: "openai-completions", provider: "nunc-pi-fixture", model: "large", stopReason: "stop", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
+  assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "branch-note" }] }).ok, true);
+  await f.runtime.session.prompt("on new leaf");
+  const index = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  await f.runtime.session.navigateTree(firstUser, { summarize: false });
+  await f.runtime.session.prompt("on old leaf");
+  const moved = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  assert(moved === undefined || moved !== index);
 });
