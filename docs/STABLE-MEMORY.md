@@ -1,8 +1,8 @@
 # 稳定记忆位置与滚动历史保留比例
 
-状态：**已接受的待实施设计**。更新于 2026-09-12。用户本轮授权更新文档与创建 Vectl 实施计划；本文件不表示代码已修改、集成测试已通过或后续实施已经启动。
+状态：**部分已实施**。更新于 2026-09-13。默认保留比例 `rolling.keepRecentFraction: 0.5` 已在 `src/pi/config.ts` 实施并通过配置/预算/切点检查（保留显式配置覆盖与原有计算公式）；稳定记忆位置布局仍为待实施状态（等待 `nunc.stable-memory` 交付）。
 
-当前实现仍按 [ACTIVE-MEMORY.md](ACTIVE-MEMORY.md) 每次尾置 M，`rolling.keepRecentFraction` 默认仍为 `0.67`。本增量实施后，以下布局合同取代旧文档的“每次请求必须尾置 M”；CRUD、CAS、持久化、预算、Larva v1 与 Pi 所有权等未被修改的合同继续适用。默认保留比例改为 `0.5`，显式配置仍有效。
+当前代码中 `rolling.keepRecentFraction` 默认值已改为 `0.5`（显式配置保持有效）；请求布局当前仍按 [ACTIVE-MEMORY.md](ACTIVE-MEMORY.md) 尾置 M（等待后续稳定记忆位置增量实施）。本增量完整实施后，以下布局合同取代旧文档的“每次请求必须尾置 M”；CRUD、CAS、持久化、预算、Larva v1 与 Pi 所有权等未被修改的合同继续适用。
 
 最新测试约束：**实际模型测试优先 Gemini，可以有限使用 GPT Luna，禁止使用 Astra**。该约束覆盖主请求、维护请求和模型观察者；旧方案中补做 Astra 更新转换测试的要求已撤回，历史 Astra 证据仍可引用。
 
@@ -277,7 +277,7 @@ U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含�
 
 ## 12. 当前状态与证据
 
-目前已完成源码核验、已有实验记录核对和架构复核，尚未修改生产实现或配置。实施与验收由 managed Vectl Plan 跟踪，已完成历史保持不变；本轮文档及计划准备不启动实施或实际模型测试。
+默认保留比例 `rolling.keepRecentFraction: 0.5` 已在 `src/pi/config.ts` 实施并通过离线配置解析、预算公式和合法切点测试；稳定记忆位置布局及真实模型观察仍待实施与验收。实施与验收由 managed Vectl Plan 跟踪，已完成历史保持不变。
 
 主要既有证据：
 

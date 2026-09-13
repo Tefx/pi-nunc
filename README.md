@@ -13,7 +13,7 @@ Maintenance asks what would still be needed with effective host instructions **F
 
 This package is `"private": true`. It is not published to npm. There is no license file in this repository.
 
-**Accepted change, not yet implemented:** [Stable memory placement and retention](docs/STABLE-MEMORY.md) keeps unchanged memory at a valid fixed history boundary and changes the default retention fraction from `0.67` to `0.5`. The diagram above and defaults below describe the current moving-tail implementation. The new design preserves CRUD/CAS, complete tool units, native persistence and conservative receipts; actual model validation will use Gemini first, bounded GPT Luna when needed, and no Astra calls.
+**Accepted change status:** [Stable memory placement and retention](docs/STABLE-MEMORY.md) defines stable memory placement at a valid fixed history boundary and changes the default retention fraction from `0.67` to `0.5`. The default retention fraction `0.5` is implemented in `src/pi/config.ts`; stable memory placement remains pending. The diagram above describes the moving-tail layout. The design preserves CRUD/CAS, complete tool units, native persistence and conservative receipts; actual model validation will use Gemini first, bounded GPT Luna when needed, and no Astra calls.
 
 ## Requirements
 
@@ -88,7 +88,7 @@ Implemented defaults (`src/pi/config.ts`):
 | `policyFile` | unset (built-in `policies/default.md` only) |
 | `memory.fraction` | `0.1` (range `[0, 1)`) |
 | `memory.maxTokens` | unset (no absolute cap) |
-| `rolling.keepRecentFraction` | `0.67` (range `(0, 1)`) |
+| `rolling.keepRecentFraction` | `0.5` (range `(0, 1)`) |
 | `extraction.toolResults` | `"auto"` (`"full"` disables tool-body reduction) |
 | `extraction.headTailChars` | `200` |
 | `extraction.outputTokens` | `min(8192, model.maxTokens)` |
@@ -110,6 +110,8 @@ Optional integers are positive except the `extra*` fields, which may be zero. Ex
   "budget": { "safetyTokens": 1024, "growthTokens": 1024 }
 }
 ```
+
+The example above explicitly specifies `rolling.keepRecentFraction: 0.67` to illustrate overriding the `0.5` default; explicit overrides remain fully supported.
 
 Pi compaction settings remain Pi’s (`compaction.reserveTokens` default 16384, `keepRecentTokens` default 20000, `enabled` default true). Nunc’s trigger is `H = contextWindow - reserveTokens`. Require a positive reserve and H, and `0 <= keepRecentTokens < H`. Pi uses `keepRecentTokens` for native preparation; Nunc chooses a legal retained suffix from `keepRecentFraction` independently.
 

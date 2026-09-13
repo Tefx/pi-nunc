@@ -27,7 +27,7 @@ Build with the locked local tools (`npm run build`), then choose the extension e
 }
 ```
 
-All fields are optional. Unknown fields/types fail explicitly. Memory fraction is `[0,1)`, kept fraction is `(0,1)`; integer bounds are positive. Optional `budget.extraMainInputTokens`, `extraExtractionInputTokens`, `inputLimit` and `imageTokens` express justified provider framing/input/media bounds; extra inputs may be zero. `policyFile` supplies UTF-8 supplemental preferences. Whole-slot, reference, terminal-response and capacity checks always apply.
+All fields are optional. Unknown fields/types fail explicitly. Memory fraction is `[0,1)`, kept fraction is `(0,1)` (default `0.5`, illustrated above with explicit `0.67` override); integer bounds are positive. Optional `budget.extraMainInputTokens`, `extraExtractionInputTokens`, `inputLimit` and `imageTokens` express justified provider framing/input/media bounds; extra inputs may be zero. `policyFile` supplies UTF-8 supplemental preferences. Whole-slot, reference, terminal-response and capacity checks always apply.
 
 Pi's effective `compaction.reserveTokens` sets `H = model.contextWindow - reserveTokens`. Require positive reserve/H and `0 <= keepRecentTokens < H`. Pi's `keepRecentTokens` affects native preparation; Nunc independently chooses a legal suffix using its retained fraction. A nonempty retiring prefix and legal retained unit are still necessary. The controlled fixture's window 60,000/reserve 36,000/initial keep 1 gives H=24,000; these numbers are mechanics fixtures, not general recommendations. Measure the selected model's full extraction overhead and trigger earlier when needed.
 

@@ -71,7 +71,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
   const result: EngineConfig = {
     triggerTokens,
     memory: { fraction: config.memory?.fraction ?? 0.1, ...(config.memory?.maxTokens === undefined ? {} : { maxTokens: config.memory.maxTokens }) },
-    keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.67,
+    keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.5,
     growthTokens: config.budget?.growthTokens ?? 1024,
     main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },
     extraction: { ...common, outputTokens, extraInputTokens: config.budget?.extraExtractionInputTokens ?? 0, toolResults: config.extraction?.toolResults ?? "auto", headTailChars: config.extraction?.headTailChars ?? 200 },

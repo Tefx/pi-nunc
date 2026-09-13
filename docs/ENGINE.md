@@ -2,7 +2,7 @@
 
 `src/engine/index.ts` exports the repository's maintenance transaction. The compiled public import is `pi-nunc/engine`. This component produces a candidate; the Pi adapter owns handoff to native persistence and recovery. This document describes the implemented engine, including per-maintenance required-item protection: declared `required` items are retained jointly or maintenance fails with `CAPACITY`. Historical extraction-acceptance evidence for product `4f1f668` recorded a complete offline inventory and disclosed comparison limits; that record is not proof of later source.
 
-**Accepted change, pending implementation:** [Stable memory and retention](STABLE-MEMORY.md) changes the adapter's main-request placement and the default `keepRecentFraction` from `0.67` to `0.5`. Existing formulas, explicit overrides, trigger policy, full-R accounting and M/B/K extraction remain. Engine budgeting does not own session anchors; the additive estimator still charges all real history and one current M. Current tail/default descriptions below are implementation facts until the change is delivered, not proof of its outcome.
+**Accepted change status:** [Stable memory and retention](STABLE-MEMORY.md) changes the adapter's main-request placement and the default `keepRecentFraction` from `0.67` to `0.5`. The default retention fraction `0.5` is implemented in adapter configuration (`src/pi/config.ts`); stable main-request placement remains pending implementation. Existing formulas, explicit overrides, trigger policy, full-R accounting and M/B/K extraction remain. Engine budgeting does not own session anchors; the additive estimator still charges all real history and one current M. Moving-tail descriptions below remain implementation facts until stable placement is delivered.
 
 ## Adapter input and handoff
 
@@ -95,7 +95,7 @@ There is no second memory-maintenance scheduler. The adapter supplies `triggerTo
 }
 ```
 
-These numbers are test/example values, not validated settings for an arbitrary live model. Each request can additionally specify a narrower provider `inputLimit` and `outputLimit`. `outputTokens` and `safetyTokens` are positive integers, extra overhead is nonnegative. Memory fraction is in `[0,1)`, optional `memory.maxTokens` is positive, retained fraction is in `(0,1)`, and growth must be positive. Every maintenance recalculates using the current frozen model/configuration. `outputTokens` is a planning reserve on uncapped extraction routes, and also a requested cap on capped routes. Explicit legacy values remain effective; the stock adapter warns when a legacy Codex full-capability override defeats the new default.
+These numbers are test/example values, not validated settings for an arbitrary live model (the example uses an explicit `keepRecentFraction: 0.67`; adapter defaults supply `0.5`). Each request can additionally specify a narrower provider `inputLimit` and `outputLimit`. `outputTokens` and `safetyTokens` are positive integers, extra overhead is nonnegative. Memory fraction is in `[0,1)`, optional `memory.maxTokens` is positive, retained fraction is in `(0,1)`, and growth must be positive. Every maintenance recalculates using the current frozen model/configuration. `outputTokens` is a planning reserve on uncapped extraction routes, and also a requested cap on capped routes. Explicit legacy values remain effective; the stock adapter warns when a legacy Codex full-capability override defeats the new default.
 
 Maintenance/candidate planning equations (these do not schedule Pi or reject a native main request):
 

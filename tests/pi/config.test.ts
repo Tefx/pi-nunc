@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseConfig, engineConfig, readConfig } from "../../src/pi/config.js";
-import { model } from "../engine/fixtures.js";
-import { inputLimit } from "../../src/engine/accounting.js";
+import { model, user, assistant, tool } from "../engine/fixtures.js";
+import { chooseCut, inputLimit, memoryPlan } from "../../src/engine/accounting.js";
+import { legalCuts } from "../../src/engine/validation.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 
-for (const config of [null, [], { unknown: 1 }, { policyFile: "" }, { memory: { fraction: 1 } }, { memory: { fraction: -1 } }, { memory: { maxTokens: 0 } }, { rolling: { keepRecentFraction: 0 } }, { rolling: { keepRecentFraction: 1 } }, { extraction: { toolResults: "never" } }, { extraction: { outputTokens: 1.5 } }, { budget: { inputLimit: -1 } }, { budget: { extraMainInputTokens: -1 } }]) {
+for (const config of [null, [], { unknown: 1 }, { policyFile: "" }, { memory: { fraction: 1 } }, { memory: { fraction: -1 } }, { memory: { maxTokens: 0 } }, { rolling: { keepRecentFraction: 0 } }, { rolling: { keepRecentFraction: 1 } }, { rolling: { keepRecentFraction: -0.1 } }, { rolling: { keepRecentFraction: 1.5 } }, { rolling: { keepRecentFraction: "0.5" } }, { extraction: { toolResults: "never" } }, { extraction: { outputTokens: 1.5 } }, { budget: { inputLimit: -1 } }, { budget: { extraMainInputTokens: -1 } }]) {
   test(`invalid configuration rejected: ${JSON.stringify(config)}`, () => assert.throws(() => parseConfig(config)));
 }
 test("actual host settings drive H, memory/keep configuration and stock output/thinking upper bounds", () => {
@@ -24,6 +25,114 @@ test("actual host settings drive H, memory/keep configuration and stock output/t
   assert.throws(() => engineConfig({}, model, { reserveTokens: 60000, keepRecentTokens: 1 }));
   assert.throws(() => engineConfig({}, model, { reserveTokens: 59900, keepRecentTokens: 100 }));
   assert.deepEqual(readConfig(undefined, "/unused"), { config: {} });
+});
+
+test("default rolling.keepRecentFraction resolves to 0.5; explicit overrides preserve 0.67 without altering non-target budgets", () => {
+  const hostSettings = { reserveTokens: 36000, keepRecentTokens: 100 };
+  const defaultEmpty = engineConfig({}, model, hostSettings);
+  assert.equal(defaultEmpty.keepRecentFraction, 0.5);
+
+  const defaultRollingEmpty = engineConfig({ rolling: {} }, model, hostSettings);
+  assert.equal(defaultRollingEmpty.keepRecentFraction, 0.5);
+
+  const explicit67 = engineConfig({ rolling: { keepRecentFraction: 0.67 } }, model, hostSettings);
+  assert.equal(explicit67.keepRecentFraction, 0.67);
+
+  const explicit25 = engineConfig({ rolling: { keepRecentFraction: 0.25 } }, model, hostSettings);
+  assert.equal(explicit25.keepRecentFraction, 0.25);
+
+  // Non-target budgets are strictly preserved between default 0.5 and explicit 0.67
+  assert.equal(defaultEmpty.triggerTokens, explicit67.triggerTokens);
+  assert.deepEqual(defaultEmpty.memory, explicit67.memory);
+  assert.equal(defaultEmpty.growthTokens, explicit67.growthTokens);
+  assert.deepEqual(defaultEmpty.main, explicit67.main);
+  assert.deepEqual(defaultEmpty.extraction, explicit67.extraction);
+  assert.equal(defaultEmpty.imageTokens, explicit67.imageTokens);
+});
+
+test("retention budget formula computes keepTarget = floor(q * (available - memoryLimit)) for default 0.5 vs explicit 0.67", () => {
+  const fixed = { systemPrompt: "Task prompt.", tools: [] };
+  const hostSettings = { reserveTokens: 36000, keepRecentTokens: 100 };
+  const cfgDefault = engineConfig({}, model, hostSettings);
+  const cfgExplicit = engineConfig({ rolling: { keepRecentFraction: 0.67 } }, model, hostSettings);
+
+  const planDefault = memoryPlan(fixed, model, cfgDefault);
+  const planExplicit = memoryPlan(fixed, model, cfgExplicit);
+
+  // Trigger, fixedTokens, available, and memoryLimit remain identical
+  assert.equal(planDefault.effectiveTrigger, planExplicit.effectiveTrigger);
+  assert.equal(planDefault.fixedTokens, planExplicit.fixedTokens);
+  assert.equal(planDefault.available, planExplicit.available);
+  assert.equal(planDefault.memoryLimit, planExplicit.memoryLimit);
+
+  // Formula check
+  assert.equal(planDefault.keepTarget, Math.floor(0.5 * (planDefault.available - planDefault.memoryLimit)));
+  assert.equal(planExplicit.keepTarget, Math.floor(0.67 * (planExplicit.available - planExplicit.memoryLimit)));
+  assert(planDefault.keepTarget < planExplicit.keepTarget);
+
+  // Exact STABLE-MEMORY.md §8 table values verification
+  // | available | memoryLimit | 比例 | 保留目标 |
+  // | 220,000   | 22,000      | 0.67 | 132,660  |
+  // | 220,000   | 22,000      | 0.5  | 99,000   |
+  const denom = 220000 - 22000; // 198,000
+  const target67 = Math.floor(0.67 * denom);
+  const target50 = Math.floor(0.5 * denom);
+  assert.equal(target67, 132660);
+  assert.equal(target50, 99000);
+  const reductionFraction = (target67 - target50) / target67;
+  assert(Math.abs(reductionFraction - 0.25373) < 0.001); // ~25.4% reduction
+});
+
+test("chooseCut with legal cuts preserves full tool/message units and chooses minimal viable over-target suffix when needed", () => {
+  const hostSettings = { reserveTokens: 36000, keepRecentTokens: 100 };
+  const cfgDefault = engineConfig({}, model, hostSettings);
+  const cfgExplicit = engineConfig({ rolling: { keepRecentFraction: 0.67 } }, model, hostSettings);
+
+  // Construct active history containing indivisible tool call + result pair
+  const active = [
+    user("u1", "First instruction."),
+    assistant("a1", [{ type: "toolCall", id: "call1", name: "read", arguments: { path: "a.txt" } }]),
+    tool("t1", "call1", "Content of file a.txt " + "z".repeat(4000)),
+    user("u2", "Second question " + "w".repeat(3000)),
+    assistant("a2", [{ type: "text", text: "Answer to second question." }]),
+    user("u3", "Third task " + "v".repeat(2000)),
+  ];
+
+  // legalCuts must not allow cutting between assistant tool call and its toolResult
+  const cuts = legalCuts(active);
+  assert.deepEqual(cuts, [1, 3, 4, 5]); // cut 2 (between a1 and t1) is excluded
+
+  const fixedTokens = 500;
+  const memoryLimit = 2000;
+  const trigger = 24000;
+
+  // Case 1: Standard cut selection under different keepTargets
+  // chooseCut selects largest feasible suffix <= keepTarget
+  const targetDefault = 6000;
+  const targetExplicit = 10000;
+  const cutDefault = chooseCut(active, cuts, fixedTokens, memoryLimit, targetDefault, trigger, cfgDefault);
+  const cutExplicit = chooseCut(active, cuts, fixedTokens, memoryLimit, targetExplicit, trigger, cfgExplicit);
+  assert(cutDefault.keptTokens <= targetDefault);
+  assert(cutExplicit.keptTokens <= targetExplicit);
+  assert(cutDefault.keptTokens <= cutExplicit.keptTokens);
+  assert(cutDefault.cut >= cutExplicit.cut);
+
+  // Case 2: Discrete boundary where both 0.5 and 0.67 targets select the SAME cut
+  // ("相同边界可能使两个比例选择相同K，不强求每次严格更小")
+  const targetMidLow = 7500;
+  const targetMidHigh = 8500;
+  const cutMidLow = chooseCut(active, cuts, fixedTokens, memoryLimit, targetMidLow, trigger, cfgDefault);
+  const cutMidHigh = chooseCut(active, cuts, fixedTokens, memoryLimit, targetMidHigh, trigger, cfgExplicit);
+  assert.equal(cutMidLow.cut, cutMidHigh.cut);
+  assert.equal(cutMidLow.keptTokens, cutMidHigh.keptTokens);
+
+  // Case 3: Minimal viable over-target suffix when no complete unit is <= keepTarget
+  // If keepTarget is smaller than the smallest legal suffix (cut 5), chooseCut falls back to
+  // the smallest feasible suffix above target (feasible[feasible.length - 1]!).
+  const tinyTarget = 100;
+  const cutOver = chooseCut(active, cuts, fixedTokens, memoryLimit, tinyTarget, trigger, cfgDefault);
+  assert.equal(cutOver.cut, 5); // smallest legal suffix
+  assert(cutOver.keptTokens > tinyTarget);
 });
 
 test("equal 500k context/output capabilities leave main input room without changing fixed extraction", () => {

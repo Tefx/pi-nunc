@@ -23,6 +23,17 @@ test("accounts complete F/envelope/M/R and extraction controls, independent ceil
   assert.equal(result.observations.usage.totalTokens, 215); // reasoning is already included in output
 });
 
+test("default 0.5 retention fraction computes keepTarget with floor(0.5 * (A - M_limit)) without altering trigger or memoryLimit", async () => {
+  const source = await input();
+  source.config.keepRecentFraction = 0.5;
+  const result = await maintain(source, responder());
+  assert(result.ok, result.ok ? "" : result.message);
+  const a = result.observations.accounting!;
+  assert.equal(a.keepTarget, Math.floor((a.effectiveTrigger - a.fixedTokens - a.memoryLimit) * 0.5));
+  assert.equal(a.memoryLimit, Math.floor((a.effectiveTrigger - a.fixedTokens) * 0.1));
+  assert.equal(a.effectiveTrigger, source.config.triggerTokens);
+});
+
 test("maximum output capability is not automatically reserved; narrower main model capacity recomputes H/M/K", async () => {
   const source = await input(); const large = await maintain(source, responder()); assert(large.ok);
   source.model.contextWindow = 25000; source.config.triggerTokens = 24000;
