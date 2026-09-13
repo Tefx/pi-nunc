@@ -33,7 +33,7 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving" };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; larvaCompaction?: { owner: "nunc"; configFile: string }; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving" };
   const controlFor = (action: "revision_conflict" | "unconfirmed_save", ctx: ExtensionContext) => {
     const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
     const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
@@ -47,6 +47,14 @@ export default function observer(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     setObserverMemoryLayout(binding.memoryLayout === "moving" ? "moving" : "stable");
     state.ctx = ctx;
+    if (binding.larvaCompaction) {
+      const selected = process.env.LARVA_PI_COMPACTION_CONFIG_FILE;
+      let config: unknown;
+      try { if (selected === binding.larvaCompaction.configFile) config = JSON.parse(readFileSync(selected, "utf8")); } catch { /* The bounded provider refuses before transport below. */ }
+      const valid = object(config) && config.enabled === false;
+      if (!valid) state.stop ??= "Task-local Larva compaction configuration unavailable";
+      log("lifecycle", { phase: "larva-compaction-owner", owner: "nunc", configFile: binding.larvaCompaction.configFile, valid, enabled: object(config) ? config.enabled : null, scope: "isolated-task-child" });
+    }
     const activeTools = pi.getActiveTools();
     const memoryToolsExposed = activeTools.includes("nunc_memory_read") && activeTools.includes("nunc_memory_patch");
     state.memoryToolsExposed = memoryToolsExposed;

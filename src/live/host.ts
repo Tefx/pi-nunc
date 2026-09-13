@@ -113,12 +113,20 @@ export class NativeHost {
       await writeFile(join(cwd, ".pi", "settings.json"), JSON.stringify(taskSettings), { mode: 0o600, flag: "wx" });
     }
     if (o.controlledModels) await writeFile(join(host, "models.json"), JSON.stringify(o.controlledModels), { mode: 0o600 });
+    const larva = o.input.overrides?.find(row => row.requirement === "stable-memory-larva");
+    let larvaCompaction: { owner: "nunc"; configFile: string } | undefined;
+    if (larva?.compactionOwner === "nunc") {
+      requireValue(o.group !== "native" && o.group !== "current" && o.selection.id.startsWith("m"), "EXTENSION", "Task-local Larva compaction setup requires the selected Nunc candidate");
+      const configFile = join(o.caseRoot, "larva-compaction.json");
+      await writeFile(configFile, JSON.stringify({ enabled: false }), { mode: 0o600, flag: "wx" });
+      larvaCompaction = { owner: "nunc", configFile };
+    }
     const events = join(o.caseRoot, `events-${process.pid}-${Date.now()}.jsonl`);
     await writeFile(events, "", { mode: 0o600, flag: "wx" });
     const caseKey = o.input.comparison
       ? `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`
       : `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
-    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, boundary: o.boundary, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable" }), { mode: 0o600 });
+    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, larvaCompaction, boundary: o.boundary, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable" }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
     const natRepo = o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository;
@@ -130,7 +138,7 @@ export class NativeHost {
     const tools = isGuidance || isStableMemory ? "read,write,edit,bash,nunc_memory_read,nunc_memory_patch" : "read,write,edit,bash";
     const memoryToolsFlags = (isGuidance || isStableMemory) && o.group !== "native" && o.group !== "current" ? ["--nunc-memory-tools"] : [];
     const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", tools, "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...memoryToolsFlags, ...liveExtensionFlags(o.repository, o.input, o.group, o.targetRepos), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
-    this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), ...(larvaCompaction ? { LARVA_PI_COMPACTION_CONFIG_FILE: larvaCompaction.configFile } : {}), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
     this.child.stdin.on("error", () => this.abort());
     this.child.stdout.on("data", (buffer: Buffer) => {

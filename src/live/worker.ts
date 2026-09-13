@@ -572,6 +572,17 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         ? layoutsFromRequests(report.requests ?? [], readLedger(join(input.target.stateRoot, "calls.jsonl")))
         : layoutsFromRequests(report.requests ?? [], readLedger(join(input.target.stateRoot, "calls.jsonl")), keep);
       report.prerequisites.push(...scoreStableMemory({ id: selection.id, ...(selection.variant !== undefined ? { variant: selection.variant } : {}), layouts: report.layouts, config: runConfig }));
+      if (input.overrides?.some(o => o.requirement === "stable-memory-larva" && o.compactionOwner === "nunc")) {
+        const configured = report.actions.some((r: any) => r.event?.phase === "larva-compaction-owner" && r.event.valid === true && r.event.enabled === false);
+        report.prerequisites.push({ check: "explicit task-local Larva configuration leaves Nunc as sole compaction owner", status: configured ? "PROVEN" : "UNPROVEN" });
+      }
+      if (selection.id === "m2" || selection.id === "m4") {
+        const rows = report.rollovers ?? [];
+        const matched = rows.length > 0 && rows.every(row => row.result?.ok === true && row.snapshot?.fromHook === true &&
+          row.result.candidate.firstKeptEntryId === row.snapshot.firstKeptEntryId && row.result.candidate.summary === row.snapshot.summary &&
+          object(row.snapshot.details) && isDeepStrictEqual(row.result.candidate.memory, row.snapshot.details.nunc));
+        report.prerequisites.push({ check: "every Nunc compaction candidate matches the persisted summary, cut and memory", status: matched ? "PROVEN" : "UNPROVEN", observed: { rollovers: rows.length } });
+      }
       if (selection.id === "m3") {
         const wrapped = report.actions.some((r: any) => r.turn === "b" && r.event?.phase === "provider-wrap-delegated");
         report.prerequisites.push({ check: "composed provider wrapper actually delegated during continuation", status: wrapped ? "PROVEN" : "UNPROVEN" });

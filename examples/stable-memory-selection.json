@@ -93,8 +93,9 @@
     },
     {
       "requirement": "stable-memory-larva",
-      "reason": "Read-only explicit actual Larva composition in isolated hosts; no persona/model observer dispatch.",
-      "extension": "__ABSOLUTE_LARVA_EXTENSION__"
+      "reason": "Read-only actual Larva with task-local sole Nunc compaction ownership; no daily settings change or persona/model observer dispatch.",
+      "extension": "__ABSOLUTE_LARVA_EXTENSION__",
+      "compactionOwner": "nunc"
     }
   ]
 }

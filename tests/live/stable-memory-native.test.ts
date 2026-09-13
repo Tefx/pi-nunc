@@ -26,7 +26,7 @@ test("verify-live completes every stable-memory scenario through real loader, HT
       ...[0.67, 0.5].map(q => ({ requirement: `explicit-retention-${q}`, reason: "Fixed ratio comparison", scenario: `m4/keep-${q}`, config: { nunc: { rolling: { keepRecentFraction: q }, extraction: { outputTokens: 1024 } } } })),
     ],
   };
-  if (process.env.NUNC_LARVA_EXTENSION) selection.overrides.push({ requirement: "stable-memory-larva", reason: "Explicit read-only actual Larva loader composition, manual persona switching only", extension: process.env.NUNC_LARVA_EXTENSION });
+  if (process.env.NUNC_LARVA_EXTENSION) selection.overrides.push({ requirement: "stable-memory-larva", reason: "Explicit read-only actual Larva loader composition; task-local sole Nunc compaction owner and manual persona switching", extension: process.env.NUNC_LARVA_EXTENSION, compactionOwner: "nunc" });
   const run = async (args: string[], input = selection) => {
     const child = spawn(process.execPath, [join(repository, "scripts/verify-live.mjs"), ...args], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"], signal: t.signal });
     let stdout = "", stderr = "";
@@ -94,6 +94,12 @@ test("verify-live completes every stable-memory scenario through real loader, HT
     assert.equal(preflight.code, 0, JSON.stringify(preflight));
     const astra = structuredClone(selection); astra.overrides[0].model = { provider: "openai-codex", id: "gpt-6-astra" };
     assert.notEqual((await run(["--preflight"], astra)).code, 0);
+    const invalidOwner = structuredClone(selection);
+    invalidOwner.overrides = invalidOwner.overrides.filter((o: any) => o.requirement !== "stable-memory-larva");
+    invalidOwner.overrides.push({ requirement: "stable-memory-larva", reason: "invalid owner must fail before setup", extension: "/not-loaded/larva.ts", compactionOwner: "larva" });
+    const rejectedOwner = await run(["--preflight"], invalidOwner);
+    assert.notEqual(rejectedOwner.code, 0);
+    assert.equal(JSON.parse(rejectedOwner.stderr).code, "OVERRIDE");
     const observed = await run([]);
     await writeFile(join(f.dir, "native-test-report.json"), JSON.stringify({ ...observed, fixtureError: f.error?.message }, null, 2));
     t.diagnostic(`Native controlled artifacts: ${f.dir}`);
@@ -114,6 +120,22 @@ test("verify-live completes every stable-memory scenario through real loader, HT
         assert(request?.finalPayload);
       }
       assert(segment.score.checks.some((c: any) => c.status === "UNPROVEN"), "Controlled mechanics must leave semantic scoring to the downstream observer");
+      if (process.env.NUNC_LARVA_EXTENSION) {
+        const setting = segment.actions.find((r: any) => r.event?.phase === "larva-compaction-owner")?.event;
+        assert.equal(setting?.valid, true);
+        assert.equal(setting?.enabled, false);
+        assert.equal(setting?.scope, "isolated-task-child");
+        assert(setting.configFile.startsWith(selection.target.stateRoot + "/"));
+        assert.deepEqual(JSON.parse(await readFile(setting.configFile, "utf8")), { enabled: false });
+        assert(segment.requests.filter((r: any) => r.kind === "main").every((r: any) => r.admission?.resolution === "resolved"));
+      }
+      for (const rollover of segment.rollovers ?? []) {
+        assert.equal(rollover.callIds.length, 1, "one successful Nunc extraction; no competing Larva maintenance call");
+        assert.equal(rollover.result?.ok, true);
+        assert.equal(rollover.snapshot?.summary, rollover.result.candidate.summary);
+        assert.equal(rollover.snapshot?.firstKeptEntryId, rollover.result.candidate.firstKeptEntryId);
+        assert.deepEqual(rollover.snapshot?.details?.nunc, rollover.result.candidate.memory);
+      }
       if (segment.scenario === "m2") {
         assert.equal(segment.prerequisites.filter((p: any) => p.check.startsWith("M-only") && p.status === "PROVEN").length, 6);
         assert.deepEqual(segment.artifactSnapshots, { "initial.json": { code: "cedar-17" }, "corrected.json": { code: "maple-29" } });

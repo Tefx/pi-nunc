@@ -358,6 +358,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   }
   const larva = input.overrides?.find(o => o.requirement === "stable-memory-larva");
   if (larva) {
+    if (larva.compactionOwner !== undefined) requireValue(larva.compactionOwner === "nunc" && input.scenarios.every(s => s.id.startsWith("m")) && input.comparison === undefined, "EXTENSION", "Nunc compaction ownership applies only to explicit stable-memory Nunc/Larva observations");
     requireValue(typeof larva.extension === "string" && isAbsolute(larva.extension), "EXTENSION", "Larva composition requires an explicit absolute extension path");
     const info = await lstat(larva.extension);
     requireValue(info.isFile(), "EXTENSION", "Larva extension must be a readable source file");

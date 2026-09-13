@@ -295,4 +295,4 @@ U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含�
 Reusable helpers: /Users/tefx/dotfiles/agent/work/design-objections-20260909/helpers
 
 
-当前完整实际 Larva runner 组合还有明确阻断：所提供 Larva 的默认压缩 hook 会再次执行原生摘要，并在 Nunc 之后覆盖 summary/cut；观察器已将这种差异判为未证明并停止相关续做。独立离线库存及较窄的 Larva 集成通过不能消除该反例。最小候选是仅在隔离任务中通过 Larva 已支持的配置关闭其竞争压缩 hook，保留 Nunc 压缩 owner 和实际 Larva 提示解析；此配置尚未应用，需由调用方确认适用边界。见 [LIVE.md](LIVE.md#unresolved-default-larva-compaction-conflict)。
+默认双压缩 hook 组合仍不受支持：所提供 Larva 会再次执行原生摘要，并在 Nunc 之后覆盖 summary/cut；原始失败证据保留。调用方于 2026-09-13 独立确认，实际扩展观察可显式采用 Nunc 单独负责压缩的隔离配置，符合既有提示解析与原生所有权合同。当前 tracked runner 在 `stable-memory-larva` override 明确选择 `compactionOwner: "nunc"` 时，才创建任务内 `{enabled:false}` Larva 配置并通过其公开环境变量交给该子进程；实际 Larva 扩展、提示解析和 persona fixture 保留，不修改日常配置、外仓或生产默认值。观察报告记录生效设置，并检查每次 Nunc candidate 与持久 summary/cut/M 一致。配置后的组合证据不代表默认双 hook 已兼容。见 [LIVE.md](LIVE.md#single-compaction-owner-prerequisite)。
