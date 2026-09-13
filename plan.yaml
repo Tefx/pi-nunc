@@ -30,16 +30,14 @@ project_guidance: '按用户最新功能验收决定执行；保留DONE定义、
   state。兼容修复按正常writable owner边界处理，继续原consumer，不重开DONE或建立第二接受循环。'
 clipboard:
   author: vectl-orchestrator
-  summary: 稳定布局候选离线证明完成；真实观察仍受Gemini路由条件约束
-  content: '既有用户授权保留：OpenRouter google/gemini-3.8-flash maxCostUsd:null，不代表免费；160
-    calls/200000000 reserved tokens/有限时间按当前Plan，不自行扩额。用户已要求开始实施，未授权push、全局设置/路由/凭据变化。retention-default已DONE。稳定布局原候选a34c00141f12be8965cfe6bce6637fa9be177304已由父检查关键修复和适用证明：560
-    offline、6 configured actual-Larva variants/149 loopback calls、8项原Larva适用证据；live质量/cache/成本仍UNPROVEN。仅隔离测试显式关闭Larva竞争compaction
-    hook，真实prompt bridge保持；默认双hook仍不兼容。Principal实际执行，Plan/claim仍node-typescript-engineer。父发现Principal两次clipboard写入造成integration
-    HEAD变化，已核对均仅clipboard，无owner/依赖/源码/DONE变化；本写入替换过时阻塞摘要，保留真实记录于Git。尚未整合，按新integration_basis
-    rebase后继续。general当前Grok与Gemini observer条件不符，未派发验收或实际模型。证据与清理清单：.vectl/worktrees/nunc.stable-memory/.scratch/principal-completion.md。Reusable
-    helpers: /Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc.stable-memory/.scratch/helpers'
-  written_at: '2026-09-13T15:19:55.762980Z'
-  expires_at: '2026-09-20T15:19:55.762980Z'
+  summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
+  content: 用户明确取消现有/原方案比较，以功能测试通过验收。nunc-stable-memory phase全部DONE，含稳定布局、默认0.5、native启动model修复和唯一functional
+    acceptance。产品5de2855；功能报告绑定ef526e8（后续仅Plan生命周期），.scratch/stable-memory-acceptance/verifier-report-functional.json经validator得到POSITIVE_EVIDENCE，8项功能PROVEN；561all/69files、9actualLarva、当前run-aPlA4F真实宿主M保存/替换/删除/source退休和实际payload证据适用。受控服务证明功能，不宣称普遍模型质量。旧比较报告仍UNPROVEN，未补测/追加额度；Gemini160calls已reconciled。默认双compaction不兼容，已验配置是隔离Nuncsolecompaction+actualLarva
+    bridge；日常Nunc仍未启用，无global注册/路由改动。general自身可用Grok，不存在旧clipboard路由阻塞。已移除stable和startup注册worktrees；tracked
+    source快照、dist与全部.scratch分别归档 .scratch/retained-nunc-stable-memory、.scratch/retained-nunc-native-startup-model，原.vectl/worktrees路径symlink到归档，functional
+    report全部绝对证据路径仍可读。retention证据之前归档并保留原scratch路径。Git refs/candidates保留。仅main与既有baseline工作树仍注册；baseline是当前all回归输入，保留。未push/发布。
+  written_at: '2026-09-13T17:37:59.779189Z'
+  expires_at: '2026-09-20T17:37:59.779189Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
