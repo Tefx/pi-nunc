@@ -1,4 +1,4 @@
-import { getLatestCompactionEntry, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { type SessionEntry } from "@earendil-works/pi-coding-agent";
 
 export type CompactionIdentityReason = "missing-prestate" | "no-new-compaction" | "ambiguous-new-compaction" | "inconsistent-cut-or-result";
 export type CompactionEntry = Extract<SessionEntry, { type: "compaction" }>;
@@ -29,7 +29,10 @@ export function resolveCompactionIdentity(input: {
     return { status: "UNPROVEN", reason: "inconsistent-cut-or-result", reportedId };
   }
   if (input.rebuilt) {
-    const latest = getLatestCompactionEntry(input.rebuilt);
+    // buildContextEntries() puts the selected checkpoint first, followed by
+    // kept historical entries (which can themselves include older checkpoints).
+    // The chronological getLatestCompactionEntry helper cannot consume this view.
+    const latest = input.rebuilt.find(e => e.type === "compaction");
     if (!latest || latest.id !== snapshot.id || !input.rebuilt.some(e => e.id === snapshot.firstKeptEntryId)) {
       return { status: "UNPROVEN", reason: "inconsistent-cut-or-result", reportedId };
     }

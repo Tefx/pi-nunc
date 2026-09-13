@@ -42,6 +42,13 @@ test("resolver binds the unique new compaction, not the first equal summary", ()
   }
 });
 
+test("rebuild's leading checkpoint wins when the kept range contains an older checkpoint", () => {
+  const old = entry("old", "k1"), latest = entry("latest", "k2", "same", true), k2 = kept("k2");
+  const identity = resolveCompactionIdentity({ preBranchIds: ["old", "k2"], branch: [k2, old, latest], rebuilt: [latest, k2, old], reported: old, resultCut: "k2" });
+  assert.equal(identity.status, "resolved");
+  if (identity.status === "resolved") assert.equal(identity.snapshot.id, "latest");
+});
+
 test("resolver refuses missing prestate, no new compaction, ambiguity and inconsistent cut", () => {
   const first = entry("old", "k1"), second = entry("new", "k2"), third = entry("other", "k3");
   assert.equal(reason(resolveCompactionIdentity({ branch: [second], reported: first })), "missing-prestate");
