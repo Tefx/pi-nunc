@@ -2,6 +2,8 @@
 
 `src/engine/index.ts` exports the repository's maintenance transaction. The compiled public import is `pi-nunc/engine`. This component produces a candidate; the Pi adapter owns handoff to native persistence and recovery. This document describes the implemented engine, including per-maintenance required-item protection: declared `required` items are retained jointly or maintenance fails with `CAPACITY`. Historical extraction-acceptance evidence for product `4f1f668` recorded a complete offline inventory and disclosed comparison limits; that record is not proof of later source.
 
+**Accepted change, pending implementation:** [Stable memory and retention](STABLE-MEMORY.md) changes the adapter's main-request placement and the default `keepRecentFraction` from `0.67` to `0.5`. Existing formulas, explicit overrides, trigger policy, full-R accounting and M/B/K extraction remain. Engine budgeting does not own session anchors; the additive estimator still charges all real history and one current M. Current tail/default descriptions below are implementation facts until the change is delivered, not proof of its outcome.
+
 ## Adapter input and handoff
 
 ```ts

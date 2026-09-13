@@ -13,6 +13,8 @@ Maintenance asks what would still be needed with effective host instructions **F
 
 This package is `"private": true`. It is not published to npm. There is no license file in this repository.
 
+**Accepted change, not yet implemented:** [Stable memory placement and retention](docs/STABLE-MEMORY.md) keeps unchanged memory at a valid fixed history boundary and changes the default retention fraction from `0.67` to `0.5`. The diagram above and defaults below describe the current moving-tail implementation. The new design preserves CRUD/CAS, complete tool units, native persistence and conservative receipts; actual model validation will use Gemini first, bounded GPT Luna when needed, and no Astra calls.
+
 ## Requirements
 
 Checked environment:

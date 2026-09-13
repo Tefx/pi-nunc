@@ -4,6 +4,8 @@ Target: **Pi/pi-ai 0.85.1**, persistent sessions. Nunc is an independent public 
 
 The original core and subsequent native/cooperative compatibility acceptance are complete in the managed plan. The UI in [UI.md](UI.md) is implemented for footer, overlay, complete text report and Diagnostics. The former `/nunc status` short report is superseded. Later capacity/command changes and this document do not retroactively extend historical evidence.
 
+**Accepted change, pending implementation:** [Stable memory placement](STABLE-MEMORY.md) replaces the per-request tail requirement below with a stable legal history anchor while delivered M is unchanged. Projection will carry explicit M location and a request-local snapshot through admission and UI; CAS, source provenance, native tool associations, conservative receipt accounting and `previous_response_id` checks remain intact. The tail descriptions below still document current code. Integration tests for this change must explicitly load Nunc in isolated task state, use Gemini first or bounded GPT Luna, and never call Astra.
+
 ## Load and configure
 
 Build with the locked local tools (`npm run build`), then choose the extension explicitly for one Pi invocation:

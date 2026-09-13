@@ -4,6 +4,8 @@ Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **0.85.1**, TypeScr
 
 `package-lock.json` pins dependencies. Pi packages are exact host peers and development dependencies. Pi 0.85.1 declares its own server dependency; Nunc requires no separate `pi-server` workaround, running server, global import or private core patch.
 
+**Pending design:** [Stable memory placement and retention](STABLE-MEMORY.md) requires updating existing tail-specific assertions to exercise stable anchors, independent CAS/content checks, complete parallel tool boundaries, hook mapping and middle-M admission/UI attribution. Reuse the actual loader/serializer and Larva seams documented below; an ACK-only probe cannot prove memory-use quality. The current inventory documents delivered behavior and does not yet prove the new layout or the `0.5` default. Future live checks follow the Gemini-first / bounded-Luna / no-Astra rule in that design; this document update does not run tests or enable Nunc in daily settings.
+
 ## Explicit installation
 
 Ordinary clone, install, build and load use Node **26.7.0** and npm **11.19.0** on `PATH`. See the README quick start: `git clone https://github.com/tefx/pi-nunc.git`, `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, then `node node_modules/@earendil-works/pi-coding-agent/dist/cli.js`. Those commands do not require a Homebrew-only Node or npm path.

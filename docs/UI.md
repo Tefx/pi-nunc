@@ -8,6 +8,8 @@
 
 已实施范围见 [ACTIVE-MEMORY.md](ACTIVE-MEMORY.md)：模型 CRUD（`--nunc-memory-tools`）与现有人工操作共享提交，全部新请求统一尾置 M，并支持稳定 R 与尾置 M 分离的 receipt 估算与展示；本轮不扩展 UI 批量编辑器。
 
+**待实施增量：** [STABLE-MEMORY.md §6–§7](STABLE-MEMORY.md#6-统一布局消费者)要求 Context 显示 M 的实际插入位置，按请求快照区分中段 M 与全部真实 R，不再假定 M 在最后或取前 rCount 条代表 R。当前尾置显示与下文尾部计量说明仍描述现行实现；新增量不改变 Current/Last main/Last maintenance 的观察范围、只读所有权或保守 receipt 公式。D 仍表示尚未交付的队列输入，不改为 M 后的历史。
+
 ## 1. 用户能力与命令
 
 交付一个 footer 状态项和一个仅含 Slots、Context 两个 tab 的 overlay。查看、编辑、删除不调用模型，不触发 compaction，不发送用户消息。`/nunc status` 及旧的三行短报告已被完整文字报告取代，不再是兼容别名。

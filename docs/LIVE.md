@@ -2,6 +2,8 @@
 
 `scripts/verify-live.mjs` consumes one nonsecret JSON object on stdin and runs the locked stock Pi CLI/RPC or actual PTY/TUI. It supplies verification tools, without replacing the product launcher or constructing an SDK host. Node 26.7.0 and Pi/pi-ai 0.85.1 are the selected targets.
 
+**Pending stable-memory observation scope:** [STABLE-MEMORY.md §11](STABLE-MEMORY.md#11-验收与模型测试边界) requires moving/fixed layout and memory-update observations, real task-use evidence, and a separate fixed-layout `0.67`/`0.5` retention comparison. Supporting tracked scenarios are not yet delivered. For this increment, the user's latest model restriction overrides unrestricted default inheritance: Gemini first, bounded GPT Luna only where needed, **no Astra main, maintenance or model-observer calls and no fallback to Astra**. Verify actual native selection before calls. Historical Astra evidence and controlled offline fixtures are not new live calls. Explicitly load the candidate Nunc into isolated task state without re-enabling it in daily settings; do not calibrate away the two chosen retention fractions.
+
 ## Defaults and ownership
 
 Required input is `target`, `limits`, and `scenarios`. Pi resolves its effective native model/provider/options/configuration; callers do not reconstruct a model catalog or repeat approval text. Existing full-delivery authorization applies. Only named test requirements justify `overrides`, with their reason and actual differences recorded.
