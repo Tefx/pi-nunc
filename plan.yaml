@@ -3998,7 +3998,7 @@ phases:
       next.
 - id: nunc-stable-memory
   name: 稳定记忆位置与滚动保留比例修正
-  status: pending
+  status: in_progress
   gate: 唯一 nunc.stable-memory-acceptance 消费本 phase 的稳定布局/观察支持与默认0.5两个交付，在最终整合 candidate
     上结合完整适用离线 inventory、实际 Larva 组合和有限真实模型证据，判断 docs/STABLE-MEMORY.md 全部材料要求及受影响的已有
     Nunc 不变量。普通追加revision变化不移动M、CAS不弱化、工具组/真实R完整、位置与预算/UI一致、及时patch、有效0.5覆盖与真实压缩/质量对照均须有适用证据。重要缺陷、必要检查失败或必要行为未证明不接受；不以runner
@@ -4092,7 +4092,7 @@ phases:
     agent: node-typescript-engineer
   - id: nunc.retention-default
     name: 默认滚动历史保留比例改为0.5
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/config.ts\", \"src/engine/accounting.ts\", \"tests/pi/config.test.ts\"\
       , \"tests/engine/**\", \"tests/pi/**\", \"docs/**\", \"README.md\", \"examples/**\"\
@@ -4135,6 +4135,8 @@ phases:
     - scripts/check.mjs
     - tests/pi/larva.integration.ts
     agent: executor
+    claimed_by: executor
+    claimed_at: '2026-09-13T12:06:19.295498Z'
   - id: nunc.stable-memory-acceptance
     name: Gemini优先的真实观察与稳定记忆增量整合验收
     status: pending
