@@ -4178,7 +4178,7 @@ phases:
       \  limits_ceiling:\n    maxCalls: 160\n    maxTotalTokens: 200000000\n    maxDurationMs:\
       \ 5400000\n    maxCostUsd: null\n  optional_luna_model: openai-codex/gpt-5.6-luna\n\
       \  optional_luna_limits_ceiling:\n    maxCalls: 12\n    maxTotalTokens: 6000000\n\
-      \    maxDurationMs: 900000\n    maxCostUsd: null\n```\n上限是本次计划选择的有限执行边界，不是必须花完的目标或当前自动执行许可。Gemini用于主要缓存/语义/保留对照；Luna最多12次仅用于必要Codex缓存与更新转换，不执行另一整套质量benchmark。每类上限跨其所有选择、setup/main/maintenance/恢复/观察调用合计，不能用新root重置额度；tokens按runner\
+      \    maxDurationMs: 900000\n    maxCostUsd: null\n```\n上限定义有限执行边界；取得足够证据即停止，无需用完额度。Gemini用于主要缓存/语义/保留对照；Luna最多12次仅用于必要Codex缓存与更新转换，不执行另一整套质量benchmark。每类上限跨其所有选择、setup/main/maintenance/恢复/观察调用合计，不能用新root重置额度；tokens按runner\
       \ reservation口径，不能按actual usage退款。maxOutputTokens从实际native allowance解析，不暗降输出。达到足够证据即停止；额度不足不允许私自改成无限额或声称通过。\n\
       \n两个live argv的stdin由producer交付的tracked选择示例/工具生成，Orchestrator绑定最终不可变target、新canonical\
       \ stateRoot、最小必要场景、limits和显式命名model override（provider/id），然后同一非秘密selection先preflight后runtime。清除父PI_PROVIDER/PI_MODEL/PI_REASONING_LEVEL是避免继承父模型的执行选择，最终实际模型仍必须来自显式override且符合限制；PI_OFFLINE不阻止真实model调用。预检不得消费凭据或创建任务状态。禁止Astra模型选择、自动fallback和任意更换未批准模型，不把旧g场景Gemini-only限制改成所有场景通用权限。\n\
