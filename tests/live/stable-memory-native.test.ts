@@ -55,7 +55,7 @@ test("verify-live completes every stable-memory scenario through real loader, HT
     const n = step++, key = `${current.id}:${turn}`;
     const stop = () => ({ text: "Controlled protocol turn complete. Semantic quality remains untested." });
     const patch = (note?: string, replace = false) => {
-      const read = JSON.parse(lastText);
+      const read = JSON.parse(text(messages.findLast((m: any) => m.role === "tool")));
       assert.equal(typeof read.revision, "string", `Patch must consume real memory-read result: ${lastText}`);
       return tool("nunc_memory_patch", { expectedRevision: read.revision, ...(replace ? { remove: read.slots.map((s: any) => s.id) } : {}), ...(note ? { add: [{ key: "note", text: note }] } : {}) });
     };
@@ -76,12 +76,12 @@ test("verify-live completes every stable-memory scenario through real loader, HT
     if (key.startsWith("m4:load")) {
       const batch = Number(turn.slice(4));
       if (n === 0) return tool("read", { path: "scratch.txt" });
-      if (n === 1) return write(`batch-${batch}.json`, { batch, lines: 180 });
+      if (n === 1) return write(`batch-${batch}.json`, { batch, lines: 145 });
       return stop();
     }
     const files: Record<string, [string, unknown]> = {
       "m1:b": ["round-b.json", { n: 1 }], "m1:c": ["round-c.json", { n: 2 }], "m1:d": ["round-d.json", { n: 3 }], "m1:f": ["round-f.json", { n: 4 }], "m1:g": ["status.json", { project: "orchard-router", retries: 2 }], "m1:h": ["done.json", { done: true }],
-      "m2:b": ["waiting.json", { status: "pending" }], "m2:b2": ["initial.json", { code: "cedar-17" }], "m2:d": ["waiting2.json", { status: "ready" }], "m2:d2": ["corrected.json", { code: "maple-29" }], "m2:f": ["unlock.json", { code: null }],
+      "m2:b": ["waiting.json", { status: "pending" }], "m2:b2": ["initial.json", { code: "cedar-17" }], "m2:d": ["waiting2.json", { status: "ready" }], "m2:d2": ["corrected.json", { code: "maple-29" }], "m2:e2": ["deleted-wait.json", { waiting: true }], "m2:f": ["unlock.json", { code: null }],
       "m3:b": ["composed.json", { status: "ready" }], "m4:e": ["kept.json", { nodeMajor: 20 }],
     };
     assert(files[key], `Unexecuted fixture branch ${key}`);
@@ -94,7 +94,7 @@ test("verify-live completes every stable-memory scenario through real loader, HT
     const astra = structuredClone(selection); astra.overrides[0].model = { provider: "openai-codex", id: "gpt-6-astra" };
     assert.notEqual((await run(["--preflight"], astra)).code, 0);
     const observed = await run([]);
-    await writeFile(join(f.dir, "native-test-report.json"), JSON.stringify(observed, null, 2));
+    await writeFile(join(f.dir, "native-test-report.json"), JSON.stringify({ ...observed, fixtureError: f.error?.message }, null, 2));
     t.diagnostic(`Native controlled artifacts: ${f.dir}`);
     assert.equal(observed.code, 0, JSON.stringify({ code: observed.code, reason: observed.report?.reason, segments: observed.report?.segments?.map((s: any) => ({ scenario: s.scenario, reason: s.reason, diagnostic: s.diagnostic, checks: s.prerequisites?.filter((p: any) => p.status !== "PROVEN") })), stderr: observed.stderr }));
     const segments = observed.report.segments;

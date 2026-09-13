@@ -87,6 +87,10 @@
           "text": "Delete the unlock code from working memory. Do not write it down."
         },
         {
+          "id": "e2",
+          "text": "Write deleted-wait.json with a waiting field true. Do not read or restore deleted information."
+        },
+        {
           "id": "f",
           "text": "Write unlock.json with a code field taken from current working memory only. If none remains, use null."
         }
@@ -176,7 +180,7 @@
           "path": "scratch.txt",
           "segments": [
             {
-              "repeat": 180,
+              "repeat": 145,
               "text": "scratch entry: apricot bronze cedar drift ember flax gravel harbor iron jade khaki linen moss nickel ochre pearl quill russet shale tin umber violet wool yellow zinc.\n"
             }
           ]

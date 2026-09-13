@@ -26,6 +26,7 @@ export function serializedEvidence(request: RequestObservation): { memory?: bool
   const payload = request.finalPayload as any;
   if (request.model.api !== "openai-completions" || !Array.isArray(payload?.messages)) return {};
   const actual = payload.messages as any[];
+  if (actual.some(m => !m || typeof m.role !== "string" || (m.tool_calls !== undefined && !Array.isArray(m.tool_calls)))) return {};
   const expectedResults = request.context.messages.filter(m => m.role === "toolResult");
   const results = actual.filter(m => m.role === "tool");
   const resultsMatch = results.length === expectedResults.length && results.every((m, i) => {
@@ -36,16 +37,17 @@ export function serializedEvidence(request: RequestObservation): { memory?: bool
   const calls = actual.flatMap(m => m.role === "assistant" ? (m.tool_calls ?? []).map((c: any) => c.id) : []);
   // A changed result can be a legitimate later hook; it disproves preservation,
   // without assigning the cause to the serializer from a literal substring.
-  const synthetic = !(resultsMatch && isDeepStrictEqual(calls, expectedCalls));
+  const textual = results.every(m => text(m.content) !== undefined) && expectedResults.every(m => text(m.content) !== undefined);
+  const synthetic = textual ? !(resultsMatch && isDeepStrictEqual(calls, expectedCalls)) : undefined;
   const admission = request.admission;
-  if (admission?.memoryPresent === undefined) return { synthetic };
-  if (!admission.memoryPresent) return { synthetic, memory: admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
+  if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
+  if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
   const index = admission.memoryIndex;
-  if (index === undefined) return { synthetic, memory: false };
+  if (index === undefined) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: false };
   const users = actual.filter(m => m.role === "user");
   const contextUsers = request.context.messages.filter(m => m.role === "user");
   const ordinal = request.context.messages.slice(0, index).filter(m => m.role === "user").length;
-  return { synthetic, memory: users.length === contextUsers.length && text(users[ordinal]?.content) === admission.memoryContent };
+  return { ...(synthetic !== undefined ? { synthetic } : {}), memory: users.length === contextUsers.length && text(users[ordinal]?.content) === admission.memoryContent };
 }
 export function layoutsFromRequests(requests: readonly RequestObservation[], ledger: readonly LedgerRecord[], keepRecentFraction?: number): LayoutObservation[] {
   const terminals = ledger.filter((row): row is CallEnd => row.kind === "terminal");

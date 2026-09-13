@@ -63,12 +63,12 @@
           }
         },
         {
-          "afterTurn": "e",
+          "afterTurn": "e2",
           "action": "rollover",
           "placement": {
-            "retireThroughTurn": "d2",
+            "retireThroughTurn": "e",
             "retainTurns": [
-              "e"
+              "e2"
             ]
           }
         }
