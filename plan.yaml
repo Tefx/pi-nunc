@@ -4182,7 +4182,7 @@ phases:
       follows and owns fresh final integrated inventory/Larva evidence.'
   - id: nunc.stable-memory-acceptance
     name: 稳定记忆增量功能整合验收
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -4225,6 +4225,8 @@ phases:
     - nunc.retention-default
     - nunc.native-startup-model
     agent: general
+    claimed_by: general
+    claimed_at: '2026-09-13T17:31:18.600619Z'
   - id: nunc.native-startup-model
     name: 保持原生测试启动后的显式获准模型
     status: done
