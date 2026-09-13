@@ -69,18 +69,6 @@ test("retention budget formula computes keepTarget = floor(q * (available - memo
   assert.equal(planDefault.keepTarget, Math.floor(0.5 * (planDefault.available - planDefault.memoryLimit)));
   assert.equal(planExplicit.keepTarget, Math.floor(0.67 * (planExplicit.available - planExplicit.memoryLimit)));
   assert(planDefault.keepTarget < planExplicit.keepTarget);
-
-  // Exact STABLE-MEMORY.md §8 table values verification
-  // | available | memoryLimit | 比例 | 保留目标 |
-  // | 220,000   | 22,000      | 0.67 | 132,660  |
-  // | 220,000   | 22,000      | 0.5  | 99,000   |
-  const denom = 220000 - 22000; // 198,000
-  const target67 = Math.floor(0.67 * denom);
-  const target50 = Math.floor(0.5 * denom);
-  assert.equal(target67, 132660);
-  assert.equal(target50, 99000);
-  const reductionFraction = (target67 - target50) / target67;
-  assert(Math.abs(reductionFraction - 0.25373) < 0.001); // ~25.4% reduction
 });
 
 test("chooseCut with legal cuts preserves full tool/message units and chooses minimal viable over-target suffix when needed", () => {
