@@ -68,7 +68,7 @@ test("predicates require admission identity, expected content epochs, explicit f
     req("e", 3, { admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 5, memoryContent: later } }),
     req("f", 4, { admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 5, memoryContent: later } }),
   ];
-  for (const r of requests) r.finalPayload = { messages: r.context.messages.map(m => ({ role: m.role, content: m.content })) }; 
+  for (const r of requests) r.finalPayload = { messages: r.context.messages.map(m => ({ role: m.role, content: m.content })) };
   const layouts = layoutsFromRequests(requests, [
     { kind: "terminal", id: 1, at: 1, latencyMs: 1, stopReason: "stop", usage: { input: 10, cacheRead: 8, cacheWrite: 0, contextInput: 18, output: 2, reasoning: null, totalTokens: 20, cost: null } },
     { kind: "terminal", id: 2, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 12, cacheRead: 10, cacheWrite: 0, contextInput: 22, output: 2, reasoning: null, totalTokens: 24, cost: null } },
