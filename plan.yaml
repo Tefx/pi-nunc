@@ -30,9 +30,10 @@ project_guidance: '用户本轮只要求文档更新与创建实施计划，等�
   Larva 组合证据，末端只读消费者复用其适用结果，不安装或补写 runner。
 
 
-  真实测试主请求、maintenance 和模型观察者优先 Gemini，有限 Luna 仅用于必要 Codex 缓存路径，禁止 Astra 和隐式回退。当前专业
-  verifier/gate/LLM评测角色的登记路由为 Astra；已选择 Gemini 路由的 general 承担只读动态观察和本增量唯一最终整合判断，不改任何注册路由。Orchestrator
-  dispatch 前核验所选 observer 实际 Gemini 路由，效果前核验原生模型、配置、输出、transport、新目标和有限预算；不得沿用父会话模型暗设。认证查找/刷新保存由
+  真实测试主请求、maintenance 和模型观察者优先 Gemini，有限 Luna 仅用于必要 Codex 缓存路径，禁止 Astra 和隐式回退。保留 general
+  负责只读动态观察和本增量唯一最终整合判断；persona ID 和先前解析结果不保证其当前模型路由，不改任何全局注册路由。Orchestrator dispatch
+  前核验所选 observer 实际 Gemini 路由，效果前核验原生模型、配置、输出、transport、新目标和有限预算；不得沿用父会话模型暗设。若实际 observer
+  路由不符合既有约束，只暂停其调度，由现有宿主允许的任务级选择机制解决；不可假定该机制已经可用，不得隐式接受其他模型、改全局 profile 或替换 live writer。认证查找/刷新保存由
   Pi 原生 owner 负责，凭据及来源位置不得进入文本或产物。不启用日常 Nunc、不复制 profile、不改 protected state。
 
 
@@ -4148,10 +4149,10 @@ phases:
       \n实际观察分开两个变量：在固定其他条件下比较移动/固定M及内容更新后的预热；再在固定布局下显式0.67与0.5比较，记录有效模型/effort/transport/F-tools/config、输入/cache\
       \ usage、实际切点/压缩后输入/释放空间/压缩间隔、遗漏/重读/返工与主请求加maintenance总成本。禁止retentionCalibration改掉指定比例。使用有可判定任务产物的M-only必要事实、更新/纠错/删除和续做，不向被测模型提供期望答案或重复补喂遗忘要求；ACK只证明缓存现象。不能把原始baseline70dacad与完整新candidate的多项差异冒充仅布局变量对照。完整扩展组合须显式加载Nunc及需要的实际Larva，不以直接import\
       \ projection替代。\n\n模型边界：实际测试优先OpenRouter Gemini，Luna仅在当前Codex缓存/更新转换观察确有必要且历史证据不足时有限使用；禁止Astra主请求、maintenance和模型观察者，也禁止默认/回退/子进程绕过。历史Astra可作有范围证据，不标成新实现Astra集成通过。Gemini不能替代Codex特定路径的未取得事实；缺必要路径证据仍明确未证明，不凭多模型名字推断支持。首选已登记openrouter/google/gemini-3.8-flash；当前Luna路径openai-codex/gpt-5.6-luna，效果前以原生实际选择核验而非重建目录。\n\
-      \nBoundary: source/config/docs/Plan/既有报告只读，只在新隔离任务sessions/cwd/files和私有观察输出内产生必要测试效果。运行producer已跟踪且测试的runner/fixtures，不安装、构建、补写程序、改全局注册/配置/日常状态或外仓，不重放历史对话。实际Larva仅只读输入。registered\
-      \ integration-verifier/client-runtime-verifier/gate-reviewer/blind-tester/llm-agent-expert当前实际模型路由均为Astra，无法按此次模型评测边界派发；general已解析为Gemini且具动态执行和证据判断能力，因此承担这个受限fallback结果，其通常仓库写权限在本step不生效。无需新角色或额外监督节点。\n\
-      \nAdmit: 用户后续明确授权执行本计划后才调度。两个producer交付且最终candidate构建/lock/完整all/实际Larva证据就绪；尚未具备的tracked观察支持必须先由writable\
-      \ producer交付，不能在consumer临时补齐。Orchestrator在dispatch前确认实际observer为Gemini，在每类效果前核验原生非秘密model/options、完整选择、允许provider、有限总边界、新单次目标及清理/核对方法。Gemini\
+      \nBoundary: source/config/docs/Plan/既有报告只读，只在新隔离任务sessions/cwd/files和私有观察输出内产生必要测试效果。运行producer已跟踪且测试的runner/fixtures，不安装、构建、补写程序、改全局注册/配置/日常状态或外仓，不重放历史对话。实际Larva仅只读输入。保留已选general承担这个动态观察与证据判断的受限fallback结果，其通常仓库写权限在本step不生效。原选择基于当时专业观察角色的Astra路由不符合此次模型限制；不能将历史解析结果或persona\
+      \ ID当作当前Gemini路由证明。模型profile变化不自动改变step.agent、接受合同或测试授权。无需新角色或额外监督节点。\n\nAdmit:\
+      \ 用户后续明确授权执行本计划后才调度。两个producer交付且最终candidate构建/lock/完整all/实际Larva证据就绪；尚未具备的tracked观察支持必须先由writable\
+      \ producer交付，不能在consumer临时补齐。Orchestrator在dispatch前确认实际observer为Gemini，在每类效果前核验原生非秘密model/options、完整选择、允许provider、有限总边界、新单次目标及清理/核对方法。若当前general实际路由不符合这个既有条件，只暂停本consumer调度，由宿主现有允许的任务级选择机制解决；该机制未获证实可用时如实报告缺项，不自动接受Grok/Astra等其他路由，不修改全局profile或凭据，不以新增Plan节点代替处理。Gemini\
       \ maxCostUsd:null standing授权保留，不重复已批准的费用问题，null非免费；Luna只用已有原生路径与有限预算，不开新账户。认证查找/刷新保存由Pi原生owner处理，凭据及来源位置不写入stdin/argv/提示/报告。Nunc已日常停用，不通过测试重新开启日常settings。\n\
       \n最终接受条件：本phase两个结果整合后，完整适用scripts/check.mjs all与实际Larva组合适用；必要机械合同及实际任务使用有正面证据，缓存和压缩收益的实测足以支持有范围结论。重要任务遗漏、错误行动、虚假验证状态、CAS/工具/原文/持久化/权限/容量违例、必要check失败或决定必要行为的证据缺口阻断接受。逐项区分事实、判断、PROVEN/DISPROVEN/UNPROVEN和限制；自然语言自由表达不强求固定措辞/slot数，非重要偶发条件可保留未证明并说明后果，不把未知标PASS。原始比例目标、cache百分比、runner\
       \ OBSERVED或调用结束都不能单独完成。不能承诺每次patch只冷一轮、跨重启热缓存、0.5最优或全session无条件命中率。\n\nRecovery:\
