@@ -4269,7 +4269,7 @@ phases:
     agent: general
   - id: nunc.native-startup-model
     name: 保持原生测试启动后的显式获准模型
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/**\", \"scripts/**\", \"docs/**\"\
       , \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -4304,3 +4304,25 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-13T16:10:48.539338Z'
+    done_at: '2026-09-13T16:54:13.711963+00:00'
+    evidence: 'Integrated exact reviewed 5de2855a813a4d654f64df484c6d4db108116b98
+      by FF from postclaim base/integration_basis1c4746a8ba82b10f560035aeeeeab10acb55db82;
+      retained refs/vectl/retained/nunc.native-startup-model/5de2855. Parent inspected
+      entire 6-file diff: public set_model restores first authorized CLI model if
+      actual post-startup state lies outside modelTargets; refresh/current-state and
+      subsequent context/model rejection retained. No launch-marker spoofing/global
+      registration edits/bridge removal. Actual Pi startup regression and actual Larva
+      defaultPersona fixture prove session_start selected groq/nunc-small then post-restore
+      get_state and real loopback HTTP payload.model nunc-native; later unauthorized
+      setModel rejected. Parent inspected proof .vectl/worktrees/nunc.native-startup-model/.scratch/stock/run-lgmzxK/larva-startup-model-proof.json.
+      Required full all561passed69files, fail/cancel/skip0, check-all.log; actualLarva9passed0skip
+      check-larva.log. Parent inspected summaries and meaningful assertions. No rebase
+      source changes, diff-check whole candidate passed; no paid model calls, no remaining
+      processes or delegated writers. Default dual-compaction remains unsupported;
+      task-local Nunc compactionOwner only unchanged. Retain repair worktree (untracked
+      node_modules symlink to main) as built execution checkout and evidence for existing
+      acceptance consumer; release after consumer no longer needs built runner/log
+      paths. Original stable evidence/baseline also retained pending same consumer.
+      Handoff .scratch/native-startup-handoff.md. Product realGemini cache/semantic/retention
+      outcome remains UNPROVEN; continue same acceptance with newly bound integrated
+      target/new stateRoot and remaining cumulative budgets.'
