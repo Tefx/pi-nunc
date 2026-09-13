@@ -4269,7 +4269,7 @@ phases:
     agent: general
   - id: nunc.native-startup-model
     name: 保持原生测试启动后的显式获准模型
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/**\", \"scripts/**\", \"docs/**\"\
       , \"examples/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -4302,3 +4302,5 @@ phases:
     - nunc.stable-memory
     - nunc.retention-default
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-13T16:10:48.539338Z'
