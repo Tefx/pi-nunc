@@ -53,6 +53,12 @@ Worker boundary rejections appear in `children[].diagnostic` as a bounded code a
 The supervisor propagates signals/deadline cancellation, waits for child exit, and escalates termination after a bounded grace. Failures retain task state and reports for reconciliation. Successful `remove` cleanup follows exited children and reconciled calls, preserving evidence in the returned report first. Native configuration/authentication outside task state is never removed.
 
 ## Stable-memory observation procedure
+### Unresolved default Larva compaction conflict
+
+The current actual Larva extension enables its own native-compaction hook by default. When loaded after Nunc, Pi's last nonempty `session_before_compact` result can replace Nunc's summary and cut. The public-runner composition check detects this and fails; passing the separate eight-case Larva integration suite does not establish this full-runner compatibility. Reversing load order still permits duplicate maintenance calls.
+
+A supported task-local alternative is to point `LARVA_PI_COMPACTION_CONFIG_FILE` at an isolated `{"enabled":false}` Larva configuration, leaving Nunc as the compaction owner while preserving Larva's prompt-resolution extension. The runner currently does **not** apply this alternative. Confirm the applicable single-owner configuration before treating the example's actual-Larva run as an accepted observation; no daily Larva configuration should be changed.
+
 
 Use `examples/stable-memory-selection.json`; replace `__CHECKOUT__`, `__NEW_CANONICAL_TASK_ROOT__`, and `__ABSOLUTE_LARVA_EXTENSION__` with the committed target, a fresh canonical task root, and the approved read-only Larva source. Run the two `verify-live.mjs` commands above on the same selection. The template stays within the accepted aggregate ceilings of 160 calls and 200,000,000 reserved tokens; these bounds include main and maintenance. They do not guarantee that a real model completes every scenario. Inspect the native metadata and remaining authorization before execution; an exhausted or incomplete run remains unproven and cannot be silently retried with a new allowance.
 

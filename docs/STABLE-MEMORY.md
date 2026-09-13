@@ -293,3 +293,6 @@ U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含�
 以上是本地历史调查产物，无这些文件的读者仍可使用本文的设计与验收合同；它们不替代新实现的验证。原探针含模型选择及真实调用效果，复用前必须检查并限制为此次允许的模型，不能直接按历史 Astra 命令运行。
 
 Reusable helpers: /Users/tefx/dotfiles/agent/work/design-objections-20260909/helpers
+
+
+当前完整实际 Larva runner 组合还有明确阻断：所提供 Larva 的默认压缩 hook 会再次执行原生摘要，并在 Nunc 之后覆盖 summary/cut；观察器已将这种差异判为未证明并停止相关续做。独立离线库存及较窄的 Larva 集成通过不能消除该反例。最小候选是仅在隔离任务中通过 Larva 已支持的配置关闭其竞争压缩 hook，保留 Nunc 压缩 owner 和实际 Larva 提示解析；此配置尚未应用，需由调用方确认适用边界。见 [LIVE.md](LIVE.md#unresolved-default-larva-compaction-conflict)。
