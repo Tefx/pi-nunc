@@ -282,6 +282,8 @@ U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含�
 
 默认保留比例 `rolling.keepRecentFraction: 0.5` 与稳定记忆位置布局均已在本仓库实施。真实模型缓存/任务质量/压缩间隔仍需下游按 `examples/stable-memory-selection.json` 与 `scripts/verify-live.mjs` 的 m1–m4 入口观察；受控 fixture 不代表 live 语义。实施与验收由 managed Vectl Plan 跟踪，已完成历史保持不变。
 
+原生测试宿主在实际 Larva 默认 persona 于初始化中改写模型后，仍以当前 `get_state` 为准，并通过公开 `set_model` 恢复 CLI 获准模型；observer `ready` 不是当前模型权威。该机制不伪造 `LARVA_PI_LAUNCHED`、不改 general 自身模型。见 [LIVE.md](LIVE.md#native-startup-model)。
+
 主要既有证据：
 
 ```text

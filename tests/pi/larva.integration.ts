@@ -1,10 +1,10 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync, chmodSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, chmodSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { zstdDecompressSync } from "node:zlib";
-import { fauxAssistantMessage, fauxToolCall, type Model, type Provider } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, type Api, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -15,6 +15,9 @@ import { renderMemory } from "../../src/engine/memory.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
+import { RunnerError } from "../../src/live/contract.js";
+import { openHost, type NativeHost } from "../../src/live/host.js";
+import { fixture as liveFixture, repository } from "../live/fixtures.js";
 
 // Check NUNC_LARVA_EXTENSION: must be present and exist; no skipping or double substitution allowed.
 const larvaExtensionPath = process.env.NUNC_LARVA_EXTENSION;
@@ -964,4 +967,69 @@ test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, t
   assert.equal(last.estimator, "pi-usage-backed");
   assert.equal(last.receiptBreakdown?.currentMTokens, memoryTokens(beforeReload.slots));
   assert.equal(sendCount, 7);
+});
+
+test("actual Larva default persona cannot keep an unauthorized model after native RPC startup restore", { timeout: 90000 }, async t => {
+  const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
+  const f = await new StockFixture().setup({ timeoutMs: 80000, compaction: { enabled: false } });
+  let host: NativeHost | undefined;
+  t.after(async () => { if (host) await host.close(); await f.close(); });
+  const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const authorized: Model<Api> = { id: "nunc-native", name: "nunc-native", provider: "groq", api: "openai-completions", baseUrl: f.endpoint, reasoning: false, input: ["text", "image"], contextWindow: 60000, maxTokens: 20000, cost };
+  const other: Model<Api> = { id: "nunc-small", name: "nunc-small", provider: "groq", api: "openai-completions", baseUrl: f.endpoint, reasoning: false, input: ["text"], contextWindow: 52000, maxTokens: 12000, cost };
+  const mockCli = join(f.state, "mock-larva.mjs");
+  writeFileSync(mockCli, `const args = process.argv.slice(2);
+if (args[0] === "resolve") {
+  console.log(JSON.stringify({ data: { id: args[1], description: "Isolated default persona", prompt: "Synthetic default persona with a non-authorized model.", model: "groq/nunc-small", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" } }));
+  process.exit(0);
+}
+if (args[0] === "list") {
+  console.log(JSON.stringify({ data: [{ id: "synth-other", description: "Isolated default persona", prompt: "Synthetic default persona with a non-authorized model.", model: "groq/nunc-small", capabilities: {}, model_params: {}, can_spawn: true, spec_version: "0.1.0" }] }));
+  process.exit(0);
+}
+process.exit(1);
+`);
+  chmodSync(mockCli, 0o755);
+  const input = await liveFixture();
+  input.mode = "controlled";
+  input.target.stateRoot = join(f.state, "nunc-live-larva-startup-model");
+  input.models = [{ provider: authorized.provider, id: authorized.id, contextWindow: authorized.contextWindow, maxTokens: authorized.maxTokens, baseUrl: authorized.baseUrl }];
+  input.resolvedModels = [authorized];
+  input.overrides = [{ requirement: "stable-memory-larva", reason: "Actual read-only Larva defaultPersona differs from explicit CLI model", extension: larvaExtensionPath }];
+  input.effective = {
+    source: "standalone-defaults", provider: authorized.provider, model: authorized.id, thinking: "off", transport: "sse",
+    compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
+    settings: { larva: { defaultPersona: "synth-other", cliArgv: [process.execPath, mockCli] } },
+  };
+  const caseRoot = join(input.target.stateRoot, "c2");
+  mkdirSync(join(caseRoot, "task", ".pi"), { recursive: true, mode: 0o700 });
+  writeFileSync(join(caseRoot, "task", ".pi", "settings.json"), JSON.stringify({ larva: { defaultPersona: "synth-other", cliArgv: [process.execPath, mockCli] } }), { mode: 0o600 });
+  const probePath = join(caseRoot, "probe-startup-model.mjs");
+  writeFileSync(probePath, `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+export default function (pi) {
+  pi.on("session_start", (_event, ctx) => {
+    writeFileSync(join(process.cwd(), "../probe-startup-model.json"), JSON.stringify(ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null));
+  });
+}
+`);
+  host = await openHost({
+    repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: [authorized], deadline: Date.now() + 70000,
+    signal: t.signal, group: "native", testExtensions: [probePath],
+    controlledModels: { providers: { groq: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ ...authorized, provider: undefined, cost: undefined }, { ...other, provider: undefined, cost: undefined }] } } },
+  });
+  const state = await host.command("get_state") as { model?: { provider?: string; id?: string } };
+  const applied = JSON.parse(readFileSync(join(caseRoot, "probe-startup-model.json"), "utf8")) as { provider?: string; id?: string } | null;
+  assert.equal(applied?.provider, other.provider);
+  assert.equal(applied?.id, other.id);
+  assert.equal(state.model?.provider, authorized.provider);
+  assert.equal(state.model?.id, authorized.id);
+  assert.equal(host.model?.id, authorized.id);
+  await host.prompt("Confirm the restored authorized model.");
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0]?.payload?.model, authorized.id);
+  await assert.rejects(host.setModel(other), (error: unknown) => error instanceof RunnerError && error.code === "MODEL");
+  writeFileSync(join(f.dir, "larva-startup-model-proof.json"), JSON.stringify({
+    defaultPersona: "synth-other", sessionStart: applied, getState: { provider: state.model?.provider, id: state.model?.id }, requestModel: f.requests[0]?.payload?.model,
+  }, null, 2));
 });

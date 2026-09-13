@@ -14,6 +14,10 @@ New task sessions, cwd/files, artifacts and bounded effects are isolated. The ex
 
 Producer tests use fictional pre-existing native profiles and controlled services only. Real native authentication and model observations belong to the downstream runtime owner. Controlled transport/compaction fixtures prove mechanics, with no claim about memory quality or live authentication.
 
+### Native startup model
+
+The native RPC child is launched with the authorized `--provider`/`--model`. Loaded extensions may still change the session model during initialization. Actual Larva applies `larva.defaultPersona` from inherited `HOME` / `PI_CODING_AGENT_DIR` settings when it does not treat the CLI selection as `cliSelectedModel`; `--larva-agent-persona-switch manual` does not skip that path. After the stock session binds extensions, NativeHost reads current `get_state` and, if that model is outside `modelTargets`, restores the authorized CLI selection through public `set_model`. Admission still requires the current `get_state` model. Observer `ready` is not current-state authority. Later unauthorized `set_model` still fails. This does not fake `LARVA_PI_LAUNCHED`, remove the prompt bridge, rewrite global persona registration, or change general's own model. Isolated `compactionOwner: "nunc"` remains a task-local single-owner setting; default dual-hook composition stays unsupported.
+
 ## Invocation and bounds
 
 ```sh
