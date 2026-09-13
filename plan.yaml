@@ -4024,7 +4024,7 @@ phases:
   steps:
   - id: nunc.stable-memory
     name: 稳定记忆锚点、布局消费者与可执行观察支持
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/pi/**\", \"src/engine/**\", \"src/ui/**\"\
       , \"src/live/**\", \"scripts/**\", \"tests/**\", \"examples/**\", \"docs/**\"\
@@ -4095,6 +4095,42 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-13T12:34:16.232580Z'
+    done_at: '2026-09-13T15:21:33.019427+00:00'
+    evidence: 'Integrated exact reviewed target 291f532a3d9bb2d74143f8b81f724d8ecc704d63
+      by FF from integration_basis 3f448464df2672c717c9dd2234925e3ecf3252b8. Original
+      a34c001 and final291f532 retained under refs/vectl/retained/nunc.stable-memory/.
+      Initial node-typescript-engineer candidates repeated unmapped-prefix reuse/false
+      M qualification and permitted STOPPED tests after usable counterexamples; after
+      writer/descendant/effect reconciliation Principal Engineer took over the same
+      unfinished worktree with unchanged planned owner/claim. Principal implemented
+      complete unique native-boundary mapping, surviving-compaction anchors, original
+      CAS/content separation, detached admission/UI/receipt position, preserved full
+      R/tool groups, and tracked m1-m4 actual runner/qualification/payload+usage binding.
+      Parent inspected relevant source/test/docs changes and reproduced original counterexamples.
+      Required all: 560 passed/68 files, no skips/cancellations, .vectl/worktrees/nunc.stable-memory/.scratch/principal-final-check-all.log.
+      Configured actual Larva public runner: all six variants observed, 149 controlled
+      loopback calls reconciled, every expected turn/layout, candidate==persisted
+      summary/cut/M, one extraction per rollover; principal-final-native-larva.log
+      and principal-final-native-summary.json. Eight-case Larva result reused from
+      principal-check-larva.log because its production/fixture/lock dependency closure
+      unchanged by final src/live-only configuration fix. Original default-dual-hook
+      failure run-Hth9Vh preserved: actual Larva competes and last hook overwrites
+      Nunc. Parent independently read public config/handler/Pi emit and accepted prompt
+      bridge contract; authorized explicit task-local Larva enabled:false via public
+      seam solely for selected configured Nunc compaction-owner observations. No daily/global/external
+      repo change; default dual-hook compatibility remains unsupported and documented.
+      Later rebase changed only Plan clipboard, final correction removed only trailing
+      whitespace; underlying observations remain applicable, git diff --check whole
+      final candidate passed. Principal''s two unauthorized clipboard writes were
+      discovered/reconciled as clipboard-only integration commits; parent restored
+      current authority summary, Principal acknowledged erroneous no-Plan-writes claim
+      and performed no further Vectl mutation. Product source/claims/DONE history
+      unaffected. No live model calls or semantic/cache/cost claims. Evidence/cleanup
+      inventory in .scratch/principal-completion.md and principal-handoff.md; retain
+      this worktree pending acceptance consumption of raw roots run-muBFVL/run-qc4A9q/run-Hth9Vh
+      and full inventory references. Commands/servers/children quiesced, candidate
+      clean. Actual-model acceptance remains separate; general currently resolves
+      Grok, so its existing Gemini-observer admission still must be satisfied.'
   - id: nunc.retention-default
     name: 默认滚动历史保留比例改为0.5
     status: done
