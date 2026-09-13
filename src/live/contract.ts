@@ -356,7 +356,9 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     execFileSync("/usr/bin/git", ["-C", repository, "ls-files", "--error-unmatch", s.config.nunc.policyFile], { stdio: "pipe" });
     await bind(s.config.nunc.policyFile);
   }
-  const larva = input.overrides?.find(o => o.requirement === "stable-memory-larva");
+  const larvaOverrides = input.overrides?.filter(o => o.requirement === "stable-memory-larva") ?? [];
+  requireValue(larvaOverrides.length <= 1, "EXTENSION", "Select one explicit Larva composition override");
+  const larva = larvaOverrides[0];
   if (larva) {
     if (larva.compactionOwner !== undefined) requireValue(larva.compactionOwner === "nunc" && input.scenarios.every(s => s.id.startsWith("m")) && input.comparison === undefined, "EXTENSION", "Nunc compaction ownership applies only to explicit stable-memory Nunc/Larva observations");
     requireValue(typeof larva.extension === "string" && isAbsolute(larva.extension), "EXTENSION", "Larva composition requires an explicit absolute extension path");

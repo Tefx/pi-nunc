@@ -32,7 +32,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
       if (override.compactionOwner !== undefined) requireValue(override.requirement === "stable-memory-larva" && typeof override.extension === "string" && override.compactionOwner === "nunc", "OVERRIDE", "compactionOwner requires explicit stable-memory-larva composition and must be nunc");
       if (override.scenario !== undefined) {
         requireValue(typeof override.scenario === "string" && value.scenarios.some(s => object(s) && `${s.id}${s.variant ? `/${s.variant}` : ""}` === override.scenario) &&
-          object(override.config) && override.model === undefined && override.smallerModel === undefined && override.thinking === undefined && !scopedConfigs.has(override.scenario),
+          object(override.config) && override.model === undefined && override.smallerModel === undefined && override.thinking === undefined && override.extension === undefined && override.compactionOwner === undefined && !scopedConfigs.has(override.scenario),
           "OVERRIDE", "A scenario override must uniquely name a selected id[/variant] and contain only config");
         scopedConfigs.set(override.scenario, override.config);
         differences.push(structuredClone(override));

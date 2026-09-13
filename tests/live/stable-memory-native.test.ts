@@ -100,6 +100,11 @@ test("verify-live completes every stable-memory scenario through real loader, HT
     const rejectedOwner = await run(["--preflight"], invalidOwner);
     assert.notEqual(rejectedOwner.code, 0);
     assert.equal(JSON.parse(rejectedOwner.stderr).code, "OVERRIDE");
+    const scopedOwner = structuredClone(invalidOwner);
+    Object.assign(scopedOwner.overrides.at(-1), { compactionOwner: "nunc", scenario: "m3", config: { nunc: {} } });
+    const rejectedScope = await run(["--preflight"], scopedOwner);
+    assert.notEqual(rejectedScope.code, 0);
+    assert.equal(JSON.parse(rejectedScope.stderr).code, "OVERRIDE");
     const observed = await run([]);
     await writeFile(join(f.dir, "native-test-report.json"), JSON.stringify({ ...observed, fixtureError: f.error?.message }, null, 2));
     t.diagnostic(`Native controlled artifacts: ${f.dir}`);
@@ -128,6 +133,8 @@ test("verify-live completes every stable-memory scenario through real loader, HT
         assert(setting.configFile.startsWith(selection.target.stateRoot + "/"));
         assert.deepEqual(JSON.parse(await readFile(setting.configFile, "utf8")), { enabled: false });
         assert(segment.requests.filter((r: any) => r.kind === "main").every((r: any) => r.admission?.resolution === "resolved"));
+      } else {
+        assert(!segment.actions.some((r: any) => r.event?.phase === "larva-compaction-owner"), "No Larva configuration is injected without explicit composition selection");
       }
       for (const rollover of segment.rollovers ?? []) {
         assert.equal(rollover.callIds.length, 1, "one successful Nunc extraction; no competing Larva maintenance call");

@@ -111,7 +111,7 @@ For the same public-runner workload with an actual read-only Larva input after b
   /opt/homebrew/bin/node --test dist/tests/live/stable-memory-native.test.js
 ```
 
-This adds passive/manual-switch Larva composition. The separate `dist/tests/pi/larva.integration.js` command remains required for active-persona borrow/restoration, native serialization and recovery. Neither command invokes a real model. See [LIVE.md](LIVE.md#stable-memory-observation-procedure) for downstream real-model qualifications and artifact retention.
+This adds actual Larva/manual-switch composition with the explicit task-local `compactionOwner: "nunc"` selection. The runner selects `{enabled:false}` through Larva's public compaction-config environment seam only in those children. The test checks the effective child setting, actual v1 prompt resolution, one Nunc extraction per rollover, and candidate/persisted summary, cut and memory equality. Default enabled dual-compaction hooks remain unsupported; the original failure evidence is retained. The separate `dist/tests/pi/larva.integration.js` command remains required for active-persona borrow/restoration, native serialization and recovery. Neither command invokes a real model. See [LIVE.md](LIVE.md#stable-memory-observation-procedure) for downstream real-model qualifications and artifact retention.
 ## Manual IME / visual overlay check
 
 PTY CJK bytes do not prove IME candidate-window placement. Preparation is tracked and offline:
