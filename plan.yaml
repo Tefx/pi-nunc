@@ -40,32 +40,17 @@ project_guidance: '使用 docs/STABLE-MEMORY.md 的完整增量合同；保持 D
   calibration 改掉指定比例。必要行为无证据或重要反例阻断接受，随机措辞/槽数或非重要偶发条件不制造无限实验。兼容修复留在未完成 writable owner；已完成
   producer 需要修复时保留历史、由 Planner 按正常边界复用/增加一个合适 producer，继续原 consumer，禁止逐 finding 节点或第二接受循环。'
 clipboard:
-  author: principal-engineer
-  summary: 'Takeover retained cf350c5: 560+8 pass; actual Larva runner blocked'
-  content: 'Final retained clean candidate cf350c57a3ae789e961f2ffc3c0061a12336c681
-    in /Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc.stable-memory. Full exact
-    command scripts/check.mjs all passed560/68files,0skips at product/check source28b6e76;
-    finalcf350c5 docs-only records blocker. Exact mandatory actualLarva integration8
-    passed. Stronger public-runner with actual suppliedLarva FAILED: default Larva
-    session_before_compact performs a second native summary and replaces Nunc candidate
-    summary/cut; raw run-Hth9Vh proves m2 cedar-17 memory replaced by ordinary summary
-    and m4 cuts changed. No false PASS or weakened tests. No-Larva complete six-variant
-    native run-ySqgQe passed all turns/layouts,149 loopback calls, no unresolved IDs;
-    m4 four/three actual thresholds and6/9 main-request intervals, m2 six M-only checks.
-    Semantic quality/cache/provider cost remain UNPROVEN/null. Detailed commands,
-    failures, source spans, raw paths, attribution and resumption conditions: /Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc.stable-memory/.scratch/principal-handoff.md.
-    Minimal proposed fix NOT applied: task-local Larva config enabled:false via public
-    LARVA_PI_COMPACTION_CONFIG_FILE, retaining actual extension/manual persona mode/prompt
-    resolution while Nunc owns compaction. Parent must independently judge local-prerequisite
-    authority or escalate scope decision. No external repo/global/daily/Plan writes,
-    no live model calls, no delegated children; all commands/servers/runner children
-    quiesced. Preserve baseline and raw success/failure roots until acceptance consumer
-    releases. Original node-typescript-engineer commits retained; principal-engineer
-    is actual correction executor, Plan/claim unchanged. Reusable helpers: /Users/tefx/dotfiles/agent/work/design-objections-20260909/helpers
-
-    Reusable helpers: /Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc.stable-memory/.scratch/helpers'
-  written_at: '2026-09-13T14:48:21.954865Z'
-  expires_at: '2026-09-14T14:48:21.954865Z'
+  author: vectl-orchestrator
+  summary: 稳定布局候选离线证明完成；真实观察仍受Gemini路由条件约束
+  content: '既有用户授权保留：OpenRouter google/gemini-3.8-flash maxCostUsd:null，不代表免费；160
+    calls/200000000 reserved tokens/有限时间按当前Plan，不自行扩额。用户已要求开始实施，未授权push、全局设置/路由/凭据变化。retention-default已DONE。稳定布局原候选a34c00141f12be8965cfe6bce6637fa9be177304已由父检查关键修复和适用证明：560
+    offline、6 configured actual-Larva variants/149 loopback calls、8项原Larva适用证据；live质量/cache/成本仍UNPROVEN。仅隔离测试显式关闭Larva竞争compaction
+    hook，真实prompt bridge保持；默认双hook仍不兼容。Principal实际执行，Plan/claim仍node-typescript-engineer。父发现Principal两次clipboard写入造成integration
+    HEAD变化，已核对均仅clipboard，无owner/依赖/源码/DONE变化；本写入替换过时阻塞摘要，保留真实记录于Git。尚未整合，按新integration_basis
+    rebase后继续。general当前Grok与Gemini observer条件不符，未派发验收或实际模型。证据与清理清单：.vectl/worktrees/nunc.stable-memory/.scratch/principal-completion.md。Reusable
+    helpers: /Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc.stable-memory/.scratch/helpers'
+  written_at: '2026-09-13T15:19:55.762980Z'
+  expires_at: '2026-09-20T15:19:55.762980Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
