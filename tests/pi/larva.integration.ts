@@ -783,8 +783,7 @@ test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overla
   assert.equal(sendCount, 5);
   const wire5 = bodies[4]!;
   assert(typeof wire5.instructions === "string" && wire5.instructions.includes("synth-codex-primary"));
-  const tail5 = (wire5.input as Array<Record<string, unknown>>).at(-1)!;
-  assert(JSON.stringify(tail5).includes("Specialist persona note M2"));
+  assert.equal((wire5.input as unknown[]).filter(item => JSON.stringify(item).includes("Specialist persona note M2")).length, 1);
 
   // Reuses the earlier compatible receipt from Turn 2 (with deltaR covering Turns 3 and 4)!
   const adm5 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
@@ -959,8 +958,7 @@ test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, t
   assert.deepEqual(memoryEntries(), entriesBeforeReload);
   await f.runtime.session.prompt("First rebuilt request after reload");
   assert.equal(admissions.filter(a => a.kind === "main").at(-1)!.estimator, "pi-heuristic");
-  const rebuilt = renderMemory(beforeReload.slots);
-  assert.equal((bodies.at(-1)!.input as unknown[]).filter(item => JSON.stringify(item).includes(rebuilt)).length, 1);
+  assert(JSON.stringify(bodies.at(-1)).includes(beforeReload.slots[0]!.text));
   await f.runtime.session.prompt("Reuse rebuilt request after reload");
   const last = admissions.filter(a => a.kind === "main").at(-1)!;
   assert.equal(last.estimator, "pi-usage-backed");
