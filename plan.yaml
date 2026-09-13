@@ -4092,7 +4092,7 @@ phases:
     agent: node-typescript-engineer
   - id: nunc.retention-default
     name: 默认滚动历史保留比例改为0.5
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/config.ts\", \"src/engine/accounting.ts\", \"tests/pi/config.test.ts\"\
       , \"tests/engine/**\", \"tests/pi/**\", \"docs/**\", \"README.md\", \"examples/**\"\
@@ -4137,6 +4137,28 @@ phases:
     agent: executor
     claimed_by: executor
     claimed_at: '2026-09-13T12:06:19.295498Z'
+    done_at: '2026-09-13T12:34:08.313988+00:00'
+    evidence: 'Integrated reviewed candidate d004e90a60d727bb18f7bcae7f547106d58bc0e7
+      by exact fast-forward from integration_basis ae981f781a0cc2fd22504e59318b88e4d1fc9d21;
+      rebase was up-to-date. Original candidate retained at refs/vectl/retained/nunc.retention-default/d004e90.
+      Executor implemented default 0.5, preserved explicit 0.67/0.25 overrides, validation,
+      trigger and other budgets, with config/memoryPlan/chooseCut/maintain regression
+      tests and docs distinguishing pending stable placement. Parent inspected entire
+      product/docs diff and follow-up deletion of arithmetic-only assertions. Full
+      required scripts/check.mjs all passed 535 tests across 63 files at f98ef58 (log
+      .vectl/worktrees/nunc.retention-default/.scratch/check-all.log); actual read-only
+      Larva composition passed 8 (check-larva.log). Final correction d004e90 only
+      deletes local arithmetic assertions; build and affected config/budget tests
+      passed 51, retaining all production-behavior assertions. Source/lock/config
+      and other tests unchanged, so unaffected inventory and Larva evidence remain
+      applicable. Logs inspected: no failures/skips; PTY evidence excludes real-window
+      IME geometry, unchanged by this default. No live model tests; compression quality/cost
+      remains downstream. Claims/clean Git and process observations reconciled, child
+      reports no descendants/effects. Worktree retained until stable-memory-acceptance
+      consumes native logs and underlying .scratch artifacts referenced by absolute
+      paths; baseline symlink points to preserved existing read-only baseline. No
+      cleanup of its artifacts until consumer releases them. Stable-memory producer
+      follows and owns fresh final integrated inventory/Larva evidence.'
   - id: nunc.stable-memory-acceptance
     name: Gemini优先的真实观察与稳定记忆增量整合验收
     status: pending
