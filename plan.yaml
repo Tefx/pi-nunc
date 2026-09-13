@@ -4201,7 +4201,7 @@ phases:
       follows and owns fresh final integrated inventory/Larva evidence.'
   - id: nunc.stable-memory-acceptance
     name: Gemini优先的真实观察与稳定记忆增量整合验收
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -4266,3 +4266,5 @@ phases:
     - nunc.stable-memory
     - nunc.retention-default
     agent: general
+    claimed_by: general
+    claimed_at: '2026-09-13T15:33:56.458331Z'
