@@ -20,6 +20,11 @@ export function liveExtensionFlags(repository: string, input: RunInput, group?: 
     const candRepo = targetRepos?.candidate ?? input.comparison?.targets.candidate.repository ?? repository;
     flags.push("-e", join(candRepo, "dist/src/index.js"));
   }
+  const larva = input.overrides?.find(o => o.requirement === "stable-memory-larva");
+  if (larva) {
+    requireValue(typeof larva.extension === "string" && existsSync(larva.extension), "EXTENSION", "Explicit Larva extension is unavailable");
+    flags.push("-e", larva.extension);
+  }
   if (input.scenarios.some(s => s.id === "e3")) flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
   return flags;
 }

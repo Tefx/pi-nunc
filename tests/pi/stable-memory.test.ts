@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { type Message, type Model, type Provider } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, type Message, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { transformMessages } from "@earendil-works/pi-ai/api/transform-messages";
 import { ModelRegistry, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -8,7 +8,6 @@ import { emptyMemory, renderMemory } from "../../src/engine/memory.js";
 import {
   clearMemoryAnchors,
   currentMemoryIndex,
-  injectedCarrierIndex,
   peekMemoryAnchor,
   project,
   setObserverMemoryLayout,
@@ -16,7 +15,13 @@ import {
 } from "../../src/pi/projection.js";
 import { contextSurface, memorySurface, type MemorySurface } from "pi-nunc/pi";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fixture } from "./fixtures.js";
+import { readSourceRecords } from "../../src/engine/request.js";
+import { injectedCarrierIndex } from "./carrier-fixture.js";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+function sourceSession(sessionId: string, content: string) {
+  return { sessionId, entries: [{ type: "message", id: "a", parentId: null, timestamp: "2026-01-01", message: user(content) }] as SessionEntry[] };
+}
 
 function user(text: string, timestamp = 1) {
   return { role: "user" as const, content: text, timestamp };
@@ -30,7 +35,7 @@ function memory(slots: { id: string; text: string }[]) {
 
 test("withEffectiveMemory: first construction uses the legal tail; later history does not move unchanged M", () => {
   clearMemoryAnchors();
-  const session = { sessionId: "s-stable" };
+  const session = sourceSession("s-stable", "one");
   const note = memory([{ id: "s1", text: "fixed note" }]);
   const first = withEffectiveMemory([user("one")], note, session);
   assert.equal(injectedCarrierIndex(first), 1);
@@ -43,7 +48,7 @@ test("withEffectiveMemory: first construction uses the legal tail; later history
 
 test("withEffectiveMemory: same timestamp with replaced prefix content rebuilds at the legal tail", () => {
   clearMemoryAnchors();
-  const session = { sessionId: "s-collide" };
+  const session = sourceSession("s-collide", "original");
   const note = memory([{ id: "s1", text: "fixed note" }]);
   const first = withEffectiveMemory([user("original", 1)], note, session);
   assert.equal(injectedCarrierIndex(first), 1);
@@ -54,7 +59,7 @@ test("withEffectiveMemory: same timestamp with replaced prefix content rebuilds 
 
 test("withEffectiveMemory: content change rebuilds at the new request tail", () => {
   clearMemoryAnchors();
-  const session = { sessionId: "s-update" };
+  const session = sourceSession("s-update", "one");
   const first = withEffectiveMemory([user("one")], memory([{ id: "s1", text: "old" }]), session);
   assert.equal(injectedCarrierIndex(first), 1);
   const next = withEffectiveMemory([user("one"), assistant("ok"), user("two", 3)], memory([{ id: "s1", text: "new" }]), session);
@@ -64,7 +69,7 @@ test("withEffectiveMemory: content change rebuilds at the new request tail", () 
 
 test("withEffectiveMemory: empty M drops the carrier; observer moving layout always uses the tail", () => {
   clearMemoryAnchors();
-  const session = { sessionId: "s-empty" };
+  const session = sourceSession("s-empty", "one");
   withEffectiveMemory([user("one")], memory([{ id: "s1", text: "note" }]), session);
   const emptied = withEffectiveMemory([user("one"), assistant("ok")], emptyMemory(), session);
   assert.equal(injectedCarrierIndex(emptied), undefined);
@@ -80,7 +85,7 @@ test("withEffectiveMemory: empty M drops the carrier; observer moving layout alw
 
 test("withEffectiveMemory: reused M stays before a later complete parallel tool group", () => {
   clearMemoryAnchors();
-  const session = { sessionId: "s-tools" };
+  const session = sourceSession("s-tools", "go");
   const note = memory([{ id: "s1", text: "note" }]);
   const first = withEffectiveMemory([user("go")], note, session);
   assert.equal(injectedCarrierIndex(first), 1);
@@ -193,7 +198,7 @@ test("UI read does not create or advance a request anchor", async t => {
 
 test("native transformMessages does not synthesize missing results when M sits before a complete parallel tool group", () => {
   clearMemoryAnchors();
-  const session = { sessionId: "s-serialize" };
+  const session = sourceSession("s-serialize", "go");
   const note = memory([{ id: "s1", text: "note" }]);
   withEffectiveMemory([user("go")], note, session);
   const model = openaiProvider().getModels().find(m => m.id === "gpt-4o")!;
@@ -323,11 +328,11 @@ test("cancelled tree navigation does not drop a still-valid anchor", async t => 
   assert.equal(injectedCarrierIndex(f.calls.at(-1)!.messages), index);
 });
 
-test("compact that keeps the prefix retains the M boundary; retiring the prefix rebuilds", async t => {
+test("real compaction retires older prefix entries but preserves the surviving boundary of unchanged M", async t => {
   let ctx: ExtensionContext | undefined;
   let surface: MemorySurface | undefined;
   const f = await fixture({
-    enabled: true,
+    enabled: false,
     flagValues: [["nunc-memory-tools", "true"]],
     extras: [{ name: "stable-compact", factory(pi) {
       pi.on("session_start", (_event, next) => { ctx = next; });
@@ -336,21 +341,26 @@ test("compact that keeps the prefix retains the M boundary; retiring the prefix 
   });
   t.after(() => f.close());
   assert(ctx && surface);
-  f.seed();
+  const seeded = f.seed();
   assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "kept-prefix" }] }).ok, true);
   await f.runtime.session.prompt("recent keep");
   const before = injectedCarrierIndex(f.calls.at(-1)!.messages);
-  const keepId = f.runtime.session.sessionManager.getBranch().find(e => e.type === "message" && e.message.role === "user" && String(e.message.content).includes("recent keep"))?.id;
-  f.respond(memoryPatch);
+  const keepId = f.runtime.session.sessionManager.getBranch().find(e => e.type === "message" && e.message.role === "user" && JSON.stringify(e.message.content).includes("recent keep"))?.id;
+  f.respond(context => {
+    const source = context.messages.flatMap(m => readSourceRecords(typeof m.content === "string" ? m.content : m.content.filter(b => b.type === "text").map(b => b.text).join("\n"))).find(r => r.source === "F/M") as any;
+    return fauxAssistantMessage(source ? JSON.stringify({ add: [], remove: [], priority: source.M.map((s: any) => s.id), required: [] }) : "continued");
+  });
   await f.runtime.session.compact();
   const projected = project(f.runtime.session.sessionManager.buildContextEntries());
   await f.runtime.session.prompt("after compact");
   const after = injectedCarrierIndex(f.calls.at(-1)!.messages);
-  if (keepId && projected.active.some(e => e.entryId === keepId)) {
-    assert.equal(after, before);
-  } else {
-    assert.equal(after, f.calls.at(-1)!.messages.length - 1);
-  }
+  assert(projected.latestId, "native compaction must have committed");
+  assert(!projected.active.some(e => e.entryId === seeded.first), "older prefix must actually retire");
+  assert(keepId && projected.active.some(e => e.entryId === keepId), "actual insertion boundary must survive");
+  assert.equal(renderMemory(projected.memory.slots), renderMemory([{ id: "s1", text: "kept-prefix" }]));
+  assert(after! < before!, "absolute index shrinks with retired history");
+  assert(JSON.stringify(f.calls.at(-1)!.messages[after! - 1]).includes("recent keep"), "M stays at the surviving source boundary");
+  assert.notEqual(after, f.calls.at(-1)!.messages.length - 1);
 });
 
 test("genuine branch change rebuilds M when prefix entries leave the selected path", async t => {

@@ -20,6 +20,7 @@ export async function fixture(options: {
   publicFactory?: boolean;
   bus?: (bus: EventBus) => void;
   extensions?: string[];
+  beforeNunc?: string[];
   flagValues?: [string, string][];
   globalSettings?: Record<string, unknown>;
   projectSettings?: Record<string, unknown>;
@@ -66,7 +67,7 @@ export async function fixture(options: {
     bus.on("nunc:maintenance", data => events.push(data as MaintenanceEvent));
     options.bus?.(bus);
     const services = await createAgentSessionServices({ ...target, settingsManager: settings, modelRuntime, extensionFlagValues: new Map([["nunc-config", configFile], ...(options.flagValues ?? [])]), resourceLoaderOptions: {
-      eventBus: bus, additionalExtensionPaths: options.publicFactory ? [] : [extensionPath, ...(options.extensions ?? [])], noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+      eventBus: bus, additionalExtensionPaths: options.publicFactory ? [] : [...(options.beforeNunc ?? []), extensionPath, ...(options.extensions ?? [])], noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
       systemPrompt: "Perform the current task.", extensionFactories: [...(options.publicFactory ? [{ name: "nunc-public", factory: nunc }] : []), ...(options.extras ?? [])],
     } });
     assert.deepEqual(services.resourceLoader.getExtensions().errors, []);

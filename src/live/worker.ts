@@ -17,6 +17,7 @@ import type { RetentionCalibration } from "./calibration.js";
 import { compactionAssociationError } from "./compaction-identity.js";
 import { prepareBoundary, type PreparedBoundary, type MatchReference } from "./preparation.js";
 import { rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
+import { qualifyMemoryOnly, archiveMemoryArtifact } from "./stable-memory-task.js";
 import { layoutsFromRequests, scoreStableMemory, type LayoutObservation } from "./stable-memory-observation.js";
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined; matchReferences?: MatchReference[] | undefined }
@@ -37,6 +38,8 @@ export interface SegmentReport {
   score?: Awaited<ReturnType<typeof scoreArtifacts>> | undefined;
   contexts: Array<{ turn: string; model: string; kind: string; context: Context }>;
   layouts?: LayoutObservation[];
+  artifactSnapshots?: Record<string, unknown>;
+  rolloverSeries?: Array<{ facts: RolloverFacts; reason: string; beforeCallId?: number | undefined; continuationCallId?: number | undefined; beforeInput?: number | undefined; afterInput?: number | undefined; releasedInput?: number | undefined; mainRequestsSincePrevious?: number | undefined }>;
   maintenance: unknown[];
   actions: unknown[];
   commands?: Array<{ type: string; message?: string }> | undefined;
@@ -224,11 +227,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           if (row && data.kind === "maintenance") row.callIds.push(data.callId);
           if (row?.snapshot && data.kind === "main" && row.continuationCallId === undefined) row.continuationCallId = data.callId;
         }
-        if (type === "payload") {
-          const req = report.requests!.at(-1);
-          if (req && data.syntheticMissing !== undefined) req.syntheticMissing = data.syntheticMissing === true;
+        if (type === "request-cap") {
+          const req = report.requests!.find(r => r.callId === data.callId);
+          if (req) { req.cap = data.cap; req.finalPayload = data.finalPayload; }
         }
-        if (type === "request-cap") { const req = report.requests!.find(r => r.callId === data.callId); if (req) req.cap = data.cap; }
         if (type === "commit" && row) {
           row.reported = data.reported;
           row.association = data.association;
@@ -294,6 +296,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         report.actions.push({ turn, event: { type: "fixture_state", path: "status.json", before, after, lockRemoved: true } });
         report.prerequisites.push({ check: "deployment lock cleared in task fixture before turn b", status: "PROVEN", observed: after });
       }
+      if (selection.id === "m2" && ["b2", "d2", "f"].includes(turn)) {
+        report.prerequisites.push(await qualifyMemoryOnly(turn, sm.buildContextEntries(), join(caseRoot, "task")));
+      }
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
       turnBeforeIds = beforeIds;
       await session.prompt(inputTurn.text, { expandPromptTemplates: false });
@@ -309,7 +314,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         catch { report.prerequisites.push({ check: `task file ${turn === "a" ? "lock.txt" : "lock-correction.txt"} removed after its read`, status: "UNPROVEN" }); }
       }
 
-      if (selection.id.startsWith("g")) {
+      if (selection.id === "m2") {
+        const archived = await archiveMemoryArtifact(turn, caseRoot);
+        if (archived) { (report.artifactSnapshots ??= {})[archived.path] = archived.value; report.actions.push({ turn, event: { type: "artifact_archived", ...archived, destination: "observed-artifacts" } }); }
+      }
+      if (selection.id.startsWith("g") || selection.id.startsWith("m")) {
         const active = sm.buildContextEntries();
         const artifacts: Record<string, unknown> = {};
         for (const path of new Set(observer.artifactChecks.map(c => c.path))) {
@@ -582,7 +591,24 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       // requalify it against final memory or unrelated main contexts/responses.
 
     }
-    const scoreContext = { actions: report.actions, requireVerificationReceipt: true };
+    if (selection.id === "m4") {
+      const requests = report.requests ?? [];
+      const terminals = readLedger(join(input.target.stateRoot, "calls.jsonl")).filter((r): r is CallEnd => r.kind === "terminal");
+      const inputUsage = (id: number | undefined) => { const u = terminals.find(t => t.id === id)?.usage; return u?.input != null && u.cacheRead != null && u.cacheWrite != null ? u.input + u.cacheRead + u.cacheWrite : undefined; };
+      let previous: number | undefined;
+      report.rolloverSeries = (report.rollovers ?? []).map(row => {
+        const firstMaintenance = Math.min(...row.callIds);
+        const before = requests.filter(r => r.kind === "main" && r.callId < firstMaintenance).at(-1);
+        const beforeInput = inputUsage(before?.callId), afterInput = inputUsage(row.continuationCallId);
+        const mainRequestsSincePrevious = previous === undefined ? undefined : requests.filter(r => r.kind === "main" && r.callId > previous! && r.callId <= (before?.callId ?? 0)).length;
+        previous = before?.callId;
+        return { facts: rolloverFacts(row, requests, group), reason: row.reason, beforeCallId: before?.callId, continuationCallId: row.continuationCallId, beforeInput, afterInput,
+          releasedInput: beforeInput === undefined || afterInput === undefined ? undefined : beforeInput - afterInput, mainRequestsSincePrevious };
+      });
+      const qualified = report.rolloverSeries.length >= 3 && report.rolloverSeries.every(row => row.reason === "threshold" && row.facts.snapshotId && row.facts.cutPoint !== null && row.beforeInput !== undefined && row.afterInput !== undefined) && report.rolloverSeries.slice(1).every(row => (row.mainRequestsSincePrevious ?? 0) > 0);
+      report.prerequisites.push({ check: "at least two native threshold-driven compression intervals with actual retained input and release measurements", status: qualified ? "PROVEN" : "UNPROVEN", observed: report.rolloverSeries });
+    }
+    const scoreContext = { actions: report.actions, requireVerificationReceipt: true, ...(report.artifactSnapshots ? { artifactSnapshots: report.artifactSnapshots } : {}) };
     const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? report.setupChecks ?? [] : [])];
     if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...scorePrerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);

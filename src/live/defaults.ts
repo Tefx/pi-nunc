@@ -27,7 +27,8 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   if (value.overrides !== undefined) {
     requireValue(Array.isArray(value.overrides), "OVERRIDE", "Overrides must be named test requirements");
     for (const override of value.overrides) {
-      requireValue(object(override) && Object.keys(override).every(k => ["requirement", "reason", "model", "smallerModel", "thinking", "config", "scenario"].includes(k)) && typeof override.requirement === "string" && override.requirement.trim() && typeof override.reason === "string" && override.reason.trim(), "OVERRIDE", "Each override requires a named requirement and reason");
+      requireValue(object(override) && Object.keys(override).every(k => ["requirement", "reason", "model", "smallerModel", "thinking", "config", "scenario", "extension"].includes(k)) && typeof override.requirement === "string" && override.requirement.trim() && typeof override.reason === "string" && override.reason.trim(), "OVERRIDE", "Each override requires a named requirement and reason");
+      if (override.extension !== undefined) requireValue(override.requirement === "stable-memory-larva" && typeof override.extension === "string" && override.extension.startsWith("/"), "OVERRIDE", "Only stable-memory-larva accepts an explicit absolute extension path");
       if (override.scenario !== undefined) {
         requireValue(typeof override.scenario === "string" && value.scenarios.some(s => object(s) && `${s.id}${s.variant ? `/${s.variant}` : ""}` === override.scenario) &&
           object(override.config) && override.model === undefined && override.smallerModel === undefined && override.thinking === undefined && !scopedConfigs.has(override.scenario),
@@ -78,7 +79,15 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
     scenarios: value.scenarios.map(s => {
       requireValue(object(s) && Object.keys(s).every(k => ["id", "variant", "assets"].includes(k)), "SCENARIO", "Scenario config belongs in a named override");
       const scoped = scopedConfigs.get(`${s.id}${s.variant ? `/${s.variant}` : ""}`);
-      const selectedConfig = scoped ? mergeConfig(config, scoped) : config;
+      let selectedConfig = scoped ? mergeConfig(config, scoped) : config;
+      if (s.id === "m4" && differences.some(o => o.requirement === "stable-memory-bounded-window")) {
+        // Explicit observation control, derived once from native model metadata.
+        // Same threshold in both variants; never calibrates the selected q.
+        const h = 24000;
+        requireValue(resolvedModels[0]!.contextWindow > h, "CONFIG", "Bounded m4 window requires contextWindow > 24000");
+        selectedConfig = mergeConfig(selectedConfig, { compaction: { enabled: true, reserveTokens: resolvedModels[0]!.contextWindow - h, keepRecentTokens: 1 } });
+        differences.push({ requirement: "resolved-stable-memory-window", reason: "Explicit 24000-token native threshold for the bounded m4 workload", scenario: `${s.id}/${s.variant}`, thresholdTokens: h, to: selectedConfig });
+      }
       if (scoped) differences.push({ requirement: "resolved-scenario-config", reason: "Scenario config applied after shared overrides", scenario: `${s.id}${s.variant ? `/${s.variant}` : ""}`, from: config, to: selectedConfig });
       return { ...s, config: selectedConfig, ...(s.assets ? { assets: s.assets } : {}) };
     }),

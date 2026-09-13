@@ -356,6 +356,13 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     execFileSync("/usr/bin/git", ["-C", repository, "ls-files", "--error-unmatch", s.config.nunc.policyFile], { stdio: "pipe" });
     await bind(s.config.nunc.policyFile);
   }
+  const larva = input.overrides?.find(o => o.requirement === "stable-memory-larva");
+  if (larva) {
+    requireValue(typeof larva.extension === "string" && isAbsolute(larva.extension), "EXTENSION", "Larva composition requires an explicit absolute extension path");
+    const info = await lstat(larva.extension);
+    requireValue(info.isFile(), "EXTENSION", "Larva extension must be a readable source file");
+    digest.update(larva.extension); digest.update(await readFile(larva.extension));
+  }
   const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.85.1", callsMade: 0 };
   if (input.receipt !== undefined) requireValue(canonical(input.receipt) === canonical(receipt), "RECEIPT", "Preflight receipt does not match current target/config/scenarios/candidate");
   return receipt;

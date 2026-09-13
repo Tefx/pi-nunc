@@ -37,7 +37,7 @@ test("stable-memory assets seed public task files without observer criteria or f
         : config });
       const cwd = join(dir, `${selection.id}-${"variant" in selection && selection.variant ? selection.variant : "base"}`);
       await seedScenario(input, cwd);
-      assert.deepEqual((await readdir(cwd)).sort(), Object.keys(input.files).sort());
+      assert.deepEqual((await readdir(cwd)).sort(), [...Object.keys(input.files), ...(input.generatedFiles ?? []).map(f => f.path)].sort());
       assert(!input.turns.some(turn => /cedar-17|maple-29|orchard-router/.test(turn.text)));
       if (selection.id === "m1") {
         assert(input.turns.length >= 6);
@@ -45,9 +45,9 @@ test("stable-memory assets seed public task files without observer criteria or f
       }
       if (selection.id === "m2") {
         assert.equal(input.files["lock-correction.txt"], undefined);
-        assert.equal(observer.controls.length, 2);
+        assert.equal(observer.controls.length, 3);
       }
-      if (selection.id === "m4") assert.equal(observer.controls.length, 3);
+      if (selection.id === "m4") assert.equal(observer.controls.length, 0);
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -57,17 +57,18 @@ test("predicates require admission identity, expected content epochs, explicit f
   const context = (messages: Context["messages"]): Context => ({ messages });
   const req = (turn: string, callId: number, extra: Partial<RequestObservation> & { admission?: AdmissionObservation }): RequestObservation => ({
     callId, turn, kind: "main", model, thinking: null, reasoning: null, outputPlanning: null,
-    context: context([{ role: "user", content: turn, timestamp: 1 }]),
+    context: context(Array.from({ length: (extra.admission?.memoryIndex ?? 0) + 2 }, (_, i) => ({ role: "user", content: i === extra.admission?.memoryIndex ? extra.admission.memoryContent! : turn, timestamp: i }))),
     ...extra,
   });
   const content = "Nunc working memory (session-local, reference only):\n[{\"id\":\"s1\",\"text\":\"x\"}]";
   const later = "Nunc working memory (session-local, reference only):\n[{\"id\":\"s1\",\"text\":\"y\"}]";
   const requests: RequestObservation[] = [
-    req("b", 1, { admission: { kind: "main", outcome: "delegate", memoryIndex: 1, memoryContent: content }, syntheticMissing: false }),
-    req("c", 2, { admission: { kind: "main", outcome: "delegate", memoryIndex: 1, memoryContent: content }, syntheticMissing: false }),
-    req("e", 3, { admission: { kind: "main", outcome: "delegate", memoryIndex: 5, memoryContent: later }, syntheticMissing: false }),
-    req("f", 4, { admission: { kind: "main", outcome: "delegate", memoryIndex: 5, memoryContent: later }, syntheticMissing: false }),
+    req("b", 1, { admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 1, memoryContent: content } }),
+    req("c", 2, { admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 1, memoryContent: content } }),
+    req("e", 3, { admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 5, memoryContent: later } }),
+    req("f", 4, { admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 5, memoryContent: later } }),
   ];
+  for (const r of requests) r.finalPayload = { messages: r.context.messages.map(m => ({ role: m.role, content: m.content })) }; 
   const layouts = layoutsFromRequests(requests, [
     { kind: "terminal", id: 1, at: 1, latencyMs: 1, stopReason: "stop", usage: { input: 10, cacheRead: 8, cacheWrite: 0, contextInput: 18, output: 2, reasoning: null, totalTokens: 20, cost: null } },
     { kind: "terminal", id: 2, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 12, cacheRead: 10, cacheWrite: 0, contextInput: 22, output: 2, reasoning: null, totalTokens: 24, cost: null } },
@@ -76,7 +77,7 @@ test("predicates require admission identity, expected content epochs, explicit f
   ], 0.5);
   assert.equal(layouts[0]?.cacheRead, 8);
   assert.equal(layouts[2]?.cacheRead, 0);
-  assert.equal(uniqueCarriers(layouts, content), true);
+  assert.equal(uniqueCarriers(layouts, content), false, "a required content must hold on every row, never filter away mismatches");
   assert.equal(uniqueCarriers(layouts), true);
   assert.equal(positionStable(layouts, content), true);
   assert.equal(unchangedContentEpochs(layouts).length, 2);
@@ -87,6 +88,19 @@ test("predicates require admission identity, expected content epochs, explicit f
   assert.equal(uniqueCarriers(empty, content), false);
   assert.equal(positionStable(empty), false);
   assert.equal(noSyntheticMissing(empty), undefined);
+  assert.equal(scoreStableMemory({ id: "m2", layouts: empty, config: {} })[0]?.status, "UNPROVEN");
+  const explicitEmpty = layoutsFromRequests([req("z", 9, { admission: { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" } })], []);
+  assert.equal(uniqueCarriers(explicitEmpty), true);
+  const missing = [...layouts, ...empty];
+  assert.equal(uniqueCarriers(missing), false);
+  assert.equal(positionStable(missing), false);
+  assert.equal(noSyntheticMissing(missing), undefined);
+  const duplicate = structuredClone(requests[0]!);
+  duplicate.admission!.memoryCarrierCount = 2;
+  assert.equal(uniqueCarriers(layoutsFromRequests([duplicate], [])), false);
+  const edited = structuredClone(requests[0]!);
+  (edited.finalPayload as any).messages[1].content = "changed after public hooks";
+  assert.equal(layoutsFromRequests([edited], [])[0]?.deliveredMemoryMatches, false);
   const lookalike = layoutsFromRequests([req("z", 9, {})], [], 0.5);
   assert.equal(lookalike[0]?.uniqueCarrier, false);
   const scored = scoreStableMemory({ id: "m4", variant: "keep-0.5", layouts, config: { nunc: { rolling: { keepRecentFraction: 0.5 } } } });

@@ -266,8 +266,8 @@ function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: st
   }
   return records;
 }
-export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean }) {
-  const artifacts: Record<string, unknown> = {};
+export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean; artifactSnapshots?: Record<string, unknown> }) {
+  const artifacts: Record<string, unknown> = { ...context?.artifactSnapshots };
   for (const check of observer.artifactChecks) {
     if (Object.hasOwn(artifacts, check.path)) continue;
     requireValue(within(join(cwd, check.path), cwd), "SCENARIO", "Artifact escapes task directory");

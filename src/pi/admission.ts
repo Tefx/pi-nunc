@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-wo
 import type { Complete, EngineConfig, Memory } from "../engine/index.js";
 import { admissionEstimate, inputLimit, mainAdmissionLimit, memoryTokens, messageTokens, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
 import { renderMemory } from "../engine/memory.js";
+import { isNuncCarrier } from "./projection.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
@@ -100,6 +101,9 @@ export interface AdmissionObservation {
   payload?: PayloadObservation;
   memoryIndex?: number;
   memoryContent?: string;
+  /** Present only with a consumed projection binding; false explicitly means empty M. */
+  memoryPresent?: boolean;
+  memoryCarrierCount?: number;
 }
 export interface AdmissionLayoutEvent {
   ctx: ExtensionContext;
@@ -543,7 +547,8 @@ export class Admission {
           ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}),
           ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
           ...(binding?.memoryIndex !== undefined ? { memoryIndex: binding.memoryIndex } : {}),
-          ...(binding && binding.memory.slots.length ? { memoryContent: renderMemory(binding.memory.slots) } : {}),
+          ...(binding ? { memoryPresent: binding.memory.slots.length > 0, memoryCarrierCount: context.messages.filter(isNuncCarrier).length,
+            memoryContent: binding.memory.slots.length ? renderMemory(binding.memory.slots) : "" } : {}),
         };
         limit = mainAdmissionLimit(model, config.main);
         if (selected.validAssociation) projection = { memory: structuredClone(binding!.memory), rCount: selected.rMessages.length, ...(binding!.memoryIndex !== undefined ? { memoryIndex: binding!.memoryIndex } : {}) };

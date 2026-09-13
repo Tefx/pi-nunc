@@ -118,14 +118,13 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
 const carriers = new WeakSet<object>();
 const LAYOUT_KEY = Symbol.for("nunc.memory.observer-layout");
 const anchors = new Map<string, MemoryAnchor>();
-const CARRIER_PREFIX = "Nunc working memory (session-local, reference only)";
 
 interface MemoryAnchor {
   sessionId: string;
   content: string;
   prefixLength: number;
-  prefixSnapshot: unknown[];
   prefixEntryIds: string[];
+  boundary?: { entryId: string; messages: unknown[]; trailing: unknown[] };
 }
 type LayoutMessage = {
   role: string;
@@ -162,10 +161,10 @@ export function peekMemoryAnchor(sessionId: string): { content: string; prefixLe
 export function currentMemoryIndex(sessionId: string, memory: Memory, active: readonly { entryId: string; messages: readonly unknown[] }[]): number | undefined {
   const anchor = anchors.get(sessionId);
   if (!anchor || memory.slots.length === 0 || anchor.content !== renderMemory(memory.slots)) return;
-  if (!idsStillOnPath(anchor.prefixEntryIds, active.map(entry => entry.entryId))) return;
-  const mapped = active.filter(entry => anchor.prefixEntryIds.includes(entry.entryId)).reduce((n, entry) => n + entry.messages.length, 0);
-  if (mapped !== anchor.prefixLength) return;
-  return anchor.prefixLength;
+  if (!anchor.boundary || anchor.boundary.trailing.length) return;
+  const index = active.findIndex(entry => entry.entryId === anchor.boundary!.entryId);
+  if (index < 0) return;
+  return active.slice(0, index + 1).reduce((n, entry) => n + entry.messages.length, 0);
 }
 export function isNuncCarrier(message: object): boolean {
   return carriers.has(message);
@@ -174,19 +173,10 @@ export function carrierIndexIn(messages: readonly object[]): number | undefined 
   const index = messages.findIndex(message => carriers.has(message));
   return index >= 0 ? index : undefined;
 }
-/** Locate the injected carrier in cloned/serialized views. Not used to choose an anchor. */
+/** Process-local provenance only. Cloned/serialized views need an explicit bound snapshot. */
 export function injectedCarrierIndex(messages: readonly LayoutMessage[]): number | undefined {
-  const hits: number[] = [];
-  for (const [index, message] of messages.entries()) {
-    if (message.role !== "user" || Number(message.timestamp ?? 0) !== 0) continue;
-    if (carrierText(message).startsWith(CARRIER_PREFIX)) hits.push(index);
-  }
+  const hits = messages.flatMap((message, index) => carriers.has(message) ? [index] : []);
   return hits.length === 1 ? hits[0] : undefined;
-}
-function carrierText(message: LayoutMessage): string {
-  if (typeof message.content === "string") return message.content;
-  if (!Array.isArray(message.content)) return "";
-  return message.content.filter((block): block is { type: "text"; text: string } => !!block && block.type === "text" && typeof block.text === "string").map(block => block.text).join("");
 }
 function recordToolId(block: unknown): string[] {
   if (!block || typeof block !== "object" || !("type" in block) || block.type !== "toolCall") return [];
@@ -234,30 +224,27 @@ function sourceUnits(entries: readonly SessionEntry[]): { entryId: string; messa
 function matchesAt(hook: readonly LayoutMessage[], start: number, unit: readonly object[]): boolean {
   return unit.every((message, offset) => sameMessage(hook[start + offset], message));
 }
-function mappedEntryIds(hook: readonly LayoutMessage[], end: number, units: readonly { entryId: string; messages: readonly object[] }[]): string[] {
-  const prefix = hook.slice(0, end);
-  let cursor = 0;
-  const ids: string[] = [];
-  for (const unit of units) {
-    while (cursor + unit.messages.length <= prefix.length && !matchesAt(prefix, cursor, unit.messages)) cursor++;
-    if (cursor + unit.messages.length > prefix.length || !matchesAt(prefix, cursor, unit.messages)) break;
-    ids.push(unit.entryId);
-    cursor += unit.messages.length;
-  }
-  return ids;
+type SourceUnit = { entryId: string; messages: readonly object[] };
+/** A whole native unit must have a unique correspondence in both views.
+ * Unmapped/transformed or repeated units never establish source provenance.
+ */
+function mappedBoundaries(hook: readonly LayoutMessage[], units: readonly SourceUnit[]): { unit: SourceUnit; end: number }[] {
+  return units.flatMap(unit => {
+    if (units.filter(other => sameMessage(other.messages, unit.messages)).length !== 1) return [];
+    const starts: number[] = [];
+    for (let i = 0; i + unit.messages.length <= hook.length; i++) {
+      if (matchesAt(hook, i, unit.messages)) starts.push(i);
+    }
+    return starts.length === 1 ? [{ unit, end: starts[0]! + unit.messages.length }] : [];
+  });
 }
-function idsStillOnPath(needed: readonly string[], current: readonly string[]): boolean {
-  let start = 0;
-  for (const id of needed) {
-    const found = current.findIndex((entryId, index) => index >= start && entryId === id);
-    if (found < 0) return false;
-    start = found + 1;
-  }
-  return true;
-}
-function prefixSnapshotEqual(messages: readonly LayoutMessage[], anchor: MemoryAnchor): boolean {
-  if (anchor.prefixSnapshot.length !== anchor.prefixLength) return false;
-  return anchor.prefixSnapshot.every((item, index) => sameMessage(messages[index], item));
+function reusableIndex(messages: readonly LayoutMessage[], anchor: MemoryAnchor, mapped: ReturnType<typeof mappedBoundaries>): number | undefined {
+  const boundary = anchor.boundary;
+  if (!boundary) return;
+  const found = mapped.find(item => item.unit.entryId === boundary.entryId && sameMessage(item.unit.messages, boundary.messages));
+  if (!found || !boundary.trailing.every((item, i) => sameMessage(messages[found.end + i], item))) return;
+  const index = found.end + boundary.trailing.length;
+  if (!hasPendingTools(messages, index)) return index;
 }
 
 export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly T[], memory: Memory, session?: MemorySession): T[] {
@@ -276,13 +263,9 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
   const content = renderMemory(memory.slots);
   const units = session?.entries ? sourceUnits(session.entries) : [];
   const existing = session && !observerMoving() ? anchors.get(session.sessionId) : undefined;
-  const reusable = existing &&
-    existing.content === content &&
-    existing.prefixLength <= stripped.length &&
-    prefixSnapshotEqual(stripped, existing) &&
-    !hasPendingTools(stripped, existing.prefixLength) &&
-    idsStillOnPath(existing.prefixEntryIds, units.map(unit => unit.entryId));
-  const index = reusable ? existing.prefixLength : legalTail(stripped);
+  const mapped = mappedBoundaries(stripped, units);
+  const reuse = existing?.content === content ? reusableIndex(stripped, existing, mapped) : undefined;
+  const index = reuse ?? legalTail(stripped);
   const carrier = {
     role: "user",
     content: [{ type: "text", text: content }],
@@ -290,14 +273,14 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
   } as unknown as T;
   carriers.add(carrier);
   if (session) {
-    const prefix = stripped.slice(0, index);
-    const ids = mappedEntryIds(prefix, prefix.length, units);
+    // Bind only an actual source boundary. Preserve following extension messages
+    // as a snapshot; an absent/ambiguous source forces legal-tail rebuild next time.
+    const prior = mapped.filter(item => item.end <= index).sort((a, b) => a.end - b.end);
+    const last = prior.find(item => item.end === index);
     anchors.set(session.sessionId, {
-      sessionId: session.sessionId,
-      content,
-      prefixLength: index,
-      prefixSnapshot: prefix.map(message => snapshot(message)),
-      prefixEntryIds: ids,
+      sessionId: session.sessionId, content, prefixLength: index,
+      prefixEntryIds: prior.map(item => item.unit.entryId),
+      ...(last ? { boundary: { entryId: last.unit.entryId, messages: last.unit.messages.map(snapshot), trailing: stripped.slice(last.end, index).map(snapshot) } } : {}),
     });
   }
   return [...stripped.slice(0, index), carrier, ...stripped.slice(index)];

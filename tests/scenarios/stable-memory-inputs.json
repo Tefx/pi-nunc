@@ -7,13 +7,49 @@
         "brief.txt": "Keep the project name orchard-router in working memory. Later turns add only new constraints; they do not restate the name.\n"
       },
       "turns": [
-        { "id": "a", "text": "Read brief.txt. Save any identifier you must keep using, then wait." },
-        { "id": "b", "text": "Write round-b.json with field n equal to 1. Do not change saved notes unless they are wrong." },
-        { "id": "c", "text": "Write round-c.json with field n equal to 2. Do not change saved notes unless they are wrong." },
-        { "id": "d", "text": "Write round-d.json with field n equal to 3. Do not change saved notes unless they are wrong." },
-        { "id": "e", "text": "The retry budget is two attempts. Update saved notes only if that constraint is newly necessary." },
-        { "id": "f", "text": "Write round-f.json with field n equal to 4. Do not change saved notes unless they are wrong." },
-        { "id": "g", "text": "Write status.json with fields project and retries using only what you still need." }
+        {
+          "id": "a",
+          "text": "Read brief.txt and all of warmup.txt (use read offsets if truncated). Save only the continuing project identifier, then wait. The warmup rows are disposable scratch input."
+        },
+        {
+          "id": "b",
+          "text": "Write round-b.json with field n equal to 1. Do not change saved notes unless they are wrong."
+        },
+        {
+          "id": "c",
+          "text": "Write round-c.json with field n equal to 2. Do not change saved notes unless they are wrong."
+        },
+        {
+          "id": "d",
+          "text": "Write round-d.json with field n equal to 3. Do not change saved notes unless they are wrong."
+        },
+        {
+          "id": "e",
+          "text": "The retry budget is two attempts. Update saved notes only if that constraint is newly necessary."
+        },
+        {
+          "id": "f",
+          "text": "Write round-f.json with field n equal to 4. Do not change saved notes unless they are wrong."
+        },
+        {
+          "id": "g",
+          "text": "Write status.json with fields project and retries using only what you still need."
+        },
+        {
+          "id": "h",
+          "text": "Write done.json with field done true. Leave correct saved notes unchanged."
+        }
+      ],
+      "generatedFiles": [
+        {
+          "path": "warmup.txt",
+          "segments": [
+            {
+              "repeat": 600,
+              "text": "scratch row: amber birch copper delta elm fern graphite hazel iris juniper kelp lime maple nut oak pine quartz reed spruce teak umber vine willow xylem yarrow zinc.\n"
+            }
+          ]
+        }
       ]
     },
     {
@@ -22,12 +58,38 @@
         "lock.txt": "unlock-code: cedar-17\n"
       },
       "turns": [
-        { "id": "a", "text": "Read lock.txt. Keep the unlock code in working memory. Do not write unlock.json yet." },
-        { "id": "b", "text": "Write waiting.json with a status field of pending. Do not read lock files." },
-        { "id": "c", "text": "A correction file is now in the task directory. Read lock-correction.txt, replace the stored unlock code, and drop the obsolete code. Do not write unlock.json." },
-        { "id": "d", "text": "Write waiting2.json with a status field of ready. Do not read lock files." },
-        { "id": "e", "text": "Delete the unlock code from working memory. Do not write it down." },
-        { "id": "f", "text": "Write unlock.json with a code field taken from current working memory only. If none remains, use null." }
+        {
+          "id": "a",
+          "text": "Read lock.txt. Keep the unlock code in working memory. Do not write unlock.json yet."
+        },
+        {
+          "id": "b",
+          "text": "Write waiting.json with a status field of pending. Do not read lock files."
+        },
+        {
+          "id": "b2",
+          "text": "Write initial.json with a code field from current working memory. Do not read lock files or other task files."
+        },
+        {
+          "id": "c",
+          "text": "A correction file is now in the task directory. Read lock-correction.txt, replace the stored unlock code, and drop the obsolete code. Do not write unlock.json."
+        },
+        {
+          "id": "d",
+          "text": "Write waiting2.json with a status field of ready. Do not read lock files."
+        },
+        {
+          "id": "d2",
+          "text": "Write corrected.json with a code field from current working memory. Do not read lock files or other task files."
+        },
+        {
+          "id": "e",
+          "text": "Delete the unlock code from working memory. Do not write it down."
+        },
+        {
+          "id": "f",
+          "text": "Write unlock.json with a code field taken from current working memory only. If none remains, use null."
+        }
       ]
     },
     {
@@ -36,8 +98,14 @@
         "note.txt": "Compose the tracked observer, Nunc, and named payload-append extensions on this task.\n"
       },
       "turns": [
-        { "id": "a", "text": "Read note.txt and save any continuing constraint." },
-        { "id": "b", "text": "Write composed.json with a status field of ready." }
+        {
+          "id": "a",
+          "text": "Read note.txt and save any continuing constraint."
+        },
+        {
+          "id": "b",
+          "text": "Write composed.json with a status field of ready."
+        }
       ]
     },
     {
@@ -46,11 +114,73 @@
         "policy.txt": "Retention comparison uses the same fixed memory layout. Node 20 remains required after later scratch turns.\n"
       },
       "turns": [
-        { "id": "a", "text": "Read policy.txt. Keep the continuing Node requirement in working memory and wait." },
-        { "id": "b", "text": "Write sum.json containing the sum of 17 and 29." },
-        { "id": "c", "text": "Write product.json containing the product of 8 and 13." },
-        { "id": "d", "text": "Write difference.json containing 101 minus 38." },
-        { "id": "e", "text": "Write kept.json with field nodeMajor from what you still need after compaction." }
+        {
+          "id": "a",
+          "text": "Read policy.txt. Keep the continuing Node requirement in working memory and wait."
+        },
+        {
+          "id": "load1",
+          "text": "Batch 1: read all of scratch.txt afresh. Write batch-1.json with fields batch (1) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load2",
+          "text": "Batch 2: read all of scratch.txt afresh. Write batch-2.json with fields batch (2) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load3",
+          "text": "Batch 3: read all of scratch.txt afresh. Write batch-3.json with fields batch (3) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load4",
+          "text": "Batch 4: read all of scratch.txt afresh. Write batch-4.json with fields batch (4) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load5",
+          "text": "Batch 5: read all of scratch.txt afresh. Write batch-5.json with fields batch (5) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load6",
+          "text": "Batch 6: read all of scratch.txt afresh. Write batch-6.json with fields batch (6) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load7",
+          "text": "Batch 7: read all of scratch.txt afresh. Write batch-7.json with fields batch (7) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load8",
+          "text": "Batch 8: read all of scratch.txt afresh. Write batch-8.json with fields batch (8) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load9",
+          "text": "Batch 9: read all of scratch.txt afresh. Write batch-9.json with fields batch (9) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load10",
+          "text": "Batch 10: read all of scratch.txt afresh. Write batch-10.json with fields batch (10) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load11",
+          "text": "Batch 11: read all of scratch.txt afresh. Write batch-11.json with fields batch (11) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "load12",
+          "text": "Batch 12: read all of scratch.txt afresh. Write batch-12.json with fields batch (12) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
+        },
+        {
+          "id": "e",
+          "text": "Write kept.json with field nodeMajor from what you still need after compaction."
+        }
+      ],
+      "generatedFiles": [
+        {
+          "path": "scratch.txt",
+          "segments": [
+            {
+              "repeat": 180,
+              "text": "scratch entry: apricot bronze cedar drift ember flax gravel harbor iron jade khaki linen moss nickel ochre pearl quill russet shale tin umber violet wool yellow zinc.\n"
+            }
+          ]
+        }
       ]
     }
   ]

@@ -13,7 +13,8 @@ import type { PreparedBoundary } from "./preparation.js";
 export interface RequestObservation {
   callId: number; turn: string; kind: string; model: Model<Api>; thinking: string | null; reasoning: unknown;
   outputPlanning: number | null; context: Context; admission?: AdmissionObservation; cap?: { kind: string; value?: number };
-  syntheticMissing?: boolean;
+  /** Native serialized payload after all public payload hooks, bound by callId. */
+  finalPayload?: unknown;
 }
 export interface RolloverObservation {
   turn: string; reason: string; model: Model<Api>; thinking: string | null;
