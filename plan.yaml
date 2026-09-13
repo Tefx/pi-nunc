@@ -3990,7 +3990,7 @@ phases:
       next.
 - id: nunc-stable-memory
   name: 稳定记忆位置与滚动保留比例修正
-  status: in_progress
+  status: done
   gate: 唯一nunc.stable-memory-acceptance消费本phase稳定布局、默认0.5与启动模型修复三个交付，在最终整合candidate上判断完整适用离线inventory、实际Pi/Larva组合及全部材料功能。覆盖稳定锚点、独立CAS、完整R/工具组、共享快照与admission/receipt/UI、及时M保存更新纠错删除、有效默认及显式override、原生模型选择与持久化/容量不变量。实际宿主可失败受控测试可证明功能；不要求新旧方案、缓存收益、0.67/0.5质量成本比较或独立真实模型质量实验。必要功能缺陷、必要check失败或功能未证明不接受。旧比较UNPROVEN保持原样，功能通过不改写为比较通过。Orchestrator据此完成生命周期，无额外gate、发布或无关历史重评。
   context: '本phase交付稳定M布局及观察支持、默认keepRecentFraction=0.5，以及显式获准模型在原生Pi/Larva初始化后的保持。用户明确取消新旧方案比较要求，以功能测试通过作为接受依据；原比较实验或质量/收益结论不属于本phase必需接受证明。
 
@@ -4182,7 +4182,7 @@ phases:
       follows and owns fresh final integrated inventory/Larva evidence.'
   - id: nunc.stable-memory-acceptance
     name: 稳定记忆增量功能整合验收
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/**\", \"tests/**\", \"scripts/**\"\
       , \"docs/**\", \"examples/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -4227,6 +4227,31 @@ phases:
     agent: general
     claimed_by: general
     claimed_at: '2026-09-13T17:31:18.600619Z'
+    done_at: '2026-09-13T17:37:00.868635+00:00'
+    evidence: 'Functional acceptance completed on git:ef526e8d55396bfcdc862e35e9010a562c26dbd5
+      (product5de2855; later changes Plan-only). User explicitly changed acceptance
+      to functional testing, not comparison of current/original designs; current Plan
+      records decision. New .scratch/stable-memory-acceptance/verifier-report-functional.json
+      and binding-functional.json validated with review_report_validator.py: valid:true,binding_checked:true,POSITIVE_EVIDENCE;
+      all8functional requirements PROVEN. Parent consumed current report and previously
+      inspected applicable source/check evidence; additionally inspected current full-run
+      run-aPlA4F m2 nextTurn9,3 persisted rollovers, original cedar17/replacement
+      maple29/deleted-empty M, absent source values in current R/files and first Context,
+      actual delivered M agreement and serializer/tool checks. Controlled real-host
+      functionality proof, not general model quality. Current all561passed69files
+      and actualLarva9passed0skip; startup actual state and serialized request restored
+      authorized model, later unauthorized model rejected. Stable placement/CAS/noop/realR/tools/snapshots/admission/receipt/UI/capacity/default0.5+overrides
+      and M save-update-correction-deletion/source-retired input supported by applicable
+      actual-host behavioral tests. Existing live allGemini additionally verifies
+      explicit startup selection; no further paid calls in functional review. Prior160calls/178081792reserved
+      tokens reconciled, all6childexit0/no live processes. Old comparative reports
+      remain UNPROVEN unchanged; no cache superiority, optimal retention ratio or
+      universal model quality assertion. Default dualcompaction unsupported; accepted
+      actualLarva bridge uses isolated Nunc-only compaction configuration, no global/daily
+      activation. Repository clean target matched immediately before completion. Preserve
+      reports/raw evidence and recoverable source snapshots at original paths while
+      cleaning eligible task worktrees; baseline remains active offline-regression
+      input.'
   - id: nunc.native-startup-model
     name: 保持原生测试启动后的显式获准模型
     status: done
