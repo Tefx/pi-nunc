@@ -12,7 +12,7 @@ export interface LayoutObservation {
   payloadSyntheticMissing?: boolean;
   input?: number; cacheRead?: number; cacheWrite?: number; keepRecentFraction?: number;
 }
-export interface PositionEpoch { content: string; indexes: number[] }
+export interface PositionEpoch { content: string; indexes: number[]; observedInputs: Array<number | undefined>; firstAtTail: boolean }
 function text(value: any): string | undefined {
   if (typeof value === "string") return value;
   if (!Array.isArray(value) || value.some(b => !["text", "input_text", "output_text"].includes(b?.type))) return;
@@ -79,8 +79,9 @@ export function unchangedContentEpochs(rows: readonly LayoutObservation[], expec
   let previous: PositionEpoch | undefined;
   for (const row of mainLayouts(rows)) {
     if (!row.uniqueCarrier || row.memoryIndex === undefined || row.memoryContent === undefined || (expectedContent !== undefined && row.memoryContent !== expectedContent)) { previous = undefined; continue; }
-    if (previous?.content === row.memoryContent) previous.indexes.push(row.memoryIndex);
-    else { previous = { content: row.memoryContent, indexes: [row.memoryIndex] }; epochs.push(previous); }
+    const observedInput = row.input !== undefined && row.cacheRead !== undefined && row.cacheWrite !== undefined ? row.input + row.cacheRead + row.cacheWrite : undefined;
+    if (previous?.content === row.memoryContent) { previous.indexes.push(row.memoryIndex); previous.observedInputs.push(observedInput); }
+    else { previous = { content: row.memoryContent, indexes: [row.memoryIndex], observedInputs: [observedInput], firstAtTail: row.memoryIndex === row.messageCount - 1 }; epochs.push(previous); }
   }
   return epochs;
 }
@@ -102,7 +103,7 @@ export function uniqueCarriers(rows: readonly LayoutObservation[], expectedConte
   const main = mainLayouts(rows);
   return main.length > 0 && main.every(row => row.memoryPresent === true
     ? row.uniqueCarrier && row.memoryIndex !== undefined && typeof row.memoryContent === "string" && row.memoryContent.length > 0 && (expectedContent === undefined || row.memoryContent === expectedContent)
-    : row.memoryPresent === false && row.memoryContent === "" && !row.uniqueCarrier && row.memoryIndex === undefined);
+    : row.memoryPresent === false && row.memoryContent === "" && !row.uniqueCarrier && row.memoryIndex === undefined && (expectedContent === undefined || expectedContent === ""));
 }
 export function explicitKeepFraction(config: { nunc?: NuncConfig }, expected: 0.5 | 0.67): boolean { return config.nunc?.rolling?.keepRecentFraction === expected; }
 export function scoreStableMemory(input: { id: string; variant?: string; layouts: LayoutObservation[]; config: { nunc?: NuncConfig; retentionCalibration?: unknown }; expectedContent?: string }): CheckResult[] {
@@ -117,8 +118,8 @@ export function scoreStableMemory(input: { id: string; variant?: string; layouts
     const epochs = unchangedContentEpochs(rows);
     // Qualification is input scale and two warmup opportunities on each side of
     // a real content update, never a promise about a provider's cache threshold.
-    const qualified = epochs.filter(e => e.indexes.length >= 3 && rows.filter(r => r.memoryContent === e.content && (r.input ?? 0) + (r.cacheRead ?? 0) + (r.cacheWrite ?? 0) >= 17000).length >= 3);
-    results.push({ check: "large unchanged-M warmup and updated-M rewarm epochs", status: qualified.length >= 2 ? "PROVEN" : "UNPROVEN", observed: { minimumObservedInput: 17000, epochs: epochs.map(e => ({ requests: e.indexes.length, indexes: e.indexes })) } });
+    const qualified = epochs.filter(e => e.observedInputs.filter(n => n !== undefined && n >= 17000).length >= 3);
+    results.push({ check: "large unchanged-M warmup and updated-M rewarm epochs", status: qualified.length >= 2 && qualified.every(e => e.firstAtTail) ? "PROVEN" : "UNPROVEN", observed: { minimumObservedInput: 17000, epochs: epochs.map(e => ({ requests: e.indexes.length, indexes: e.indexes })) } });
   }
   if (input.id === "m4") {
     const expected = input.variant === "keep-0.67" ? 0.67 : 0.5;

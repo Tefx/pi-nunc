@@ -572,6 +572,21 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         ? layoutsFromRequests(report.requests ?? [], readLedger(join(input.target.stateRoot, "calls.jsonl")))
         : layoutsFromRequests(report.requests ?? [], readLedger(join(input.target.stateRoot, "calls.jsonl")), keep);
       report.prerequisites.push(...scoreStableMemory({ id: selection.id, ...(selection.variant !== undefined ? { variant: selection.variant } : {}), layouts: report.layouts, config: runConfig }));
+      if (selection.id === "m3") {
+        const wrapped = report.actions.some((r: any) => r.turn === "b" && r.event?.phase === "provider-wrap-delegated");
+        report.prerequisites.push({ check: "composed provider wrapper actually delegated during continuation", status: wrapped ? "PROVEN" : "UNPROVEN" });
+        if (input.overrides?.some(o => o.requirement === "stable-memory-larva")) {
+          const main = report.requests?.filter(r => r.kind === "main") ?? [];
+          report.prerequisites.push({ check: "actual Larva v1 resolved every composed main request", status: main.length > 0 && main.every(r => r.admission?.resolution === "resolved") ? "PROVEN" : "UNPROVEN" });
+        }
+      }
+      if (selection.id === "m2") for (const continuation of ["b2", "d2", "f"]) {
+        const first = report.requests?.find(r => r.kind === "main" && r.turn === continuation);
+        const a = first?.admission;
+        const actualR = first?.context.messages.filter((_, i) => i !== a?.memoryIndex);
+        const exposed = ["cedar-17", "maple-29"].filter(value => JSON.stringify(actualR ?? []).includes(value) || first?.context.systemPrompt?.includes(value));
+        report.prerequisites.push({ check: `M-only ${continuation}: first delivered Context excludes source codes outside M`, status: first && a?.memoryPresent !== undefined && exposed.length === 0 ? "PROVEN" : "UNPROVEN", observed: { callId: first?.callId, exposed } });
+      }
     }
     if (selection.id.startsWith("g")) {
       if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {

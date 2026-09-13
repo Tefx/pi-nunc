@@ -34,10 +34,6 @@
         {
           "id": "g",
           "text": "Write status.json with fields project and retries using only what you still need."
-        },
-        {
-          "id": "h",
-          "text": "Write done.json with field done true. Leave correct saved notes unchanged."
         }
       ],
       "generatedFiles": [
@@ -161,14 +157,6 @@
         {
           "id": "load10",
           "text": "Batch 10: read all of scratch.txt afresh. Write batch-10.json with fields batch (10) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
-        },
-        {
-          "id": "load11",
-          "text": "Batch 11: read all of scratch.txt afresh. Write batch-11.json with fields batch (11) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
-        },
-        {
-          "id": "load12",
-          "text": "Batch 12: read all of scratch.txt afresh. Write batch-12.json with fields batch (12) and lines (the number of source lines). Scratch rows need no memory update. Retain any continuing policy."
         },
         {
           "id": "e",

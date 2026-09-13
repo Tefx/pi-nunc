@@ -124,7 +124,7 @@ interface MemoryAnchor {
   content: string;
   prefixLength: number;
   prefixEntryIds: string[];
-  boundary?: { entryId: string; messages: unknown[]; trailing: unknown[] };
+  boundary?: { entryId: string; messages: unknown[] };
 }
 type LayoutMessage = {
   role: string;
@@ -161,7 +161,7 @@ export function peekMemoryAnchor(sessionId: string): { content: string; prefixLe
 export function currentMemoryIndex(sessionId: string, memory: Memory, active: readonly { entryId: string; messages: readonly unknown[] }[]): number | undefined {
   const anchor = anchors.get(sessionId);
   if (!anchor || memory.slots.length === 0 || anchor.content !== renderMemory(memory.slots)) return;
-  if (!anchor.boundary || anchor.boundary.trailing.length) return;
+  if (!anchor.boundary) return;
   const index = active.findIndex(entry => entry.entryId === anchor.boundary!.entryId);
   if (index < 0) return;
   return active.slice(0, index + 1).reduce((n, entry) => n + entry.messages.length, 0);
@@ -242,8 +242,8 @@ function reusableIndex(messages: readonly LayoutMessage[], anchor: MemoryAnchor,
   const boundary = anchor.boundary;
   if (!boundary) return;
   const found = mapped.find(item => item.unit.entryId === boundary.entryId && sameMessage(item.unit.messages, boundary.messages));
-  if (!found || !boundary.trailing.every((item, i) => sameMessage(messages[found.end + i], item))) return;
-  const index = found.end + boundary.trailing.length;
+  if (!found) return;
+  const index = found.end;
   if (!hasPendingTools(messages, index)) return index;
 }
 
@@ -273,14 +273,14 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
   } as unknown as T;
   carriers.add(carrier);
   if (session) {
-    // Bind only an actual source boundary. Preserve following extension messages
-    // as a snapshot; an absent/ambiguous source forces legal-tail rebuild next time.
+    // Bind only an actual source endpoint. An unmapped/transformed/extension
+    // tail has no reusable source provenance; preserve it and rebuild next time.
     const prior = mapped.filter(item => item.end <= index).sort((a, b) => a.end - b.end);
     const last = prior.find(item => item.end === index);
     anchors.set(session.sessionId, {
       sessionId: session.sessionId, content, prefixLength: index,
       prefixEntryIds: prior.map(item => item.unit.entryId),
-      ...(last ? { boundary: { entryId: last.unit.entryId, messages: last.unit.messages.map(snapshot), trailing: stripped.slice(last.end, index).map(snapshot) } } : {}),
+      ...(last ? { boundary: { entryId: last.unit.entryId, messages: last.unit.messages.map(snapshot) } } : {}),
     });
   }
   return [...stripped.slice(0, index), carrier, ...stripped.slice(index)];

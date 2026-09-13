@@ -12,8 +12,14 @@ export default function wrap(pi: ExtensionAPI): void {
     wrapped = true;
     pi.registerProvider({
       ...previous,
-      stream: (model, context, options) => previous.stream(model, context, options),
-      streamSimple: (model, context, options) => previous.streamSimple(model, context, options),
+      stream: (model, context, options) => {
+        pi.events.emit("nunc:live-provider-wrap", { phase: "provider-wrap-delegated", provider: model.provider, model: model.id, method: "stream" });
+        return previous.stream(model, context, options);
+      },
+      streamSimple: (model, context, options) => {
+        pi.events.emit("nunc:live-provider-wrap", { phase: "provider-wrap-delegated", provider: model.provider, model: model.id, method: "streamSimple" });
+        return previous.streamSimple(model, context, options);
+      },
     });
   });
 }

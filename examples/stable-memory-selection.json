@@ -6,8 +6,8 @@
   },
   "limits": {
     "maxDurationMs": 3600000,
-    "maxCalls": 240,
-    "maxTotalTokens": 80000000,
+    "maxCalls": 160,
+    "maxTotalTokens": 200000000,
     "maxCostUsd": null
   },
   "scenarios": [

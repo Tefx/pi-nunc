@@ -97,6 +97,21 @@ Drivers preserve mechanical reports, native sessions, request payloads and proce
 
 The explicit `tests/pi/larva.integration.ts` entrypoint loads the supplied read-only Larva implementation. Its expanded cases execute actual temporary borrow and automatic restoration adjacent to M writes, real `session.compact()` with a later public hook holding the engine-to-native-terminal gap, and actual resource reload with active M and fresh/rebuilt receipts. Scripted responses prove host state and serialization, not model judgment or real billing. Default `all` does not require the Larva checkout.
 
+## Stable-memory regression evidence
+
+`tests/pi/stable-memory-path.test.ts` covers a real pre-Nunc hook on disjoint native paths, unmapped/partial/ambiguous boundaries, genuine timestamp-zero lookalikes, and same-session recovery. `stable-memory.test.ts` checks actual successful compaction with older prefix retirement and a surviving M boundary; it asserts the committed checkpoint and unchanged memory rather than accepting a failed compaction. Existing CAS, in-flight snapshot, receipt and native tool/serializer tests remain in the full inventory.
+
+`tests/live/stable-memory-native.test.ts` runs all six m1–m4 variants through `verify-live.mjs`, the stock loader/tools, final serializer, controlled HTTP service, shared ledger and native threshold compactions. It requires exit 0 and qualified scenario execution, while leaving semantic quality UNPROVEN. `stable-memory-observation.test.ts` and `stable-memory-payload.test.ts` reject missing content/provenance, partial payload coverage, changed results and unbound rows. The overlapping-checkpoint native workload also exercises `commit-association.test.ts`: `buildContextEntries()` places the latest checkpoint first even when an older checkpoint survives inside its kept range.
+
+For the same public-runner workload with an actual read-only Larva input after building:
+
+```sh
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  NUNC_LARVA_EXTENSION=/absolute/path/to/larva.ts \
+  /opt/homebrew/bin/node --test dist/tests/live/stable-memory-native.test.js
+```
+
+This adds passive/manual-switch Larva composition. The separate `dist/tests/pi/larva.integration.js` command remains required for active-persona borrow/restoration, native serialization and recovery. Neither command invokes a real model. See [LIVE.md](LIVE.md#stable-memory-observation-procedure) for downstream real-model qualifications and artifact retention.
 ## Manual IME / visual overlay check
 
 PTY CJK bytes do not prove IME candidate-window placement. Preparation is tracked and offline:

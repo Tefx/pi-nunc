@@ -23,7 +23,7 @@ export function liveExtensionFlags(repository: string, input: RunInput, group?: 
   const larva = input.overrides?.find(o => o.requirement === "stable-memory-larva");
   if (larva) {
     requireValue(typeof larva.extension === "string" && existsSync(larva.extension), "EXTENSION", "Explicit Larva extension is unavailable");
-    flags.push("-e", larva.extension);
+    flags.push("-e", larva.extension, "--larva-agent-persona-switch", "manual");
   }
   if (input.scenarios.some(s => s.id === "e3")) flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
   return flags;
@@ -59,6 +59,9 @@ export function childEnvironment(state: string): NodeJS.ProcessEnv {
 /** Native owner configuration/auth stays inherited, only task scratch is redirected. */
 export function nativeEnvironment(state: string): NodeJS.ProcessEnv {
   const { NODE_OPTIONS: _node, PI_SESSION_ID: _session, PI_SESSION_FILE: _file, ...env } = process.env;
+  // A new task must not inherit a parent's active Larva persona/session/model
+  // route or child controls. Native Pi model/auth settings remain inherited.
+  for (const key of Object.keys(env)) if (key.startsWith("LARVA_")) delete env[key];
   return { ...env, TMPDIR: join(state, "tmp"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
 }
 /** A protocol client and read-only native session view. Stock Pi owns every write/run/retry. */

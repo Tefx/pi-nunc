@@ -56,6 +56,7 @@ export default function observer(pi: ExtensionAPI): void {
       requireValue(base, "MODEL", "Authorized native provider unavailable");
       while (state.bases.has(base)) base = state.bases.get(base)!;
       const decorated = boundedProvider(base, binding.models.filter(m => m.provider === id), ledger, {
+        capturePayload: binding.input.scenarios.some(s => s.id.startsWith("m")),
         classify: simple => state.compacting || !simple ? "maintenance" : "main",
         beforeRequest: () => {
           if (state.stop) log("stopped", { code: "PREPARATION", message: state.stop });
@@ -99,6 +100,7 @@ export default function observer(pi: ExtensionAPI): void {
     if (result?.ok === true && object(result.candidate) && typeof result.candidate.firstKeptEntryId === "string") state.identityResultCut = result.candidate.firstKeptEntryId;
   });
   pi.events.on("nunc:admission", event => log("admission", event));
+  pi.events.on("nunc:live-provider-wrap", event => log("lifecycle", event));
   pi.on("before_provider_request", event => {
     const payload = event.payload;
     log("payload", { mode: "observe", keys: payload && typeof payload === "object" && !Array.isArray(payload) ? Object.keys(payload) : [] });

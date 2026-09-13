@@ -10,13 +10,13 @@ test("verify-live completes every stable-memory scenario through real loader, HT
   const f = await new StockFixture().setup({ timeoutMs: 520000 });
   const provider = "openrouter", model = "google/gemini-stable-memory-fixture";
   await writeFile(join(f.state, "agent/models.json"), JSON.stringify({ providers: { [provider]: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ id: model, api: "openai-completions", reasoning: false, input: ["text"], contextWindow: 60000, maxTokens: 20000 }] } } }));
-  f.limits = { ...f.limits, maxCalls: 240, maxTotalTokens: 24000000 };
+  f.limits = { ...f.limits, maxCalls: 160, maxTotalTokens: 12800000 };
   const assets = JSON.parse(await readFile(join(repository, "tests/scenarios/stable-memory-inputs.json"), "utf8"));
   const selections = [{ id: "m1", variant: "fixed" }, { id: "m1", variant: "moving" }, { id: "m2" }, { id: "m3" }, { id: "m4", variant: "keep-0.67" }, { id: "m4", variant: "keep-0.5" }];
   const scenarios = selections.map(s => ({ ...assets.cases.find((c: any) => c.id === s.id), ...s }));
   const selection: any = {
     target: { repository, stateRoot: join(f.dir, "nunc-live-stable-memory"), cleanup: "retain" },
-    limits: { maxCalls: 240, maxTotalTokens: 24000000, maxDurationMs: 500000, maxOutputTokens: 20000, maxCostUsd: null }, scenarios: selections,
+    limits: { maxCalls: 160, maxTotalTokens: 12800000, maxDurationMs: 500000, maxOutputTokens: 20000, maxCostUsd: null }, scenarios: selections,
     overrides: [
       { requirement: "offline-stable-memory-mechanics", reason: "Synthetic loopback protocol only; no model-quality proof or live calls", model: { provider, id: model }, config: { nunc: { extraction: { outputTokens: 1024 } }, compaction: { enabled: true, reserveTokens: 36000, keepRecentTokens: 1 } } },
       { requirement: "provider-wrap", reason: "Recapture transparent provider composition after turn a" },
@@ -26,6 +26,7 @@ test("verify-live completes every stable-memory scenario through real loader, HT
       ...[0.67, 0.5].map(q => ({ requirement: `explicit-retention-${q}`, reason: "Fixed ratio comparison", scenario: `m4/keep-${q}`, config: { nunc: { rolling: { keepRecentFraction: q }, extraction: { outputTokens: 1024 } } } })),
     ],
   };
+  if (process.env.NUNC_LARVA_EXTENSION) selection.overrides.push({ requirement: "stable-memory-larva", reason: "Explicit read-only actual Larva loader composition, manual persona switching only", extension: process.env.NUNC_LARVA_EXTENSION });
   const run = async (args: string[], input = selection) => {
     const child = spawn(process.execPath, [join(repository, "scripts/verify-live.mjs"), ...args], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"], signal: t.signal });
     let stdout = "", stderr = "";
@@ -114,7 +115,7 @@ test("verify-live completes every stable-memory scenario through real loader, HT
       }
       assert(segment.score.checks.some((c: any) => c.status === "UNPROVEN"), "Controlled mechanics must leave semantic scoring to the downstream observer");
       if (segment.scenario === "m2") {
-        assert.equal(segment.prerequisites.filter((p: any) => p.check.startsWith("M-only") && p.status === "PROVEN").length, 3);
+        assert.equal(segment.prerequisites.filter((p: any) => p.check.startsWith("M-only") && p.status === "PROVEN").length, 6);
         assert.deepEqual(segment.artifactSnapshots, { "initial.json": { code: "cedar-17" }, "corrected.json": { code: "maple-29" } });
         assert.deepEqual(segment.score.artifacts["unlock.json"], { code: null });
       }
@@ -126,5 +127,6 @@ test("verify-live completes every stable-memory scenario through real loader, HT
       }
     }
     assert(f.requests.some((r: any) => r.kind === "maintenance"));
+    assert(f.requests.length <= 160, "The complete mechanical workload must fit the accepted live call ceiling");
   } finally { await f.close(); }
 });

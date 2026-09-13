@@ -91,6 +91,7 @@ test("predicates require admission identity, expected content epochs, explicit f
   assert.equal(scoreStableMemory({ id: "m2", layouts: empty, config: {} })[0]?.status, "UNPROVEN");
   const explicitEmpty = layoutsFromRequests([req("z", 9, { admission: { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" } })], []);
   assert.equal(uniqueCarriers(explicitEmpty), true);
+  assert.equal(uniqueCarriers(explicitEmpty, content), false, "explicit empty M does not satisfy a required nonempty epoch");
   const missing = [...layouts, ...empty];
   assert.equal(uniqueCarriers(missing), false);
   assert.equal(positionStable(missing), false);
