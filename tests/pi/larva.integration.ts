@@ -355,8 +355,8 @@ test("temporary borrow and automatic restoration with adjacent M writes, continu
   // Turn 2 assertions (Continuation):
   assert.equal(borrowedWrite, true);
   assert.equal(bodies.length, 2);
-  assert(JSON.stringify((bodies[0]!.input as unknown[]).at(-1)).includes("M1 before borrow"));
-  assert(JSON.stringify((bodies[1]!.input as unknown[]).at(-1)).includes("M2 after actual borrow"));
+  assert.equal((bodies[0]!.input as unknown[]).filter(item => JSON.stringify(item).includes("M1 before borrow")).length, 1);
+  assert.equal((bodies[1]!.input as unknown[]).filter(item => JSON.stringify(item).includes("M2 after actual borrow")).length, 1);
   const contBody = bodies[1]!;
   assert(typeof contBody.instructions === "string");
   assert(contBody.instructions.includes("synth-codex-specialist"));
@@ -395,7 +395,7 @@ test("temporary borrow and automatic restoration with adjacent M writes, continu
   assert.equal(idleAdmission.receiptBreakdown?.currentMTokens, memoryTokens(surfaceRef!.read(ctxRef!).memory.slots));
   assert.equal(idleAdmission.receiptBreakdown?.retainedOldMMargin, true);
   assert.equal(idleAdmission.receiptBreakdown?.observedU, 145);
-  assert(JSON.stringify((idleBody.input as unknown[]).at(-1)).includes("M3 after automatic restoration"));
+  assert.equal((idleBody.input as unknown[]).filter(item => JSON.stringify(item).includes("M3 after automatic restoration")).length, 1);
 });
 
 test("real resource reload invalidates old resolver listener and native maintenance stays isolated", async t => {
@@ -626,11 +626,8 @@ test("real Pi/Larva/Nunc joint loop: model-tool M mutation, native serializer wi
   assert(wireBody2.input && Array.isArray(wireBody2.input));
   const wireMessages = wireBody2.input as Array<Record<string, unknown>>;
 
-  // Tail message in wire input MUST be the working memory carrier
-  const wireTail = wireMessages.at(-1)!;
-  const wireTailContent = JSON.stringify(wireTail);
-  assert(wireTailContent.includes("Nunc working memory (session-local, reference only)"));
-  assert(wireTailContent.includes("Verified joint Larva Nunc integration note"));
+  const wireCarriers = wireMessages.filter(m => JSON.stringify(m).includes("Nunc working memory (session-local, reference only)") && JSON.stringify(m).includes("Verified joint Larva Nunc integration note"));
+  assert.equal(wireCarriers.length, 1);
 
   // First message must NOT be a compactionSummary
   assert(!JSON.stringify(wireMessages[0]).includes("The conversation history before this point was compacted"));
@@ -729,8 +726,7 @@ test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overla
   assert.equal(sendCount, 1);
   const wire1 = bodies[0]!;
   assert(typeof wire1.instructions === "string" && wire1.instructions.includes("synth-codex-primary"));
-  const tail1 = (wire1.input as Array<Record<string, unknown>>).at(-1)!;
-  assert(JSON.stringify(tail1).includes("Primary persona note M1"));
+  assert.equal((wire1.input as unknown[]).filter(item => JSON.stringify(item).includes("Primary persona note M1")).length, 1);
 
   // Turn 2: Follow-up prompt under same primary persona and same M1 -> reuses receipt 1!
   const settled2 = withTimeout(new Promise<void>(resolve => settledResolvers.push(resolve)), 15000, "Turn 2 settle timeout");
@@ -759,8 +755,7 @@ test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overla
   assert.equal(sendCount, 3);
   const wire3 = bodies[2]!;
   assert(typeof wire3.instructions === "string" && wire3.instructions.includes("synth-codex-specialist"));
-  const tail3 = (wire3.input as Array<Record<string, unknown>>).at(-1)!;
-  assert(JSON.stringify(tail3).includes("Specialist persona note M2"));
+  assert.equal((wire3.input as unknown[]).filter(item => JSON.stringify(item).includes("Specialist persona note M2")).length, 1);
 
   // Check Nunc admission for Prompt 3: systemPrompt changed, so cannot reuse receipt 2!
   const adm3 = admissions.filter(a => a.kind === "main" && a.outcome === "delegate").at(-1)!;
@@ -904,9 +899,7 @@ test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, t
   const idleBody = bodies[1]!;
   // Wire body instructions must have restored primary persona
   assert(typeof idleBody.instructions === "string" && idleBody.instructions.includes("synth-codex-primary"));
-  // Wire body tail input MUST contain the active working memory carrier!
-  const idleTail = (idleBody.input as Array<Record<string, unknown>>).at(-1)!;
-  assert(JSON.stringify(idleTail).includes("Persistent note across idle and reload"));
+  assert.equal((idleBody.input as unknown[]).filter(item => JSON.stringify(item).includes("Persistent note across idle and reload")).length, 1);
 
   // Step 3: Maintenance freeze mutual exclusion THROUGH terminal
   const patchTool = (f.runtime.session as any).getToolDefinition("nunc_memory_patch");
@@ -966,8 +959,8 @@ test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, t
   assert.deepEqual(memoryEntries(), entriesBeforeReload);
   await f.runtime.session.prompt("First rebuilt request after reload");
   assert.equal(admissions.filter(a => a.kind === "main").at(-1)!.estimator, "pi-heuristic");
-  const rebuiltTail = (bodies.at(-1)!.input as Array<{ content: Array<{ text: string }> }>).at(-1)!;
-  assert.equal(rebuiltTail.content[0]!.text, renderMemory(beforeReload.slots));
+  const rebuilt = renderMemory(beforeReload.slots);
+  assert.equal((bodies.at(-1)!.input as unknown[]).filter(item => JSON.stringify(item).includes(rebuilt)).length, 1);
   await f.runtime.session.prompt("Reuse rebuilt request after reload");
   const last = admissions.filter(a => a.kind === "main").at(-1)!;
   assert.equal(last.estimator, "pi-usage-backed");

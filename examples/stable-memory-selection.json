@@ -1,0 +1,44 @@
+{
+  "target": {
+    "repository": "__CHECKOUT__",
+    "stateRoot": "__NEW_CANONICAL_TASK_ROOT__",
+    "cleanup": "retain"
+  },
+  "limits": {
+    "maxDurationMs": 3600000,
+    "maxCalls": 80,
+    "maxTotalTokens": 80000000,
+    "maxCostUsd": null
+  },
+  "scenarios": [
+    { "id": "m1", "variant": "fixed" },
+    { "id": "m1", "variant": "moving" },
+    { "id": "m2" },
+    { "id": "m3" },
+    { "id": "m4", "variant": "keep-0.67" },
+    { "id": "m4", "variant": "keep-0.5" }
+  ],
+  "overrides": [
+    {
+      "requirement": "gemini-live-observation",
+      "reason": "Stable-memory live observation is Gemini-first; Astra is forbidden; output allowance resolves from native metadata",
+      "model": { "provider": "openrouter", "id": "google/gemini-3.8-flash" }
+    },
+    {
+      "requirement": "payload-append",
+      "reason": "m3 exercises tracked last-user append composition with Nunc and the live observer"
+    },
+    {
+      "requirement": "explicit-retention-0.67",
+      "reason": "Fixed-layout 0.67 comparison must set the fraction explicitly and must not use retentionCalibration",
+      "scenario": "m4/keep-0.67",
+      "config": { "nunc": { "rolling": { "keepRecentFraction": 0.67 } } }
+    },
+    {
+      "requirement": "explicit-retention-0.5",
+      "reason": "Fixed-layout 0.5 comparison must set the fraction explicitly and must not use retentionCalibration",
+      "scenario": "m4/keep-0.5",
+      "config": { "nunc": { "rolling": { "keepRecentFraction": 0.5 } } }
+    }
+  ]
+}

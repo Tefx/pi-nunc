@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createMemorySurface, memorySurface, type MemorySurface } from "../../src/pi/manual.js";
-import { MANUAL_MEMORY_TYPE, project } from "../../src/pi/projection.js";
+import { injectedCarrierIndex, MANUAL_MEMORY_TYPE, project } from "../../src/pi/projection.js";
 import { legacyRenderMemory, renderMemory } from "../../src/engine/memory.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
 import type { Memory } from "../../src/engine/types.js";
@@ -82,8 +82,14 @@ test("legacy checkpoint and later revision retain IDs/order/nextId across repeat
     await f.runtime.session.prompt(label);
     const messages = f.calls.at(-1)!.messages;
     assert.deepEqual(e.surface().read(e.ctx()).memory, expected);
-    if (expected.slots.length) assert.deepEqual(messages.at(-1), { role: "user", content: [{ type: "text", text: renderMemory(expected.slots) }], timestamp: 0 });
-    else assert.equal(messages.at(-1)?.role, "user");
+    const carrier = injectedCarrierIndex(messages);
+    if (expected.slots.length) {
+      assert.equal(typeof carrier, "number");
+      assert.deepEqual(messages[carrier!], { role: "user", content: [{ type: "text", text: renderMemory(expected.slots) }], timestamp: 0 });
+    } else {
+      assert.equal(carrier, undefined);
+      assert.equal(messages.at(-1)?.role, "user");
+    }
     assert(!JSON.stringify(messages).includes("The conversation history before this point was compacted"));
     assert.equal(messages.filter(m => m.role === "user" && Array.isArray(m.content) && m.content.some(b => b.type === "text" && b.text === renderMemory(expected.slots))).length, expected.slots.length ? 1 : 0);
   };

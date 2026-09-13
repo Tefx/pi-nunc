@@ -53,7 +53,7 @@ export interface Limits { maxCalls: number | null; maxTotalTokens: number | null
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string }
@@ -143,13 +143,19 @@ export function parseInput(value: unknown, execution = false): RunInput {
       const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden;
       requireValue(!isForbidden && isGemini, "MODEL", "Guidance scenarios authorize OpenRouter google/gemini-3.8-flash only; Astra and non-Gemini models are forbidden");
     }
+    const isStableMemory = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("m"));
+    if (isStableMemory) {
+      const id = String(model.id).toLowerCase();
+      const provider = String(model.provider).toLowerCase();
+      requireValue(!id.includes("astra") && !provider.includes("astra"), "MODEL", "Stable-memory observations forbid Astra");
+    }
     const key = `${model.provider}/${model.id}`; requireValue(!modelKeys.has(key), "MODEL", "Duplicate model"); modelKeys.add(key);
   }
   requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0, "SCENARIO", "Nonempty scenario selection required");
   const ids = new Set<string>();
   for (const selection of value.scenarios) {
     keys(selection, ["id", "variant", "config", "assets"], "scenario");
-    requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
+    requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "m1", "m2", "m3", "m4"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
     if (selection.id === "c4") {
       requireValue(["full", "capacity"].includes(String(selection.variant)), "SCENARIO", "c4 requires full/capacity");
     } else if (selection.id === "c1") {
@@ -162,6 +168,10 @@ export function parseInput(value: unknown, execution = false): RunInput {
       requireValue(selection.variant === undefined || ["conflict", "unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g7 may select conflict or unconfirmed");
     } else if (selection.id === "g8") {
       requireValue(["fits-required", "required-too-large"].includes(String(selection.variant)), "SCENARIO", "g8 requires fits-required or required-too-large");
+    } else if (selection.id === "m1") {
+      requireValue(["moving", "fixed"].includes(String(selection.variant)), "SCENARIO", "m1 requires moving/fixed");
+    } else if (selection.id === "m4") {
+      requireValue(["keep-0.67", "keep-0.5"].includes(String(selection.variant)), "SCENARIO", "m4 requires keep-0.67/keep-0.5");
     } else {
       requireValue(selection.variant === undefined, "SCENARIO", `${selection.id} has no variant`);
     }
@@ -174,6 +184,10 @@ export function parseInput(value: unknown, execution = false): RunInput {
     }
     if (selection.id === "c4" && selection.variant === "full") requireValue(selection.config.nunc.extraction?.toolResults === "full", "CONFIG", "c4/full requires full extraction");
     if (selection.id === "c5") requireValue(value.models.length === 2 && Number(value.models[1].contextWindow) < Number(value.models[0].contextWindow), "MODEL", "c5 requires a distinct authorized strictly smaller model");
+    if (selection.id === "m4") {
+      requireValue(selection.config.retentionCalibration === undefined, "CONFIG", "m4 compares explicit keepRecentFraction values; retentionCalibration is forbidden");
+      requireValue(selection.config.nunc.rolling?.keepRecentFraction === (selection.variant === "keep-0.67" ? 0.67 : 0.5), "CONFIG", "m4 requires an explicit keepRecentFraction matching the selected variant");
+    }
   }
   if (value.assets !== undefined) {
     keys(value.assets, ["inputs", "observer"], "assets");

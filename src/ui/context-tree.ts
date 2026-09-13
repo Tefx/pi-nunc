@@ -35,7 +35,7 @@ function scopeCurrent(current: CurrentContext, add: (node: CtxNode) => string): 
     label: "Current projection",
     description: current.model ? `${current.model.provider}/${current.model.id}` : "no model",
     preview: [
-      "Scope: current delivered F/R/M. Later context/payload hooks are not included.",
+      "Scope: current delivered F/R/M classification, not request send order. Later context/payload hooks are not included.",
       bars(current),
       current.occupied ? "Maintenance occupied" : "",
       current.unconfirmed ? "Save unconfirmed" : "",
@@ -203,7 +203,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
       id: `${prefix}:M`,
       label: "M · Memory",
       description: `${slots?.length ?? 0} slots`,
-      preview: slots ? `M (Memory): current working memory (${slots.length} slots)\n${slots.length} slots` : "M not in this observation",
+      preview: slots ? `M (Memory): current working memory (${slots.length} slots)\n${memoryPositionLine(layout, slots.length)}` : "M not in this observation",
       children: mIds,
     }),
   ];
@@ -295,6 +295,7 @@ function lastMainSummary(last: LastMainContext): string {
     when,
     last.resolution ? `resolution ${last.resolution}` : "",
     last.estimator ? `estimator ${last.estimator}` : "",
+    last.layout.memoryIndex !== undefined ? `memory request index ${last.layout.memoryIndex}` : (last.layout.memory?.slots.length ? "memory request index unknown" : ""),
     last.inputTokens !== undefined ? `input ${last.inputTokens}${last.inputLimit !== undefined ? ` / enforced ${last.inputLimit}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${last.plannedInputLimit}` : ""}` : "",
     last.inputExceededPlan === true ? "input exceeded plan (advisory if delegated)" : "",
     last.outputTokens !== undefined ? `output ${last.outputTokens}` : "",
@@ -371,6 +372,12 @@ function countsPreview(layout: ContextLayout): string {
   return `${layout.messageCount} messages / ${layout.blockCount} blocks\npackaging ${thousands(layout.packagingTokens)} · extra input ${thousands(layout.extraInputTokens)}\nheuristic ${tokenLabel(layout.heuristic.tokens, layout.heuristic.unknown)}`;
 }
 
+function memoryPositionLine(layout: ContextLayout, slotCount: number): string {
+  if (slotCount === 0) return "no carrier";
+  if (layout.memoryIndex === undefined) return "position unknown";
+  return `request index ${layout.memoryIndex}`;
+}
+
 function scopeLegend(add: (node: CtxNode) => string): CtxNode {
   const children = [
     add({
@@ -391,6 +398,8 @@ function scopeLegend(add: (node: CtxNode) => string): CtxNode {
       preview: [
         "M (Memory): current structured working memory.",
         "• Named slots (id + body) carried in full on every main request.",
+        "• Request order may place M between earlier and later real history; F/R/M lists are classification, not send order.",
+        "• Unknown position is shown as unknown; it is not assumed to be the tail.",
         "• Holds constraints and facts needed beyond the recent window.",
         "• Editable by hand per slot, or proposed add/remove during maintenance.",
       ].join("\n"),
@@ -437,6 +446,7 @@ function scopeLegend(add: (node: CtxNode) => string): CtxNode {
         "D (Queued): queued or not-yet-delivered later input or in-flight instructions.",
         "• Pi delivers it under native queue and scheduling rules.",
         "• Not part of R or the maintenance source before delivery.",
+        "• After delivery it belongs to R; D is not the history after M.",
       ].join("\n"),
       children: [],
     }),
@@ -448,7 +458,7 @@ function scopeLegend(add: (node: CtxNode) => string): CtxNode {
     preview: [
       "Context abbreviations (Legend):",
       "• F (Fixed): current effective system prompt and available tool definitions (redetermined with model/config)",
-      "• M (Memory): current structured working-memory slots and budget (independent of message count)",
+      "• M (Memory): current structured working-memory slots and budget (independent of message count; request order may be mid-history)",
       "• R (Raw history): delivered verbatim history still in the active context (R = B | K)",
       "• B (Retiring): earlier history selected to leave at maintenance (determined at actual maintenance, not predicted)",
       "• K (Kept): recent verbatim suffix kept after maintenance (later main requests continue with new input)",

@@ -13,7 +13,7 @@ Maintenance asks what would still be needed with effective host instructions **F
 
 This package is `"private": true`. It is not published to npm. There is no license file in this repository.
 
-**Accepted change status:** [Stable memory placement and retention](docs/STABLE-MEMORY.md) defines stable memory placement at a valid fixed history boundary and changes the default retention fraction from `0.67` to `0.5`. The default retention fraction `0.5` is implemented in `src/pi/config.ts`; stable memory placement remains pending. The diagram above describes the moving-tail layout. The design preserves CRUD/CAS, complete tool units, native persistence and conservative receipts; actual model validation will use Gemini first, bounded GPT Luna when needed, and no Astra calls.
+**Accepted change status:** [Stable memory placement and retention](docs/STABLE-MEMORY.md) is implemented: unchanged M stays at a legal history boundary (`F | Rbefore | M | Rafter`), and the default retention fraction is `0.5`. The diagram above is the maintenance B/K view, not the main-request send order. CRUD/CAS, complete tool units, native persistence and conservative receipts are unchanged. Live cache/task observation uses Gemini first, bounded GPT Luna when needed, and no Astra calls via `examples/stable-memory-selection.json`.
 
 ## Requirements
 
@@ -138,7 +138,7 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 
 - Same-session memory only. `/new` starts empty; `/tree`, `/fork`, and `/clone` follow Pi’s selected path.
 - No cross-session memory database, proactive search, or document-writing service.
-- Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests consistently use the tail M carrier. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
+- Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests inject one current M carrier at a stable legal boundary. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
 - Supported host is stock Pi **0.85.1** with persistent sessions. No minimum-version or all-provider claim.

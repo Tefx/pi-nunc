@@ -122,6 +122,8 @@ export function lastMainLines(last: LastMainContext | undefined): string[] {
   ];
   if (last.resolution) lines.push(`Resolution: ${last.resolution}`);
   if (last.estimator) lines.push(`Estimator: ${last.estimator}`);
+  if (last.layout.memoryIndex !== undefined) lines.push(`Memory request index: ${last.layout.memoryIndex}`);
+  else if ((last.layout.memory?.slots.length ?? 0) > 0) lines.push("Memory request index: unknown");
   if (last.receiptBreakdown) {
     const b = last.receiptBreakdown;
     const oldMText = b.retainedOldMMargin ? ` (includes retained old M estimate ~${thousands(b.oldMTokensEstimate ?? 0)})` : "";

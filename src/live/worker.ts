@@ -17,6 +17,7 @@ import type { RetentionCalibration } from "./calibration.js";
 import { compactionAssociationError } from "./compaction-identity.js";
 import { prepareBoundary, type PreparedBoundary, type MatchReference } from "./preparation.js";
 import { rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
+import { layoutFromContext, scoreStableMemory, usageFromAssistant, type LayoutObservation } from "./stable-memory-observation.js";
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined; matchReferences?: MatchReference[] | undefined }
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig; actions?: unknown[]; lastBeforeActive?: SessionEntry[]; rollovers?: RolloverObservation[]; requests?: RequestObservation[]; runConfig?: Selection["config"]; noWork?: NonNullable<SegmentReport["noWork"]> }
@@ -35,6 +36,7 @@ export interface SegmentReport {
   nextTurn: number;
   score?: Awaited<ReturnType<typeof scoreArtifacts>> | undefined;
   contexts: Array<{ turn: string; model: string; kind: string; context: Context }>;
+  layouts?: LayoutObservation[];
   maintenance: unknown[];
   actions: unknown[];
   commands?: Array<{ type: string; message?: string }> | undefined;
@@ -236,6 +238,14 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       onMaintenanceResponse: data => { if (object(data)) maintenanceResponses.push(data as any); },
       onContext: (model, context, kind) => {
         report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context });
+        if (selection.id.startsWith("m")) {
+          const usage = usageFromAssistant(context.messages);
+          (report.layouts ??= []).push(layoutFromContext({
+            turn, model: `${model.provider}/${model.id}`, kind, messages: context.messages,
+            keepRecentFraction: runConfig.nunc.rolling?.keepRecentFraction ?? 0.5,
+            ...(usage ? { usage } : {}),
+          }));
+        }
         if (selection.id.startsWith("g") && kind === "main") {
           const activeTools = context.tools?.map(t => t.name) ?? [];
           const exposed = ["nunc_memory_read", "nunc_memory_patch"].every(name => activeTools.includes(name));
@@ -540,6 +550,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     }
     if (selection.id === "e2") {
       report.setupChecks = evaluateE2SetupChecks(turns, sm.getBranch(), sm.buildContextEntries(), report.maintenance as MaintenanceResult[], report.contexts, report.actions, join(caseRoot, "task"), scenario.files["probe.json"], group === "native" ? report.rollovers : undefined);
+    }
+    if (selection.id.startsWith("m")) {
+      report.prerequisites.push(...scoreStableMemory({ id: selection.id, ...(selection.variant !== undefined ? { variant: selection.variant } : {}), layouts: report.layouts ?? [], config: runConfig }));
     }
     if (selection.id.startsWith("g")) {
       if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {

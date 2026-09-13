@@ -112,7 +112,7 @@ export function validateControl(value: unknown, turns: string[]): asserts value 
 }
 export function parseScenario(source: unknown, reference: unknown, selection: Selection): { input: ScenarioInput; observer: ScenarioObserver } {
   requireValue(object(source) && source.formatVersion === 1 && Array.isArray(source.cases), "SCENARIO", "Unsupported inputs format");
-  requireValue(object(reference) && reference.formatVersion === 1 && (reference.inputs === "inputs.json" || reference.inputs === "extraction-inputs.json" || reference.inputs === "guidance-inputs.json") && reference.visibility === "runner-and-observer-only" && Array.isArray(reference.cases), "SCENARIO", "Unsupported observer format");
+  requireValue(object(reference) && reference.formatVersion === 1 && (reference.inputs === "inputs.json" || reference.inputs === "extraction-inputs.json" || reference.inputs === "guidance-inputs.json" || reference.inputs === "stable-memory-inputs.json") && reference.visibility === "runner-and-observer-only" && Array.isArray(reference.cases), "SCENARIO", "Unsupported observer format");
   for (const cases of [source.cases, reference.cases]) requireValue(cases.length > 0 && cases.every(c => object(c) && nonempty(c.id)) && new Set(cases.map(c => c.id)).size === cases.length, "SCENARIO", "Invalid/duplicate case IDs");
   const raw: unknown = structuredClone(source.cases.find(c => c.id === selection.id));
   let obs: unknown = reference.cases.find(c => c.id === selection.id);
@@ -177,7 +177,8 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
   }
   const finalObs = obs as Record<string, unknown>;
   const isGuidance = selection.id.startsWith("g");
-  if (!isGuidance) {
+  const isStableMemory = selection.id.startsWith("m");
+  if (!isGuidance && !isStableMemory) {
     requireValue(Array.isArray(finalObs.controls) && finalObs.controls.length > 0, "SCENARIO", "Missing observer controls");
   } else {
     finalObs.controls = Array.isArray(finalObs.controls) ? finalObs.controls : [];
@@ -206,8 +207,9 @@ export async function loadScenario(repository: string, selection: Selection, exp
   const assets = selection.assets ?? explicitAssets;
   const isExtraction = selection.id.startsWith("e");
   const isGuidance = selection.id.startsWith("g");
-  const inputsFile = assets?.inputs ?? (isGuidance ? "tests/scenarios/guidance-inputs.json" : isExtraction ? "tests/scenarios/extraction-inputs.json" : "tests/scenarios/inputs.json");
-  const observerFile = assets?.observer ?? (isGuidance ? "tests/scenarios/guidance-observer.json" : isExtraction ? "tests/scenarios/extraction-observer.json" : "tests/scenarios/observer.json");
+  const isStableMemory = selection.id.startsWith("m");
+  const inputsFile = assets?.inputs ?? (isStableMemory ? "tests/scenarios/stable-memory-inputs.json" : isGuidance ? "tests/scenarios/guidance-inputs.json" : isExtraction ? "tests/scenarios/extraction-inputs.json" : "tests/scenarios/inputs.json");
+  const observerFile = assets?.observer ?? (isStableMemory ? "tests/scenarios/stable-memory-observer.json" : isGuidance ? "tests/scenarios/guidance-observer.json" : isExtraction ? "tests/scenarios/extraction-observer.json" : "tests/scenarios/observer.json");
   const inputsPath = isAbsolute(inputsFile) ? inputsFile : join(repository, inputsFile);
   const observerPath = isAbsolute(observerFile) ? observerFile : join(repository, observerFile);
   return parseScenario(JSON.parse(await readFile(inputsPath, "utf8")), JSON.parse(await readFile(observerPath, "utf8")), selection);

@@ -4,6 +4,7 @@ import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Control, ToolTrigger } from "./scenarios.js";
 import { memorySurface } from "../pi/manual.js";
+import { setObserverMemoryLayout } from "../pi/projection.js";
 
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
@@ -32,7 +33,7 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }> };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving" };
   const controlFor = (action: "revision_conflict" | "unconfirmed_save", ctx: ExtensionContext) => {
     const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
     const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
@@ -44,6 +45,7 @@ export default function observer(pi: ExtensionAPI): void {
   const state = states.get(source) ?? { bases: new WeakMap<Provider, Provider>(), occurrence: 0, boundaryDone: binding.boundaryCompleted === true, boundaryCommitted: binding.boundaryCompleted === true };
   states.set(source, state);
   pi.on("session_start", (_event, ctx) => {
+    setObserverMemoryLayout(binding.memoryLayout === "moving" ? "moving" : "stable");
     state.ctx = ctx;
     const activeTools = pi.getActiveTools();
     const memoryToolsExposed = activeTools.includes("nunc_memory_read") && activeTools.includes("nunc_memory_patch");

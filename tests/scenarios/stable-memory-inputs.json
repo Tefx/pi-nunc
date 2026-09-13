@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "id": "m1",
+      "files": {
+        "brief.txt": "Keep the project name orchard-router in working memory. Later turns add only new constraints; they do not restated the name.\n"
+      },
+      "turns": [
+        { "id": "a", "text": "Read brief.txt. Save any name you must keep using, then wait." },
+        { "id": "b", "text": "Add that the retry budget is two attempts. Do not rewrite unrelated notes." },
+        { "id": "c", "text": "Write status.json with fields project and retries using only what you still need. Do not invent a new project name." }
+      ]
+    },
+    {
+      "id": "m2",
+      "files": {
+        "lock.txt": "unlock-code: cedar-17\n",
+        "lock-correction.txt": "unlock-code: maple-29\n"
+      },
+      "turns": [
+        { "id": "a", "text": "Read lock.txt. Keep the unlock code in working memory. Do not write unlock.json yet." },
+        { "id": "b", "text": "Read lock-correction.txt. Replace any stored unlock code with the corrected value and drop the obsolete one." },
+        { "id": "c", "text": "Write unlock.json with a code field taken from current working memory. This turn does not repeat the code." }
+      ]
+    },
+    {
+      "id": "m3",
+      "files": {
+        "note.txt": "Compose the tracked observer, Nunc, and named payload-append extensions on this task.\n"
+      },
+      "turns": [
+        { "id": "a", "text": "Read note.txt and acknowledge the composition task. Save any continuing constraint." },
+        { "id": "b", "text": "Write composed.json with a status field of ready." }
+      ]
+    },
+    {
+      "id": "m4",
+      "files": {
+        "policy.txt": "Retention comparison uses the same fixed memory layout. Node 20 remains required. Do not restated this in later scratch turns.\n"
+      },
+      "turns": [
+        { "id": "a", "text": "Read policy.txt. Keep the continuing Node requirement in working memory and wait." },
+        { "id": "b", "text": "Write scratch.json with n equal to 4. Do not drop the Node requirement." },
+        { "id": "c", "text": "Write kept.json with field nodeMajor from what you still need after compaction." }
+      ]
+    }
+  ]
+}

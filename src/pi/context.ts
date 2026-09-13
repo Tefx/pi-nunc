@@ -2,13 +2,13 @@ import type { Api, Context, Message, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, Slot } from "../engine/index.js";
 import { mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
-import { memoryMessage } from "../engine/memory.js";
+import { renderMemory } from "../engine/memory.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
 import type { MemorySurface } from "./manual.js";
 import type { PayloadObservation } from "./payload.js";
-import { project } from "./projection.js";
+import { peekMemoryAnchor, project } from "./projection.js";
 
 export interface TokenCount { tokens: number | null; unknown: boolean }
 export interface ContextBlock {
@@ -67,6 +67,8 @@ export interface ContextLayout {
   extraInputTokens: number;
   heuristic: TokenCount;
   associations: ToolAssociation[];
+  /** Index of M in the request message list. Omitted when empty or unknown; never guessed as the tail. */
+  memoryIndex?: number;
   unavailable?: true;
 }
 export interface ContextBudget {
@@ -201,7 +203,10 @@ export function createContextSurface(options: {
           budget = unknownBudget(memory.budget.tokens, true);
         }
       }
-      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, projected.active, imageTokens, extraInputTokens);
+      const anchor = peekMemoryAnchor(sessionId);
+      const rendered = renderMemory(memory.memory.slots);
+      const memoryIndex = memory.memory.slots.length && anchor && anchor.content === rendered ? anchor.prefixLength : undefined;
+      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, projected.active, imageTokens, extraInputTokens, memoryIndex);
       const current: CurrentContext = {
         scope: "current",
         sessionId,
@@ -453,7 +458,7 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
   } catch { /* Leave cut unknown rather than invent a partition. */ }
 }
 
-function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number): ContextLayout {
+function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number): ContextLayout {
   const inspected = inspectEntries(active, imageTokens);
   const tools = toolLayer(fixed.tools);
   const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
@@ -478,11 +483,15 @@ function layoutFromProjection(fixed: FixedContext, memory: Memory, active: Activ
     extraInputTokens,
     heuristic: known,
     associations: inspected.associations,
+    ...(memoryIndex !== undefined ? { memoryIndex } : {}),
   };
 }
 
 function layoutFromContext(context: Context, imageTokens: number | undefined, extraInputTokens: number, projection?: AdmissionLayoutEvent["projection"]): ContextLayout {
-  const messages = inspectMessages(projection ? context.messages.slice(0, projection.rCount) : context.messages, imageTokens);
+  const rMessages = projection
+    ? context.messages.filter((_, index) => index !== projection.memoryIndex)
+    : context.messages;
+  const messages = inspectMessages(rMessages, imageTokens);
   const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: memoryTokens(projection.memory.slots, imageTokens), envelopeTokens: 0 } : undefined;
   const tools = toolLayer(context.tools ?? []);
   const packagingTokens = 64 + extraInputTokens;
@@ -499,6 +508,7 @@ function layoutFromContext(context: Context, imageTokens: number | undefined, ex
     extraInputTokens,
     heuristic: known,
     associations: associationsOf(messages),
+    ...(projection?.memoryIndex !== undefined ? { memoryIndex: projection.memoryIndex } : {}),
   };
 }
 

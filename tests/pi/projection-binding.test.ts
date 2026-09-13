@@ -6,7 +6,7 @@ import { ModelRegistry, type ExtensionContext, type ExtensionAPI } from "@earend
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import { admissionEstimate, memoryTokens, textTokens } from "../../src/engine/accounting.js";
-import { renderMemory } from "../../src/engine/memory.js";
+import { isNuncCarrier } from "../../src/pi/projection.js";
 import { contextSurface, type ContextSurface } from "../../src/pi/context.js";
 import { fixture } from "./fixtures.js";
 
@@ -134,10 +134,12 @@ test("native later context hook edits the identical carrier before serialization
   const n = await nativeFixture(t, pi => {
     pi.on("context", event => {
       if (replacement === undefined) return;
-      const carrier = event.messages.at(-1)!;
+      const carrier = event.messages.find(message => isNuncCarrier(message));
+      assert(carrier);
       assert.equal(carrier.role, "user");
       if (carrier.role !== "user") throw new Error("Expected native user carrier");
       carrier.content = [{ type: "text", text: replacement }];
+      return { messages: event.messages };
     });
   });
   n.note("small M");
@@ -149,7 +151,8 @@ test("native later context hook edits the identical carrier before serialization
   assert.equal(changed.estimateReason, "messages-mismatch");
   assert.equal(changed.payload?.mode, "identity", "onPayload cannot detect an earlier Context mutation");
   assert.equal(changed.inputTokens, admissionEstimate(n.contexts.at(-1)!, n.model).tokens + textTokens("{}"));
-  assert.equal(n.bodies.at(-1).input.at(-1).content[0].text, replacement);
+  const mutatedText = replacement ?? "";
+  assert(JSON.stringify(n.bodies.at(-1)).includes(mutatedText));
   replacement = "x".repeat(600000);
   await n.f.runtime.session.prompt("oversized mutated carrier");
   assert.equal(n.last().code, "CAPACITY");
@@ -159,7 +162,9 @@ test("native later context hook edits the identical carrier before serialization
   await n.f.runtime.session.prompt("restore genuine projection");
   assert.equal(n.last().receiptBreakdown?.observedU, 107);
   assert(n.last().anchorTrailingMessages! >= 2, "mutated carrier response never became a receipt");
-  assert.equal(n.bodies.at(-1).input.at(-1).content[0].text, renderMemory(n.surface().read(n.ctx()).memory.slots));
+  const restoredBody = JSON.stringify(n.bodies.at(-1));
+  assert(restoredBody.includes(n.surface().read(n.ctx()).memory.slots[0]!.text));
+  assert(!restoredBody.includes("changed before native serialization"));
 });
 
 test("native in-flight M update leaves Last main on sent M, Current on new M, and next receipt uses full new M", { timeout: 15000 }, async t => {

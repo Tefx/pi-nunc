@@ -115,26 +115,156 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
 
 // Provenance stays process-local and cannot be copied with message text/fields.
 const carriers = new WeakSet<object>();
+const LAYOUT_KEY = Symbol.for("nunc.memory.observer-layout");
+const anchors = new Map<string, MemoryAnchor>();
+const CARRIER_PREFIX = "Nunc working memory (session-local, reference only)";
 
-export function withEffectiveMemory<T extends { role: string; stopReason?: string; customType?: string; summary?: string }>(messages: readonly T[], memory: Memory): T[] {
-  const out: T[] = [];
+interface PrefixMark {
+  role: string;
+  timestamp: number;
+  toolCallId?: string;
+  toolName?: string;
+  toolCallIds?: string[];
+}
+interface MemoryAnchor {
+  sessionId: string;
+  checkpointId: string;
+  content: string;
+  prefixLength: number;
+  prefixMarks: PrefixMark[];
+}
+type LayoutMessage = {
+  role: string;
+  stopReason?: string;
+  customType?: string;
+  summary?: string;
+  content?: unknown;
+  timestamp?: number;
+  toolCallId?: string;
+  toolName?: string;
+};
+
+/** Observer/test baseline only. Production never sets this; missing/other values stay stable. */
+export function setObserverMemoryLayout(mode: "stable" | "moving"): void {
+  (globalThis as Record<symbol, unknown>)[LAYOUT_KEY] = mode === "moving" ? "moving" : "stable";
+}
+function observerMoving(): boolean {
+  return (globalThis as Record<symbol, unknown>)[LAYOUT_KEY] === "moving";
+}
+export function clearMemoryAnchors(sessionId?: string): void {
+  if (sessionId === undefined) anchors.clear();
+  else anchors.delete(sessionId);
+}
+export function peekMemoryAnchor(sessionId: string): { content: string; prefixLength: number } | undefined {
+  const anchor = anchors.get(sessionId);
+  return anchor ? { content: anchor.content, prefixLength: anchor.prefixLength } : undefined;
+}
+export function isNuncCarrier(message: object): boolean {
+  return carriers.has(message);
+}
+export function carrierIndexIn(messages: readonly object[]): number | undefined {
+  const index = messages.findIndex(message => carriers.has(message));
+  return index >= 0 ? index : undefined;
+}
+/** Locate the injected carrier in cloned/serialized views. Not used to choose an anchor. */
+export function injectedCarrierIndex(messages: readonly LayoutMessage[]): number | undefined {
+  const hits: number[] = [];
+  for (const [index, message] of messages.entries()) {
+    if (message.role !== "user" || Number(message.timestamp ?? 0) !== 0) continue;
+    if (carrierText(message).startsWith(CARRIER_PREFIX)) hits.push(index);
+  }
+  return hits.length === 1 ? hits[0] : undefined;
+}
+function carrierText(message: LayoutMessage): string {
+  if (typeof message.content === "string") return message.content;
+  if (!Array.isArray(message.content)) return "";
+  return message.content.filter((block): block is { type: "text"; text: string } => !!block && block.type === "text" && typeof block.text === "string").map(block => block.text).join("");
+}
+function prefixMark(message: LayoutMessage): PrefixMark {
+  const mark: PrefixMark = { role: message.role, timestamp: Number(message.timestamp ?? 0) };
+  if (message.role === "toolResult") {
+    mark.toolCallId = String(message.toolCallId ?? "");
+    mark.toolName = String(message.toolName ?? "");
+  }
+  if (message.role === "assistant" && Array.isArray(message.content)) {
+    mark.toolCallIds = message.content.flatMap(block => recordToolId(block));
+  }
+  return mark;
+}
+function recordToolId(block: unknown): string[] {
+  if (!block || typeof block !== "object" || !("type" in block) || block.type !== "toolCall") return [];
+  return [String("id" in block ? block.id ?? "" : "")];
+}
+function applyToolBoundary(pending: Set<string>, message: LayoutMessage): void {
+  if (message.role === "assistant" && Array.isArray(message.content)) {
+    for (const id of message.content.flatMap(block => recordToolId(block))) if (id) pending.add(id);
+  } else if (message.role === "toolResult" && message.toolCallId) {
+    pending.delete(String(message.toolCallId));
+  }
+}
+function hasPendingTools(messages: readonly LayoutMessage[], end: number): boolean {
+  const pending = new Set<string>();
+  for (let i = 0; i < end; i++) applyToolBoundary(pending, messages[i]!);
+  return pending.size > 0;
+}
+function legalTail(messages: readonly LayoutMessage[]): number {
+  let last = 0;
+  const pending = new Set<string>();
+  for (let i = 0; i < messages.length; i++) {
+    applyToolBoundary(pending, messages[i]!);
+    if (pending.size === 0) last = i + 1;
+  }
+  return last;
+}
+function prefixMatches(messages: readonly LayoutMessage[], anchor: MemoryAnchor): boolean {
+  if (anchor.prefixMarks.length !== anchor.prefixLength) return false;
+  return anchor.prefixMarks.every((mark, i) => {
+    const actual = prefixMark(messages[i]!);
+    return actual.role === mark.role && actual.timestamp === mark.timestamp &&
+      actual.toolCallId === mark.toolCallId && actual.toolName === mark.toolName &&
+      JSON.stringify(actual.toolCallIds ?? []) === JSON.stringify(mark.toolCallIds ?? []);
+  });
+}
+
+export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly T[], memory: Memory, session?: { sessionId: string; latestId?: string | undefined }): T[] {
+  const stripped: T[] = [];
   for (const message of messages) {
     if (message.role === "assistant" && message.stopReason && ["error", "aborted"].includes(message.stopReason)) continue;
     if (message.role === "compactionSummary") continue;
     if (message.role === "custom" && message.customType === "nunc.memory") continue;
     if (carriers.has(message)) continue;
-    out.push(message);
+    stripped.push(message);
   }
-  if (memory.slots.length > 0) {
-    const carrier = {
-      role: "user",
-      content: [{ type: "text", text: renderMemory(memory.slots) }],
-      timestamp: 0,
-    } as unknown as T;
-    carriers.add(carrier);
-    out.push(carrier);
+  if (memory.slots.length === 0) {
+    if (session) anchors.delete(session.sessionId);
+    return stripped;
   }
-  return out;
+  const content = renderMemory(memory.slots);
+  const checkpointId = session?.latestId ?? "";
+  const existing = session && !observerMoving() ? anchors.get(session.sessionId) : undefined;
+  const reusable = existing &&
+    existing.checkpointId === checkpointId &&
+    existing.content === content &&
+    existing.prefixLength <= stripped.length &&
+    prefixMatches(stripped, existing) &&
+    !hasPendingTools(stripped, existing.prefixLength);
+  const index = reusable ? existing.prefixLength : legalTail(stripped);
+  const carrier = {
+    role: "user",
+    content: [{ type: "text", text: content }],
+    timestamp: 0,
+  } as unknown as T;
+  carriers.add(carrier);
+  if (session) {
+    anchors.set(session.sessionId, {
+      sessionId: session.sessionId,
+      checkpointId,
+      content,
+      prefixLength: index,
+      prefixMarks: stripped.slice(0, index).map(prefixMark),
+    });
+  }
+  return [...stripped.slice(0, index), carrier, ...stripped.slice(index)];
 }
 
 /** Visible real history may overlap earlier checkpoints. Summary normalization

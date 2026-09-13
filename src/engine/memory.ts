@@ -10,7 +10,7 @@ export function renderMemory(slots: Slot[]): string {
 export function legacyRenderMemory(slots: Slot[]): string {
   return slots.length === 0 ? "" : `Nunc working memory (session-local):\n${JSON.stringify(slots)}`;
 }
-/** Use the selected host's public projection for the tail working memory carrier. */
+/** Use the selected host's public projection for the working memory carrier. */
 export function memoryMessage(slots: Slot[]): Message {
   return {
     role: "user",

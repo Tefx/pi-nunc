@@ -1,0 +1,82 @@
+{
+  "formatVersion": 1,
+  "inputs": "stable-memory-inputs.json",
+  "visibility": "runner-and-observer-only",
+  "cases": [
+    {
+      "id": "m1",
+      "covers": ["STABLE-MEMORY 11.2 moving vs fixed layout"],
+      "controls": [],
+      "setupChecks": [
+        "Each main request has at most one injected M carrier.",
+        "Record model, memory index, input, cacheRead/cacheWrite, and message count from the actual request context."
+      ],
+      "artifactChecks": [
+        { "path": "status.json", "pointer": "/project", "operator": "semantic", "criterion": "Uses the brief's project name from memory or still-visible files; do not coach the name in later turns." }
+      ],
+      "actionChecks": [
+        "semantic: cache and task quality require independent Gemini observation of actual usage and actions; ACK-only cache is not memory-use quality."
+      ],
+      "failureExample": "The same unchanged M is relocated every turn in the fixed variant, or a lookalike user string is treated as M.",
+      "variants": [
+        { "id": "moving" },
+        { "id": "fixed" }
+      ]
+    },
+    {
+      "id": "m2",
+      "covers": ["STABLE-MEMORY 11.2 M-only update/correction/deletion task use"],
+      "controls": [],
+      "setupChecks": [
+        "Successful memory patches are bound to saved revisions when they occur.",
+        "Later turns do not restate lock codes in the prompt."
+      ],
+      "artifactChecks": [
+        { "path": "unlock.json", "pointer": "/code", "operator": "semantic", "criterion": "Equals the corrected unlock code from current working memory after turn b; a missing file is not a coached pass." }
+      ],
+      "actionChecks": [
+        "semantic: judge whether update, correction and deletion changed later actions; do not score prompt restatement."
+      ],
+      "failureExample": "Turn c writes the obsolete lock.txt code after a correction was saved, or the expected code is copied into the prompt."
+    },
+    {
+      "id": "m3",
+      "covers": ["STABLE-MEMORY 11.2 complete tracked extension composition"],
+      "controls": [],
+      "setupChecks": [
+        "The live observer and Nunc load together with any named payload-append/provider-wrap overrides.",
+        "Unique M and real tool associations remain after composition."
+      ],
+      "artifactChecks": [
+        { "path": "composed.json", "pointer": "/status", "operator": "semantic", "criterion": "Task completed under the composed extensions; mechanical presence of the file is not model-quality proof." }
+      ],
+      "actionChecks": [
+        "semantic: composition must not drop real history or synthesize missing tool results."
+      ],
+      "failureExample": "A later hook rewrite is treated as Nunc M, or tool results are replaced with 'No result provided'."
+    },
+    {
+      "id": "m4",
+      "covers": ["STABLE-MEMORY 11.3 explicit 0.67 vs 0.5 under fixed layout"],
+      "controls": [
+        { "afterTurn": "b", "action": "rollover", "placement": { "retireThroughTurn": "a", "retainTurns": ["b"] } }
+      ],
+      "setupChecks": [
+        "The selected keepRecentFraction is the explicit variant value.",
+        "retentionCalibration is not applied.",
+        "Record the legal cut, post-compaction input, and interval from the actual rollover."
+      ],
+      "artifactChecks": [
+        { "path": "kept.json", "pointer": "/nodeMajor", "operator": "semantic", "criterion": "Retains the policy Node requirement if it was still needed after the rollover; do not treat token savings alone as success." }
+      ],
+      "actionChecks": [
+        "semantic: compare omissions, rereads, rework and combined main/maintenance cost between the two explicit fractions."
+      ],
+      "failureExample": "Calibration rewrites 0.67 or 0.5, or a lower token count is scored as success without task-use evidence.",
+      "variants": [
+        { "id": "keep-0.67" },
+        { "id": "keep-0.5" }
+      ]
+    }
+  ]
+}

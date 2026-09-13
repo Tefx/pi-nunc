@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { type ExtensionAPI, type ExtensionContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { memoryMessage, renderMemory, legacyRenderMemory, emptyMemory } from "../../src/engine/memory.js";
 import { memoryTokens, messageTokens, textTokens } from "../../src/engine/accounting.js";
-import { project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
+import { injectedCarrierIndex, project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, memoryPatch } from "./fixtures.js";
@@ -385,9 +385,10 @@ test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty
 
   await f.runtime.session.prompt("Turn 3: Non-empty M from empty old M");
   const call3 = f.calls.at(-1)!;
-  const tail3 = call3.messages.at(-1)!;
-  assert(JSON.stringify(tail3).includes("Nunc working memory (session-local, reference only)"));
-  assert(JSON.stringify(tail3).includes("First working note"));
+  const carrier3 = injectedCarrierIndex(call3.messages);
+  assert.equal(carrier3, call3.messages.length - 1);
+  assert(JSON.stringify(call3.messages[carrier3!]).includes("Nunc working memory (session-local, reference only)"));
+  assert(JSON.stringify(call3.messages[carrier3!]).includes("First working note"));
   assert(!JSON.stringify(call3.messages[0]).includes("The conversation history before this point was compacted"));
 
   const adm3 = mains(admissions).at(-1)!;
@@ -406,8 +407,9 @@ test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty
 
   await f.runtime.session.prompt("Turn 4: Non-empty M modified");
   const call4 = f.calls.at(-1)!;
-  const tail4 = call4.messages.at(-1)!;
-  assert(JSON.stringify(tail4).includes("Updated working note text"));
+  const carrier4 = injectedCarrierIndex(call4.messages);
+  assert.equal(carrier4, call4.messages.length - 1);
+  assert(JSON.stringify(call4.messages[carrier4!]).includes("Updated working note text"));
   const adm4 = mains(admissions).at(-1)!;
   assert.equal(adm4.estimator, "pi-usage-backed");
   assert.equal(adm4.estimateReason, "matching-receipt");
@@ -433,7 +435,8 @@ test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty
   for (const [index, observation] of [adm2, adm3, adm4, adm5].entries()) {
     const body = f.calls[index + 1]!;
     const currentM = observation.receiptBreakdown!.currentMTokens;
-    const r = currentM ? body.messages.slice(0, -1) : body.messages;
+    const carrier = injectedCarrierIndex(body.messages);
+    const r = currentM ? body.messages.filter((_, i) => i !== carrier) : body.messages;
     const anchorIndex = r.findLastIndex(m => m.role === "assistant");
     const anchor = r[anchorIndex]!;
     assert(anchor.role === "assistant");
@@ -445,7 +448,7 @@ test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty
   }
 });
 
-test("tail layout: single F->R->M layout, no compactionSummary wrapper, R tool calls and results preserved", async t => {
+test("stable layout: unique M stays after the first legal prefix; tool calls and results stay intact", async t => {
   let toolCalls = 0;
   let surfaceRef: MemorySurface | undefined;
   let ctxRef: ExtensionContext | undefined;
@@ -501,18 +504,25 @@ test("tail layout: single F->R->M layout, no compactionSummary wrapper, R tool c
   const toolRes = msgs.find(m => m.role === "toolResult");
   assert(toolRes);
 
-  // 4. Memory carrier is at the TAIL (last message)
-  const lastMsg = msgs.at(-1)!;
-  assert.equal(lastMsg.role, "user");
-  assert(JSON.stringify(lastMsg.content).includes("Nunc working memory (session-local, reference only)"));
-  assert(JSON.stringify(lastMsg.content).includes("Persistent note"));
+  // 4. First request placed M after the user; the continuation keeps that index.
+  const first = f.calls[0]!.messages;
+  const firstIndex = injectedCarrierIndex(first);
+  assert.equal(firstIndex, 1);
+  const contIndex = injectedCarrierIndex(msgs);
+  assert.equal(contIndex, firstIndex);
+  assert.notEqual(contIndex, msgs.length - 1);
+  const placed = msgs[contIndex!];
+  assert(placed);
+  assert(JSON.stringify(placed.content).includes("Nunc working memory (session-local, reference only)"));
+  assert(JSON.stringify(placed.content).includes("Persistent note"));
+  assert.equal(msgs.at(-1)?.role, "toolResult");
 
   // 5. No compactionSummary anywhere in the request
   assert(!msgs.some(m => (m as any).role === "compactionSummary"));
   assert(!msgs.some(m => JSON.stringify(m).includes("The conversation history before this point was compacted")));
 });
 
-test("idempotent conversion: old checkpoint with compactionSummary is converted to tail M without rewriting JSONL", async t => {
+test("idempotent conversion: old checkpoint with compactionSummary is converted to a stable M without rewriting JSONL", async t => {
   const f = await fixture();
   t.after(() => f.close());
 
@@ -526,23 +536,26 @@ test("idempotent conversion: old checkpoint with compactionSummary is converted 
   assert(comp);
   const entriesCountBefore = entries.length;
 
-  // Next prompt: Nunc converts context to tail M
+  // Next prompt: Nunc converts context to one current M carrier
   f.respond(() => fauxAssistantMessage("Acknowledged."));
   await f.runtime.session.prompt("Prompt 1 after compact");
 
   const call1 = f.calls.at(-1)!;
   assert(!call1.messages.some(m => (m as any).role === "compactionSummary"));
   assert(!JSON.stringify(call1.messages).includes("The conversation history before this point was compacted"));
-  const tail1 = call1.messages.at(-1)!;
-  assert(JSON.stringify(tail1).includes("Nunc working memory (session-local, reference only)"));
+  const index1 = injectedCarrierIndex(call1.messages);
+  assert.equal(index1, call1.messages.length - 1);
+  assert(JSON.stringify(call1.messages[index1!]).includes("Nunc working memory (session-local, reference only)"));
 
-  // Second prompt: must still idempotently convert (cannot skip via migrationDone)
+  // Second prompt: same content keeps the first legal index (cannot skip via migrationDone)
   await f.runtime.session.prompt("Prompt 2 after compact");
   const call2 = f.calls.at(-1)!;
   assert(!call2.messages.some(m => (m as any).role === "compactionSummary"));
   assert(!JSON.stringify(call2.messages).includes("The conversation history before this point was compacted"));
-  const tail2 = call2.messages.at(-1)!;
-  assert(JSON.stringify(tail2).includes("Nunc working memory (session-local, reference only)"));
+  const index2 = injectedCarrierIndex(call2.messages);
+  assert.equal(index2, index1);
+  assert.notEqual(index2, call2.messages.length - 1);
+  assert(JSON.stringify(call2.messages[index2!]).includes("Nunc working memory (session-local, reference only)"));
 
   // Verify JSONL was NOT rewritten
   const entriesCountAfter = f.runtime.session.sessionManager.getEntries().length;

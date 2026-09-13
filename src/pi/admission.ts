@@ -66,8 +66,19 @@ export interface RequestProjectionBinding {
   /** Messages whose object identity survives Pi's public conversion. */
   identityMessages?: readonly object[];
   memory: Memory;
+  memoryIndex?: number;
 }
-type BoundProjection = RequestProjectionBinding & { key: object; identities: ReadonlySet<object>; convertedSnapshots: unknown[]; carrierSnapshot: unknown };
+type BoundProjection = RequestProjectionBinding & { key: object; identities: ReadonlySet<object>; convertedSnapshots: unknown[]; carrierSnapshot: unknown; memoryIndex?: number };
+function withoutIndex<T>(items: readonly T[], index: number | undefined): T[] {
+  if (index === undefined) return [...items];
+  return items.filter((_, i) => i !== index);
+}
+function carrierMatches(messages: Context["messages"], binding: BoundProjection): boolean {
+  if (!binding.memory.slots.length) return true;
+  const index = binding.memoryIndex;
+  if (index === undefined || index < 0 || index >= messages.length) return false;
+  return isDeepStrictEqual(jsonView(messages[index]), binding.carrierSnapshot);
+}
 export interface AdmissionObservation {
   kind: "main" | "maintenance" | "unknown";
   outcome: "delegate" | "reject";
@@ -93,7 +104,7 @@ export interface AdmissionLayoutEvent {
   context: Context;
   observation: AdmissionObservation;
   initialMetadataTokens?: number;
-  projection?: { memory: Memory; rCount: number };
+  projection?: { memory: Memory; rCount: number; memoryIndex?: number };
   payloadGrowth?: {
     grewTokens: number;
     inputGrewTokens: number;
@@ -124,7 +135,8 @@ export class Admission {
       model: structuredClone(binding.model),
       messages: [...binding.messages],
       memory: structuredClone(binding.memory),
-      carrierSnapshot: binding.memory.slots.length ? jsonView(binding.messages.at(-1)) : undefined,
+      ...(binding.memoryIndex !== undefined ? { memoryIndex: binding.memoryIndex } : {}),
+      carrierSnapshot: binding.memory.slots.length && binding.memoryIndex !== undefined ? jsonView(binding.messages[binding.memoryIndex]) : undefined,
     });
   }
   invalidateUsage(): void { this.receipts = []; this.generation++; this.activeProjections = new WeakMap(); }
@@ -142,7 +154,7 @@ export class Admission {
     this.activeProjections.delete(binding.key);
     // Identity proves origin; a separate snapshot comparison proves the delivered M.
     // A later context hook may have edited this very object before serialization.
-    if (binding.memory.slots.length && !isDeepStrictEqual(jsonView(context.messages.at(-1)), binding.carrierSnapshot)) return;
+    if (!carrierMatches(context.messages, binding)) return;
     return binding;
   }
   private matchesProjection(context: Context, binding: BoundProjection): boolean {
@@ -251,10 +263,10 @@ export class Admission {
 
     if (binding && ctx && binding.sessionId === ctx.sessionManager.getSessionId() &&
         this.matchesProjection(effectiveContext, binding) &&
-        (!binding.memory.slots.length || isDeepStrictEqual(jsonView(effectiveContext.messages.at(-1)), binding.carrierSnapshot))) {
+        carrierMatches(effectiveContext.messages, binding)) {
       validAssociation = true;
       hasM = binding.memory.slots.length > 0;
-      rMessages = hasM ? effectiveContext.messages.slice(0, -1) : effectiveContext.messages;
+      rMessages = withoutIndex(effectiveContext.messages, hasM ? binding.memoryIndex : undefined);
       currentMTokens = hasM ? memoryTokens(binding.memory.slots, imageTokens) : 0;
     }
 
@@ -529,7 +541,7 @@ export class Admission {
           ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
         };
         limit = mainAdmissionLimit(model, config.main);
-        if (selected.validAssociation) projection = { memory: structuredClone(binding!.memory), rCount: selected.rMessages.length };
+        if (selected.validAssociation) projection = { memory: structuredClone(binding!.memory), rCount: selected.rMessages.length, ...(binding!.memoryIndex !== undefined ? { memoryIndex: binding!.memoryIndex } : {}) };
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
         if (selected.validAssociation) {
           snapshot = {

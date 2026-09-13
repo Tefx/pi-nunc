@@ -6,9 +6,7 @@
 
 本设计延续 [DESIGN.md](DESIGN.md) 的 session、来源、原文、容量与 Pi 所有权边界。人工保存按 §5 扩展原先仅在 CompactionEntry 保存 M 的合同。[PI.md](PI.md) 与 [ENGINE.md](ENGINE.md) 中当前预算及 Provider 组合合同仍适用。示意文案、尺寸起点、私有数据格式和模块文件划分是推荐；实现可以替换它们，但须保持本文明确的用户行为、状态所有权、观察边界与兼容限制。
 
-已实施范围见 [ACTIVE-MEMORY.md](ACTIVE-MEMORY.md)：模型 CRUD（`--nunc-memory-tools`）与现有人工操作共享提交，全部新请求统一尾置 M，并支持稳定 R 与尾置 M 分离的 receipt 估算与展示；本轮不扩展 UI 批量编辑器。
-
-**待实施增量：** [STABLE-MEMORY.md §6–§7](STABLE-MEMORY.md#6-统一布局消费者)要求 Context 显示 M 的实际插入位置，按请求快照区分中段 M 与全部真实 R，不再假定 M 在最后或取前 rCount 条代表 R。当前尾置显示与下文尾部计量说明仍描述现行实现；新增量不改变 Current/Last main/Last maintenance 的观察范围、只读所有权或保守 receipt 公式。D 仍表示尚未交付的队列输入，不改为 M 后的历史。
+已实施范围见 [ACTIVE-MEMORY.md](ACTIVE-MEMORY.md) 与 [STABLE-MEMORY.md](STABLE-MEMORY.md)：模型 CRUD（`--nunc-memory-tools`）与现有人工操作共享提交；主请求在内容不变时保持稳定 M 位置，Context 显示实际插入位置（未知则标明 unknown，不猜测尾部）。F/R/M 分类不是发送顺序。Current/Last main/Last maintenance 的观察范围、只读所有权与保守 receipt 公式不变。D 仍表示尚未交付的队列输入，不改为 M 后的历史。
 
 ## 1. 用户能力与命令
 
@@ -120,7 +118,7 @@ Context 根级另有可浏览的 recent Diagnostics 节点，与文字报告共�
 遵守 [ENGINE.md](ENGINE.md) 的当前口径：
 
 - 分项使用 `pi-heuristic`：Pi `estimateTextTokens` 的 UTF-16 字符/4 估算，加现有 framing 与已配置的图片估算。它不是 tokenizer 或硬上界；不恢复 `utf8-upper-estimate-v1`。
-- M 与维护/候选使用尾部 carrier 计量。主请求总量在原有模型、有效 F、tools 和已交付 R 仍适用时标为 `pi-usage-backed`；尾部 M 的提交（人工或模型）不再全量清空 receipt，而是按保守公式保留旧 M 实际贡献并计入当前尾 M 估算。
+- M 与维护/候选使用当前 carrier 计量。主请求总量在原有模型、有效 F、tools 和已交付 R 仍适用时标为 `pi-usage-backed`；M 的提交（人工或模型）不再全量清空 receipt，而是按保守公式保留旧 M 实际贡献并计入当前完整 M 估算。
 - 分项新估算的总和与 usage-backed 总量可能不同，分别标注，不按比例伪造逐块实测。请求/消息包装及不可归属的开销单列，避免重复计算 F/M envelope。
 - 图片无可用估算时显示 `unknown`，总量说明不完整；浏览未知数据不取消发送时的媒体/容量保护。
 - Provider usage 只作对应请求总量参考；cached tokens 仍占上下文，缺失或未报告数据不按零计算。usage 不证明费用结算。

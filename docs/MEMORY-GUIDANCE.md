@@ -4,7 +4,7 @@ This document specifies accepted guidance refinements for Nunc's active working 
 
 **Status:** Tool and policy guidance text modifications implemented in `nunc.memory-guidance-implementation`; tracked observation support delivered in `nunc.memory-guidance-observation-support`; live Gemini behavioral validation pending in `nunc.memory-guidance-gemini-eval`.
 **Scope:** Tool descriptions (`src/index.ts`), built-in semantic policy (`policies/default.md`), live observation runner and scenarios (`src/live/**`, `tests/scenarios/**`), associated test evidence, and plan specification.
-**Invariants:** No changes to public tool names, parameters schemas, wire JSON contracts, slot IDs, revision algorithms, budget calculations, `required` joint protection, F → R → M carrier projection, or Pi native compaction scheduling.
+**Invariants:** No changes to public tool names, parameters schemas, wire JSON contracts, slot IDs, revision algorithms, budget calculations, `required` joint protection, or Pi native compaction scheduling. Main-request carrier placement follows [STABLE-MEMORY.md](STABLE-MEMORY.md) (`F | Rbefore | M | Rafter`).
 
 ---
 

@@ -1,8 +1,8 @@
 # 稳定记忆位置与滚动历史保留比例
 
-状态：**部分已实施**。更新于 2026-09-13。默认保留比例 `rolling.keepRecentFraction: 0.5` 已在 `src/pi/config.ts` 实施并通过配置/预算/切点检查（保留显式配置覆盖与原有计算公式）；稳定记忆位置布局仍为待实施状态（等待 `nunc.stable-memory` 交付）。
+状态：**稳定布局与观察支持已实施**。更新于 2026-09-13。默认保留比例 `rolling.keepRecentFraction: 0.5` 已在 `src/pi/config.ts` 实施；主请求在内容不变时使用进程内稳定锚点 `F | R前 | M | R后`。真实模型缓存/任务质量仍由下游 `verify-live` 消费者按 m1–m4 观察入口执行。
 
-当前代码中 `rolling.keepRecentFraction` 默认值已改为 `0.5`（显式配置保持有效）；请求布局当前仍按 [ACTIVE-MEMORY.md](ACTIVE-MEMORY.md) 尾置 M（等待后续稳定记忆位置增量实施）。本增量完整实施后，以下布局合同取代旧文档的“每次请求必须尾置 M”；CRUD、CAS、持久化、预算、Larva v1 与 Pi 所有权等未被修改的合同继续适用。
+以下布局合同取代旧文档的“每次请求必须尾置 M”；CRUD、CAS、持久化、预算、Larva v1 与 Pi 所有权等未被修改的合同继续适用。
 
 最新测试约束：**实际模型测试优先 Gemini，可以有限使用 GPT Luna，禁止使用 Astra**。该约束覆盖主请求、维护请求和模型观察者；旧方案中补做 Astra 更新转换测试的要求已撤回，历史 Astra 证据仍可引用。
 
@@ -16,7 +16,7 @@
 
 固定记忆位置应当实施；默认保留比例采用 `0.5`，实际收益仍需集成验证。`0.5` 是已选择的工程折中值，尚未证明最优。
 
-源码核验确认 `src/pi/projection.ts::withEffectiveMemory()` 每次清理旧载体，再将当前 M 追加到请求末尾。普通历史追加因此会移动相同的 M。F 与前部真实历史仍可保持共同前缀，但缓存过更长的完整请求，不保证较短共同前缀已有可复用的缓存状态。
+`src/pi/projection.ts::withEffectiveMemory()` 在内容不变且路径/边界仍合法时复用进程内锚点；普通历史追加不移动 M。首次构造或内容更新在当前请求的合法尾边界建立锚点。
 
 已有实验支持布局修正：
 
@@ -277,7 +277,7 @@ U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含�
 
 ## 12. 当前状态与证据
 
-默认保留比例 `rolling.keepRecentFraction: 0.5` 已在 `src/pi/config.ts` 实施并通过离线配置解析、预算公式和合法切点测试；稳定记忆位置布局及真实模型观察仍待实施与验收。实施与验收由 managed Vectl Plan 跟踪，已完成历史保持不变。
+默认保留比例 `rolling.keepRecentFraction: 0.5` 与稳定记忆位置布局均已在本仓库实施。真实模型缓存/任务质量/压缩间隔仍需下游按 `examples/stable-memory-selection.json` 与 `scripts/verify-live.mjs` 的 m1–m4 入口观察；受控 fixture 不代表 live 语义。实施与验收由 managed Vectl Plan 跟踪，已完成历史保持不变。
 
 主要既有证据：
 
