@@ -40,14 +40,30 @@ project_guidance: '使用 docs/STABLE-MEMORY.md 的完整增量合同；保持 D
   calibration 改掉指定比例。必要行为无证据或重要反例阻断接受，随机措辞/槽数或非重要偶发条件不制造无限实验。兼容修复留在未完成 writable owner；已完成
   producer 需要修复时保留历史、由 Planner 按正常边界复用/增加一个合适 producer，继续原 consumer，禁止逐 finding 节点或第二接受循环。'
 clipboard:
-  author: vectl-orchestrator
-  summary: Gemini Flash费用无限额授权；继续extraction真实比较
-  content: '用户明确授权：OpenRouter google/gemini-3.8-flash 不用管费用上限，记住且不要反复询问。该模型使用 maxCostUsd:null，不代表免费，实际/未知费用仍如实记录。调用/token/时间与目标/凭据保护边界不变。本轮已准备
-    preflight 0calls: /var/folders/rs/6_0h1ssn5439q1yfqy4pykg00000gn/T/nunc-extraction-runtime-preparation-69483z2j/{selection.json,preflight.json}；400
-    calls/600000000 reserved tokens/3600000ms；当前standalone defaults OpenRouter Gemini3.8Flash
-    medium。候选34b64e7已整合，comparison-support DONE，main522fdd7。UI manual验收仍保留。不要迁移原worktree，不向其他peer发消息。'
-  written_at: '2026-09-08T18:49:02.259156Z'
-  expires_at: '2036-09-05T18:49:02.259156Z'
+  author: principal-engineer
+  summary: 'Stable-memory: actual Larva default compaction overwrites Nunc result'
+  content: 'Same-step takeover nunc.stable-memory, candidate28b6e76 in /Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc.stable-memory.
+    Ordinary source/observer corrections and full six-scenario native mechanics passed
+    before adding actual Larva (run-Xa10qA). New actual Larva public-runner test .scratch/principal-native-larva.log
+    / .scratch/stock/run-Hth9Vh/native-test-report.json proves competing owners: m2
+    Nunc candidate summary is Nunc M/cedar-17, persisted summary is Larva native summarization
+    + read-files; m4 persisted cut differs from Nunc result. Correct observer rejects;
+    no test weakened. All effects controlled loopback, finished/quiesced. Source:
+    external read-only /Users/tefx/Projects/larva/contrib/pi-extension/larva.ts::handleLarvaSessionBeforeCompact
+    lines2999-3069 defaults enabled and calls native compact; Pi runner.js::emit lines623-648
+    keeps last nonempty hook result. Current runner loads actual Larva after Nunc.
+    Merely reversing order still performs duplicate model maintenance. Larva public
+    task env LARVA_PI_COMPACTION_CONFIG_FILE accepts absolute config; enabled:false
+    makes only its competing compaction hook abstain (lines2803-2865,3021-3026). Smallest
+    recommended alternative: explicit task-local Larva compaction config enabled:false
+    while retaining actual extension/manual persona mode/prompt resolution; no global/external
+    files changed. Not applied pending parent authority judgment on full-composition
+    scope. Parent may deem this accepted Nunc-owner preserving local prerequisite
+    or ask user; I will not silently claim full default Larva compatibility. Continuing
+    independent required all and dedicated actualLarva inventory. No Plan/claim mutations
+    or actual model calls. Reusable helpers: /Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc.stable-memory/.scratch/helpers'
+  written_at: '2026-09-13T14:36:40.847743Z'
+  expires_at: '2026-09-14T14:36:40.847743Z'
 phases:
 - id: nunc-v1
   name: Nunc 完整项目
