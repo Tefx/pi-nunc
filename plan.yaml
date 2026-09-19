@@ -16,8 +16,8 @@ project_guidance: 保持 Memory.version:1、Slot{id,text}、两个工具 schema�
   调度/持久化及稳定 M 位置。禁止新增 requirement 实体/保护 ID/专用 API/语义错误码/账本/永久 pin/额外运行时模型/自动读取退役来源。语义保真由模型判断，机械校验不证明语义删除安全。保留旧
   fixtures 和接受条件；优先复用适用机械证据。最终接受由 Orchestrator 在 nunc-task-retention.behavior 的完成程序中统一判断，必须覆盖该
   phase 全部结果、完整适用项目离线库存、实际加载入口及必要行为证据。各 producer 完成不等于行为修复。所有新真实续做、维护和模型驱动语义观察只允许
-  gpt-5.6-luna 与请求 light thinking；先核实宿主/provider 的实际映射，只有有据等价映射可用，不暗换 low 或 raw 默认。测试覆盖只限隔离
-  overrides，保留日常配置。新外部运行须事先绑定安全 target、有限调用/token/时间/可知费用预算及清理；未知订阅费用不算零。计划创建不授予执行、真实调用或部署权限；执行者服从届时用户执行授权，不在
+  gpt-5.6-luna 与 low thinking level；运行前核实宿主/provider 的实际模型与 thinking，覆盖主请求、维护及模型驱动观察，不以未经核实的提取默认设置冒充
+  low。测试覆盖只限隔离 overrides，保留日常配置。新外部运行须事先绑定安全 target、有限调用/token/时间/可知费用预算及清理；未知订阅费用不算零。计划创建不授予执行、真实调用或部署权限；执行者服从届时用户执行授权，不在
   Plan 中保存临时会话等待状态。
 clipboard:
   author: vectl-orchestrator
@@ -4353,17 +4353,17 @@ phases:
       \ 的自主运行不算主动编辑覆盖；提供不泄露正确答案的编辑机会。机械 scorer 无法决定语义时保留 UNPROVEN。\n\n三组为 native Pi、实际修改前\
       \ Nunc、整合 candidate；让当前比较绑定支持实际 pre-change target，不把硬编码 70dacad 当成它，同时保持旧历史\
       \ fixture/行为和证据含义。提供 defaults/matched 的真实维度报告，memory tools on/off；不以标签伪造切点、来源、预算、配置可比性。扩展所需跟踪源码及有可失败回归关系的测试，而非临时\
-      \ executable 代替 material logic。\n\n已见具体配置缺口：src/live/defaults.ts 目前有效 thinking\
-      \ 枚举不含 light；contract.ts 和 comparison.ts 绑定/报告 70dacad。先只读确认所选宿主/provider 能否正式表达\
-      \ gpt-5.6-luna/light 及维护路径实际设置；支持的等价映射须有依据、请求值与生效值可观察，不静默映射 low，不用 raw maintenance\
-      \ 默认冒充指定档位。若无法支持则报告具体缺口并阻止受影响 live calls；不擅改产品设计/全局配置。仅必要的隔离测试 override/观察能力属于本步。\n\
-      \nBoundary: 本仓库工具能力、测试、相关 docs、构建输出；不改 Pi core、外仓、全局模型路由、日常 settings/sessions\
-      \ 或秘密。Node 26.7.0/npm 11.19.0 与 tracked lock 复现构建。保留生产日常模型/提取设置及此前协议、预算、存储/锚点不变量。无真实付费调用、部署或历史任务重放。\n\
+      \ executable 代替 material logic。\n\ncontract.ts 和 comparison.ts 仍绑定/报告 70dacad。当前\
+      \ src/live/defaults.ts 有效 thinking 枚举已接受用户指定的 low，不存在该名称的解析缺口。运行前核实所选宿主/provider\
+      \ 对 gpt-5.6-luna、low thinking level 的请求与实际生效设置，覆盖主请求、维护及模型驱动语义观察；不用未经核实的 raw\
+      \ maintenance 默认冒充指定档位。若特定路径无法应用指定配置则报告具体缺口并阻止受影响 live calls，不自行替换模型或升降 thinking，不擅改产品设计/全局配置。仅必要的隔离测试\
+      \ override/观察能力属于本步。\n\nBoundary: 本仓库工具能力、测试、相关 docs、构建输出；不改 Pi core、外仓、全局模型路由、日常\
+      \ settings/sessions 或秘密。Node 26.7.0/npm 11.19.0 与 tracked lock 复现构建。保留生产日常模型/提取设置及此前协议、预算、存储/锚点不变量。无真实付费调用、部署或历史任务重放。\n\
       \nAdmit: semantics 候选与独立场景输入；在首次产品改动前由 controller 保留实际 pre-change Git 候选供本步比较配置消费，不将\
       \ parent 未提交 docs 当成模型效果变更。交付可复现非秘密运行配置模板/操作说明，未来运行者绑定新安全 target 和有限调用/token/时间/可知成本上限，禁止未知费用=0。交付当前完整适用离线\
       \ inventory 及实际 dist/src/index.js、策略与工具说明加载证据。消费者为 behavior。\n\nRecovery: 本工具能力和整合问题由本\
       \ owner 修复；semantics 的内容缺陷在其 unfinished step 修复，已完成则按不可变历史兼容 repair 规则。不能因无法获得\
-      \ live 证据删减验收；缺模型映射仅阻止依赖它的观察，可继续独立离线工作。"
+      \ live 证据删减验收；若特定路径无法应用指定模型/thinking，仅阻止依赖它的观察，可继续独立离线工作。"
     verification: 完成 proof：Node 26.7.0/npm 11.19.0、package-lock.json 锁定依赖，NODE_OPTIONS
       unset；项目原生 node scripts/check.mjs all 提供完整 tests engine/pi/live 发现、tsc 构建与实际
       stock CLI/RPC/JSONL controlled-service 库存。需覆盖本次变动及最终整合候选全部适用 inventory；适用未变历史结果可复用，不强制无差别重跑。源/锁/配置变更须更新受影响证明。新增
@@ -4392,7 +4392,7 @@ phases:
       , \"src/live/**\", \"tests/scenarios/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env*\"\
       , \"**/auth.json\"]\n\nDeliver: 使用交付的实际宿主跟踪 runner，产生面向 Orchestrator 最终接受的观察事实。采用\
-      \ gpt-5.6-luna、请求 light thinking 覆盖续做、维护及任何模型语义观察。比较原生 Pi、实际修改前 Nunc、候选，分别报告\
+      \ gpt-5.6-luna、low thinking level 覆盖续做、维护及任何模型语义观察。比较原生 Pi、实际修改前 Nunc、候选，分别报告\
       \ defaults/matched 的实际来源/预算可比维度及 memory tools on/off。保留 stock native 行为，不额外泄露\
       \ K 或裁切 native 输出来伪造等预算。\n\n完整覆盖 EXTRACTION §0.3 与仍适用 §7：要求从真实读取任务文件进入，持续任务经多次真实压缩与排错后最终产物满足早期精确/否定/范围/交互/验证条件；构建或部分测试成功不提前结束；主动替换/合并/删除混合条目仍续做未完义务，未实际调用\
       \ patch 明确未覆盖，另观察有效编辑机会且不给正确 slot/操作答案；局部修订只影响对应条件，插问/暂停与多个任务退役不丢失其他工作；来源省略、容量和提交失败诚实报告并保留已交付恢复/无重复效果合同。使用真实生成的\
@@ -4402,9 +4402,9 @@ phases:
       \nAdmit: observation-support 已交付跟踪 runner、有效配置观察能力、最终候选构建及离线证据。任何 live call\
       \ 前，controller 必须获得相应执行/费用权限并绑定 native/pre-change/candidate 实际版本、新隔离 target、累计有限\
       \ calls/input-output tokens/walltime/可知费用上限（含继续、维护、semantic observer 与 native\
-      \ split calls）、认证由宿主持有、停止/清理策略。未知订阅费用不记零，旧预算/历史调用不授权重放。先非秘密核实宿主/provider 支持与请求/生效设置；无正式\
-      \ light 等价映射或 maintenance 无法应用时停止受影响调用并报告，不自行替换。对照版本及 target 绑定用于真实观察消费者，不额外做无消费者的\
-      \ hashes。\n\nRecovery: 到边界、预算或失败后停新调用，核对已发出/可能发出 effects、保存最小有用原始事实；未发生的观察不得报通过。仅报告/观察缺口继续本步；需修改仓库时暂停\
+      \ split calls）、认证由宿主持有、停止/清理策略。未知订阅费用不记零，旧预算/历史调用不授权重放。先非秘密核实宿主/provider 请求与实际生效的模型/thinking，确认主请求、维护及模型驱动语义观察均使用\
+      \ gpt-5.6-luna 与 low；不用未经核实的提取默认设置代替。特定路径无法应用指定配置时停止受影响调用并报告，不自行替换。对照版本及 target\
+      \ 绑定用于真实观察消费者，不额外做无消费者的 hashes。\n\nRecovery: 到边界、预算或失败后停新调用，核对已发出/可能发出 effects、保存最小有用原始事实；未发生的观察不得报通过。仅报告/观察缺口继续本步；需修改仓库时暂停\
       \ consumer，交给兼容 writable producer，完成历史不改，修后复用未受影响证据。历史 UNTest 记录只是诊断，绝不重放或覆盖。接受后删除可复现缓存/隔离环境，保留最小不可重构观察及报告。\n\
       \n最终接受责任: Orchestrator 在本步完成程序消费本 phase semantics、observation-support、behavior\
       \ 全部结果，对最终整合候选完整适用 project-native offline inventory、加载 dist/策略/工具 seam、完整当前语义要求与新真实效果作唯一结论。必要缺陷、check\
