@@ -9,25 +9,16 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: '本增量交付稳定记忆位置、默认滚动保留比例0.5及原生测试启动模型组合修复。用户最新决定：“不用比较现有方案和原方案，功能测试过了就行”。以功能验收为最终依据；docs/STABLE-MEMORY.md及相关文档的功能合同继续适用，其中新旧布局、缓存收益、0.67/0.5压缩间隔/质量/成本比较及独立真实模型质量实验不再是接受条件。
-
-
-  功能范围保留：内容不变时稳定合法锚点；实际发送内容、锚点有效性和原CAS写入校验独立；统一projection/admission/receipt/UI的M位置与快照；完整真实R、工具组及原生持久化；默认0.5及显式配置覆盖、触发阈值；及时必要保存/更新/纠错/删除、无频率限制。保留Larva实际prompt
-  bridge、previous_response_id严格检查、保守U+deltaR+当前M估算及Pi调度/认证/队列/输出/恢复所有权。实际Larva组合以显式隔离Nunc单独负责compaction为已验证配置，默认双compaction不兼容限制不得隐去。
-
-
-  唯一nunc.stable-memory-acceptance判断本增量最终整合功能是否接受，不重开DONE或无关历史，不新增发布效果。已有比较报告及原始证据保持其原结论，功能接受不证明新方案更优或通用模型任务质量。此次功能验收不要求追加付费模型调用，不扩大既有模型/费用/次数授权。Nunc在日常settings停用；禁止修改Pi
-  core/安装包、Larva/外仓、全局配置/模型路由、日常sessions/settings/秘密。实际Larva仅只读输入。无发布、push、新账号、凭据管理或历史对话重放。'
-project_guidance: '按用户最新功能验收决定执行；保留DONE定义、证据、状态和历史。稳定布局、默认比例及启动模型修复三个producer由同一末端general消费。最终整合候选须具备完整适用项目原生离线inventory、真实Pi/Larva组合及全部材料功能的有意义测试证据。最后writable
-  producer负责缺失tracked测试/runner和构建；只读consumer不安装、构建或补写程序。
-
-
-  复用source/lock/config/执行输入仍适用的现有证明。实际宿主上的可失败受控行为测试可以证明功能；不能以源码词语、提示词存在、ACK、自报PASS或runner
-  OBSERVED替代行为断言。一般真实模型质量、缓存收益、新旧布局或固定0.67/0.5质量成本比较不再阻塞功能接受，也不要求补跑原比较场景。保存/更新/纠错/删除及当前M来源、CAS、真实R/工具、快照、容量和持久化义务不因此消失。必要功能缺陷、必要check失败或功能证据缺口仍阻断接受。
-
-
-  general保留当前Grok路由运行证据分析；不修改注册模型或全局profile。被测模型与负责人路由分开，既有Gemini优先/Luna有限/禁止Astra或隐式fallback的测试授权不扩大；本验收不包含新增付费测试，既有预算和证据不得通过新root重置。认证由Pi原生owner负责，凭据及来源位置不进入文本或产物。不启用日常Nunc，不复制profile，不改protected
-  state。兼容修复按正常writable owner边界处理，继续原consumer，不重开DONE或建立第二接受循环。'
+context: 当前增量：按 docs/EXTRACTION.md §0、§3、§4.1 修正自动维护和主动编辑造成的完整任务/决定性完成条件丢失。支持合同为 docs/DESIGN.md
+  §0、§2、§3.1–3.2 和 docs/MEMORY-GUIDANCE.md §0；冲突时以上述 EXTRACTION 当前修订为准。历史完成定义、状态、证据不变，不重开旧
+  Gemini 检查或将旧功能接受当作本次语义效果证明。本次比较包含原生 Pi、实际修改前 Nunc、候选；70dacad 仅为历史基线。此前稳定布局任务取消比较的决定仅约束该历史任务，不取消本修订明确要求的比较。没有部署、发布、push、修改日常环境或历史任务重放效果。
+project_guidance: 保持 Memory.version:1、Slot{id,text}、两个工具 schema、add/remove/priority/required、预算算法、revision/原子性、Pi
+  调度/持久化及稳定 M 位置。禁止新增 requirement 实体/保护 ID/专用 API/语义错误码/账本/永久 pin/额外运行时模型/自动读取退役来源。语义保真由模型判断，机械校验不证明语义删除安全。保留旧
+  fixtures 和接受条件；优先复用适用机械证据。最终接受由 Orchestrator 在 nunc-task-retention.behavior 的完成程序中统一判断，必须覆盖该
+  phase 全部结果、完整适用项目离线库存、实际加载入口及必要行为证据。各 producer 完成不等于行为修复。所有新真实续做、维护和模型驱动语义观察只允许
+  gpt-5.6-luna 与请求 light thinking；先核实宿主/provider 的实际映射，只有有据等价映射可用，不暗换 low 或 raw 默认。测试覆盖只限隔离
+  overrides，保留日常配置。新外部运行须事先绑定安全 target、有限调用/token/时间/可知费用预算及清理；未知订阅费用不算零。计划创建不授予执行、真实调用或部署权限；执行者服从届时用户执行授权，不在
+  Plan 中保存临时会话等待状态。
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -4309,3 +4300,126 @@ phases:
       Handoff .scratch/native-startup-handoff.md. Product realGemini cache/semantic/retention
       outcome remains UNPROVEN; continue same acceptance with newly bound integrated
       target/new stateRoot and remaining cumulative budgets.'
+- id: nunc-task-retention
+  name: 完整任务与完成条件保留修正
+  status: pending
+  gate: Orchestrator 在 behavior 完成程序作唯一整合接受：消费 semantics、observation-support 及 behavior
+    的适用证据，对本 phase 全部 material requirements、最终候选完整适用离线库存、加载入口及真实续做/编辑/对照作判断。必要缺陷、检查失败、未证明维度阻止接受；不增设重复
+    gate、不重开 DONE，不以文案或 producer 完成宣称修复。
+  depends_on:
+  - nunc-stable-memory
+  steps:
+  - id: nunc-task-retention.semantics
+    name: 完整任务维护语义与产物导向场景
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/index.ts\"\
+      , \"tests/scenarios/**\", \"docs/**\", \"tests/**\", \"dist/**\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env*\", \"**/auth.json\"]\n\nDeliver: 将 EXTRACTION §0、§3、§4.1 的完整任务语义作为一个产品提示资产交付：合并替代\
+      \ policies/default.md 的旧规则；同步 extractionContext 总目标及 registerMemoryTools 的 read/patch\
+      \ 描述、update/remove 参数指导，不复制整份策略。三个入口不改变工具 schema 或引擎行为。直接保留活动目标、决定性完成条件及 K 中重复的必要要求；准确保留数量/否定/范围/交互/验证条件、来源权限、已采纳任务文件用途与恢复入口。进度与稳定要求按可独立更新组织；混合条目修订保留有效部分，局部成功不取消其他义务，插问不取消任务，合法修订与已完成且无继续用途的信息退役仍成立。保持\
+      \ revision、非例行调用、冲突/未确认恢复指导；不声称引擎拒绝语义删除。\n\n同时交付既有 scenarios 的增量任务输入与独立产物/行动判据，供\
+      \ observation-support 消费，无须重复提示诊断：真实读任务文件、同一长期任务多次压缩和排错、构建通过后完成剩余条件、主动替换/合并/删除混合笔记后续做、局部修订/插问/多任务退役、来源缺失/容量/提交失败。保留\
+      \ g4 问答及旧场景接受条件，新增以真实产物为终点的覆盖；不给被测模型标准 slot、预期 patch 或评分答案。\n\nBoundary: owner\
+      \ 负责本项目模型-facing 语义资产和 eval 内容，不创建 persona/registry，不实施无关产品机制。可 Git 回退的仓库事务；维护\
+      \ frozen M/B/K、来源隔离、单请求无工具合同及所有 phase 不变量。parent 已有三份文档改动必须保留，不覆盖或广泛 stage。必要相关\
+      \ docs 与生产 build 属本交付；无模型调用/部署/日常配置改动。\n\nAdmit: 当前 canonical 文档及现有入口。输出由 observation-support\
+      \ 接受为可加载语义资产及可实施观察场景；这些内容可独立纠正，不改变宿主机制。仅在后续获得实施授权后执行。\n\nRecovery: 内容/局部嵌入修复留在本\
+      \ owner；若需要更改宿主/runner 机制交由既有 observation-support，不新增 finding 节点。完成只证明内容与机械接口交付，行为成效仍待真实观察。"
+    verification: 审查实际三个提示入口对 canonical 合同无遗漏/矛盾，检查未改 schema、引擎算法或宿主边界；场景预期可由真实行动/产物推翻，答案与模型输入隔离。必要生产构建与受影响结构/加载测试使用
+      Node 26.7.0、npm 11.19.0、package-lock.json 的本地依赖；scripts/check.mjs 为可复现检查入口（需要安装时
+      npm ci，不依赖 ambient venv/全局 TS）。禁止关键词/标题存在测试冒充语义证明。机械检查可复用未受影响结果；模型效果未运行即明确未证明。
+    refs:
+    - docs/EXTRACTION.md
+    - docs/DESIGN.md
+    - docs/MEMORY-GUIDANCE.md
+    - policies/default.md
+    - src/engine/request.ts
+    - src/index.ts
+    - package.json
+    - scripts/check.mjs
+    agent: llm-agent-expert
+  - id: nunc-task-retention.observation-support
+    name: 真实续做观察能力与候选整合
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
+      , \"dist/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"\
+      .git/**\", \".pi/**\", \".agents/**\", \".env*\", \"**/auth.json\"]\n\nDeliver:\
+      \ 消费 semantics 的独立任务/判据，以现有 runner、scenario、observer、memory-state 和隔离机制补齐 EXTRACTION\
+      \ §0.3 的可运行观察能力；不新建平行 harness。owner 是此工具能力的缺陷及最终仓库整合负责人。真实工具来源进入任务、多次实际维护、真实生成\
+      \ M/K 后续做、实际主动编辑机会及最终产物可观察；分别记录首次提取、后续维护、记忆读写/恢复与后续行为，区分条件丢失和保留但未执行。无 patch\
+      \ 的自主运行不算主动编辑覆盖；提供不泄露正确答案的编辑机会。机械 scorer 无法决定语义时保留 UNPROVEN。\n\n三组为 native Pi、实际修改前\
+      \ Nunc、整合 candidate；让当前比较绑定支持实际 pre-change target，不把硬编码 70dacad 当成它，同时保持旧历史\
+      \ fixture/行为和证据含义。提供 defaults/matched 的真实维度报告，memory tools on/off；不以标签伪造切点、来源、预算、配置可比性。扩展所需跟踪源码及有可失败回归关系的测试，而非临时\
+      \ executable 代替 material logic。\n\n已见具体配置缺口：src/live/defaults.ts 目前有效 thinking\
+      \ 枚举不含 light；contract.ts 和 comparison.ts 绑定/报告 70dacad。先只读确认所选宿主/provider 能否正式表达\
+      \ gpt-5.6-luna/light 及维护路径实际设置；支持的等价映射须有依据、请求值与生效值可观察，不静默映射 low，不用 raw maintenance\
+      \ 默认冒充指定档位。若无法支持则报告具体缺口并阻止受影响 live calls；不擅改产品设计/全局配置。仅必要的隔离测试 override/观察能力属于本步。\n\
+      \nBoundary: 本仓库工具能力、测试、相关 docs、构建输出；不改 Pi core、外仓、全局模型路由、日常 settings/sessions\
+      \ 或秘密。Node 26.7.0/npm 11.19.0 与 tracked lock 复现构建。保留生产日常模型/提取设置及此前协议、预算、存储/锚点不变量。无真实付费调用、部署或历史任务重放。\n\
+      \nAdmit: semantics 候选与独立场景输入；在首次产品改动前由 controller 保留实际 pre-change Git 候选供本步比较配置消费，不将\
+      \ parent 未提交 docs 当成模型效果变更。交付可复现非秘密运行配置模板/操作说明，未来运行者绑定新安全 target 和有限调用/token/时间/可知成本上限，禁止未知费用=0。交付当前完整适用离线\
+      \ inventory 及实际 dist/src/index.js、策略与工具说明加载证据。消费者为 behavior。\n\nRecovery: 本工具能力和整合问题由本\
+      \ owner 修复；semantics 的内容缺陷在其 unfinished step 修复，已完成则按不可变历史兼容 repair 规则。不能因无法获得\
+      \ live 证据删减验收；缺模型映射仅阻止依赖它的观察，可继续独立离线工作。"
+    verification: 完成 proof：Node 26.7.0/npm 11.19.0、package-lock.json 锁定依赖，NODE_OPTIONS
+      unset；项目原生 node scripts/check.mjs all 提供完整 tests engine/pi/live 发现、tsc 构建与实际
+      stock CLI/RPC/JSONL controlled-service 库存。需覆盖本次变动及最终整合候选全部适用 inventory；适用未变历史结果可复用，不强制无差别重跑。源/锁/配置变更须更新受影响证明。新增
+      runner CLI/preflight、三组实际版本绑定、thinking 请求/有效值和失败阻止、tools on/off、编辑/续做观察的可失败机械测试；加载
+      dist/src/index.js 的真实离线 seam，不只检查源文本。行为成效仍留给 behavior，不把 controlled provider
+      报作 Luna。
+    refs:
+    - docs/EXTRACTION.md
+    - docs/MEMORY-GUIDANCE.md
+    - docs/LIVE.md
+    - src/live/defaults.ts
+    - src/live/contract.ts
+    - src/live/comparison.ts
+    - scripts/compare-extraction.mjs
+    - scripts/check.mjs
+    - package.json
+    - package-lock.json
+    depends_on:
+    - nunc-task-retention.semantics
+    agent: node-typescript-engineer
+  - id: nunc-task-retention.behavior
+    name: 隔离 Luna 行为观察与最终整合接受
+    status: pending
+    description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\"docs/EXTRACTION.md\", \"docs/LIVE.md\", \"scripts/compare-extraction.mjs\"\
+      , \"src/live/**\", \"tests/scenarios/**\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env*\"\
+      , \"**/auth.json\"]\n\nDeliver: 使用交付的实际宿主跟踪 runner，产生面向 Orchestrator 最终接受的观察事实。采用\
+      \ gpt-5.6-luna、请求 light thinking 覆盖续做、维护及任何模型语义观察。比较原生 Pi、实际修改前 Nunc、候选，分别报告\
+      \ defaults/matched 的实际来源/预算可比维度及 memory tools on/off。保留 stock native 行为，不额外泄露\
+      \ K 或裁切 native 输出来伪造等预算。\n\n完整覆盖 EXTRACTION §0.3 与仍适用 §7：要求从真实读取任务文件进入，持续任务经多次真实压缩与排错后最终产物满足早期精确/否定/范围/交互/验证条件；构建或部分测试成功不提前结束；主动替换/合并/删除混合条目仍续做未完义务，未实际调用\
+      \ patch 明确未覆盖，另观察有效编辑机会且不给正确 slot/操作答案；局部修订只影响对应条件，插问/暂停与多个任务退役不丢失其他工作；来源省略、容量和提交失败诚实报告并保留已交付恢复/无重复效果合同。使用真实生成的\
+      \ M/K 和保存状态、恢复读取、行动、最终产物及错误完成声明，区分记忆丢失/仍在而未执行；机械不确定保持 UNPROVEN，不用字数/关键词/模型自报\
+      \ PASS。\n\nBoundary: 只读候选/仓库，允许的效果仅为届时明确授权的新隔离 runtime、模型调用及外部非秘密证据文件；不改源码、生产默认值、日常\
+      \ settings/session、历史日志产物，不部署/发布/push，不复制凭据。owner 可执行受授权 Node/宿主观察，无修复源码权限。\n\
+      \nAdmit: observation-support 已交付跟踪 runner、有效配置观察能力、最终候选构建及离线证据。任何 live call\
+      \ 前，controller 必须获得相应执行/费用权限并绑定 native/pre-change/candidate 实际版本、新隔离 target、累计有限\
+      \ calls/input-output tokens/walltime/可知费用上限（含继续、维护、semantic observer 与 native\
+      \ split calls）、认证由宿主持有、停止/清理策略。未知订阅费用不记零，旧预算/历史调用不授权重放。先非秘密核实宿主/provider 支持与请求/生效设置；无正式\
+      \ light 等价映射或 maintenance 无法应用时停止受影响调用并报告，不自行替换。对照版本及 target 绑定用于真实观察消费者，不额外做无消费者的\
+      \ hashes。\n\nRecovery: 到边界、预算或失败后停新调用，核对已发出/可能发出 effects、保存最小有用原始事实；未发生的观察不得报通过。仅报告/观察缺口继续本步；需修改仓库时暂停\
+      \ consumer，交给兼容 writable producer，完成历史不改，修后复用未受影响证据。历史 UNTest 记录只是诊断，绝不重放或覆盖。接受后删除可复现缓存/隔离环境，保留最小不可重构观察及报告。\n\
+      \n最终接受责任: Orchestrator 在本步完成程序消费本 phase semantics、observation-support、behavior\
+      \ 全部结果，对最终整合候选完整适用 project-native offline inventory、加载 dist/策略/工具 seam、完整当前语义要求与新真实效果作唯一结论。必要缺陷、check\
+      \ 失败或必要维度 UNPROVEN 均不能宣称项目修复已接受。可在本完成程序请 llm-agent-expert 对独立产物/轨迹作内容判断，不能再发未授权模型调用或以建议取代事实；没有第二个\
+      \ gate。既有 completed phases 的无关历史不重开。"
+    verification: 先无调用 preflight 核对安全 target、有效模型/thinking 与整体限额，再按已授权有界场景收集真实证据。所需证据消费者是本步
+      Orchestrator 最终整合判断。新策略/工具指导的真实行为必须来自当前候选；已有容量/持久化/恢复/稳定位置与其他机械证据在执行身份和相关输入未变时可复用。比较差异、未行使编辑维度、来源缺口、无法匹配约束均显式记录，不把有限试验泛化为普遍优越性。最终报告覆盖所有
+      material requirements 并说明适用库存与新旧证据的绑定；无必要缺口才可接受。
+    refs:
+    - docs/EXTRACTION.md
+    - docs/DESIGN.md
+    - docs/MEMORY-GUIDANCE.md
+    - docs/LIVE.md
+    - scripts/compare-extraction.mjs
+    - scripts/check.mjs
+    depends_on:
+    - nunc-task-retention.observation-support
+    agent: node-typescript-engineer
