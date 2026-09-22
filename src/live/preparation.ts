@@ -2,7 +2,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { estimateTokens, findCutPoint, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, Context } from "@earendil-works/pi-ai";
-import { requireValue, type RunConfig } from "./contract.js";
+import { requireValue, RunnerError, type RunConfig } from "./contract.js";
 import type { Control } from "./scenarios.js";
 import { calibrateRetention } from "./calibration.js";
 
@@ -20,8 +20,9 @@ export interface MatchReference { snapshotId: string; mTokens: number | null; ou
 export async function prepareBoundary(input: {
   branch: SessionEntry[]; active: SessionEntry[]; control: Control; turns: Record<string, string[]>; turnOrder: string[];
   config: RunConfig; model: Model<Api>; fixed: { systemPrompt: string; tools: NonNullable<Context["tools"]> }; repository?: string;
-  signal: AbortSignal; trigger?: { callId: string; requestText: string; path: string; cwd: string; fixtureContent: string; contextTokens: number | null };
+  signal: AbortSignal; trigger?: { callId: string; requestText: string; path: string; cwd: string; fixtureContent: string; contextTokens: number | null; allowDeferred?: boolean; deferred?: boolean };
   matched?: boolean; reference?: MatchReference;
+  allowDeferred?: boolean; deferred?: boolean;
 }): Promise<PreparedBoundary> {
   const { branch, control, turns, model } = input;
   const config = structuredClone(input.config), placement = control.placement!;
@@ -42,16 +43,38 @@ export async function prepareBoundary(input: {
     const call = branch[toolIndex]!;
     const siblings = call.type === "message" && call.message.role === "assistant" ? call.message.content.filter(b => b.type === "toolCall") : [];
     const tail = branch.slice(toolIndex + 1).filter(e => sessionEntryToContextMessages(e).length > 0);
-    requireValue(tail.every(e => e.type === "message" && e.message.role === "toolResult"), "PREPARATION", "Assistant suffix already ran after the requested tool batch");
-    const results = tail;
-    requireValue(siblings.length > 0 && new Set(siblings.map(c => c.id)).size === siblings.length && results.length === siblings.length && siblings.every(c => results.filter(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === c.id && e.message.toolName === c.name).length === 1), "PREPARATION", "Incomplete persisted sibling tool batch");
-    const result = results.find(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === t.callId);
+    if (!input.deferred && !t.deferred) {
+      requireValue(tail.every(e => e.type === "message" && e.message.role === "toolResult"), "PREPARATION", "Assistant suffix already ran after the requested tool batch");
+    }
+    const siblingResults = tail.filter(e => e.type === "message" && e.message.role === "toolResult" && siblings.some(c => (e.message as any).toolCallId === c.id));
+    requireValue(siblings.length > 0 && new Set(siblings.map(c => c.id)).size === siblings.length && siblingResults.length === siblings.length && siblings.every(c => siblingResults.filter(e => e.type === "message" && e.message.role === "toolResult" && (e.message as any).toolCallId === c.id && (e.message as any).toolName === c.name).length === 1), "PREPARATION", "Incomplete persisted sibling tool batch");
+    const result = siblingResults.find(e => e.type === "message" && e.message.role === "toolResult" && (e.message as any).toolCallId === t.callId);
     requireValue(result?.type === "message" && result.message.role === "toolResult" && !result.message.isError, "PREPARATION", "Required tool operation was unsuccessful");
     if (result.message.toolName === "read") requireValue(result.message.content.filter(b => b.type === "text").map(b => b.text).join("").trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was incomplete");
-    [call, ...results].forEach(e => retained.add(e.id));
+    [call, ...siblingResults].forEach(e => retained.add(e.id));
     requireValue(t.contextTokens !== null && Number.isFinite(t.contextTokens), "PREPARATION", "Native threshold usage is unknown");
     const h = Math.min(model.contextWindow - config.compaction.reserveTokens, Math.ceil(t.contextTokens) - 1);
     requireValue(h > 0, "PREPARATION", "Native context cannot cross a positive threshold");
+
+    if (input.repository) {
+      const loadAccounting = async () => {
+        const [loadA, loadM] = await Promise.all([
+          import(pathToFileURL(join(input.repository!, "dist/src/engine/accounting.js")).href),
+          import(pathToFileURL(join(input.repository!, "dist/src/engine/memory.js")).href),
+        ]);
+        return { accounting: loadA, memory: loadM };
+      };
+      const { accounting } = await loadAccounting();
+      const fixedTokens = accounting.requestTokens(accounting.mainContext(input.fixed, [], []), config.nunc.budget?.imageTokens) + (config.nunc.budget?.extraMainInputTokens ?? 0);
+      const growthTokens = config.nunc.budget?.growthTokens ?? 1024;
+      if (h <= fixedTokens + growthTokens) {
+        if (input.allowDeferred || t.allowDeferred) {
+          throw new RunnerError("INSUFFICIENT_CONTEXT", `Native context usage ${t.contextTokens} is insufficient to establish a compaction boundary (F=${fixedTokens}, H=${h}, growth=${growthTokens}); deferring until sufficient task progress`);
+        }
+        throw new RunnerError("PREPARATION", `Native context usage ${t.contextTokens} cannot pay fixed/growth costs (F=${fixedTokens}, H=${h}, growth=${growthTokens})`);
+      }
+    }
+
     config.compaction = { ...config.compaction, enabled: true, reserveTokens: model.contextWindow - h };
   }
   let chosen: { keep: number; cut: ReturnType<typeof findCutPoint> } | undefined;

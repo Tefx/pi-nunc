@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { object, canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
-import { ledgerSummary, readLedger, resolveBatchContext } from "./budget.js";
+import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
 import { childEnvironment, nativeEnvironment } from "./host.js";
 export { childEnvironment } from "./host.js";
@@ -56,11 +56,7 @@ export async function execute(value: unknown, repository: string, script: string
   const started = Date.now();
   requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
   const root = input.target.stateRoot;
-  const readAll = () => {
-    const priorRecords = priorLedgerPaths.flatMap(p => existsSync(p) ? readLedger(p) : []);
-    const currentRecords = existsSync(join(root, "calls.jsonl")) ? readLedger(join(root, "calls.jsonl")) : [];
-    return [...priorRecords, ...currentRecords];
-  };
+  const readAll = () => readQualifiedLedgers([...priorLedgerPaths, join(root, "calls.jsonl")]);
   // A newly created target is single-use; no silent rerun of possible prior effects.
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
   const report: RunReport = { version: 1, status: "STOPPED", selection: publicInput(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [

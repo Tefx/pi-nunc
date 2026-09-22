@@ -7,15 +7,20 @@ import type { UsageObservation } from "../engine/types.js";
 import { outputCapState } from "../pi/payload.js";
 import { canonical, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
 
-export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string }
+export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string; ledgerPath?: string }
 export interface CallDiagnostic { code: string; stage: string; transport: "started" | "not-started" | "not-observed"; httpStatus?: number; networkCode?: string }
-export interface CallEnd { kind: "terminal"; id: number; at: number; latencyMs: number; stopReason: string; usage: UsageObservation; diagnostic?: CallDiagnostic; caseKey?: string }
+export interface CallEnd { kind: "terminal"; id: number; at: number; latencyMs: number; stopReason: string; usage: UsageObservation; diagnostic?: CallDiagnostic; caseKey?: string; ledgerPath?: string }
 export type LedgerRecord = CallRecord | CallEnd;
 export function readLedger(path: string): LedgerRecord[] {
   if (!existsSync(path)) return [];
   const text = readFileSync(path, "utf8");
   requireValue(!text || text.endsWith("\n"), "RECONCILIATION", "Incomplete ledger write; do not retry");
-  return text.trim() ? text.trim().split("\n").map(line => JSON.parse(line) as LedgerRecord) : [];
+  const canonicalPath = resolve(path);
+  return text.trim() ? text.trim().split("\n").map(line => {
+    const record = JSON.parse(line) as LedgerRecord;
+    record.ledgerPath = canonicalPath;
+    return record;
+  }) : [];
 }
 const LOCAL_GATE = new Set(["PREPARATION", "PAYLOAD", "ENDPOINT", "CALL_LIMIT", "MODEL", "AUTHORIZATION", "OUTPUT_LIMIT", "INPUT_LIMIT", "COST_LIMIT", "TOKEN_LIMIT", "TIME_LIMIT", "CONCURRENCY", "TERMINAL_FAILURE", "BILLING", "THINKING_UNAPPLIED"]);
 const NETWORK_CODE = /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EPIPE|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ERR_SOCKET_CONNECTION_TIMEOUT|UND_ERR_[A-Z0-9_]{1,40}|AbortError|TimeoutError)$/;
@@ -49,6 +54,7 @@ function describeFailure(code: string, observation: { wrapperEntries: number; tr
  * Compute the charged tokens for one call record.
  * Complete, trustworthy terminal actual usage settles and releases unused reserve.
  * Active, unknown, missing, interrupted, or untrusted usage remains covered worst-case.
+ * Inconsistent total sum/cache components or zero default complete-looking usage cannot release reserve.
  * Duplicate or inconsistent terminals cannot undercharge.
  */
 export function callChargedTokens(r: CallRecord, terminals: CallEnd[] | undefined): number {
@@ -57,12 +63,45 @@ export function callChargedTokens(r: CallRecord, terminals: CallEnd[] | undefine
     return Math.max(r.reservedTokens, ...terminals.map(t => typeof t.usage?.totalTokens === "number" && Number.isFinite(t.usage.totalTokens) ? t.usage.totalTokens : r.reservedTokens));
   }
   const t = terminals[0]!;
-  const tokens = t.usage?.totalTokens;
-  if (typeof tokens === "number" && Number.isFinite(tokens) && tokens >= 0 && tokens <= r.reservedTokens &&
-      (t.stopReason === "stop" || t.stopReason === "toolUse") && (!t.diagnostic || t.diagnostic.code === "OK")) {
-    return tokens;
+  if (t.stopReason !== "stop" && t.stopReason !== "toolUse") return r.reservedTokens;
+  if (t.diagnostic && t.diagnostic.code !== "OK") return r.reservedTokens;
+  if (typeof t.latencyMs !== "number" || !Number.isFinite(t.latencyMs) || t.latencyMs < 0) return r.reservedTokens;
+
+  const u = t.usage;
+  if (!u || typeof u !== "object") return r.reservedTokens;
+
+  const total = u.totalTokens;
+  const contextInput = u.contextInput;
+  const output = u.output;
+
+  // Explicit completeness: totalTokens, contextInput, and output must be valid safe integers
+  if (typeof total !== "number" || !Number.isSafeInteger(total) || total <= 0) return r.reservedTokens;
+  if (typeof contextInput !== "number" || !Number.isSafeInteger(contextInput) || contextInput <= 0) return r.reservedTokens;
+  if (typeof output !== "number" || !Number.isSafeInteger(output) || output < 0) return r.reservedTokens;
+
+  // Component consistency: contextInput + output === totalTokens
+  if (contextInput + output !== total) return r.reservedTokens;
+
+  // Subcomponent consistency (input, cacheRead, cacheWrite) if present
+  if (u.input !== null || u.cacheRead !== null || u.cacheWrite !== null) {
+    if (u.input === null || u.cacheRead === null || u.cacheWrite === null) return r.reservedTokens;
+    if (!Number.isSafeInteger(u.input) || u.input < 0) return r.reservedTokens;
+    if (!Number.isSafeInteger(u.cacheRead) || u.cacheRead < 0) return r.reservedTokens;
+    if (!Number.isSafeInteger(u.cacheWrite) || u.cacheWrite < 0) return r.reservedTokens;
+    if (u.input + u.cacheRead + u.cacheWrite !== contextInput) return r.reservedTokens;
   }
-  return r.reservedTokens;
+
+  // Reasoning consistency if present
+  if (u.reasoning !== null) {
+    if (!Number.isSafeInteger(u.reasoning) || u.reasoning < 0 || u.reasoning > output) return r.reservedTokens;
+  }
+
+  // Reservation ceilings
+  if (contextInput > r.reservedTokens - r.outputCeiling) return r.reservedTokens;
+  if (output > r.outputCeiling) return r.reservedTokens;
+  if (total > r.reservedTokens) return r.reservedTokens;
+
+  return total;
 }
 
 /**
@@ -79,12 +118,21 @@ export function callChargedCost(r: CallRecord, terminals: CallEnd[] | undefined)
     return Math.max(baseCost, ...terminals.map(t => typeof t.usage?.cost === "number" && Number.isFinite(t.usage.cost) ? t.usage.cost : baseCost));
   }
   const t = terminals[0]!;
+  if (t.stopReason !== "stop" && t.stopReason !== "toolUse") return baseCost;
+  if (t.diagnostic && t.diagnostic.code !== "OK") return baseCost;
+
   const cost = t.usage?.cost;
-  if (typeof cost === "number" && Number.isFinite(cost) && cost >= 0 && cost <= baseCost &&
-      (t.stopReason === "stop" || t.stopReason === "toolUse") && (!t.diagnostic || t.diagnostic.code === "OK")) {
-    return cost;
+  // Unknown cost (null or undefined) or non-positive cost cannot settle against positive reservation
+  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0 || cost > baseCost) {
+    return baseCost;
   }
-  return baseCost;
+  return cost;
+}
+
+export interface QualifiedCall {
+  ledgerPath: string;
+  record: CallRecord;
+  terminals: CallEnd[];
 }
 
 /**
@@ -100,30 +148,52 @@ export function resolveBatchContext(input: RunInput): {
   const lim = input.limits as any;
   const rawPaths: string[] = [
     ...(input.batch?.priorLedgers ?? []),
-    ...(input.authority?.priorLedgers ?? []),
     ...(lim?.priorLedgers ?? []),
     ...(input.batch?.sharedLedger ? [input.batch.sharedLedger] : []),
-    ...(input.authority?.sharedLedger ? [input.authority.sharedLedger] : []),
     ...(lim?.sharedLedger ? [lim.sharedLedger] : []),
   ];
-  const priorLedgerPaths = [...new Set(rawPaths.filter((p): p is string => typeof p === "string" && p.trim().length > 0))];
-  const priorRecords = priorLedgerPaths.flatMap(p => existsSync(p) ? readLedger(p) : []);
-  const firstPriorCall = priorRecords.find(r => r.kind === "reserve");
+  const seen = new Set<string>();
+  const priorLedgerPaths: string[] = [];
+  for (const p of rawPaths) {
+    if (typeof p !== "string" || !p.trim()) continue;
+    const canonical = resolve(p);
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    requireValue(existsSync(p), "LEDGER", `Declared prior ledger file does not exist: ${p}`);
+    priorLedgerPaths.push(p);
+  }
 
-  const explicitFirst = input.batch?.firstDispatchAt ?? input.authority?.firstDispatchAt ?? lim?.firstDispatchAt;
-  const firstDispatchAt = explicitFirst !== undefined
-    ? (typeof explicitFirst === "string" ? new Date(explicitFirst).getTime() : explicitFirst)
-    : (firstPriorCall?.at ?? null);
+  const priorRecords = priorLedgerPaths.flatMap(p => readLedger(p));
+  const priorReserveTimes = priorRecords.filter(r => r.kind === "reserve").map(r => r.at);
+  const earliestHistoricalDispatch = priorReserveTimes.length > 0 ? Math.min(...priorReserveTimes) : null;
 
-  const explicitDeadline = input.batch?.deadline ?? input.authority?.deadline ?? lim?.deadline;
-  const parsedExplicit = explicitDeadline !== undefined
-    ? (typeof explicitDeadline === "string" ? new Date(explicitDeadline).getTime() : explicitDeadline)
-    : undefined;
+  const explicitFirst = input.batch?.firstDispatchAt ?? lim?.firstDispatchAt;
+  let firstDispatchAt: number | null = null;
+  if (explicitFirst !== undefined) {
+    const parsed = typeof explicitFirst === "string" ? new Date(explicitFirst).getTime() : explicitFirst;
+    requireValue(Number.isFinite(parsed) && parsed > 0, "BATCH", "firstDispatchAt must be a positive timestamp or ISO date");
+    if (earliestHistoricalDispatch !== null) {
+      requireValue(parsed <= earliestHistoricalDispatch, "BATCH", `explicit firstDispatchAt cannot be later than earliest historical dispatch`);
+      firstDispatchAt = Math.min(parsed, earliestHistoricalDispatch);
+    } else {
+      firstDispatchAt = parsed;
+    }
+  } else {
+    firstDispatchAt = earliestHistoricalDispatch;
+  }
+
+  const explicitDeadline = input.batch?.deadline ?? lim?.deadline;
+  let parsedExplicitDeadline: number | undefined;
+  if (explicitDeadline !== undefined) {
+    const parsed = typeof explicitDeadline === "string" ? new Date(explicitDeadline).getTime() : explicitDeadline;
+    requireValue(Number.isFinite(parsed) && parsed > 0, "BATCH", "deadline must be a positive timestamp or ISO date");
+    parsedExplicitDeadline = parsed;
+  }
 
   const origin = firstDispatchAt ?? Date.now();
   const calculatedDeadline = origin + input.limits.maxDurationMs;
-  const deadline = parsedExplicit !== undefined
-    ? Math.min(parsedExplicit, calculatedDeadline)
+  const deadline = parsedExplicitDeadline !== undefined
+    ? Math.min(parsedExplicitDeadline, calculatedDeadline)
     : calculatedDeadline;
 
   return { priorLedgerPaths, firstDispatchAt, deadline };
@@ -132,15 +202,53 @@ export function resolveBatchContext(input: RunInput): {
 /** Reservations are settled by trustworthy terminal actual usage. Missing usage or killed requests consume full reservation. */
 export class BudgetLedger {
   private active = false;
-  constructor(readonly path: string, readonly limits: Limits, readonly deadline: number, readonly signal: AbortSignal, readonly caseKey?: string, readonly priorLedgerPaths: string[] = []) {}
+  constructor(readonly path: string, readonly limits: Limits, readonly deadline: number, readonly signal: AbortSignal, readonly caseKey?: string, readonly priorLedgerPaths: string[] = []) {
+    for (const p of this.priorLedgerPaths) {
+      requireValue(existsSync(p), "LEDGER", `Declared prior ledger file does not exist: ${p}`);
+    }
+  }
+
+  readQualifiedCalls(): { calls: QualifiedCall[]; currentFileRecords: LedgerRecord[] } {
+    const seen = new Set<string>();
+    const allPaths: string[] = [];
+    for (const p of [...this.priorLedgerPaths, this.path]) {
+      const canonical = resolve(p);
+      if (seen.has(canonical)) continue;
+      seen.add(canonical);
+      allPaths.push(p);
+    }
+    const calls: QualifiedCall[] = [];
+    let currentFileRecords: LedgerRecord[] = [];
+    for (const p of allPaths) {
+      if (!existsSync(p)) continue;
+      const records = readLedger(p);
+      if (resolve(p) === resolve(this.path)) currentFileRecords = records;
+      const fileCalls = records.filter((r): r is CallRecord => r.kind === "reserve");
+      const fileTerminals = records.filter((r): r is CallEnd => r.kind === "terminal");
+      const fileTerminalsById = new Map<number, CallEnd[]>();
+      for (const t of fileTerminals) {
+        const list = fileTerminalsById.get(t.id) ?? [];
+        list.push(t);
+        fileTerminalsById.set(t.id, list);
+      }
+      for (const r of fileCalls) {
+        calls.push({
+          ledgerPath: p,
+          record: r,
+          terminals: fileTerminalsById.get(r.id) ?? [],
+        });
+      }
+    }
+    return { calls, currentFileRecords };
+  }
 
   readAllRecords(): LedgerRecord[] {
     const seen = new Set<string>();
     const records: LedgerRecord[] = [];
     for (const p of [...this.priorLedgerPaths, this.path]) {
-      const canonicalPath = resolve(p);
-      if (seen.has(canonicalPath)) continue;
-      seen.add(canonicalPath);
+      const canonical = resolve(p);
+      if (seen.has(canonical)) continue;
+      seen.add(canonical);
       if (existsSync(p)) records.push(...readLedger(p));
     }
     return records;
@@ -163,33 +271,33 @@ export class BudgetLedger {
     const reservedCostUsd = this.limits.maxCostUsd === null ? null : catalogReservationUsd;
     requireValue(model.api !== "openai-codex-responses" || this.limits.maxCostUsd === null, "COST_LIMIT", "Subscription billing is unknown; maxCostUsd must be null");
     requireValue(reservedCostUsd !== undefined, "COST_LIMIT", "Unknown pricing cannot establish a USD reservation");
-    const records = this.readAllRecords(), calls = records.filter((r): r is CallRecord => r.kind === "reserve");
-    const terminals = records.filter((r): r is CallEnd => r.kind === "terminal");
-    const ended = new Set(terminals.map(r => r.id));
-    const sameCase = new Set(calls.filter(r => (r.caseKey ?? "") === (this.caseKey ?? "")).map(r => r.id));
-    requireValue(terminals.filter(r => sameCase.has(r.id)).every(r => r.stopReason === "stop" || r.stopReason === "toolUse"), "TERMINAL_FAILURE", "Earlier request in this scenario failed or truncated; no retries or further effects allowed");
-    requireValue(calls.every(r => ended.has(r.id)), "RECONCILIATION", "Earlier request has no terminal receipt; no further effects allowed");
-    if (this.limits.maxCalls !== null) requireValue(calls.length < this.limits.maxCalls, "CALL_LIMIT", "Call ceiling reached");
 
-    const terminalsById = new Map<number, CallEnd[]>();
-    for (const t of terminals) {
-      const list = terminalsById.get(t.id) ?? [];
-      list.push(t);
-      terminalsById.set(t.id, list);
+    const { calls: qualifiedCalls, currentFileRecords } = this.readQualifiedCalls();
+
+    for (const c of qualifiedCalls) {
+      requireValue(c.terminals.length > 0, "RECONCILIATION", `Earlier request in ${c.ledgerPath} (id: ${c.record.id}) has no terminal receipt; no further effects allowed`);
+      if ((c.record.caseKey ?? "") === (this.caseKey ?? "")) {
+        requireValue(c.terminals.every(t => t.stopReason === "stop" || t.stopReason === "toolUse"), "TERMINAL_FAILURE", "Earlier request in this scenario failed or truncated; no retries or further effects allowed");
+      }
     }
 
-    const chargedTokens = calls.reduce((n, r) => n + callChargedTokens(r, terminalsById.get(r.id)), 0);
+    if (this.limits.maxCalls !== null) {
+      requireValue(qualifiedCalls.length < this.limits.maxCalls, "CALL_LIMIT", "Call ceiling reached");
+    }
+
+    const chargedTokens = qualifiedCalls.reduce((n, c) => n + callChargedTokens(c.record, c.terminals), 0);
     if (this.limits.maxTotalTokens !== null) {
       requireValue(chargedTokens + reservedTokens <= this.limits.maxTotalTokens, "TOKEN_LIMIT", "Remaining token authorization cannot reserve another full request");
     }
 
     if (this.limits.maxCostUsd !== null) {
-      requireValue(reservedCostUsd !== null && calls.every(r => r.reservedCostUsd !== null), "COST_LIMIT", "Unknown pricing cannot establish a USD reservation");
-      const chargedCostUsd = calls.reduce((n, r) => n + (callChargedCost(r, terminalsById.get(r.id)) ?? 0), 0);
+      requireValue(reservedCostUsd !== null && qualifiedCalls.every(c => c.record.reservedCostUsd !== null), "COST_LIMIT", "Unknown pricing cannot establish a USD reservation");
+      const chargedCostUsd = qualifiedCalls.reduce((n, c) => n + (callChargedCost(c.record, c.terminals) ?? 0), 0);
       requireValue(chargedCostUsd + reservedCostUsd <= this.limits.maxCostUsd, "COST_LIMIT", "Remaining cost authorization cannot reserve another full request");
     }
 
-    const record: CallRecord = { kind: "reserve", id: calls.length + 1, model: `${model.provider}/${model.id}`, inputEstimate, outputCeiling, reservedTokens, reservedCostUsd, ...(catalogReservationUsd === undefined ? {} : { catalogReservationUsd }), at: Date.now(), ...(this.caseKey ? { caseKey: this.caseKey } : {}) };
+    const currentFileCalls = currentFileRecords.filter((r): r is CallRecord => r.kind === "reserve");
+    const record: CallRecord = { kind: "reserve", id: currentFileCalls.length + 1, model: `${model.provider}/${model.id}`, inputEstimate, outputCeiling, reservedTokens, reservedCostUsd, ...(catalogReservationUsd === undefined ? {} : { catalogReservationUsd }), at: Date.now(), ...(this.caseKey ? { caseKey: this.caseKey } : {}) };
     appendFileSync(this.path, `${JSON.stringify(record)}\n`, { mode: 0o600, flush: true }); this.active = true;
     return record;
   }
@@ -201,28 +309,112 @@ export class BudgetLedger {
     appendFileSync(this.path, `${JSON.stringify(terminal)}\n`, { mode: 0o600, flush: true }); this.active = false;
   }
 }
-export function ledgerSummary(records: LedgerRecord[], limits?: Limits) {
-  const calls = records.filter((r): r is CallRecord => r.kind === "reserve");
-  const terminal = records.filter((r): r is CallEnd => r.kind === "terminal");
-  const ended = new Set(terminal.map(r => r.id));
-  const terminalsById = new Map<number, CallEnd[]>();
+export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
+  const seen = new Set<string>();
+  const calls: QualifiedCall[] = [];
+  for (const p of ledgerPaths) {
+    if (typeof p !== "string" || !p.trim()) continue;
+    const canonical = resolve(p);
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    if (!existsSync(p)) continue;
+    const records = readLedger(p);
+    const fileCalls = records.filter((r): r is CallRecord => r.kind === "reserve");
+    const fileTerminals = records.filter((r): r is CallEnd => r.kind === "terminal");
+    const fileTerminalsById = new Map<number, CallEnd[]>();
+    for (const t of fileTerminals) {
+      const list = fileTerminalsById.get(t.id) ?? [];
+      list.push(t);
+      fileTerminalsById.set(t.id, list);
+    }
+    for (const r of fileCalls) {
+      calls.push({
+        ledgerPath: p,
+        record: r,
+        terminals: fileTerminalsById.get(r.id) ?? [],
+      });
+    }
+  }
+  return calls;
+}
+
+export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?: Limits) {
+  if (records.length > 0 && "record" in records[0]! && "terminals" in records[0]!) {
+    const qCalls = records as QualifiedCall[];
+    const calls = qCalls.map(c => c.record);
+    const allTerminals = qCalls.flatMap(c => c.terminals);
+    const activeCalls = qCalls.filter(c => c.terminals.length === 0);
+
+    const sum = (key: keyof UsageObservation): number | null =>
+      allTerminals.length !== calls.length || allTerminals.some(r => r.usage[key] === null)
+        ? null
+        : allTerminals.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
+
+    const reservedTokens = calls.reduce((n, r) => n + r.reservedTokens, 0);
+    const chargedTokens = qCalls.reduce((n, c) => n + callChargedTokens(c.record, c.terminals), 0);
+    const reservedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : calls.reduce((n, r) => n + (r.reservedCostUsd ?? 0), 0);
+    const chargedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : qCalls.reduce((n, c) => n + (callChargedCost(c.record, c.terminals) ?? 0), 0);
+    const catalogReservationUsd = calls.every(r => r.catalogReservationUsd !== undefined) ? calls.reduce((n, r) => n + (r.catalogReservationUsd ?? 0), 0) : null;
+
+    const actualTokens = sum("totalTokens");
+    const actualCostUsd = sum("cost");
+
+    const activeReservedTokens = activeCalls.reduce((n, c) => n + c.record.reservedTokens, 0);
+    const activeReservedCostUsd = activeCalls.some(c => c.record.reservedCostUsd === null) ? null : activeCalls.reduce((n, c) => n + (c.record.reservedCostUsd ?? 0), 0);
+
+    const remainingCalls = limits?.maxCalls !== null && limits?.maxCalls !== undefined ? Math.max(0, limits.maxCalls - calls.length) : null;
+    const remainingTokens = limits?.maxTotalTokens !== null && limits?.maxTotalTokens !== undefined ? Math.max(0, limits.maxTotalTokens - chargedTokens) : null;
+    const remainingCostUsd = limits?.maxCostUsd !== null && limits?.maxCostUsd !== undefined && chargedCostUsd !== null ? Math.max(0, limits.maxCostUsd - chargedCostUsd) : null;
+
+    return {
+      calls: calls.length,
+      reservedTokens,
+      chargedTokens,
+      actualTokens,
+      reservedCostUsd,
+      chargedCostUsd,
+      actualCostUsd,
+      activeReservedTokens,
+      activeReservedCostUsd,
+      catalogReservationUsd,
+      input: sum("input"),
+      cacheRead: sum("cacheRead"),
+      cacheWrite: sum("cacheWrite"),
+      contextInput: sum("contextInput"),
+      output: sum("output"),
+      totalTokens: actualTokens,
+      costUsd: actualCostUsd,
+      remainingCalls,
+      remainingTokens,
+      remainingCostUsd,
+      unreconciledCallIds: activeCalls.map(c => c.record.id),
+    };
+  }
+
+  const lRecords = records as LedgerRecord[];
+  const calls = lRecords.filter((r): r is CallRecord => r.kind === "reserve");
+  const terminal = lRecords.filter((r): r is CallEnd => r.kind === "terminal");
+  const callKey = (r: { ledgerPath?: string; id: number }) => r.ledgerPath ? `${r.ledgerPath}::${r.id}` : String(r.id);
+  const ended = new Set(terminal.map(callKey));
+  const terminalsById = new Map<string, CallEnd[]>();
   for (const t of terminal) {
-    const list = terminalsById.get(t.id) ?? [];
+    const k = callKey(t);
+    const list = terminalsById.get(k) ?? [];
     list.push(t);
-    terminalsById.set(t.id, list);
+    terminalsById.set(k, list);
   }
   const sum = (key: keyof UsageObservation): number | null => terminal.length !== calls.length || terminal.some(r => r.usage[key] === null) ? null : terminal.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
 
   const reservedTokens = calls.reduce((n, r) => n + r.reservedTokens, 0);
-  const chargedTokens = calls.reduce((n, r) => n + callChargedTokens(r, terminalsById.get(r.id)), 0);
+  const chargedTokens = calls.reduce((n, r) => n + callChargedTokens(r, terminalsById.get(callKey(r))), 0);
   const reservedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : calls.reduce((n, r) => n + (r.reservedCostUsd ?? 0), 0);
-  const chargedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : calls.reduce((n, r) => n + (callChargedCost(r, terminalsById.get(r.id)) ?? 0), 0);
+  const chargedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : calls.reduce((n, r) => n + (callChargedCost(r, terminalsById.get(callKey(r))) ?? 0), 0);
   const catalogReservationUsd = calls.every(r => r.catalogReservationUsd !== undefined) ? calls.reduce((n, r) => n + (r.catalogReservationUsd ?? 0), 0) : null;
 
   const actualTokens = sum("totalTokens");
   const actualCostUsd = sum("cost");
 
-  const activeCalls = calls.filter(r => !ended.has(r.id));
+  const activeCalls = calls.filter(r => !ended.has(callKey(r)));
   const activeReservedTokens = activeCalls.reduce((n, r) => n + r.reservedTokens, 0);
   const activeReservedCostUsd = activeCalls.some(r => r.reservedCostUsd === null) ? null : activeCalls.reduce((n, r) => n + (r.reservedCostUsd ?? 0), 0);
 

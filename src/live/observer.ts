@@ -8,7 +8,7 @@ import { setObserverMemoryLayout } from "../pi/projection.js";
 
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; boundaryIndex?: number; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; unconfirmedMode?: number; unconfirmedCallId?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
+export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; savedTriggerId?: string; boundaryDeferred?: boolean; held?: () => void; boundaryDone?: boolean; boundaryIndex?: number; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; unconfirmedMode?: number; unconfirmedCallId?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
 export function observerState(source: string): ObserverState | undefined { return states.get(source); }
@@ -190,11 +190,15 @@ export default function observer(pi: ExtensionAPI): void {
   });
   pi.on("turn_end", async (event, ctx) => {
     const currentBnd = activeBoundary();
-    if (!currentBnd || state.boundaryDone || !state.triggerId || !event.toolResults.some(r => r.toolCallId === state.triggerId)) return;
+    if (!currentBnd || state.boundaryDone) return;
+    const isTriggerTurn = Boolean(state.triggerId && event.toolResults.some(r => r.toolCallId === state.triggerId));
+    const isDeferredTurn = Boolean(state.boundaryDeferred && state.savedTriggerId && event.toolResults.length > 0);
+    if (!isTriggerTurn && !isDeferredTurn) return;
+    const triggerId = state.triggerId ?? state.savedTriggerId!;
     state.boundaryDone = true;
     const held = new Promise<void>(resolve => { state.held = resolve; });
     log("tool-boundary", { branch: ctx.sessionManager.getBranch(), active: ctx.sessionManager.buildContextEntries(),
-      model: ctx.model, thinking: ctx.thinkingLevel, usage: ctx.getContextUsage(), triggerId: state.triggerId, boundaryIndex: state.boundaryIndex ?? 0 });
+      model: ctx.model, thinking: ctx.thinkingLevel, usage: ctx.getContextUsage(), triggerId, boundaryIndex: state.boundaryIndex ?? 0 });
     // The command/reload path releases plain state. Do not touch ctx/pi after await.
     await held;
   });
@@ -204,7 +208,10 @@ export default function observer(pi: ExtensionAPI): void {
         typeof (event.input as any).path === "string" && currentBnd.control.trigger?.pathArgument && resolve(binding.cwd, (event.input as any).path.replace(/^@/, "")) === resolve(binding.cwd, currentBnd.control.trigger.pathArgument)) {
       const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
       const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
-      if (text === currentBnd.requestText && ++state.occurrence === currentBnd.control.trigger.occurrence) state.triggerId = event.toolCallId;
+      if (text === currentBnd.requestText && ++state.occurrence === currentBnd.control.trigger.occurrence) {
+        state.triggerId = event.toolCallId;
+        state.savedTriggerId = event.toolCallId;
+      }
     }
     try {
       signal.throwIfAborted();
@@ -316,18 +323,29 @@ export default function observer(pi: ExtensionAPI): void {
   } });
   pi.registerCommand("nunc-observer-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("nunc-observer-release", { handler: async args => {
-    const decision = JSON.parse(args) as { firstKeptEntryId?: string; stop?: string; restored?: boolean };
+    const decision = JSON.parse(args) as { firstKeptEntryId?: string; stop?: string; restored?: boolean; deferred?: boolean };
     if (decision.stop) state.stop ??= decision.stop;
-    if (decision.firstKeptEntryId) state.expectedFirst = decision.firstKeptEntryId;
+    if (decision.firstKeptEntryId) {
+      state.expectedFirst = decision.firstKeptEntryId;
+      state.boundaryDeferred = false;
+    }
     if (decision.restored) {
       state.restorePending = false;
       state.boundaryIndex = (state.boundaryIndex ?? 0) + 1;
       state.boundaryDone = false;
       state.boundaryCommitted = false;
+      state.boundaryDeferred = false;
       delete state.expectedFirst;
       delete state.triggerId;
+      delete state.savedTriggerId;
       state.occurrence = 0;
       log("lifecycle", { phase: "boundary-config-restored", nextBoundaryIndex: state.boundaryIndex });
+    }
+    if (decision.deferred) {
+      state.boundaryDeferred = true;
+      state.boundaryDone = false;
+      delete state.triggerId;
+      log("lifecycle", { phase: "boundary-deferred", boundaryIndex: state.boundaryIndex ?? 0 });
     }
     state.held?.(); delete state.held;
   } });

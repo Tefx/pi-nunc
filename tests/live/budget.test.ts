@@ -349,6 +349,41 @@ test("duplicate or inconsistent terminal records cannot undercharge and keep wor
     };
     assert.equal(callChargedTokens(r, [tExceed]), 68192);
     assert.equal(callChargedCost(r, [tExceed]), 0.68192);
+
+    // Incomplete or zero-default usage: { totalTokens: 0, contextInput: null, output: null }
+    const tZeroDefault: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+      usage: { input: null, output: null, cacheRead: null, cacheWrite: null, contextInput: null, reasoning: null, totalTokens: 0, cost: null }
+    };
+    assert.equal(callChargedTokens(r, [tZeroDefault]), 68192, "zero-default usage cannot release reserve");
+
+    // Inconsistent components: contextInput + output !== totalTokens
+    const tInconsistentSum: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+      usage: { input: null, output: 400, cacheRead: null, cacheWrite: null, contextInput: 500, reasoning: null, totalTokens: 1000, cost: 0.001 }
+    };
+    assert.equal(callChargedTokens(r, [tInconsistentSum]), 68192, "inconsistent total sum cannot release reserve");
+
+    // Inconsistent subcomponents: input + cacheRead + cacheWrite !== contextInput
+    const tInconsistentSub: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+      usage: { input: 500, output: 200, cacheRead: 100, cacheWrite: 100, contextInput: 800, reasoning: null, totalTokens: 1000, cost: 0.001 }
+    };
+    assert.equal(callChargedTokens(r, [tInconsistentSub]), 68192, "inconsistent cache subcomponents cannot release reserve");
+
+    // Partial subcomponents: missing input
+    const tPartialSub: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+      usage: { input: null, output: 200, cacheRead: 100, cacheWrite: 100, contextInput: 800, reasoning: null, totalTokens: 1000, cost: 0.001 }
+    };
+    assert.equal(callChargedTokens(r, [tPartialSub]), 68192, "partial subcomponent metadata cannot release reserve");
+
+    // Unknown or zero cost when rate is non-zero
+    const tZeroCost: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+      usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, contextInput: 50, reasoning: null, totalTokens: 100, cost: 0 }
+    };
+    assert.equal(callChargedCost(r, [tZeroCost]), 0.68192, "unknown zero cost cannot settle against positive reservation");
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
@@ -375,12 +410,12 @@ test("shared batch accounting across invocations/comparison preserves cumulative
 
     // Invocation 2: starts with run2Path and priorLedgerPaths = [run1Path]
     const ledger2 = new BudgetLedger(run2Path, limits, Date.now() + 60000, new AbortController().signal, undefined, [run1Path]);
-    const allRecords = ledger2.readAllRecords();
-    assert.equal(allRecords.length, 2, "reads prior reserve and terminal records");
+    const { calls: qualifiedBefore } = ledger2.readQualifiedCalls();
+    assert.equal(qualifiedBefore.length, 1, "reads prior reserve and terminal records with ledger qualification");
 
-    // Call in Invocation 2 receives id: 2
+    // Call in Invocation 2 receives id: 1 in its own file, but cumulative calls is 2
     const r2 = ledger2.reserve(model, context, 8192);
-    assert.equal(r2.id, 2, "cumulative call ID continues from prior invocation");
+    assert.equal(r2.id, 1, "own file ID is 1");
     assert.equal(r2.reservedTokens, 68192);
 
     // Admitted because 1255 (settled) + 68192 <= 100,000!
@@ -399,6 +434,49 @@ test("shared batch accounting across invocations/comparison preserves cumulative
     assert.equal(summary.chargedTokens, 1255 + 1500);
     assert.equal(summary.actualTokens, 2755);
     assert.equal(summary.remainingCalls, 0);
+
+    // Test ledger-qualified identity isolation:
+    // If File A has call 1 (unresolved), and File B has call 1 (completed),
+    // File B's terminal cannot settle File A's reserve!
+    const runADir = join(input.target.stateRoot, "runA"); await mkdir(runADir);
+    const runBDir = join(input.target.stateRoot, "runB"); await mkdir(runBDir);
+    const runAPath = join(runADir, "calls.jsonl");
+    const runBPath = join(runBDir, "calls.jsonl");
+    const ledgerA = new BudgetLedger(runAPath, limits, Date.now() + 60000, new AbortController().signal);
+    ledgerA.reserve(model, context, 8192); // reserve 1 in A with NO terminal
+    const ledgerB = new BudgetLedger(runBPath, limits, Date.now() + 60000, new AbortController().signal);
+    const rB1 = ledgerB.reserve(model, context, 8192); // reserve 1 in B
+    ledgerB.finish(rB1, msg1); // terminal 1 in B
+
+    // Loading File A as prior to a new run must fail with RECONCILIATION because A is unresolved
+    const runCDir = join(input.target.stateRoot, "runC"); await mkdir(runCDir);
+    const runCPath = join(runCDir, "calls.jsonl");
+    const ledgerC = new BudgetLedger(runCPath, limits, Date.now() + 60000, new AbortController().signal, undefined, [runAPath, runBPath]);
+    assert.throws(() => ledgerC.reserve(model, context, 8192), (err: any) => err.code === "RECONCILIATION");
+
+    // Missing declared prior file must block with LEDGER error, not silently skip
+    assert.throws(
+      () => new BudgetLedger(runCPath, limits, Date.now() + 60000, new AbortController().signal, undefined, ["/path/does/not/exist.jsonl"]),
+      (err: any) => err.code === "LEDGER"
+    );
+
+    // Shuffled prior files find earliest historical dispatch
+    const contextBatch = resolveBatchContext({
+      ...input,
+      batch: { priorLedgers: [runBPath, run1Path] },
+      limits: { ...limits, maxDurationMs: 60000 },
+    });
+    assert(contextBatch.firstDispatchAt !== null);
+
+    // Explicit timestamp later than history is rejected
+    assert.throws(
+      () => resolveBatchContext({
+        ...input,
+        batch: { firstDispatchAt: Date.now() + 100000, priorLedgers: [run1Path] },
+        limits: { ...limits, maxDurationMs: 60000 },
+      }),
+      (err: any) => err.code === "BATCH"
+    );
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 

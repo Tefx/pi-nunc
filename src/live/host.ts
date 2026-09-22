@@ -286,7 +286,7 @@ export class NativeHost {
     await this.command("prompt", { message: "/nunc-observer-reload" });
     await this.refresh();
   }
-  async releaseBoundary(decision: { firstKeptEntryId?: string; stop?: string; restored?: boolean }): Promise<void> {
+  async releaseBoundary(decision: { firstKeptEntryId?: string; stop?: string; restored?: boolean; deferred?: boolean }): Promise<void> {
     await this.command("prompt", { message: `/nunc-observer-release ${JSON.stringify(decision)}` });
   }
   async compact(during?: (signal: AbortSignal) => Promise<void>): Promise<void> {

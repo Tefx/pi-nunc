@@ -105,7 +105,6 @@ export interface RunInput {
   comparison?: ComparisonConfig;
   assets?: ScenarioAssets;
   batch?: BatchAuthority;
-  authority?: BatchAuthority;
 }
 export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.86.1"; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
@@ -134,7 +133,7 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
   if (config.policyFile !== undefined) requireValue(text(config.policyFile) && isAbsolute(config.policyFile), "CONFIG", "Runner policyFile must be absolute and repository-local");
 }
 export function parseInput(value: unknown, execution = false): RunInput {
-  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison", "assets", "batch", "authority"], "input");
+  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison", "assets", "batch"], "input");
   requireValue(value.version === 1, "INPUT", "Expected input version 1");
   requireValue(value.mode === "controlled" || value.mode === "native", "INPUT", "Invalid internal execution mode");
   if (execution) {
@@ -170,23 +169,21 @@ export function parseInput(value: unknown, execution = false): RunInput {
   if (lim.sharedLedger !== undefined) {
     requireValue(typeof lim.sharedLedger === "string" && lim.sharedLedger.trim().length > 0, "LIMIT", "limits.sharedLedger must be a non-empty string path");
   }
-  for (const bKey of ["batch", "authority"] as const) {
-    if ((value as any)[bKey] !== undefined) {
-      requireValue(object((value as any)[bKey]), "BATCH", `${bKey} must be an object`);
-      keys((value as any)[bKey], ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], bKey);
-      const b = (value as any)[bKey];
-      if (b.firstDispatchAt !== undefined) {
-        requireValue((typeof b.firstDispatchAt === "number" && Number.isFinite(b.firstDispatchAt) && b.firstDispatchAt > 0) || (typeof b.firstDispatchAt === "string" && !isNaN(Date.parse(b.firstDispatchAt))), "BATCH", `${bKey}.firstDispatchAt must be a positive timestamp or valid ISO date`);
-      }
-      if (b.deadline !== undefined) {
-        requireValue((typeof b.deadline === "number" && Number.isFinite(b.deadline) && b.deadline > 0) || (typeof b.deadline === "string" && !isNaN(Date.parse(b.deadline))), "BATCH", `${bKey}.deadline must be a positive timestamp or valid ISO date`);
-      }
-      if (b.priorLedgers !== undefined) {
-        requireValue(Array.isArray(b.priorLedgers) && b.priorLedgers.every((p: any) => typeof p === "string" && p.trim().length > 0), "BATCH", `${bKey}.priorLedgers must be an array of non-empty paths`);
-      }
-      if (b.sharedLedger !== undefined) {
-        requireValue(typeof b.sharedLedger === "string" && b.sharedLedger.trim().length > 0, "BATCH", `${bKey}.sharedLedger must be a non-empty string path`);
-      }
+  if ((value as any).batch !== undefined) {
+    requireValue(object((value as any).batch), "BATCH", "batch must be an object");
+    keys((value as any).batch, ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], "batch");
+    const b = (value as any).batch;
+    if (b.firstDispatchAt !== undefined) {
+      requireValue((typeof b.firstDispatchAt === "number" && Number.isFinite(b.firstDispatchAt) && b.firstDispatchAt > 0) || (typeof b.firstDispatchAt === "string" && !isNaN(Date.parse(b.firstDispatchAt))), "BATCH", "batch.firstDispatchAt must be a positive timestamp or valid ISO date");
+    }
+    if (b.deadline !== undefined) {
+      requireValue((typeof b.deadline === "number" && Number.isFinite(b.deadline) && b.deadline > 0) || (typeof b.deadline === "string" && !isNaN(Date.parse(b.deadline))), "BATCH", "batch.deadline must be a positive timestamp or valid ISO date");
+    }
+    if (b.priorLedgers !== undefined) {
+      requireValue(Array.isArray(b.priorLedgers) && b.priorLedgers.every((p: any) => typeof p === "string" && p.trim().length > 0), "BATCH", "batch.priorLedgers must be an array of non-empty paths");
+    }
+    if (b.sharedLedger !== undefined) {
+      requireValue(typeof b.sharedLedger === "string" && b.sharedLedger.trim().length > 0, "BATCH", "batch.sharedLedger must be a non-empty string path");
     }
   }
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");

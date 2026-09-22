@@ -43,7 +43,7 @@ test("real native serializer refuses missing/off/wrong thinking and wrong model 
 
 // No model calls: stock serialization, HTTP, tool effects, reload, compaction and JSONL all execute.
 // Controlled usage intentionally supplies the positive threshold premise; the low-usage case falsifies it.
-async function taskFileHost(group: "native" | "current" | "candidate", tools = true, lowUsage: boolean | "infeasible" | "reachable" = false, ordinaryExtra = false) {
+async function taskFileHost(group: "native" | "current" | "candidate", tools = true, lowUsage: boolean | "infeasible" | "reachable" | "defer-then-progress" = false, ordinaryExtra = false) {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 160000 });
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
@@ -55,12 +55,18 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
     overrides: [{ requirement: "maintenance-thinking", maintenanceThinking: "low", reason: "Controlled low-effort native serializer proof" }, ...(tools ? [] : [{ requirement: "memory-tools-off", memoryTools: false, reason: "Actual tools-off comparison" }])],
     limits: { maxCalls: 40, maxTotalTokens: 3200000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
     scenarios: [{ id: "g4", variant: "task-file", config: { compaction: { enabled: ordinaryExtra, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
-  const tool = (name: string, input: any) => ({ tool: { name, input }, input: lowUsage === true || lowUsage === "infeasible" ? 100 : lowUsage === "reachable" ? 5000 : 18000 });
-  const sequence = [tool("read", { path: "TASK.md" }), tool("bash", { command: "python3 build.py" }),
-    tool("edit", { path: "solution.py", oldText: "def evaluate(record)", newText: "def evaluate(record):" }),
-    tool("bash", { command: "python3 build.py" }), tool("write", { path: "solution.py", content: metricsSolution }),
-    tool("write", { path: "test_solution.py", content: metricsTests }), tool("bash", { command: "python3 build.py" }),
-    tool("bash", { command: "python3 -m unittest test_solution.py" }), tool("write", { path: "handoff.json", content: JSON.stringify({ implemented: true, verified: true, complete: true, remaining: [], commands: ["python3 build.py", "python3 -m unittest test_solution.py"] }) }), { text: "Controlled task completed.", input: 18000 }];
+  const tool = (name: string, input: any, stepIndex: number) => {
+    let inp = 18000;
+    if (lowUsage === true || lowUsage === "infeasible") inp = 100;
+    else if (lowUsage === "reachable") inp = 5000;
+    else if (lowUsage === "defer-then-progress") inp = stepIndex === 0 ? 100 : 18000;
+    return { tool: { name, input }, input: inp };
+  };
+  const sequence = [tool("read", { path: "TASK.md" }, 0), tool("bash", { command: "python3 build.py" }, 1),
+    tool("edit", { path: "solution.py", oldText: "def evaluate(record)", newText: "def evaluate(record):" }, 2),
+    tool("bash", { command: "python3 build.py" }, 3), tool("write", { path: "solution.py", content: metricsSolution }, 4),
+    tool("write", { path: "test_solution.py", content: metricsTests }, 5), tool("bash", { command: "python3 build.py" }, 6),
+    tool("bash", { command: "python3 -m unittest test_solution.py" }, 7), tool("write", { path: "handoff.json", content: JSON.stringify({ implemented: true, verified: true, complete: true, remaining: [], commands: ["python3 build.py", "python3 -m unittest test_solution.py"] }) }, 8), { text: "Controlled task completed.", input: 18000 }];
   if (ordinaryExtra) sequence[6]!.input = 30000; // An ordinary later tool batch crosses the restored threshold.
   let step = 0, maintenance = 0;
   f.response = (row: any, source: any) => {
@@ -80,7 +86,10 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
     await writeFile(join(f.dir, "task-retention-report.json"), JSON.stringify(report));
     if (lowUsage === true || lowUsage === "infeasible") {
       assert.equal(report.status, "UNPROVEN"); assert.equal(report.reason, "PREPARATION");
-      assert.equal(step, 1); assert.equal(maintenance, 0); assert.equal(report.rollovers!.length, 0); return;
+      assert.equal(maintenance, 0); assert.equal(report.rollovers!.length, 0); return;
+    }
+    if (lowUsage === "defer-then-progress") {
+      assert(report.preparations!.some((p: any) => p.deferred === true), "first read was genuinely deferred when insufficient");
     }
     assert.equal(report.status, "OBSERVED", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic, prerequisites: report.prerequisites }));
     assert.equal(report.nextTurn, 1);
@@ -116,4 +125,5 @@ for (const group of ["candidate", "current", "native"] as const) {
 }
 test("task-file low native usage stops before infeasible maintenance or subsequent effects", { timeout: 30000 }, () => taskFileHost("candidate", true, true));
 test("task-file reachable low-usage preparation succeeds when genuine task context fits threshold", { timeout: 45000 }, () => taskFileHost("candidate", true, "reachable"));
+test("task-file genuinely insufficient first read defers and then succeeds when causal tool progress fits threshold", { timeout: 45000 }, () => taskFileHost("candidate", true, "defer-then-progress"));
 test("task-file continues ordinary native compaction after its three observed opportunities", { timeout: 30000 }, () => taskFileHost("candidate", true, false, true));

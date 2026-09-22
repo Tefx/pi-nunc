@@ -49,7 +49,7 @@ export interface SegmentReport {
   rolloverQuality?: CheckResult | undefined;
   rollovers?: RolloverObservation[] | undefined;
   requests?: RequestObservation[];
-  preparations?: Array<PreparedBoundary | { failure: string; turn: string }>;
+  preparations?: Array<PreparedBoundary | { failure: string; turn: string } | { deferred: true; turn: string; reason: string }>;
   configurationChanges?: Array<{ phase: "boundary-prepare" | "boundary-restore"; from: Selection["config"]; to: Selection["config"] }>;
   callIds?: number[];
   calibrations: Array<RetentionCalibration & { effectiveConfig: NuncConfig }>;
@@ -147,10 +147,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     .map(c => ({ action: c.action as "revision_conflict" | "unconfirmed_save", turn: c.duringTurn ?? c.afterTurn, trigger: c.trigger,
        requestText: scenario.turns.find(t => t.id === (c.duringTurn ?? c.afterTurn))!.text }));
   const targetRepository = group === "native" ? undefined : input.comparison?.targets[group].repository ?? input.target.repository;
-  const prepare = async (branch: SessionEntry[], active: SessionEntry[], control: typeof observer.controls[number], trigger?: Parameters<typeof prepareBoundary>[0]["trigger"]) => {
+  const allowDeferred = taskRetentionSelection(selection);
+  const prepare = async (branch: SessionEntry[], active: SessionEntry[], control: typeof observer.controls[number], trigger?: Parameters<typeof prepareBoundary>[0]["trigger"], deferred = false) => {
     const result = await prepareBoundary({ branch, active, control, turns, turnOrder: scenario.turns.map(t => t.id), config: runConfig,
       model: runtime!.model!, fixed: runtime!.fixed, ...(targetRepository ? { repository: targetRepository } : {}), signal,
-      ...(trigger ? { trigger } : {}), matched: mode === "matched", ...(job.matchReferences?.[report.rollovers!.length] ? { reference: job.matchReferences[report.rollovers!.length]! } : {}) });
+      allowDeferred, deferred,
+      ...(trigger ? { trigger: { ...trigger, allowDeferred, deferred } } : {}), matched: mode === "matched", ...(job.matchReferences?.[report.rollovers!.length] ? { reference: job.matchReferences[report.rollovers!.length]! } : {}) });
     report.preparations!.push(result);
     (report.configurationChanges ??= []).push({ phase: "boundary-prepare", from: structuredClone(runConfig), to: structuredClone(result.config) });
     runConfig = result.config; effectiveConfig = runConfig.nunc; prepared = result;
@@ -192,10 +194,16 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           const ctrl = boundaryControls[idx] ?? boundaryControl!;
           const bnd = boundaries[idx] ?? boundary!;
           boundaryRestoreConfig = structuredClone(runConfig);
+          const isDeferred = Boolean(report.preparations?.some(p => (p as any).deferred));
           const result = await prepare(data.branch, data.active, ctrl, { callId: data.triggerId, requestText: bnd.requestText,
-            path: ctrl.trigger?.pathArgument ?? "", cwd: join(caseRoot, "task"), fixtureContent: bnd.fixtureContent, contextTokens: data.usage?.tokens ?? null });
+            path: ctrl.trigger?.pathArgument ?? "", cwd: join(caseRoot, "task"), fixtureContent: bnd.fixtureContent, contextTokens: data.usage?.tokens ?? null }, isDeferred);
           await runtime!.releaseBoundary({ firstKeptEntryId: result.firstKeptEntryId });
         } catch (error) {
+          if (error instanceof RunnerError && error.code === "INSUFFICIENT_CONTEXT") {
+            report.preparations!.push({ deferred: true, turn, reason: error.message });
+            await runtime!.releaseBoundary({ deferred: true });
+            return;
+          }
           const failure = error instanceof Error ? error.message : "Boundary preparation failed";
           boundaryFailure = failure;
           report.preparations!.push({ failure, turn });
@@ -327,6 +335,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       await session.prompt(inputTurn.text, { expandPromptTemplates: false });
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !isSystemMessage(e.message) && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
+      if (!boundaryFailure && report.preparations?.some(p => (p as any).deferred) && report.rollovers!.length === 0) {
+        boundaryFailure = "Compaction boundary remained deferred; insufficient context to establish maintenance premise";
+      }
       requireValue(!boundaryFailure, "PREPARATION", boundaryFailure ?? "Boundary preparation failed");
       const last = session.messages.findLast(m => m.role === "assistant");
       requireValue(last?.role === "assistant" && last.stopReason === "stop", "MAIN_RESPONSE", last?.role === "assistant" && last.errorMessage ? last.errorMessage : "Main run did not end in a complete stop state");
