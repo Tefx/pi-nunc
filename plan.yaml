@@ -4467,7 +4467,7 @@ phases:
     agent: node-typescript-engineer
   - id: nunc-task-retention.observation-repair
     name: 累计预算结算与低用量真实观察准备修复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
@@ -4512,3 +4512,22 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-22T06:24:00.612500Z'
+    done_at: '2026-09-22T08:06:50.530560+00:00'
+    evidence: Integrated5c308045ea35b7c7dc044c6207f352aa64c1acc8 FF from6e47647 after
+      retainedref/rebase(no changes)/diffcheck. Parent inspected actual budget completeness/cache-component
+      consistency, ledgerPath-qualified identity/missing prior rejection and earliesthistorical
+      dispatch, plus observer deferred-state release/rearm and preparation retains
+      original source tool batch while later genuine tool progress may supply feasibleusage;
+      real controlled-native test firstlow read defers then full3stage/continuation
+      assertions pass. Prior incomplete64fd6 candidate corrected; no engine/pi/Plan
+      modifications by worker. Build passed. Affected18-file verification151/151 no
+      skips/fails, source paths include budget/comparison/native/queue and guards;
+      remaining applicable earlier engine93/Pi291/live78 observations retained with
+      overlap not summed as unique tests. Evidence .scratch/task-retention-evidence/observation-repair/{affected-repair-02.log,engine-all.log,pi-all.log,live-other.log};
+      exact source originalrefs preserved. No real modelcalls or unknown effects duringrepair;
+      allworkerprocesses terminal. Original batch authorization/history preserved,
+      future user authorization explicitly lifts Luna usage caps for task; configured
+      finite deadlines remain enforced when selected. Behavior remains incomplete
+      and must consume live evidence, not controlledtest success. Repair worktree+prechange/dependencies
+      temporarily retained for immediate behavior consumer until that runtime releases
+      them.
