@@ -9,16 +9,17 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: 当前增量：按 docs/EXTRACTION.md §0、§3、§4.1 修正自动维护和主动编辑造成的完整任务/决定性完成条件丢失。支持合同为 docs/DESIGN.md
-  §0、§2、§3.1–3.2 和 docs/MEMORY-GUIDANCE.md §0；冲突时以上述 EXTRACTION 当前修订为准。历史完成定义、状态、证据不变，不重开旧
-  Gemini 检查或将旧功能接受当作本次语义效果证明。本次比较包含原生 Pi、实际修改前 Nunc、候选；70dacad 仅为历史基线。此前稳定布局任务取消比较的决定仅约束该历史任务，不取消本修订明确要求的比较。没有部署、发布、push、修改日常环境或历史任务重放效果。
-project_guidance: 保持 Memory.version:1、Slot{id,text}、两个工具 schema、add/remove/priority/required、预算算法、revision/原子性、Pi
-  调度/持久化及稳定 M 位置。禁止新增 requirement 实体/保护 ID/专用 API/语义错误码/账本/永久 pin/额外运行时模型/自动读取退役来源。语义保真由模型判断，机械校验不证明语义删除安全。保留旧
-  fixtures 和接受条件；优先复用适用机械证据。最终接受由 Orchestrator 在 nunc-task-retention.behavior 的完成程序中统一判断，必须覆盖该
-  phase 全部结果、完整适用项目离线库存、实际加载入口及必要行为证据。各 producer 完成不等于行为修复。所有新真实续做、维护和模型驱动语义观察只允许
-  gpt-5.6-luna 与 low thinking level；运行前核实宿主/provider 的实际模型与 thinking，覆盖主请求、维护及模型驱动观察，不以未经核实的提取默认设置冒充
-  low。测试覆盖只限隔离 overrides，保留日常配置。新外部运行须事先绑定安全 target、有限调用/token/时间/可知费用预算及清理；未知订阅费用不算零。计划创建不授予执行、真实调用或部署权限；执行者服从届时用户执行授权，不在
-  Plan 中保存临时会话等待状态。
+context: 当前增量为 docs/TOOL-RESULT-CLEANUP.md 的完整原模型工具结果清理，配套 docs/DESIGN.md §0.1、§5.1。仅在
+  M 实际变化时清理已知旧 M 后、仍进入下次请求的合格工具正文；交付机械处理、omit/replace、逐项依赖验证、维护/模型工具/UI 全入口、原文恢复、持久化、默认开启的
+  settings 开关及真实续做对照。此前 nunc-task-retention 等全部完成定义和证据保持历史含义；本次不重开历史验收，不新增原生 compact
+  触发或替代流程。没有发布、部署、push、全局安装或修改日常环境的效果。
+project_guidance: 本增量以 docs/TOOL-RESULT-CLEANUP.md 全文为权威；其可选 toolResultEdits/originals
+  扩展和 UI 至多一次当前模型判断，是旧固定 schema/无额外请求规则的有限修订。保持 Memory/Slot 含义、原始 session 日志、Pi 原生调度/transport/持久化所有权、任务保真、容量与
+  revision/原子性。nunc.toolResultCleanup 默认 true，可信项目覆盖全局，独立于 memoryTools；false 忽略保存的清理投影并恢复当前活动正文，true
+  仅重用有效决定，不补跑。禁止普通轮次/no-op 清理、新 scheduler/database/evaluator/Jev、通用依赖图和额外治理实体。生产者拥有相关源码、测试、文档及既有
+  runner 的必要局部扩展。既有 Gemini/gpt-5.6-luna/low 限制及历史预授权仅属于原任务，不作为本次模型选择或调用授权；新真实观察使用执行时获准的当前模型、数据和有限效果边界，凭据经原生
+  owner，未知费用保持 unknown。完整项目增量接受由 Orchestrator 在 nunc-tool-result-cleanup.behavior
+  完成程序中作唯一整合判断，覆盖本 phase 全部交付、最终候选完整适用离线库存、真实宿主/模型/成本证据及未改变基线的适用证据。复用仍适用观察，改变证据输入只补受影响范围；不将组件通过、字符缩减或观察报告自报状态视为完整接受。
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -4707,3 +4708,175 @@ phases:
       No live effects/sourceoutside scope. Worktree/deps heldforimmediatebehavior
       targetconsumer, source refs retained. Onlymechanicalmethodcomplete, Luna efficacy
       and allbehaviorrequirements remainunproven untilrealobservations.
+- id: nunc-tool-result-cleanup
+  name: M 更新时的完整原模型工具结果清理
+  status: pending
+  gate: Orchestrator 在 nunc-tool-result-cleanup.behavior 的完成程序中作唯一最终整合接受：包含本 phase
+    的 rules、integration、behavior 全部结果及仍适用的已完成 Nunc 基线，逐项满足 TOOL-RESULT-CLEANUP §1–§9，完整适用离线库存绑定最终候选，真实
+    M 更新对照和必要宿主观察覆盖质量/遗漏/恢复、实际输入/cache usage、总成本和等待时间。任何必要要求未证明、阻断缺陷或未核对效果均阻止接受；不要求预设减费百分比，也不将未知账单当零。无额外发布、安装或历史任务重放。
+  depends_on:
+  - nunc-task-retention
+  steps:
+  - id: nunc-tool-result-cleanup.rules
+    name: 完整来源到安全清理决定的引擎合同
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/engine/**\", \"tests/engine/**\", \"policies/**\",\
+      \ \"docs/ENGINE.md\", \"docs/POLICY.md\", \"docs/TOOL-RESULT-CLEANUP.md\"]\n\
+      \  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \".vectl/**\"\
+      , \".pi/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 交付可被 Pi 集成消费、可独立检验的无副作用清理决策能力，覆盖权威设计\
+      \ §3–§6。使用冻结来源身份、旧主请求允许后缀和本次最终保留集合；布局/来源映射仍由 Pi 提供。保留 add/remove/priority/required\
+      \ 的既有含义，兼容缺省的可选 toolResultEdits，提供同次新增 key 到最终 slot ID 的已有映射。先决定最终 M 再逐项校验 memoryRefs/sourceRefs；预算裁掉依赖只撤销对应编辑。重复、冲突、相互退出依赖、非法形状、非净节省及无完整模型可见正文/omissions\
+      \ 的语义编辑局部拒绝，合法 M 不被可选清理阻塞；整个响应不可解析或 M 无效沿用现有失败。\n\n维护沿用当前 complete seam 和单次请求，联合产生\
+      \ M 与决定；M 无变化时不启用任何新清理。实现 omit/replace 与代码统一标记/恢复引用，保留调用参数、关联、工具名、状态、顺序以及非文本块。机械规则覆盖设计要求的完全同源重复、固定提示、支持格式的无损\
+      \ JSON/可逆目录/终端处理，保留动态值、诊断、完整副本并防止同批语义编辑移除所依赖副本；未知格式保留，明确实际支持范围。请求内容表达有效要求、数量/否定/范围、未完成修复及部分检查事实保留，精确源码仍有消费者时不以摘要替代；不把可重跑等同于恢复历史证据。后续维护消费有效投影，标明缩减与原文恢复引用，不例行重新塞回隐藏正文。\n\
+      \nBoundary: 本仓库可 Git 回退的引擎/测试/文档事务，不读写 session、不拥有锚点或 native commit，不新增任务实体、模型路由、调度器或通用依赖图。Node/TypeScript\
+      \ owner 处理现有 parser、预算和来源合同的跨模块变更；不要求升级宿主或另造抽象。生产者检查只使用受控 complete/provider，不能宣称真实语义效果。\n\
+      \nAdmit: 完整阅读权威设计；现有 parsePatch 严格四字段与 applyPatch 的最终预算选择是兼容修改点。该能力由 integration\
+      \ 消费，输入冻结/候选范围/最终决定及 applied/skipped 原因须有可执行测试；没有独立发布接口或新增框架要求。规则缺陷由本 owner\
+      \ 修复，Pi 集成 owner 负责最终产品接线。\n\nRecovery: 未完成步骤内修复全部相容问题，保留原 M 与正文的失败行为；必要语义/权限矛盾报具体证据，不弱化保真或转成机械断言。只完成引擎合同及其证明，产品全入口与真实行为尚由后继承担。"
+    verification: "```yaml\nchecks:\n  - id: cleanup-engine-regression\n    argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
+      \ /opt/homebrew/bin/node, scripts/check.mjs, engine]\n    exit_code: 0\n```\n\
+      按 docs/DEVELOPMENT.md 使用 .node-version/lock 声明的 Node 26.7.0、npm 11.19.0、完整 devDependencies；缺依赖时在获准环境单独\
+      \ locked ci，禁止检查隐式安装。此处为引擎完成检查，不要求每次编辑重跑 all。行为回归须包含旧四字段响应、optional 编辑局部错误、最终\
+      \ slot/source 依赖裁剪与冲突、同批副本保护、混合/未知/不完整来源保留、净节省计算含标记、no-op/关闭无新决定、取消和原错误语义。通过实际转换/请求\
+      \ seam 的输入输出证明，不用提示词 token、预期答案复述或自报 PASS 证明模型保真；真实质量由 behavior 验证。"
+    refs:
+    - docs/TOOL-RESULT-CLEANUP.md
+    - docs/DESIGN.md
+    - docs/ENGINE.md
+    - docs/DEVELOPMENT.md
+    - src/engine/memory.ts
+    - src/engine/request.ts
+    - src/engine/engine.ts
+    - src/engine/types.ts
+    - src/engine/accounting.ts
+    - tests/engine/memory.test.ts
+    - tests/engine/lifecycle.test.ts
+    agent: node-typescript-engineer
+  - id: nunc-tool-result-cleanup.integration
+    name: 可恢复的全入口清理产品与实际观察接线
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      examples/**\", \"README.md\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
+      , \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".vectl/**\", \".pi/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\nDeliver: 交付 TOOL-RESULT-CLEANUP §1–§9 的完整可用 Pi 集成，消费 rules 的无副作用决定合同。本\
+      \ owner 是最终源码/接口/runner 整合责任人，拥有同一记忆提交、活动投影与全部入口的集成缺陷，不将配置、UI、测试拆成孤立交付。\n\n\
+      新增 Pi settings 的布尔 nunc.toolResultCleanup，默认 true、可信项目覆盖全局、非法值 CONFIG，与默认关闭的\
+      \ memoryTools 独立且不另加 CLI。false 不生成候选/新机械或语义处理/UI 额外请求，忽略已保存清理并恢复当前活动原文，重新计量并允许明确容量失败；不恢复已退休历史，不删除日志/决定。true\
+      \ 只重用仍有效的保存决定，不补跑旧机会。沿用现有设置读取生命周期；若支持会话重载，必须使 usage/锚点失效并取消或丢弃旧配置未提交结果。UI 区分开关、已保存决定及当前有效投影。\n\
+      \nprojection 以最近实际主请求可确认旧 M 位置限定后缀，只考虑仍进入下次请求的完整工具结果；首次追加、旧锚点/来源不可靠、无候选跳过，不移动锚点制造机会。排除未完成组、本\
+      \ patch 组、最近完整业务组与未交付输入。前段消息字节/结构与顺序不变；自有 overlays 不使来源精确匹配每轮失效，未知外部变换不能猜来源。候选引用仅在新尾部/新工具结果出现，不改旧历史作标号。保存决定稳定重用，不例行再次压缩同项。\n\
+      \n三入口完整覆盖：既有 Nunc 维护调用携带编辑、不改变原生 compact 调度；已开启的 nunc_memory_read 返回候选引用/定位且支持可选\
+      \ originals 原文读取，patch 同次提交合法 M 与编辑；UI 修改确认后仅有合格语义候选时至多一次当前模型调用，冻结拟保存 M/来源并显示保存中。清理超时、模型/凭据不可用、响应失败时仍保存合法用户\
+      \ M、保留未经确认正文并说明清理未完成；取消整个保存不提交，session/model/path/revision/config 变化拒绝过期结果，不自动重放，不修复重试，底层保存失败保留原错误合同。\n\
+      \n持久化使用现有 memory entry/checkpoint details 的可选旁置数据，保持 Memory/Slot 含义和原始日志；M 与编辑一次既有提交共同生效，CAS/取消/unconfirmed\
+      \ 不提前启用正文变化。覆盖 native 维护吸收、重启、切分支、旧记录、关闭/重新开启、来源不匹配披露及历史退出时有界保留；卸载/旧版本可退回当前原文但不承诺输入仍能容纳，旧手工\
+      \ M 限制保留。恢复读取只解析本会话选定路径的原始结果，以新尾部结果返回，明确缺失，不能重跑工具充作原文。context、admission/accounting、UI\
+      \ 与实际发送使用同一有效视图，区分观察快照与实际请求收据。\n\n随产品交付有真实消费者的文档与检查：扩展既有 stock RPC/TUI、session/receipt\
+      \ 与 live runner/scenario 接口，使 behavior 可在真实 M 更新时比较不清理和完整清理，观察任务结果、遗漏、恢复次数、输入/cache\
+      \ usage、总成本及等待。覆盖中文要求、未完成修复、数量/否定、部分测试成功和源码已变化；观察判据不泄漏给模型。先复用现有命令/Agent 判断，只对当前接口确实无法表达的必要观察做\
+      \ tracked 局部扩展；不新增 evaluator/独立执行框架，不能把 material 测试逻辑留在临时 helper。沿用当前模型与预算/取消/usage\
+      \ seam；新清理场景不得硬继承旧 Gemini/luna 路由限制，也不改写原场景历史合同。\n\nBoundary: 隔离本仓库源码/tests/docs\
+      \ 事务及受控宿主测试，锁定依赖 Pi 0.86.1（以当前 package/lock 为准）；不改宿主私有实现、日常 session/settings、其他项目、native\
+      \ 调度/transport，不作真实模型调用、全局安装或部署。旧文档中的版本/基线只服务其原库存；必要 setup 属 owner，本次不重演历史任务。\n\
+      \nAdmit: rules 已交付；现有 manual freeze/revision/append 和 projection 的文本等值来源映射须联合验证。相关\
+      \ public tools、UI、持久化、实际 payload 都必须穿过真实 loader/宿主 seam，受控服务可用于故障和计数，不能代替行为/费用证据。behavior\
+      \ 接收可运行的跟踪入口、完整离线结果及用途明确的情景与观察方法。\n\nRecovery: 保留用户原文与合法 M，按设计拒绝过期或不确定清理；同一\
+      \ owner 修复全部相容源码/测试/文档缺口。若持久写入可能开始先核对，不盲目重试。交付受控集成不代表真实模型质量或最终接受；已完成 rules 的历史不改写。"
+    verification: "```yaml\nchecks:\n  - id: cleanup-integrated-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n```\n交付完成时提供最终整合候选完整 all 库存证据（编译、engine/pi/live、实际 CLI/RPC/TUI/JSONL 受控\
+      \ seam），按 docs/DEVELOPMENT.md 从 Node 26.7.0/npm 11.19.0 与 package-lock 的 dev\
+      \ 状态重现；POSIX PTY 和 /usr/bin/python3 是 TUI 前提。保留既有 tests 与比较库存，旧 baseline-70dacad\
+      \ 仅为现有离线测试输入，按其自身跟踪依赖准备，不能用其历史运行替代本次对照。修正环境/文档陈旧假设不降低检查，兼容 setup 留在本 owner。\n\
+      新行为断言覆盖 §9.1–6：配置优先级/关闭零候选零额外请求/活动原文恢复与容量失败、前缀首次变化位置和跨多次请求稳定、source 身份和组排除、依赖局部撤销、维护/patch/UI\
+      \ 的正负路径及单次调用上限、取消/过期/无凭据/清理失败保存合法 M/底层保存失败、同提交与实际持久化恢复、原文工具与分支隔离、有效预算/状态/实际\
+      \ payload 一致。检查 loader/export、公开工具 schema 和 callback 接线，不能 mock 被证明的宿主提交/投影\
+      \ seam；实际费用保持待 behavior。完成后小范围改变可复用未失效的全库存观察并补受影响行为，不为换报告目标重跑全部。新增观察能力必须可由跟踪入口从干净\
+      \ checkout 复现且有受控反例；文档标明调用参数/情景与仍需的真实授权。"
+    refs:
+    - docs/TOOL-RESULT-CLEANUP.md
+    - docs/DESIGN.md
+    - docs/DEVELOPMENT.md
+    - docs/UI.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/STABLE-MEMORY.md
+    - docs/LIVE.md
+    - src/index.ts
+    - src/pi/projection.ts
+    - src/pi/manual.ts
+    - src/pi/config.ts
+    - src/pi/context.ts
+    - src/pi/admission.ts
+    - src/ui/overlay.ts
+    - src/live/runner.ts
+    - src/live/contract.ts
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - scripts/compare-extraction.mjs
+    - tests/pi/projection-binding.test.ts
+    - tests/pi/manual-memory.test.ts
+    - tests/pi/settings-memory-tools.test.ts
+    depends_on:
+    - nunc-tool-result-cleanup.rules
+    agent: node-typescript-engineer
+  - id: nunc-tool-result-cleanup.behavior
+    name: 真实 M 更新对照证据与最终整合接受
+    status: pending
+    description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      README.md\", \"package.json\", \"package-lock.json\", \"dist/**\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \".vectl/**\", \".pi/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 交付 TOOL-RESULT-CLEANUP\
+      \ §9.7 的真实 M 更新对照与最终产品必要运行事实，供 Orchestrator 作唯一整合接受。包含本 phase rules 与 integration\
+      \ 的完整结果；对已完成 Nunc 基线只消费仍适用证据及受影响回归，不重开旧 phase。观察者报告事实、反例或缺口，不修改源码/配置/Plan、不自行宣布项目完成。\n\
+      \n在同一最终集成候选、可比任务与真实 M 更新位置比较原始不清理视图与原模型完整清理，使用获准当前模型且不暗改 thinking/output。覆盖中文要求、修复未完成、摘要数量与否定、部分测试成功、源文件已变化；由实际续做行动/产物判定任务义务与诊断事实保留、遗漏/退化及原文恢复，不能给被测模型标准清理答案。记录维护与\
+      \ UI 附加请求在内的实际总调用、input/cache usage、恢复次数、实际费用或明确 unknown、端到端等待；区分原模型观察、估算、字符缩减及\
+      \ provider 实际收据。不预设减费比例或获胜结论，必要质量反例不能以平均缩减掩盖。\n\n复用 integration 的适用受控宿主证据；补齐最终候选真实加载入口、维护/公开\
+      \ memory tools/UI 保存、活动路径持久恢复、默认开/关/重新开、主请求前段不提前变化和稳定锚点、当前有效投影/容量/UI/实际 payload\
+      \ 关系所需的运行观察。真实 TUI 的保存中、取消与反馈不得仅由 RPC 成功替代；无需模型语义的错误路径可以使用真实宿主与受控服务，不为每个机械反例付费重跑。snapshot\
+      \ 不证明已发送，成功脚本退出不证明内容质量。\n\nBoundary: 只读候选/配置，按执行时授权运行既有跟踪入口及隔离 session/任务数据，报告写调用者授权的私有临时\
+      \ artifact 目录。使用原生认证 owner，不复制/暴露凭据，保护日常 sessions/settings 与其他项目；无安装日常扩展、部署或发布。执行前外部条件由用户/授权\
+      \ controller 提供：实施/运行授权、当前有效 provider/model/thinking 的非秘密选择、获准场景数据与接收 provider、隔离\
+      \ runtime target、调用/token/时间/输出/可知费用界限和未知账单处理。授权覆盖 UI 附加判断、维护及续做共同预算；历史 Gemini/luna\
+      \ 或旧 selection 不构成本次授权，不进行探索账号或更换备用模型。\n\nAdmit: integration 已交付 immutable 候选、可重现跟踪\
+      \ runner 调用/情景及离线证据，执行者先核实实际 model/options、target 与本次效果范围。无凭据/环境/费用或数据授权时保留精确缺口，不能把真实证据改成模拟验收。无需新的\
+      \ schema、批准文本或独立 readiness 产物。\n\nRecovery: 外部效果不明先核对并终止新增调用，不自动重试清理、场景或未确认保存。可在既有权限内补观察/修报告；需要代码或\
+      \ runner 修复时由 Orchestrator 交 Planner 使用相容未完成 writable 步骤或一个成批修复生产者，保持 DONE 历史和本消费者身份，修后只补失效证据。保存最小必要原始观察并在消费者结束后清理可重建任务状态，不能无期限保留重型环境。\n\
+      \n最终接受责任: Orchestrator 消费本观察与 rules/integration 的证明，对本 phase 全部交付和最终候选完整适用项目离线库存作一次整合判断，逐项覆盖权威设计\
+      \ §1–9 以及受影响的来源、任务保真、取消、预算和恢复不变量；可复用明确适用的已完成基线证据。所有必要要求成立、无阻断缺陷、无未核对效果才可完成本步并宣告本增量完成。观察报告可记录\
+      \ negative/unknown，但任何必要 UNPROVEN/DISPROVEN 都使最终接受保持未完成；完成生产者或仅得到比较数据不足以接受。"
+    verification: "```yaml\nchecks:\n  - id: final-candidate-offline-inventory\n \
+      \   argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
+      \ 0\n    evidence_policy: reuse_if_applicable_to_final_integrated_candidate\n\
+      \  - id: cleanup-live-runner-entrypoint\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
+      \ scripts/verify-live.mjs]\n    exit_code: 0\n```\n上述 live 命令是现有入口，清理情景/对照参数由\
+      \ integration 在既有 runner 中提供并在 docs/LIVE.md 文档化后才可执行；不声称当前 runner 已支持新场景。可使用\
+      \ integration 验证的等价现有比较入口，不新造执行框架。stdin 由本次授权的 target/limits/scenarios 与必要非秘密\
+      \ overrides 形成，不复用历史 selection 或嵌入凭据；PI_OFFLINE 仅禁 catalog/startup 联网，不能作为无模型效果保证。先执行对应现有\
+      \ --preflight，无调用检查通过后仍须满足执行授权。绑定 Node/npm、Pi 与 lock/实际加载产物，源码与实际提交/请求之间要有真实宿主证据。\n\
+      完整离线结果优先复用 integration 提供的最终候选证据；只对影响配置、来源、请求/持久化或运行边界的变更补受影响检查。真实比较必须有可观察任务结果和逐要求依据，成本/usage\
+      \ 来源可区分且未知不写零。未具备模型/数据/额度授权仅阻止对应外部动作和最终接受，不撤销已交付离线能力；有授权也不得省略未证明的必要行为。"
+    refs:
+    - docs/TOOL-RESULT-CLEANUP.md
+    - docs/DESIGN.md
+    - docs/DEVELOPMENT.md
+    - docs/LIVE.md
+    - docs/UI.md
+    - docs/STABLE-MEMORY.md
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - scripts/compare-extraction.mjs
+    - src/live/runner.ts
+    - src/pi/projection.ts
+    - src/pi/manual.ts
+    depends_on:
+    - nunc-tool-result-cleanup.integration
+    agent: integration-verifier
