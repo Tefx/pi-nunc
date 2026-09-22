@@ -351,7 +351,7 @@ export function authorizePayload(args: {
     }
     const serializedOutput = args.delta.outputAfter ?? args.delta.outputBefore;
     if (serializedOutput !== undefined) {
-      const nativeOccupied = estimateContextTokens(args.context).tokens;
+      const nativeOccupied = estimateContextTokens(args.context.messages).tokens;
       const nativeAdded = Math.max(append.ok ? estimateTextTokens(append.addedText) : 0, added);
       if (nativeOccupied + nativeAdded + serializedOutput > args.model.contextWindow) {
         throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining context after native output clamp; request was not sent`);

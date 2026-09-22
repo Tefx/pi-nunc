@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { Context } from "@earendil-works/pi-ai";
+import { getCurrentSystemPrompt, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { Memory, MaintenanceResult } from "../engine/types.js";
 import { memoryTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
@@ -10,7 +10,7 @@ export function qualifyCapacity(
   variant: "fits-required" | "required-too-large",
   memory: Memory,
   result: MaintenanceResult | undefined,
-  contexts: Context[],
+  contexts: Array<Context | TranscriptContext>,
   responses: Array<{ model: string; stopReason: string; patch: unknown }>,
   model: string,
   growth?: { growthReserve: number; fixedTokens: number; memoryLimit: number; keptTokens: number; effectiveTrigger: number },
@@ -21,7 +21,8 @@ export function qualifyCapacity(
     if (contexts.length !== 1 || responses.length !== 1 || limit === undefined ||
         responses[0]!.stopReason !== "stop" || responses[0]!.model !== model) throw new Error("Missing transaction evidence");
     const context = contexts[0]!;
-    const declared = context.systemPrompt?.match(/Rendered memory limit: (\d+) estimated tokens/);
+    const rawPrompt = ("systemPrompt" in context && typeof context.systemPrompt === "string") ? context.systemPrompt : getCurrentSystemPrompt(context.messages);
+    const declared = rawPrompt?.match(/Rendered memory limit: (\d+) estimated tokens/);
     const records = context.messages.flatMap(m => typeof m.content === "string" ? readSourceRecords(m.content) :
       m.content.flatMap(b => b.type === "text" ? readSourceRecords(b.text) : []));
     const fm = records.filter(r => r.source === "F/M");

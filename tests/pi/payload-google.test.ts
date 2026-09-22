@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { Model, Provider } from "@earendil-works/pi-ai";
+import { normalizeContext, type Model, type Provider } from "@earendil-works/pi-ai";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { authorizePayload, classifyPayloadChange, jsonView, payloadMode } from "../../src/pi/payload.js";
@@ -16,7 +16,7 @@ function googleSSE(text: string): string {
 
 async function googleBody(model: Model<"google-generative-ai">): Promise<unknown> {
   let body: unknown;
-  const result = await googleProvider().stream(model, { messages: [{ role: "user", content: "Synthetic question", timestamp: 1 }] }, {
+  const result = await googleProvider().stream(model, normalizeContext({ messages: [{ role: "user", content: "Synthetic question", timestamp: 1 }] }), {
     apiKey: "synthetic-not-a-credential",
     maxTokens: 128,
     onPayload: payload => {

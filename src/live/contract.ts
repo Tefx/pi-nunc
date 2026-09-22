@@ -80,7 +80,7 @@ export interface RunInput {
   comparison?: ComparisonConfig;
   assets?: ScenarioAssets;
 }
-export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.85.1"; callsMade: 0 }
+export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.86.1"; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
 export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>): Promise<unknown> {
   const chunks: Buffer[] = []; let length = 0;
@@ -260,7 +260,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   for (const name of ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "typescript"]) {
     const pkg = JSON.parse(await readFile(join(repository, "node_modules", name, "package.json"), "utf8"));
     requireValue(pkg.version === lock.packages[`node_modules/${name}`]?.version, "DEPENDENCY", `Local ${name} differs from lock; no installation is performed`);
-    if (name.startsWith("@earendil-works/pi-")) requireValue(pkg.version === "0.85.1", "DEPENDENCY", "This runner supports Pi 0.85.1 only");
+    if (name.startsWith("@earendil-works/pi-")) requireValue(pkg.version === "0.86.1", "DEPENDENCY", "This runner supports Pi 0.86.1 only");
   }
   const { loadScenario } = await import("./scenarios.js");
   for (const selection of input.scenarios) {
@@ -282,9 +282,10 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     catch { throw new RunnerError("TARGET", "Current baseline target repository does not exist"); }
     const curStat = await lstat(curRepo);
     requireValue(curStat.isDirectory(), "TARGET", "Current baseline target must be a real directory");
-    const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
+    const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
     requireValue(curHead.startsWith("70dacad"), "TARGET", `Current baseline target must be at 70dacad, found ${curHead}`);
-    const curDirty = execFileSync("/usr/bin/git", ["-C", curRepo, "status", "--porcelain", "--untracked-files=normal", "--", "src", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8" }).trim();
+    const curDirty = execFileSync("/usr/bin/git", ["-C", curRepo, "status", "--porcelain", "--untracked-files=normal", "--", "src", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8", env: gitEnv }).trim();
     requireValue(curDirty === "", "CANDIDATE", "Current baseline target repository must have a committed clean working tree");
     const curIndex = join(curRepo, "dist/src/index.js");
     try { const stat = await lstat(curIndex); requireValue(stat.isFile(), "BUILD", "Current baseline target missing dist/src/index.js"); }
@@ -306,14 +307,15 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     try { const stat = await lstat(natPiPkg); requireValue(stat.isFile(), "DEPENDENCY", "Native target missing Pi package.json"); }
     catch { throw new RunnerError("DEPENDENCY", "Native target must have installed @earendil-works/pi-coding-agent"); }
     const natPiManifest = JSON.parse(await readFile(natPiPkg, "utf8"));
-    requireValue(natPiManifest.version === "0.85.1", "DEPENDENCY", `Native target requires Pi 0.85.1, found ${natPiManifest.version}`);
+    requireValue(natPiManifest.version === "0.86.1", "DEPENDENCY", `Native target requires Pi 0.86.1, found ${natPiManifest.version}`);
     const natCliBin = join(natRepo, "node_modules/@earendil-works/pi-coding-agent", natPiManifest.bin?.pi ?? "dist/bundle/cli.js");
     try { const stat = await lstat(natCliBin); requireValue(stat.isFile(), "DEPENDENCY", "Native target missing Pi CLI bin"); }
     catch { throw new RunnerError("DEPENDENCY", "Native target must have executable Pi CLI binary"); }
   }
-  const candidate = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
+  const candidate = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
   if (input.mode === "native") {
-    const dirty = execFileSync("/usr/bin/git", ["-C", repository, "status", "--porcelain", "--untracked-files=normal", "--", "src", "scripts", "tests", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8" });
+    const dirty = execFileSync("/usr/bin/git", ["-C", repository, "status", "--porcelain", "--untracked-files=normal", "--", "src", "scripts", "tests", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8", env: gitEnv });
     requireValue(dirty === "", "CANDIDATE", "Live execution requires committed clean product/check inputs");
   }
   // Receipt has a named identity consumer: later execution of this exact target and compiled candidate.
@@ -322,7 +324,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   digest.update(canonical(bindingInput)); digest.update(candidate); digest.update(node);
   if (input.comparison !== undefined) {
     const curRepo = resolve(input.comparison.targets.current.repository);
-    const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
     digest.update(curHead);
     digest.update(await readFile(join(curRepo, "dist/src/index.js")));
     const curPolicy = join(curRepo, "policies/default.md");
@@ -353,7 +355,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   await lstat(join(repository, "dist/src/index.js"));
   for (const s of input.scenarios) if (s.config.nunc.policyFile) {
     requireValue(within(s.config.nunc.policyFile, join(repository, "policies")), "CONFIG", "Runner user policies must be tracked under this checkout's policies/");
-    execFileSync("/usr/bin/git", ["-C", repository, "ls-files", "--error-unmatch", s.config.nunc.policyFile], { stdio: "pipe" });
+    execFileSync("/usr/bin/git", ["-C", repository, "ls-files", "--error-unmatch", s.config.nunc.policyFile], { stdio: "pipe", env: gitEnv });
     await bind(s.config.nunc.policyFile);
   }
   const larvaOverrides = input.overrides?.filter(o => o.requirement === "stable-memory-larva") ?? [];
@@ -366,7 +368,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     requireValue(info.isFile(), "EXTENSION", "Larva extension must be a readable source file");
     digest.update(larva.extension); digest.update(await readFile(larva.extension));
   }
-  const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.85.1", callsMade: 0 };
+  const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.86.1", callsMade: 0 };
   if (input.receipt !== undefined) requireValue(canonical(input.receipt) === canonical(receipt), "RECEIPT", "Preflight receipt does not match current target/config/scenarios/candidate");
   return receipt;
 }

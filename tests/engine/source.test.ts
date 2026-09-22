@@ -146,7 +146,7 @@ test("reduction of extraction K never rewrites the original retained tool body",
 test("unrepresentable tool arguments and malformed F cannot be silently lost during transcript serialization", async () => {
   for (const value of [undefined, NaN, () => {}]) {
     const source = await input();
-    source.active = [user("u", "u"), assistant("c", [{ type: "toolCall", id: "x", name: "read", arguments: { invalid: value } }]), tool("r", "x", "out"), user("last", "last")];
+    source.active = [user("u", "u"), assistant("c", [{ type: "toolCall", id: "x", name: "read", arguments: { invalid: value } as any }]), tool("r", "x", "out"), user("last", "last")];
     const result = await maintain(source, responder()); assert(!result.ok); assert.equal(result.code, "INPUT");
     assert.equal(result.observations.requests, 0);
   }

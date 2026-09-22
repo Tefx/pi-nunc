@@ -65,6 +65,8 @@ emit 返回时关闭本次接收窗口并固定决定。迟到回复不能改变
 
 ## 4. 请求 Context 与 wrapper 调用身份
 
+Pi 0.86.1 的字段迁移见 [system state 合同](PI.md#pi-0861-system-state)：v1 字符串代表完整有效指令。替换通过请求局部的 leading SystemMessage 表达，保留当前工具与真实对话；相同文本保留原 system history。以下 legacy Context 字段描述不要求同时保留 `systemPrompt` 和 SystemMessage，避免重复归一化。
+
 原始传入 Context 及 Pi 全局 systemPrompt、会话消息均不得被原地写回。有效 Context 只替换本次 systemPrompt；其他 Context 字段原样保留，不重新投影消息、不复制 M、不转换 callback 为用户消息，不回填已经冻结的 maintenance 来源。
 
 同一个有效 Context 进入：

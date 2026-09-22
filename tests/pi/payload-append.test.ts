@@ -202,7 +202,7 @@ test("append charges Nunc input headroom separately from Pi estimateContextToken
   const grok = { ...model, id: "grok-4.6", api: "openai-responses" as const, contextWindow: 500000, maxTokens: 500000 };
   const smallPrompt = "a".repeat(4000);
   const pContext: Context = { messages: [{ role: "user", content: smallPrompt, timestamp: 1 }] };
-  assert.equal(estimateContextTokens(pContext).tokens, 1000);
+  assert.equal(estimateContextTokens(pContext.messages).tokens, 1000);
   const pBefore = { model: grok.id, stream: true, max_output_tokens: 494904, input: [{ role: "user", content: smallPrompt }] };
   const pSmall = applyLastUserTextAppend(pBefore, "x".repeat(20));
   assert.equal(pSmall.changed, true);
@@ -210,7 +210,7 @@ test("append charges Nunc input headroom separately from Pi estimateContextToken
 
   const prompt = `First task ${"a".repeat(80000)}`;
   const context: Context = { systemPrompt: "Perform the current task.", messages: [{ role: "user", content: prompt, timestamp: 1 }] };
-  const occupied = estimateContextTokens(context).tokens;
+  const occupied = estimateContextTokens(context.messages).tokens;
   const cap = 475870;
   assert(occupied + cap < grok.contextWindow);
   const grokBefore = { model: grok.id, stream: true, max_output_tokens: cap, input: [{ role: "user", content: prompt }] };

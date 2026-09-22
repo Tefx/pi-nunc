@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
-import { Type } from "@earendil-works/pi-ai";
-import { convertToLlm, getAgentDir, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
+import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earendil-works/pi-ai";
+import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceResult } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy } from "./engine/index.js";
 import { EngineError } from "./engine/validation.js";
@@ -15,7 +15,7 @@ import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines } from ".
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
 export interface HostSettingsSource {
   readSettings: () => {
-    compaction: Required<CompactionSettings>;
+    compaction: ReturnType<SettingsManager["getCompactionSettings"]>;
     blockImages: boolean;
     nunc?: unknown;
   };
@@ -68,7 +68,7 @@ export default function nunc(pi: ExtensionAPI): void {
     return { compaction: s.compaction, blockImages: s.blockImages };
   };
   const supported = (ctx: ExtensionContext) => {
-    if (VERSION !== "0.85.1") throw new EngineError("CONFIG", `Supported Pi target is 0.85.1; found ${VERSION}`);
+    if (VERSION !== "0.86.1") throw new EngineError("CONFIG", `Supported Pi target is 0.86.1; found ${VERSION}`);
     if (!ctx.sessionManager.getSessionFile()) throw new EngineError("CONFIG", "Persistent sessions only; start Pi without --no-session");
     const s = getHostSettings(ctx);
     if (s.blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");
@@ -82,11 +82,17 @@ export default function nunc(pi: ExtensionAPI): void {
   }, event => observeLayout(event));
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
-    return { systemPrompt: ctx.getSystemPrompt(), tools: pi.getActiveTools().map(name => {
+    const branch = ctx.sessionManager.buildContextEntries();
+    const messages = convertToLlm(branch.flatMap(sessionEntryToContextMessages));
+    const hasSystemState = messages.some(message => message.role === "system");
+    const systemPrompt = hasSystemState ? getCurrentSystemPrompt(messages) : ctx.getSystemPrompt();
+    const tools = hasSystemState ? getCurrentTools(messages) : pi.getActiveTools().map(name => {
       const tool = all.find(t => t.name === name);
       if (!tool) throw new EngineError("INPUT", `Active tool definition unavailable: ${name}`);
-      return { name, description: tool.description, parameters: tool.parameters };
-    }) };
+      const sampling = (tool as { constrainedSampling?: Tool["constrainedSampling"] }).constrainedSampling;
+      return { name, description: tool.description, parameters: tool.parameters, ...(sampling !== undefined ? { constrainedSampling: sampling } : {}) };
+    });
+    return { systemPrompt, tools };
   };
   const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => { ui.refresh(); } });
   let toolsRegistered = false;

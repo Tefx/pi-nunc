@@ -17,7 +17,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   requireValue(Boolean(env.PI_PROVIDER) === Boolean(env.PI_MODEL), "MODEL", "Incomplete invoking runtime selection");
   let provider = env.PI_PROVIDER ?? settings.getDefaultProvider();
   let id = env.PI_MODEL ?? settings.getDefaultModel();
-  let thinking = env.PI_REASONING_LEVEL ?? (provider && id ? settings.getModelThinkingLevel(provider, id) : undefined) ?? settings.getDefaultThinkingLevel() ?? "medium"; // Stock Pi 0.85.1 startup default.
+  let thinking = env.PI_REASONING_LEVEL ?? (provider && id ? settings.getModelThinkingLevel(provider, id) : undefined) ?? settings.getDefaultThinkingLevel() ?? "medium"; // Stock Pi 0.86.1 startup default.
   let second: { provider: string; id: string } | undefined;
   const differences: RunInput["overrides"] = [];
   let config: Record<string, unknown> = { nunc: {}, compaction: settings.getCompactionSettings() };

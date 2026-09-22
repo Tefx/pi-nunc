@@ -43,9 +43,9 @@ try {
   const p = f.start("tui", sessionFile);
   await f.wait(() => f.log.some(e => e.type === "start" && e.data.mode === "tui"), "tui start");
   await delay(400);
-  assert.match(strip(p.stdout), /nunc /);
+  assert.match(strip(p.stdout), /🧠/);
   p.keys("PRE_OVERLAY_DRAFT");
-  await delay(80);
+  await delay(250);
   let snaps = f.log.filter(e => e.type === "snapshot").length;
   p.keys("\x1b[17~");
   await f.wait(() => f.log.filter(e => e.type === "snapshot").length > snaps, "pre-overlay editor");
@@ -240,7 +240,7 @@ try {
   }
   outcome = {
     status: "PASS",
-    footer: Boolean(strip(p.stdout).match(/nunc /)),
+    footer: Boolean(strip(p.stdout).match(/🧠/)),
     overlay: true,
     savedManual: true,
     editorKept: /KEEP_DRAFT/.test(snap.editor),

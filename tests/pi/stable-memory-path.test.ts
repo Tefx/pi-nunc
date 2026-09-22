@@ -47,17 +47,17 @@ test("real loader cloned/modified hook on a disjoint selected path cannot reuse 
   assert(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "note", text: "retained" }] }).ok);
   const root = f.runtime.session.sessionManager.getLeafId()!;
   await f.runtime.session.prompt("original A");
-  assert.equal(observations.filter(o => o.kind === "main").at(-1)?.memoryIndex, 1);
+  assert.equal(observations.filter(o => o.kind === "main").at(-1)?.memoryIndex, 2);
   const switched = await f.runtime.session.navigateTree(root, { summarize: false });
   assert(!switched.cancelled);
   await f.runtime.session.prompt("original B");
   const request = f.calls.at(-1)!;
   const observed = observations.filter(o => o.kind === "main").at(-1)!;
-  assert.equal(observed.memoryIndex, 2);
+  assert.equal(observed.memoryIndex, 3);
   assert.equal(observed.memoryCarrierCount, 1);
-  assert.equal(request.messages.length, 3);
-  assert.equal(request.messages[0]?.content, "extension replacement");
-  assert.equal(request.messages[1]?.content, "extension later");
+  assert.equal(request.messages.length, 4);
+  assert.equal(request.messages[1]?.content, "extension replacement");
+  assert.equal(request.messages[2]?.content, "extension later");
 });
 
 test("actual admission distinguishes identical timestamp-zero user lookalikes from injected M", async t => {
@@ -75,8 +75,8 @@ test("actual admission distinguishes identical timestamp-zero user lookalikes fr
   f.runtime.session.agent.state.messages = sm.buildSessionContext().messages;
   await f.runtime.session.prompt("continue");
   const a = observations.filter(o => o.kind === "main").at(-1)!;
-  assert.equal(a.memoryPresent, true, JSON.stringify({ a, calls: f.calls })); assert.equal(a.memoryCarrierCount, 1); assert.equal(a.memoryIndex, 3);
-  assert.equal(f.calls.at(-1)!.messages.length, 4);
+  assert.equal(a.memoryPresent, true, JSON.stringify({ a, calls: f.calls })); assert.equal(a.memoryCarrierCount, 1); assert.equal(a.memoryIndex, 4);
+  assert.equal(f.calls.at(-1)!.messages.length, 5);
   assert.equal(f.calls.at(-1)!.messages.filter(m => JSON.stringify(m.content).includes("retained")).length, 3);
   assert.equal(injectedCarrierIndex(f.calls.at(-1)!.messages), undefined, "clone has no process-local provenance even with a recognizable envelope");
   const noTimestamp = { role: "user", content: body };
@@ -94,7 +94,7 @@ test("native same-session recovery has no reusable anchor and establishes a new 
   t.after(() => f.close()); assert(ctx && surface);
   assert(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "note", text: "retained" }] }).ok);
   await f.runtime.session.prompt("one"); await f.runtime.session.prompt("two");
-  assert.equal(observations.filter(o => o.kind === "main").at(-1)?.memoryIndex, 1);
+  assert.equal(observations.filter(o => o.kind === "main").at(-1)?.memoryIndex, 2);
   await f.runtime.switchSession(f.runtime.session.sessionFile!);
   await f.runtime.session.prompt("after recovery");
   const index = observations.filter(o => o.kind === "main").at(-1)?.memoryIndex;

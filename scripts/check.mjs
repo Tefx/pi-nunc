@@ -19,8 +19,8 @@ for (const name of Object.keys(pkg.devDependencies)) {
   const wanted = lock.packages?.[`node_modules/${name}`]?.version;
   if (!wanted || json(path).version !== wanted) fail(`Local ${name} differs from the tracked lock`);
 }
-const npmCli = "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js";
-if (!existsSync(npmCli)) fail("Missing selected npm CLI; no automatic installation");
+const npmCli = [resolve(dirname(process.execPath), "../lib/node_modules/npm/bin/npm-cli.js"), "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"].find(p => existsSync(p));
+if (!npmCli) fail("Missing selected npm CLI; no automatic installation");
 const npm = spawnSync(process.execPath, [npmCli, "--version"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: resolve(root, ".npm-cache"), npm_config_update_notifier: "false" } });
 if (npm.status !== 0 || npm.stdout.trim() !== pkg.engines.npm) fail(`Requires npm ${pkg.engines.npm}; found ${npm.stdout?.trim() || npm.error || npm.status}`);
 const tests = readdirSync(resolve(root, "tests"), { recursive: true }).filter(name => name.endsWith(".test.ts") && (selected[0] === "all" || name.startsWith("engine/"))).sort();
@@ -30,7 +30,7 @@ if (selected[0] === "all") for (const suite of ["engine", "pi", "live"]) {
 }
 function run(args) {
   console.log(`> ${process.execPath} ${args.join(" ")}`);
-  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" } });
+  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
   if (result.error || result.status !== 0) fail(`Command failed: ${result.error?.message ?? result.signal ?? result.status}`);
 }
 run([resolve(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"]);

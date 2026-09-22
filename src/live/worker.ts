@@ -10,6 +10,7 @@ import { convertToLlm, sessionEntryToContextMessages, SessionManager, type Sessi
 import { closeHost, openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult } from "./scenarios.js";
+import { isSystemMessage } from "../engine/accounting.js";
 import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
 import type { MaintenanceResult } from "../engine/types.js";
 import { project, type NuncConfig } from "../pi/index.js";
@@ -209,7 +210,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           const control = observer.controls.find(c => c.action === "rollover_at_tool_boundary" ? c.duringTurn === turn : c.action === "rollover" && c.afterTurn === turn);
           report.rollovers!.push({ ...data, turn, config: structuredClone(runConfig), ...(prepared ? { prepared } : {}),
             ...(control ? { placement: { control, turns: scenario.turns.slice(0, scenario.turns.findIndex(t => t.id === turn) + 1), files: scenario.files,
-              turnEntries: { ...structuredClone(turns), [turn]: data.branch.filter((e: SessionEntry) => e.type === "message" && !turnBeforeIds.has(e.id)).map((e: SessionEntry) => e.id) },
+              turnEntries: { ...structuredClone(turns), [turn]: data.branch.filter((e: SessionEntry) => e.type === "message" && !isSystemMessage(e.message) && !turnBeforeIds.has(e.id)).map((e: SessionEntry) => e.id) },
               requiredReads: control.placement?.retainToolExchange ? [{ turn: control.placement.retainToolExchange.turn, path: control.placement.retainToolExchange.pathArgument }]
                 : selection.id === "e1" && turn === "b" ? [{ turn: "a", path: "rows.json" }]
                 : selection.id === "e2" && ["c", "d"].includes(turn) ? [{ turn: "c", path: "probe.json" }] : [] } } : {}), callIds: [] });
@@ -302,7 +303,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
       turnBeforeIds = beforeIds;
       await session.prompt(inputTurn.text, { expandPromptTemplates: false });
-      turns[turn] = sm.getBranch().filter(e => e.type === "message" && !beforeIds.has(e.id)).map(e => e.id);
+      turns[turn] = sm.getBranch().filter(e => e.type === "message" && !isSystemMessage(e.message) && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
       requireValue(!boundaryFailure, "PREPARATION", boundaryFailure ?? "Boundary preparation failed");
       const last = session.messages.findLast(m => m.role === "assistant");
@@ -440,7 +441,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
             }
             if (selection.id === "e4") {
-              report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi 0.85.1 has no required-item guard" } });
+              report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi 0.86.1 has no required-item guard" } });
             }
           } else {
             const beforeActive = structuredClone(sm.buildContextEntries());

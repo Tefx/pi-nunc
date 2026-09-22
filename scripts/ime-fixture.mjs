@@ -1,7 +1,7 @@
 // purpose: Prepare an isolated offline Pi TUI with a seeded Nunc slot for manual IME observation.
 // usage: node scripts/ime-fixture.mjs validate|print
 // effects: Isolated agent/session/loopback only; validate cleans up; print writes a launch recipe then removes nothing until teardown line is run.
-// requires: Built dist, locked Pi 0.85.1, Python3 PTY; no daily profile, live model, or paid calls.
+// requires: Built dist, locked Pi 0.86.1, Python3 PTY; no daily profile, live model, or paid calls.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";

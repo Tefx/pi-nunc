@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { createAssistantMessageEventStream, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools, getInitialSystemMessage, normalizeContext, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions, type SystemMessage, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import type { Complete, EngineConfig, Memory } from "../engine/index.js";
-import { admissionEstimate, inputLimit, mainAdmissionLimit, memoryTokens, messageTokens, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
+import type { Complete, EngineConfig, Memory, ActiveEntry } from "../engine/index.js";
+import { admissionEstimate, inputLimit, isSystemMessage, mainAdmissionLimit, memoryTokens, messageTokens, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
 import { renderMemory } from "../engine/memory.js";
 import { isNuncCarrier } from "./projection.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
@@ -12,8 +12,8 @@ import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite,
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = {
-  context: Context;
-  effectiveContext?: Context | undefined;
+  context: Context | TranscriptContext;
+  effectiveContext?: Context | TranscriptContext | undefined;
   model: Model<Api>;
   signal: AbortSignal | undefined;
   simple: boolean;
@@ -23,6 +23,7 @@ interface MainReceipt {
   model: Model<Api>;
   systemPrompt: string | undefined;
   tools: unknown;
+  systemHistory: unknown;
   rMessages: unknown;
   rCount: number;
   mTokens: number;
@@ -33,6 +34,7 @@ interface MainSnapshot {
   model: Model<Api>;
   systemPrompt: string | undefined;
   tools: unknown;
+  systemHistory: unknown;
   rMessages: unknown;
   rCount: number;
   mTokens: number;
@@ -71,15 +73,21 @@ export interface RequestProjectionBinding {
   memoryIndex?: number;
 }
 type BoundProjection = RequestProjectionBinding & { key: object; identities: ReadonlySet<object>; convertedSnapshots: unknown[]; carrierSnapshot: unknown; memoryIndex?: number };
-function withoutIndex<T>(items: readonly T[], index: number | undefined): T[] {
-  if (index === undefined) return [...items];
-  return items.filter((_, i) => i !== index);
+function systemHistory(context: Context): unknown {
+  let after = 0;
+  return jsonView(context.messages.flatMap(message => {
+    if (isSystemMessage(message)) return [{ after, message }];
+    if (!isNuncCarrier(message)) after++;
+    return [];
+  }));
 }
-function carrierMatches(messages: Context["messages"], binding: BoundProjection): boolean {
+function carrierMatches(messages: (Context | TranscriptContext)["messages"], binding: BoundProjection): boolean {
   if (!binding.memory.slots.length) return true;
   const index = binding.memoryIndex;
-  if (index === undefined || index < 0 || index >= messages.length) return false;
-  return isDeepStrictEqual(jsonView(messages[index]), binding.carrierSnapshot);
+  if (index !== undefined && index >= 0 && index < messages.length && isDeepStrictEqual(jsonView(messages[index]), binding.carrierSnapshot)) {
+    return true;
+  }
+  return messages.some(m => isNuncCarrier(m) && isDeepStrictEqual(jsonView(m), binding.carrierSnapshot));
 }
 export interface AdmissionObservation {
   kind: "main" | "maintenance" | "unknown";
@@ -134,9 +142,9 @@ export class Admission {
   private activeProjections = new WeakMap<object, BoundProjection>();
   bindProjection(binding: RequestProjectionBinding): void {
     const identities = new Set(binding.identityMessages ?? binding.messages);
-    const key = binding.messages.find(message => identities.has(message));
+    const key = binding.messages.find(message => !isSystemMessage(message) && identities.has(message));
     if (!key) return; // No surviving object provenance: fresh accounting, no receipt.
-    this.activeProjections.set(key, {
+    const bound: BoundProjection = {
       ...binding, key, identities,
       convertedSnapshots: binding.messages.map(message => identities.has(message) ? undefined : jsonView(message)),
       model: structuredClone(binding.model),
@@ -144,10 +152,15 @@ export class Admission {
       memory: structuredClone(binding.memory),
       ...(binding.memoryIndex !== undefined ? { memoryIndex: binding.memoryIndex } : {}),
       carrierSnapshot: binding.memory.slots.length && binding.memoryIndex !== undefined ? jsonView(binding.messages[binding.memoryIndex]) : undefined,
-    });
+    };
+    for (const message of binding.messages) {
+      if (!isSystemMessage(message) && identities.has(message)) {
+        this.activeProjections.set(message, bound);
+      }
+    }
   }
   invalidateUsage(): void { this.receipts = []; this.generation++; this.activeProjections = new WeakMap(); }
-  private takeProjection(ctx: ExtensionContext, model: Model<Api>, context: Context, options: SimpleStreamOptions | undefined): BoundProjection | undefined {
+  private takeProjection(ctx: ExtensionContext, model: Model<Api>, context: Context | TranscriptContext, options: SimpleStreamOptions | undefined): BoundProjection | undefined {
     // Unknown/maintenance calls must never consume a prepared main projection.
     if (!ctx.signal || options?.signal !== ctx.signal || options.sessionId !== ctx.sessionManager.getSessionId()) return;
     const candidates = new Set(context.messages.flatMap(message => {
@@ -158,25 +171,39 @@ export class Admission {
     const binding = [...candidates][0]!;
     if (binding.sessionId !== options.sessionId || binding.signal !== options.signal || !isDeepStrictEqual(binding.model, model)) return;
     if (!this.matchesProjection(context, binding)) return;
-    this.activeProjections.delete(binding.key);
+    for (const m of binding.messages) {
+      this.activeProjections.delete(m);
+    }
     // Identity proves origin; a separate snapshot comparison proves the delivered M.
     // A later context hook may have edited this very object before serialization.
     if (!carrierMatches(context.messages, binding)) return;
     return binding;
   }
-  private matchesProjection(context: Context, binding: BoundProjection): boolean {
-    // Known native objects establish provenance. Custom/bash/branch conversions
-    // create new objects: validate their native mapping only AFTER that identity
-    // match, never infer an association from their text or from a session key.
-    return context.messages.length === binding.messages.length && context.messages.every((message, i) =>
+  private matchesProjection(context: Context | TranscriptContext, binding: BoundProjection): boolean {
+    if (context.messages.length === binding.messages.length && context.messages.every((message, i) =>
       binding.identities.has(binding.messages[i]!) ? message === binding.messages[i]
-        : isDeepStrictEqual(jsonView(message), binding.convertedSnapshots[i]));
+        : isDeepStrictEqual(jsonView(message), binding.convertedSnapshots[i]))) {
+      return true;
+    }
+    const contextConv = context.messages.filter(m => !isSystemMessage(m));
+    const bindingConv = binding.messages.filter(m => !isSystemMessage(m));
+    if (contextConv.length === bindingConv.length && contextConv.every((message, i) =>
+      binding.identities.has(bindingConv[i]!) ? message === bindingConv[i]
+        : isDeepStrictEqual(jsonView(message), binding.convertedSnapshots[binding.messages.indexOf(bindingConv[i]!)]))) {
+      return true;
+    }
+    return false;
   }
   private readonly rejected = new Map<string, AbortSignal>();
   constructor(private readonly pi: ExtensionAPI, private readonly config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig, private readonly onLayout?: (event: AdmissionLayoutEvent) => void) {}
 
   complete(call: Complete): Complete {
-    return request => this.maintenance.run({ request, used: false }, () => call(request));
+    return request => {
+      // ModelRuntime normalization retains this array identity, including for
+      // legacy prompt/tools and empty transcripts.
+      const normalized = { ...request, context: normalizeContext(request.context) };
+      return this.maintenance.run({ request: normalized, used: false }, () => call(normalized));
+    };
   }
   ensure(ctx: ExtensionContext): void {
     if (!ctx.model) return;
@@ -217,8 +244,13 @@ export class Admission {
   recoveryCancelled(): boolean { return [...this.rejected.values()].some(signal => signal.aborted); }
   cancelRun(): void { this.cancelledRun = true; }
   settled(): void { this.rejected.clear(); this.cancelledRun = false; }
-  private hostPromptMatches(ctx: ExtensionContext, context: Context): boolean | undefined {
-    try { return ctx.getSystemPrompt() === context.systemPrompt; } catch { return undefined; }
+  private hostPromptMatches(ctx: ExtensionContext, context: Context | TranscriptContext): boolean | undefined {
+    try {
+      const prompt = getCurrentSystemPrompt(normalizeContext(context).messages);
+      return ctx.getSystemPrompt() === prompt;
+    } catch {
+      return undefined;
+    }
   }
   private assistantUsageUsable(message: unknown, model: Model<Api>): boolean {
     if (!record(message) || message.role !== "assistant" || message.stopReason === "aborted" || message.stopReason === "error") return false;
@@ -247,7 +279,7 @@ export class Admission {
     });
   }
   private selectReceipt(
-    effectiveContext: Context,
+    effectiveContext: Context | TranscriptContext,
     model: Model<Api>,
     imageTokens?: number,
     binding?: BoundProjection,
@@ -273,12 +305,19 @@ export class Admission {
         carrierMatches(effectiveContext.messages, binding)) {
       validAssociation = true;
       hasM = binding.memory.slots.length > 0;
-      rMessages = withoutIndex(effectiveContext.messages, hasM ? binding.memoryIndex : undefined);
+      const conversationMessages = effectiveContext.messages.filter(m => !isSystemMessage(m));
+      const candidate = binding.memoryIndex !== undefined ? effectiveContext.messages[binding.memoryIndex] : undefined;
+      const carrier = (hasM && binding.memoryIndex !== undefined)
+        ? (candidate && isNuncCarrier(candidate)
+            ? candidate
+            : effectiveContext.messages.find(isNuncCarrier))
+        : undefined;
+      rMessages = carrier ? conversationMessages.filter(m => m !== carrier) : conversationMessages;
       currentMTokens = hasM ? memoryTokens(binding.memory.slots, imageTokens) : 0;
     }
 
     if (!validAssociation) {
-      return { reason: "messages-mismatch", validAssociation: false, receiptTokens: 0, rMessages: effectiveContext.messages, currentMTokens, hasM };
+      return { reason: "messages-mismatch", validAssociation: false, receiptTokens: 0, rMessages: effectiveContext.messages.filter(m => !isSystemMessage(m)), currentMTokens, hasM };
     }
 
     if (!this.receipts.length) {
@@ -287,12 +326,15 @@ export class Admission {
 
     let reason: AdmissionEstimateReason = "messages-mismatch";
     let best: { receipt: MainReceipt; deltaRTokens: number; uTokens: number; trailing: number } | undefined;
-    const tools = jsonView(effectiveContext.tools ?? []);
+    const currentPrompt = getCurrentSystemPrompt(effectiveContext.messages);
+    const tools = jsonView(getCurrentTools(effectiveContext.messages));
+    const history = systemHistory(effectiveContext);
 
     for (const receipt of this.receipts) {
       if (!isDeepStrictEqual(receipt.model, model)) { if (!best) reason = "model-mismatch"; continue; }
-      if (receipt.systemPrompt !== effectiveContext.systemPrompt) { if (!best) reason = "system-mismatch"; continue; }
+      if (receipt.systemPrompt !== currentPrompt) { if (!best) reason = "system-mismatch"; continue; }
       if (!isDeepStrictEqual(receipt.tools, tools)) { if (!best) reason = "tools-mismatch"; continue; }
+      if (!isDeepStrictEqual(receipt.systemHistory, history)) { if (!best) reason = "system-mismatch"; continue; }
       if (rMessages.length <= receipt.rCount) { if (!best) reason = "messages-mismatch"; continue; }
       if (!isDeepStrictEqual(jsonView(rMessages.slice(0, receipt.rCount)), receipt.rMessages)) { if (!best) reason = "messages-mismatch"; continue; }
       const anchor = rMessages[receipt.rCount];
@@ -353,6 +395,7 @@ export class Admission {
         model: snapshot.model,
         systemPrompt: snapshot.systemPrompt,
         tools: snapshot.tools,
+        systemHistory: snapshot.systemHistory,
         rMessages: snapshot.rMessages,
         rCount: snapshot.rCount,
         mTokens: snapshot.mTokens,
@@ -366,22 +409,28 @@ export class Admission {
     if (!detail || (value.kind !== "main" && value.kind !== "maintenance")) return;
     try { this.onLayout?.({ ...detail, observation: value }); } catch { /* Read-only observer. */ }
   }
-  private sameCall(record: CallRecord | undefined, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean): record is CallRecord {
-    return !!record &&
-      (record.context === context || (record.effectiveContext !== undefined && record.effectiveContext === context)) &&
+  private sameCall(record: CallRecord | undefined, model: Model<Api>, context: Context | TranscriptContext, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean): record is CallRecord {
+    if (!record) return false;
+    const sameContext = record.context === context ||
+      (record.effectiveContext !== undefined && record.effectiveContext === context) ||
+      record.context.messages === context.messages ||
+      (record.effectiveContext !== undefined && record.effectiveContext.messages === context.messages);
+    return sameContext &&
       record.model === model &&
       record.signal === options?.signal &&
       record.simple === simple;
   }
-  private dispatch(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
+  private dispatch(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context | TranscriptContext, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean) {
     const entry = this.installed.get(model.provider);
     if (!entry) {
-      return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
+      const normalized = normalizeContext(context);
+      return simple ? delegate.streamSimple(model, normalized, options as SimpleStreamOptions) : delegate.stream(model, normalized, options);
     }
     const record = this.call.getStore();
     if (this.sameCall(record, model, context, options, simple) && entry.wrapper !== wrapper && !record.seen.has(wrapper)) {
       record.seen.add(wrapper);
-      return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
+      const normalized = normalizeContext(context);
+      return simple ? delegate.streamSimple(model, normalized, options as SimpleStreamOptions) : delegate.stream(model, normalized, options);
     }
     // Only the first outer main entry can claim a projection. Reentry, held calls
     // and independent nested Context/model/signal/mode invocations get fresh gates.
@@ -466,17 +515,21 @@ export class Admission {
     };
   }
 
-  private enter(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean, binding?: BoundProjection) {
+  private enter(ctx: ExtensionContext, wrapper: Provider, delegate: Provider, model: Model<Api>, context: Context | TranscriptContext, options: SimpleStreamOptions | Parameters<Provider["stream"]>[2], simple: boolean, legacyStream: boolean, binding?: BoundProjection) {
     const scope = this.maintenance.getStore();
-    const ownedMaintenance = !simple && scope && !scope.used && scope.request.context === context &&
-      scope.request.signal === options?.signal && scope.request.outputTokens === options.maxTokens &&
+    const matchesMaintenanceContext = scope && (
+      scope.request.context === context ||
+      scope.request.context.messages === context.messages
+    );
+    const ownedMaintenance = !simple && scope && !scope.used && matchesMaintenanceContext &&
+      scope.request.signal === options?.signal && scope.request.outputTokens === options?.maxTokens &&
       scope.request.model.id === model.id && scope.request.model.provider === model.provider;
     const running = ctx.signal;
     const mainSession = simple && running !== undefined && options?.signal === running && options.sessionId === ctx.sessionManager.getSessionId();
     // Same-context stream() inside the ALS run is Nunc's own maintenance call, even when
     // already used or the output/signal/model binding drifted. Independent nested calls
     // use a different Context object and do not inherit that budget.
-    const kind = ownedMaintenance || !simple && scope && scope.request.context === context ? "maintenance"
+    const kind = ownedMaintenance || (!simple && scope && matchesMaintenanceContext) ? "maintenance"
       : mainSession ? "main" : "unknown";
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
@@ -484,11 +537,12 @@ export class Admission {
     let budgetObservation: Pick<AdmissionObservation, "resolution" | "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages" | "receiptBreakdown" | "memoryIndex" | "memoryContent"> = {};
     let snapshot: MainSnapshot | undefined;
     let projection: AdmissionLayoutEvent["projection"];
-    let effectiveContext = context;
+    let effectiveContext = normalizeContext(context);
     try {
       if (kind === "unknown") {
         this.observe({ kind, outcome: "delegate" });
-        return simple ? delegate.streamSimple(model, context, options as SimpleStreamOptions) : delegate.stream(model, context, options);
+        const normalized = normalizeContext(context);
+        return simple ? delegate.streamSimple(model, normalized, options as SimpleStreamOptions) : delegate.stream(model, normalized, options);
       }
       options?.signal?.throwIfAborted();
       initialMetadataTokens = textTokens(JSON.stringify(options?.metadata ?? {}));
@@ -502,19 +556,33 @@ export class Admission {
         if (this.cancelledRun) throw new EngineError("CANCELLED", "User cancelled native maintenance; no main transport before run settlement");
         if (ctx.model?.id !== model.id || ctx.model.provider !== model.provider) throw new EngineError("CONFIG", "Selected model does not match the current session model");
         const config = this.config(ctx, model);
-        if (context.tools?.some(tool => tool.constrainedSampling)) throw new EngineError("CONFIG", "Constrained tool sampling is unsupported: Pi's maintenance ToolInfo omits that metadata");
+        const currentTools = getCurrentTools(effectiveContext.messages);
+        if (currentTools.some((tool: { constrainedSampling?: unknown }) => Boolean(tool.constrainedSampling && (tool.constrainedSampling as { type?: string }).type === "grammar"))) throw new EngineError("CONFIG", "Constrained tool sampling is unsupported: Pi's maintenance ToolInfo omits that metadata");
         // Keep stock Pi output sizing. outputTokens reports an upper bound;
         // nativeOutputReserve is admission headroom, not a simultaneous output cap.
         if (options?.maxTokens !== undefined) throw new EngineError("CONFIG", "Main maxTokens overrides are unsupported; use stock model defaults");
         outputTokens = config.main.outputTokens;
         // Validate projected media/blocks/associations, without inventing source IDs.
-        if (context.messages.length) legalCuts(context.messages.map((m, i) => ({ entryId: String(i), sourceRole: m.role, messages: [m] })));
+        const conversationMessages = context.messages.filter(m => !isSystemMessage(m));
+        if (conversationMessages.length) legalCuts(conversationMessages.map((m, i) => ({ entryId: String(i), sourceRole: m.role as ActiveEntry["sourceRole"], messages: [m] })));
         if (!model.input.includes("image") && context.messages.some(m => Array.isArray(m.content) && m.content.some(b => b.type === "image"))) throw new EngineError("UNSUPPORTED_INPUT", "Current model does not support images");
-        if (context.systemPrompt !== undefined && typeof context.systemPrompt !== "string") throw new EngineError("INPUT", "System prompt must be a string or undefined");
+        if ("systemPrompt" in context && context.systemPrompt !== undefined && typeof context.systemPrompt !== "string") throw new EngineError("INPUT", "System prompt must be a string or undefined");
 
-        const resolved = this.resolveSystemPrompt(context.systemPrompt ?? "");
+        const rawPrompt = getCurrentSystemPrompt(effectiveContext.messages);
+        const resolved = this.resolveSystemPrompt(rawPrompt);
         if (resolved.status === "resolved") {
-          effectiveContext = { ...context, systemPrompt: resolved.systemPrompt };
+          // v1 resolves the complete current prompt. Like Pi's forced-prompt
+          // projection, replace its replayed state once; replaying old deltas
+          // afterwards would duplicate content and undo explicit deletions.
+          // An unchanged result preserves native history and cache placement.
+          if (resolved.systemPrompt !== rawPrompt) {
+            const head: SystemMessage = {
+              role: "system", content: resolved.systemPrompt,
+              toolsAdded: currentTools,
+              timestamp: getInitialSystemMessage(effectiveContext.messages)?.timestamp ?? 0,
+            };
+            effectiveContext = normalizeContext({ messages: [head, ...effectiveContext.messages.filter(message => !isSystemMessage(message))] });
+          }
           const currentRecord = this.call.getStore();
           if (currentRecord) currentRecord.effectiveContext = effectiveContext;
         } else if (resolved.status === "unavailable" || resolved.status === "protocol-error") {
@@ -523,6 +591,8 @@ export class Admission {
         }
 
         const selected = this.selectReceipt(effectiveContext, model, config.imageTokens, binding, ctx);
+        const deliveredMemoryIndex = selected.validAssociation && selected.hasM
+          ? effectiveContext.messages.findIndex(isNuncCarrier) : undefined;
         let estimateTokens: number;
         let estimator: "pi-heuristic" | "pi-usage-backed";
         if (selected.receipt) {
@@ -546,18 +616,21 @@ export class Admission {
           ...(hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest }),
           ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}),
           ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
-          ...(binding?.memoryIndex !== undefined ? { memoryIndex: binding.memoryIndex } : {}),
+          ...(deliveredMemoryIndex !== undefined ? { memoryIndex: deliveredMemoryIndex } : {}),
           ...(binding ? { memoryPresent: binding.memory.slots.length > 0, memoryCarrierCount: context.messages.filter(isNuncCarrier).length,
             memoryContent: binding.memory.slots.length ? renderMemory(binding.memory.slots) : "" } : {}),
         };
         limit = mainAdmissionLimit(model, config.main);
-        if (selected.validAssociation) projection = { memory: structuredClone(binding!.memory), rCount: selected.rMessages.length, ...(binding!.memoryIndex !== undefined ? { memoryIndex: binding!.memoryIndex } : {}) };
+        if (selected.validAssociation) projection = { memory: structuredClone(binding!.memory), rCount: selected.rMessages.length, ...(deliveredMemoryIndex !== undefined ? { memoryIndex: deliveredMemoryIndex } : {}) };
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
         if (selected.validAssociation) {
+          const snapshotPrompt = getCurrentSystemPrompt(effectiveContext.messages);
+          const snapshotTools = getCurrentTools(effectiveContext.messages);
           snapshot = {
             model: structuredClone(model),
-            systemPrompt: effectiveContext.systemPrompt,
-            tools: jsonView(effectiveContext.tools ?? []),
+            systemPrompt: snapshotPrompt,
+            tools: jsonView(snapshotTools),
+            systemHistory: systemHistory(effectiveContext),
             rMessages: jsonView(selected.rMessages),
             rCount: selected.rMessages.length,
             mTokens: selected.currentMTokens,
@@ -623,6 +696,8 @@ export class Admission {
       this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context: effectiveContext, initialMetadataTokens, ...(projection ? { projection } : {}) });
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
+      const currentRecord = this.call.getStore();
+      if (currentRecord) currentRecord.effectiveContext = effectiveContext;
       const stream = simple ? delegate.streamSimple(model, effectiveContext, forwarded as SimpleStreamOptions) : delegate.stream(model, effectiveContext, forwarded);
       if (snapshot) this.watchCompletion(stream, snapshot);
       return stream;

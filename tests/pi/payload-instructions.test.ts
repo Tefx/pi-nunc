@@ -99,7 +99,7 @@ test("real loader and Codex serializer deliver restored instructions on idle cal
   const admissions: AdmissionObservation[] = [], bodies: Record<string, unknown>[] = [];
   const f = await fixture({ config: { budget: { inputLimit: 8000 } }, extras: [{ name: "identity-projection", factory(pi) {
     pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation));
-    pi.on("before_agent_start", event => ({ systemPrompt: event.systemPrompt + "\nBorrowed role." }));
+    pi.on("before_agent_start", event => { event.systemPromptOptions.sections.role = "Borrowed role."; });
     pi.on("before_provider_request", (event, ctx) => {
       if (mode === "unchanged") return;
       assert(record(event.payload) && typeof event.payload.instructions === "string");

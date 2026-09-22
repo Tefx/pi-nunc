@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fauxProvider, type Context, type Provider } from "@earendil-works/pi-ai";
+import { fauxProvider, normalizeContext, type Context, type Provider, type TranscriptContext } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createReadToolDefinition, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -14,7 +14,7 @@ import { execute } from "../../src/live/runner.js";
 import { fixture, repository } from "./fixtures.js";
 
 const SECRET = "fake-secret-s3ntinel";
-const context: Context = { systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] };
+const context: TranscriptContext = normalizeContext({ systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] });
 const hostChild = join(repository, "tests/live/host-child.mjs");
 const supervisorLoopWorker = join(repository, "tests/live/supervisor-loop-worker.mjs");
 

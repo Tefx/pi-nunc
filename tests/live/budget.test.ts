@@ -2,13 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { appendFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, type Context } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
 import { selectedModels } from "../../src/live/contract.js";
 import { fixture } from "./fixtures.js";
-const context: Context = { systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] };
+const context: TranscriptContext = normalizeContext({ systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] });
 
 test("real OpenAI adapter enforces serialized cap and stops on HTTP failure without retry or subsequent calls", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);

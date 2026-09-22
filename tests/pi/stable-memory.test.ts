@@ -131,7 +131,7 @@ test("ordinary leaf/revision growth does not move unchanged rendered M", async t
   assert.notEqual(revision1, revision2);
   assert.match(revision2, /\n/);
   assert.equal(renderMemory(surface.read(ctx).memory.slots), rendered1);
-  assert.equal(index1, 1);
+  assert.equal(index1, f.calls[0]!.messages.findIndex(m => m.role === "user") + 1);
   assert.equal(index2, index1);
   assert.notEqual(index2, f.calls[1]!.messages.length - 1);
 });

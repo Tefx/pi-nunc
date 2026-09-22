@@ -6,6 +6,7 @@ import { convertToLlm, sessionEntryToContextMessages, type ToolDefinition } from
 import { Type } from "typebox";
 import { sourceRecords } from "../engine/fixtures.js";
 import { fixture, memoryPatch } from "./fixtures.js";
+import { isSystemMessage } from "../../src/engine/accounting.js";
 import { project, eligibleStarts } from "../../src/pi/projection.js";
 
 test("real main tool loop and extraction retain complete bodies, arguments, associations, and visible custom/bash/branch projections", async t => {
@@ -32,7 +33,7 @@ test("real main tool loop and extraction retain complete bodies, arguments, asso
   const result = f.calls[1]!.messages.find(m => m.role === "toolResult");
   assert.deepEqual(result?.content, [{ type: "text", text: body }]);
   const before = project(manager.buildContextEntries());
-  const expected = manager.buildContextEntries().filter(e => e.type !== "compaction").flatMap(e => convertToLlm(sessionEntryToContextMessages(e)));
+  const expected = manager.buildContextEntries().filter(e => e.type !== "compaction").flatMap(e => convertToLlm(sessionEntryToContextMessages(e))).filter(m => !isSystemMessage(m));
   assert.deepEqual(before.active.flatMap(e => e.messages), expected);
   await f.runtime.session.compact();
   const extraction = f.calls.at(-1)!;
@@ -42,7 +43,8 @@ test("real main tool loop and extraction retain complete bodies, arguments, asso
   assert.equal(extraction.tools?.length, 0);
   assert(!JSON.stringify(extraction).includes("INVISIBLE"));
   assert(JSON.stringify(extraction).includes("unopened-fixture-log"), "log path is source text, never retrieved");
-  const firstBlock = extraction.messages[0]!.content; assert(Array.isArray(firstBlock));
+  const extractMsg = extraction.messages.find(m => m.role === "user");
+  const firstBlock = extractMsg!.content; assert(Array.isArray(firstBlock));
   const fm = firstBlock[0]; assert(fm?.type === "text");
   const fixed = JSON.parse(fm.text).F;
   assert.equal(fixed.tools[0].name, "probe"); assert.equal(fixed.systemPrompt, f.runtime.session.systemPrompt);

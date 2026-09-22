@@ -28,13 +28,14 @@ export function commandCompletions(prefix: string): { value: string; label: stri
 }
 
 export function compactFooter(input: CompactFooterInput): { text: string; tone: FooterTone } {
-  if (input.unavailable) return { text: "nunc ×", tone: "error" };
+  if (input.unavailable) return { text: "🧠 ×", tone: "error" };
   const n = String(input.slotCount);
-  if (input.occupied) return { text: `nunc ↻ ${n}`, tone: "accent" };
-  if (input.unconfirmed || input.warning) return { text: `nunc ! ${n}`, tone: "warning" };
-  if (input.budget.unknown || input.budget.limit === null) return { text: `nunc ${n}·?`, tone: "dim" };
-  if (input.budget.limit === 0) return { text: `nunc ${n}`, tone: "dim" };
-  return { text: `nunc ${n}·${Math.round((input.budget.tokens / input.budget.limit) * 100)}%`, tone: "dim" };
+  if (input.occupied) return { text: `🧠 ↻${n}`, tone: "accent" };
+  if (input.unconfirmed || input.warning) return { text: `🧠 !${n}`, tone: "warning" };
+  if (input.slotCount === 0) return { text: "🧠 0", tone: "dim" };
+  if (input.budget.unknown || input.budget.limit === null) return { text: `🧠 ${n}·?`, tone: "dim" };
+  if (input.budget.limit === 0) return { text: `🧠 ${n}`, tone: "dim" };
+  return { text: `🧠 ${n}·${Math.round((input.budget.tokens / input.budget.limit) * 100)}%`, tone: "dim" };
 }
 
 export function thousands(n: number): string {

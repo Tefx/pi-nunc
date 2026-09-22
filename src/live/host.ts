@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { nativeRpcError } from "./native-no-work.js";
-import type { Api, Context, Model } from "@earendil-works/pi-ai";
+import { getCurrentSystemPrompt, getCurrentTools, type Api, type Context, type Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { object, payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
 export { toolPath } from "./tool-path.js";
@@ -131,8 +131,8 @@ export class NativeHost {
     await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, larvaCompaction, boundary: o.boundary, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable" }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
-    const natRepo = o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository;
-    const packageDir = join(natRepo, "node_modules/@earendil-works/pi-coding-agent");
+    const hostRepo = o.group === "current" ? (o.targetRepos?.current ?? o.input.comparison?.targets?.current?.repository ?? o.repository) : (o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository);
+    const packageDir = join(hostRepo, "node_modules/@earendil-works/pi-coding-agent");
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
     const cli = join(packageDir, manifest.bin.pi);
     const isGuidance = o.input.scenarios.some(s => s.id.startsWith("g"));
@@ -211,7 +211,12 @@ export class NativeHost {
         const model = this.options.modelTargets.find(m => m.provider === observedModel.provider && m.id === observedModel.id);
         requireValue(model, "MODEL", "Observed model outside authorization");
         const context = e.data.context as unknown as Context;
-        if (e.data.kind === "main") { this.fixed.systemPrompt = context.systemPrompt ?? ""; this.fixed.tools = context.tools ?? []; }
+        if (e.data.kind === "main") {
+          const prompt = ("systemPrompt" in context && typeof context.systemPrompt === "string") ? context.systemPrompt : getCurrentSystemPrompt(context.messages);
+          const tools = ("tools" in context && Array.isArray(context.tools)) ? context.tools : getCurrentTools(context.messages);
+          this.fixed.systemPrompt = prompt;
+          this.fixed.tools = tools;
+        }
         this.options.onContext?.(model, context, String(e.data.kind));
       }
     }

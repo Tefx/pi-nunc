@@ -201,7 +201,7 @@ test("unconfirmed footer is not a normal percentage", () => {
   const ui = new NuncUi({ memory: f.memory as never, context: { read: () => ({ current: { revision: "old", occupied: false, unconfirmed: true, layout: { system: { text: "", tokens: 0 }, tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] }, messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0, heuristic: { tokens: 0, unknown: false }, associations: [] }, budget: { modelWindow: null, triggerTokens: null, plannedInputLimit: null, mainAdmissionLimit: null, extractionInputLimit: null, memoryLimit: 2000, memoryOccupied: 20, memoryUnknown: false, outputReserveTokens: null, outputCapTokens: null, outputCapKnown: false, extractionOutputTokens: null, extractionOutputCapTokens: null, extractionOutputCapKnown: false, safetyTokens: null }, contextLayout: { slotCount: 2, activeEntries: 0 }, scope: "current", sessionId: "s", leafId: "l", model: null } }) } as never, supported() {} });
   ui.attach(f.ctx as never);
   assert.equal(f.statuses.at(-1)?.key, "nunc");
-  assert.match(f.statuses.at(-1)?.value ?? "", /nunc !/);
+  assert.match(f.statuses.at(-1)?.value ?? "", /🧠 !/);
   assert.doesNotMatch(f.statuses.at(-1)?.value ?? "", /%/);
 });
 

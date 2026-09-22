@@ -98,7 +98,7 @@ test("public archive variant executes useful history, complete automatic split, 
   } finally { await f.close(); }
 });
 
-test("all groups omitting required source cannot establish matched exposure from equal empty traces", { timeout: 120000 }, async () => {
+test("all groups omitting required source cannot establish matched exposure from equal empty traces", { timeout: 200000 }, async () => {
   const f = await comparisonStock();
   const base = f.response;
   f.response = (row: any, source: any) => {

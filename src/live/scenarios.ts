@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, DEFAULT_MAX_BYTES, truncateHead, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
 import { readSourceRecords } from "../engine/request.js";
+import { isSystemMessage } from "../engine/accounting.js";
 import { parsePatch } from "../engine/memory.js";
 import { validateMemory } from "../engine/validation.js";
 import type { Context, Message } from "@earendil-works/pi-ai";
@@ -432,15 +433,15 @@ function nativeE2Regions(row: RolloverObservation | undefined, persisted: Sessio
   if (!row || row.turn !== turn || !row.snapshot || row.snapshot.fromHook || row.preparation.isSplitTurn || row.callIds.length === 0) return undefined;
   const cut = row.active.findIndex(e => e.id === row.snapshot!.firstKeptEntryId);
   if (cut < 0 || row.preparation.firstKeptEntryId !== row.snapshot.firstKeptEntryId || !persisted.some(e => isDeepStrictEqual(e, row.snapshot))) return undefined;
-  const b = row.active.slice(0, cut).filter(e => e.type !== "compaction"), k = row.active.slice(cut).filter(e => e.type !== "compaction");
-  const records = (entries: SessionEntry[]) => entries.map(e => ({ entryId: e.id, messages: convertToLlm(sessionEntryToContextMessages(e)) })).filter(r => r.messages.length > 0);
+  const b = row.active.slice(0, cut).filter(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message))), k = row.active.slice(cut).filter(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message)));
+  const records = (entries: SessionEntry[]) => entries.map(e => ({ entryId: e.id, messages: convertToLlm(sessionEntryToContextMessages(e).filter(m => m.role !== "system")) })).filter(r => r.messages.length > 0);
   const bRecords = records(b), kRecords = records(k);
   const expected = bRecords.flatMap(r => r.messages).map(semanticEvidence);
   const summarized = convertToLlm(row.preparation.messagesToSummarize as Parameters<typeof convertToLlm>[0]).map(semanticEvidence);
   if (!isDeepStrictEqual(expected, summarized) || row.preparation.turnPrefixMessages.length !== 0 ||
       !row.active.every(e => row.branch.some(p => isDeepStrictEqual(p, e))) ||
       !row.rebuilt?.some(e => isDeepStrictEqual(e, row.snapshot)) ||
-      !isDeepStrictEqual(row.rebuilt.filter(e => e.type !== "compaction"), k)) return undefined;
+      !isDeepStrictEqual(row.rebuilt.filter(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message))), k)) return undefined;
   return { b: bRecords, k: kRecords, snapshotId: row.snapshot.id };
 }
 export function evaluateE2SetupChecks(
@@ -529,7 +530,7 @@ export function semanticEvidence(message: Message): Record<string, unknown> {
   return { role: message.role, ...(message.role === "toolResult" ? { toolCallId: message.toolCallId, toolName: message.toolName, isError: message.isError } : {}), ...(message.role === "assistant" ? { stopReason: message.stopReason } : {}), content };
 }
 export function checkFullExtraction(beforeActive: SessionEntry[], context: Context | undefined): CheckResult {
-  const expected = beforeActive.filter(e => e.type !== "compaction").map(e => ({ entryId: e.id, messages: convertToLlm(sessionEntryToContextMessages(e).filter(m => m.role !== "compactionSummary" && !(m.role === "assistant" && (m.stopReason === "error" || m.stopReason === "aborted")))) })).filter(e => e.messages.length > 0);
+  const expected = beforeActive.filter(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message))).map(e => ({ entryId: e.id, messages: convertToLlm(sessionEntryToContextMessages(e).filter(m => m.role !== "compactionSummary" && m.role !== "system" && !(m.role === "assistant" && (m.stopReason === "error" || m.stopReason === "aborted")))) })).filter(e => e.messages.length > 0);
   const records: Record<string, unknown>[] = [];
   for (const message of context?.messages ?? []) if (Array.isArray(message.content)) for (const block of message.content) if (block.type === "text") {
     records.push(...readSourceRecords(block.text));

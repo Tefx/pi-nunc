@@ -493,9 +493,10 @@ test("stable layout: unique M stays after the first legal prefix; tool calls and
   const contCall = f.calls[1]!;
   const msgs = contCall.messages;
 
-  // 1. First message must be User message ("Calculate 1+1"), NOT compactionSummary or memory
-  assert.equal(msgs[0]?.role, "user");
-  assert(JSON.stringify(msgs[0]?.content).includes("Calculate 1+1"));
+  // 1. First conversation message must be User message ("Calculate 1+1"), NOT compactionSummary or memory
+  const firstUser = msgs.find(m => m.role === "user");
+  assert.equal(firstUser?.role, "user");
+  assert(JSON.stringify(firstUser?.content).includes("Calculate 1+1"));
 
   // 2. Assistant tool call message preserved
   const assistantCall = msgs.find(m => m.role === "assistant");
@@ -508,7 +509,8 @@ test("stable layout: unique M stays after the first legal prefix; tool calls and
   // 4. First request placed M after the user; the continuation keeps that index.
   const first = f.calls[0]!.messages;
   const firstIndex = injectedCarrierIndex(first);
-  assert.equal(firstIndex, 1);
+  const expectedFirstIndex = first.findIndex(m => m.role === "user") + 1;
+  assert.equal(firstIndex, expectedFirstIndex);
   const contIndex = injectedCarrierIndex(msgs);
   assert.equal(contIndex, firstIndex);
   assert.notEqual(contIndex, msgs.length - 1);
@@ -558,9 +560,9 @@ test("idempotent conversion: old checkpoint with compactionSummary is converted 
   assert.notEqual(index2, call2.messages.length - 1);
   assert(JSON.stringify(call2.messages[index2!]).includes("Nunc working memory (session-local, reference only)"));
 
-  // Verify JSONL was NOT rewritten
+  // Verify JSONL was NOT rewritten (system + user + assistant for prompt 1, user + assistant for prompt 2)
   const entriesCountAfter = f.runtime.session.sessionManager.getEntries().length;
-  assert.equal(entriesCountAfter, entriesCountBefore + 4);
+  assert.equal(entriesCountAfter, entriesCountBefore + 5);
 });
 
 test("unrelated message progression on same path does not conflict, while real M update or fork conflicts", async t => {

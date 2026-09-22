@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fauxAssistantMessage, fauxToolCall, type Context } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemPrompt, normalizeContext, type Context } from "@earendil-works/pi-ai";
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, type AdmissionObservation, type ResolveSystemPromptRequest, type ResolveSystemPromptResult } from "../../src/pi/admission.js";
 import { contextSurface } from "pi-nunc/pi";
@@ -33,10 +33,10 @@ test("synchronous ok reply creates request-local effective context and preserves
   });
   t.after(() => f.close());
 
-  const originalPromptBefore = f.runtime.session.agent.state.systemPrompt;
+  const originalPromptBefore = f.runtime.session.systemPrompt;
   f.respond((context) => {
     // Check that the provider sees the resolved prompt, not the host default!
-    assert.equal(context.systemPrompt, RESOLVED_PROMPT_A);
+    assert.equal(getCurrentSystemPrompt(context.messages), RESOLVED_PROMPT_A);
     return fauxAssistantMessage("Task response from provider.");
   });
 
@@ -46,7 +46,8 @@ test("synchronous ok reply creates request-local effective context and preserves
   assert.equal(typeof receivedPrompt, "string");
 
   // Original global session prompt must not be overwritten
-  assert.equal(f.runtime.session.agent.state.systemPrompt, originalPromptBefore);
+  assert.equal(f.runtime.session.systemPrompt, originalPromptBefore);
+  assert.notEqual(f.runtime.session.systemPrompt, RESOLVED_PROMPT_A);
 
   // Admission observation must record resolved
   const lastMain = admissions.filter(a => a.kind === "main").at(-1);
@@ -74,7 +75,7 @@ test("zero replies path falls back to legacy-no-reply and preserves original con
 
   f.respond((context) => {
     // Provider sees original systemPrompt
-    assert(context.systemPrompt?.includes("Perform the current task."));
+    assert(getCurrentSystemPrompt(context.messages).includes("Perform the current task."));
     return fauxAssistantMessage("Legacy response.");
   });
 
@@ -259,7 +260,7 @@ test("late replies arriving after emit returns are ignored and cannot affect dec
 
   // Next call should independently resolve its own prompt
   f.respond((context) => {
-    assert.doesNotMatch(context.systemPrompt ?? "", /LATE_PROMPT_INJECTION/);
+    assert.doesNotMatch(getCurrentSystemPrompt(context.messages), /LATE_PROMPT_INJECTION/);
     return fauxAssistantMessage("Second call completed.");
   });
   await f.runtime.session.prompt("Second call");
@@ -366,7 +367,7 @@ test("empty string ok reply is legal and sets effective context system prompt to
   t.after(() => f.close());
 
   f.respond((context) => {
-    assert.equal(context.systemPrompt, "");
+    assert.equal(getCurrentSystemPrompt(context.messages), "");
     return fauxAssistantMessage("Empty prompt answer.");
   });
 
@@ -406,10 +407,10 @@ test("continuous tool requests re-resolve prompt per turn without cross-request 
   f.respond((context) => {
     turn++;
     if (turn === 1) {
-      assert(context.systemPrompt?.includes("turn 1"));
+      assert(getCurrentSystemPrompt(context.messages).includes("turn 1"));
       return fauxAssistantMessage(fauxToolCall("calc", {}, { id: "call-1" }), { stopReason: "toolUse" });
     }
-    assert(context.systemPrompt?.includes("turn 2"));
+    assert(getCurrentSystemPrompt(context.messages).includes("turn 2"));
     return fauxAssistantMessage("Final answer after tool.");
   });
 
@@ -451,7 +452,7 @@ test("cancellation precedence aborts before resolver call and maintains CANCELLE
   assert(provider);
   const model = f.faux.getModel();
   const context: Context = { messages: [{ role: "user", content: "Pre-aborted call", timestamp: 1 }] };
-  const res = await provider.streamSimple(model, context, { signal: controller.signal, sessionId: capturedCtx.sessionManager.getSessionId() }).result();
+  const res = await provider.streamSimple(model, normalizeContext(context), { signal: controller.signal, sessionId: capturedCtx.sessionManager.getSessionId() }).result();
 
   // Pre-aborted signal must take precedence and make ZERO resolver calls!
   assert.equal(resolverCalls, 0);
@@ -523,8 +524,8 @@ test("handler mutating reply object after callback is ignored and captured scala
 
   f.respond((context) => {
     // Assert that the provider receives the callback-time value, NOT the mutated value!
-    assert.equal(context.systemPrompt, RESOLVED_PROMPT_A);
-    assert.doesNotMatch(context.systemPrompt, /MUTATED_PROMPT_LEAK/);
+    assert.equal(getCurrentSystemPrompt(context.messages), RESOLVED_PROMPT_A);
+    assert.doesNotMatch(getCurrentSystemPrompt(context.messages), /MUTATED_PROMPT_LEAK/);
     return fauxAssistantMessage("Verified unmutated prompt.");
   });
 
@@ -601,7 +602,7 @@ test("independent unknown provider call makes zero resolver calls and delegates 
 
   // Invoke with an independent signal/session not matching main run -> classified as unknown
   const unknownContext: Context = { systemPrompt: "Original unknown prompt", messages: [{ role: "user", content: "Unknown query", timestamp: 1 }] };
-  const res = await provider.streamSimple(f.faux.getModel(), unknownContext, { signal: new AbortController().signal }).result();
+  const res = await provider.streamSimple(f.faux.getModel(), normalizeContext(unknownContext), { signal: new AbortController().signal }).result();
 
   assert.equal(res.stopReason, "stop");
   // Resolver must NOT be called for unknown requests!
@@ -643,7 +644,7 @@ test("wrapper-chain re-entry with effectiveContext passes through inner wrapper 
   registry.registerProvider(innerWrapper);
 
   f.respond((context) => {
-    assert.equal(context.systemPrompt, RESOLVED_PROMPT_A);
+    assert.equal(getCurrentSystemPrompt(context.messages), RESOLVED_PROMPT_A);
     return fauxAssistantMessage("Chained answer.");
   });
 
@@ -690,14 +691,14 @@ test("original Provider Context object is strictly immutable across resolution a
 
   f.respond((receivedContext) => {
     // Inside the provider, receivedContext is the effective context with the resolved prompt
-    assert.equal(receivedContext.systemPrompt, RESOLVED_PROMPT_A);
-    // Messages and tools object references remain identical
-    assert.equal(receivedContext.messages, originalMessages);
-    assert.equal(receivedContext.tools, originalTools);
+    assert.equal(getCurrentSystemPrompt(receivedContext.messages), RESOLVED_PROMPT_A);
+    // Original conversation messages remain identical
+    const conv = receivedContext.messages.filter(m => m.role !== "system");
+    assert.equal(conv[0], originalMessages[0]);
     return fauxAssistantMessage("Verified context immutability.");
   });
 
-  const res = await provider.streamSimple(f.faux.getModel(), originalContext, {
+  const res = await provider.streamSimple(f.faux.getModel(), normalizeContext(originalContext), {
     signal: controller.signal,
     sessionId: capturedCtx.sessionManager.getSessionId(),
   }).result();
@@ -741,19 +742,19 @@ test("independent sequential resolves with different signals receive separate re
   Object.defineProperty(capturedCtx, "signal", { value: c1.signal, configurable: true });
 
   f.respond((context) => {
-    return fauxAssistantMessage(`Response for ${context.systemPrompt}`);
+    return fauxAssistantMessage(`Response for ${getCurrentSystemPrompt(context.messages)}`);
   });
 
   // Call 1
   const ctx1: Context = { systemPrompt: "prompt 1", messages: [{ role: "user", content: "call 1", timestamp: 1 }] };
-  const res1 = await provider.streamSimple(f.faux.getModel(), ctx1, { signal: c1.signal, sessionId }).result();
+  const res1 = await provider.streamSimple(f.faux.getModel(), normalizeContext(ctx1), { signal: c1.signal, sessionId }).result();
   assert.equal(res1.stopReason, "stop");
   assert.equal(resolverCalls, 1);
 
   // Call 2 with different signal/context
   Object.defineProperty(capturedCtx, "signal", { value: c2.signal, configurable: true });
   const ctx2: Context = { systemPrompt: "prompt 2", messages: [{ role: "user", content: "call 2", timestamp: 2 }] };
-  const res2 = await provider.streamSimple(f.faux.getModel(), ctx2, { signal: c2.signal, sessionId }).result();
+  const res2 = await provider.streamSimple(f.faux.getModel(), normalizeContext(ctx2), { signal: c2.signal, sessionId }).result();
   assert.equal(res2.stopReason, "stop");
   assert.equal(resolverCalls, 2);
 });
@@ -777,7 +778,7 @@ test("reentrant independent resolve during active callback window and call scope
             // While Call 1's callback window is active, launch a reentrant independent call!
             // Different Context is enough for independent identity and uses the same valid main signal.
             const ctx2: Context = { systemPrompt: "base prompt 2", messages: [{ role: "user", content: "reentrant call 2", timestamp: 2 }] };
-            p2Promise = providerRef.streamSimple(f.faux.getModel(), ctx2, {
+            p2Promise = providerRef.streamSimple(f.faux.getModel(), normalizeContext(ctx2), {
               signal: capturedCtx!.signal!,
               sessionId: capturedCtx!.sessionManager.getSessionId(),
             }).result();
@@ -801,12 +802,12 @@ test("reentrant independent resolve during active callback window and call scope
 
   const promptsSeenByProvider: string[] = [];
   f.respond((context) => {
-    promptsSeenByProvider.push(context.systemPrompt ?? "");
-    return fauxAssistantMessage(`Answer for ${context.systemPrompt}`);
+    promptsSeenByProvider.push(getCurrentSystemPrompt(context.messages));
+    return fauxAssistantMessage(`Answer for ${getCurrentSystemPrompt(context.messages)}`);
   });
 
   const ctx1: Context = { systemPrompt: "base prompt 1", messages: [{ role: "user", content: "main call 1", timestamp: 1 }] };
-  const res1 = await providerRef.streamSimple(f.faux.getModel(), ctx1, {
+  const res1 = await providerRef.streamSimple(f.faux.getModel(), normalizeContext(ctx1), {
     signal: mainController.signal,
     sessionId: capturedCtx.sessionManager.getSessionId(),
   }).result();

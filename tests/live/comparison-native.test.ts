@@ -94,7 +94,12 @@ test("E3 restored configuration that still triggers maintenance stops before a s
     assert.match(first.diagnostic!, /another automatic maintenance/);
     assert.equal(first.rollovers?.filter(r => r.snapshot).length, 1);
     assert.equal(first.rollovers?.at(-1)?.callIds.length, 0);
-    assert.equal(f.requests.length, 6, "native post-run check refuses maintenance after the complete four-response suffix");
+    // Native prepareNextTurn checks after each completed tool batch. The first
+    // suffix response reports 30000 input against H=60000-36000, so it stops
+    // before the remaining suffix. The long-suffix test above still proves the
+    // entire four-response continuation when usage stays below restored H.
+    assert.equal(f.requests.length, 3, "native check refuses maintenance after threshold-triggering response");
+    assert(!first.actions.some((a: any) => a.event.type === "tool_result" && a.event.toolName === "write"), "later suffix write never executes");
     assert.deepEqual(ledgerSummary(ledger).unreconciledCallIds, []);
   } finally { await f.close(); }
 });

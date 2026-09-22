@@ -1,7 +1,7 @@
 // purpose: Stock Pi regression for soft-planning overruns versus binding main input limits.
 // usage: node scripts/observe-capacity-recurrence.mjs
 // effects: Isolated CLI/RPC, fictional OAuth, loopback SSE and saved evidence; fixture cleanup.
-// requires: Current dist, locked stock Pi 0.85.1; no live credentials or service.
+// requires: Current dist, locked stock Pi 0.86.1; no live credentials or service.
 import assert from 'node:assert/strict';
 import { StockFixture, text } from './stock-driver.mjs';
 

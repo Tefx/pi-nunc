@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
-import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, type Context, type Model, type Provider } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeContext, type Context, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -453,7 +453,7 @@ test("a throwing layout observer cannot change delegation or payload", async () 
   admission.ensure(ctx);
   const provider = registry.getProvider(model.provider);
   assert(provider);
-  const ok = await provider.streamSimple(model, { messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] }, { signal, sessionId: "synthetic-session" }).result();
+  const ok = await provider.streamSimple(model, normalizeContext({ messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] }), { signal, sessionId: "synthetic-session" }).result();
   assert.equal(ok.stopReason, "stop", ok.errorMessage ?? "");
   assert.equal(faux.state.callCount, 1);
 });
@@ -608,7 +608,7 @@ test("append plus metadata exposes text tokens separately from charged overhead;
   assert(provider);
   const metadata = { user_id: "m".repeat(2000) };
   const expected = textTokens(JSON.stringify(metadata));
-  const sent = await provider.streamSimple(model, { messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] }, { signal, sessionId: "synthetic-session", metadata }).result();
+  const sent = await provider.streamSimple(model, normalizeContext({ messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] }), { signal, sessionId: "synthetic-session", metadata }).result();
   assert.equal(sent.stopReason, "stop", sent.errorMessage ?? "");
   const observed = surface.read(ctx).lastMain;
   assert.equal(observed?.outcome, "delegate");

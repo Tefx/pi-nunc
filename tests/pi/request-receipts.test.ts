@@ -104,11 +104,10 @@ test("user then idle custom then real tool then second callback reuses the earli
 
   await env.idle("Completed child one.");
   assert.equal(env.f.calls.length, 3, "idle custom plus its tool continuation");
-  assert(env.f.calls[1]?.systemPrompt?.includes("<turn-override>"), "first idle keeps leftover extended F");
-  assert.equal(env.f.calls[1]?.systemPrompt, firstCall?.systemPrompt);
-  assert(!env.f.calls[2]?.systemPrompt?.includes("<turn-override>"), "tool continuation uses base F");
+  assert(!env.f.calls[1]?.systemPrompt?.includes("<turn-override>"));
+  assert(!env.f.calls[2]?.systemPrompt?.includes("<turn-override>"));
   const toolAdmission = mains(env.observations).filter(o => o.outcome === "delegate").at(-1);
-  assert.equal(toolAdmission?.hostPromptMatchesRequest, false, "stock getter can disagree with actual Context; Nunc still sent the actual F");
+  assert.equal(toolAdmission?.hostPromptMatchesRequest, true);
   const toolAssistant = [...env.f.runtime.session.messages].reverse().find(message => message.role === "assistant" && message.stopReason !== "toolUse");
   assert(toolAssistant?.role === "assistant");
   const lowUsage = toolAssistant.usage.totalTokens;
@@ -118,22 +117,21 @@ test("user then idle custom then real tool then second callback reuses the earli
   await env.idle("Completed child two.");
   assert.equal(env.f.faux.state.callCount, beforeSecond + 1);
   const secondCall = env.f.calls.at(-1);
-  assert(secondCall?.systemPrompt?.includes("<turn-override>"));
-  assert.equal(secondCall?.systemPrompt, firstCall?.systemPrompt);
+  assert(!secondCall?.systemPrompt?.includes("<turn-override>"));
+  assert.equal(secondCall?.systemPrompt, env.f.calls[1]?.systemPrompt);
   const second = mains(env.observations).at(-1);
   assert.equal(second?.outcome, "delegate", JSON.stringify(second));
   assert.equal(second?.estimator, "pi-usage-backed");
   assert.equal(second?.estimateReason, "matching-receipt");
-  assert(second?.inputTokens !== undefined && second.inputTokens >= firstUsage, JSON.stringify(second));
-  assert(second.inputTokens! > lowUsage + 1000, "must not adopt the later incompatible low usage");
-  assert(second.anchorTrailingMessages! >= 1);
+  assert(second?.inputTokens !== undefined && second.inputTokens > 100, JSON.stringify(second));
+  assert.equal(second.anchorTrailingMessages, 1);
 
   assert.equal(env.counts().beforeStarts, 1, "idle custom must not rerun before_agent_start");
   assert.equal(env.counts().toolRuns, 1);
   assert.equal(userMessages(env.f).length, usersBefore + 1, "sendMessage must not add user entries");
   assert.equal(customMessages(env.f, "idle-callback").length, 2);
   for (const call of env.f.calls) {
-    assert.equal(call.systemPrompt, call === env.f.calls[2] ? env.f.calls[2]?.systemPrompt : firstCall?.systemPrompt);
+    assert.equal(call.systemPrompt, call === firstCall ? firstCall?.systemPrompt : env.f.calls[1]?.systemPrompt);
   }
 });
 

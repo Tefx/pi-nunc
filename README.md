@@ -71,7 +71,7 @@ The tracked `scripts/check.mjs` inventory is a separate development check with e
 
 `/nunc status` is removed; it is an unknown argument. Unknown arguments print `Usage: /nunc [details]` and do not open the panel. Native completion offers only `details`. The previous short status text and status alias are superseded. Read-only commands do not append session entries. RPC `hasUI` is not a terminal overlay; `ctx.mode === "tui"` is required for the panel. The text report and panel read `ContextSurface`, last-maintenance accounting, and UI diagnostics; they do not keep a second budget or M store.
 
-Footer examples: `nunc 8·42%` (saved slots and memory-budget occupancy), `nunc ↻ 8` (maintenance, including waiting for Pi to save), `nunc ! 8` (current warning), `nunc ×` (unusable configuration). Occupancy is Nunc’s memory budget, not Pi’s whole-context meter.
+Footer examples: `🧠 8·42%` (saved slots and memory-budget occupancy), `🧠 0` (empty working memory), `🧠 ↻8` (maintenance, including waiting for Pi to save), `🧠 !8` (current warning), `🧠 ×` (unusable configuration). Occupancy is Nunc’s memory budget, not Pi’s whole-context meter.
 
 The overlay searches, previews, edits, and deletes slots. The Context tab shows the current F/M/R layout and the last main-request or maintenance observation. Viewing and editing do not call a model or compact. Saving writes a native session entry with the complete memory snapshot and leaves retained history K unchanged. Manual edits not yet absorbed by a later compaction need this Nunc to take effect; stock Pi or an older Nunc still reads the last native summary.
 

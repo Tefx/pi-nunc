@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import type { Context, Model, Provider } from "@earendil-works/pi-ai";
+import { normalizeContext, type Context, type Model, type Provider, type TranscriptContext } from "@earendil-works/pi-ai";
 import { ModelRegistry, type ExtensionContext, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
@@ -80,7 +80,7 @@ for (const hasM of [false, true]) test(`native projection survives earlier unkno
       if (!independent) return;
       independent = false;
       const provider = ctx.modelRegistry.getProvider(ctx.model!.provider)!;
-      const context: Context = { messages: [{ role: "user", content: "independent", timestamp: 0 }] };
+      const context: TranscriptContext = normalizeContext({ messages: [{ role: "user", content: "independent", timestamp: 0 }] });
       const simple = await provider.streamSimple(ctx.model!, context, { signal: new AbortController().signal, sessionId: ctx.sessionManager.getSessionId() }).result();
       assert.equal(simple.stopReason, "stop");
       const raw = await provider.stream(ctx.model!, context, { signal: ctx.signal, maxTokens: 100 }).result();
@@ -109,10 +109,10 @@ for (const hasM of [false, true]) test(`native independent nested Context and re
     const provider = n.ctx().modelRegistry.getProvider(model.provider)!;
     // Same R/M objects and same signal/session, but a distinct Context invocation.
     const nestedOptions = { ...options, onPayload: undefined };
-    const result = await provider.streamSimple(model, { ...context }, nestedOptions).result();
+    const result = await provider.streamSimple(model, normalizeContext({ ...context }), nestedOptions).result();
     assert.equal(result.stopReason, "stop");
     nestedObservation = n.last();
-    const repeated = await provider.streamSimple(model, context, nestedOptions).result();
+    const repeated = await provider.streamSimple(model, normalizeContext(context), nestedOptions).result();
     assert.equal(repeated.stopReason, "stop");
     assert.equal(n.last().estimator, "pi-heuristic");
     assert.equal(n.last().estimateReason, "messages-mismatch");
@@ -122,7 +122,7 @@ for (const hasM of [false, true]) test(`native independent nested Context and re
   assert.equal(nestedObservation?.estimateReason, "messages-mismatch");
   // Replaying the consumed projection after the ALS run is also unassociated.
   assert(held);
-  const result = await n.ctx().modelRegistry.getProvider(n.model.provider)!.streamSimple(n.model, held.context, { ...held.options, signal: n.ctx().signal }).result();
+  const result = await n.ctx().modelRegistry.getProvider(n.model.provider)!.streamSimple(n.model, normalizeContext(held.context), { ...held.options, signal: n.ctx().signal }).result();
   assert.equal(result.stopReason, "stop");
   await n.f.runtime.session.prompt("genuine next projection");
   assert.equal(n.last().estimator, "pi-usage-backed");

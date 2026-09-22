@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, getCurrentTools, InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRegistry, ModelRuntime, convertToLlm } from "@earendil-works/pi-coding-agent";
 import { maintain, memoryMessage, piComplete, renderMemory } from "pi-nunc/engine";
 import { semanticEvidence } from "../../src/live/scenarios.js";
@@ -16,7 +16,7 @@ test("public package export -> engine -> piComplete -> real Pi registry/runtime 
   faux.setResponses([(context, options, _state, model) => {
     assert.equal(model.id, source.model.id);
     assert.deepEqual(sourceRecords(context).flatMap(r => r.messages), source.active.flatMap(e => e.messages).map(semanticEvidence));
-    assert.deepEqual(context.tools, []);
+    assert.deepEqual(getCurrentTools(context.messages), []);
     assert.equal(options?.signal, source.signal);
     assert.equal(options?.maxTokens, source.config.extraction.outputTokens);
     assert.equal(options?.cacheRetention, "none"); assert.equal(options?.maxRetries, 0);

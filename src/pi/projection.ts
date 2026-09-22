@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ActiveEntry, Memory } from "../engine/index.js";
 import { emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
+import { isSystemMessage } from "../engine/accounting.js";
 import { EngineError, record, validateMemory } from "../engine/validation.js";
 
 /** Private CustomEntry type. Replaceable encoding; not a public SDK. */
@@ -99,6 +100,7 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
   const active: ActiveEntry[] = [];
   for (const entry of entries) {
     if (entry.type === "compaction") continue;
+    if (entry.type === "message" && isSystemMessage(entry.message)) continue;
     // Native transports omit failed assistants; overflow also removes the final
     // failed assistant from live state before retry. They cannot be a K boundary.
     if (entry.type === "message" && entry.message.role === "assistant" && ["error", "aborted"].includes(entry.message.stopReason)) continue;
@@ -214,6 +216,7 @@ function sourceUnits(entries: readonly SessionEntry[]): { entryId: string; messa
   const units: { entryId: string; messages: ReturnType<typeof sessionEntryToContextMessages> }[] = [];
   for (const entry of entries) {
     if (entry.type === "compaction") continue;
+    if (entry.type === "message" && isSystemMessage(entry.message)) continue;
     if (entry.type === "message" && entry.message.role === "assistant" && ["error", "aborted"].includes(entry.message.stopReason)) continue;
     const raw = sessionEntryToContextMessages(entry).filter(message => message.role !== "compactionSummary" && !(message.role === "custom" && message.customType === "nunc.memory"));
     if (!raw.length) continue;

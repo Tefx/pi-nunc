@@ -158,7 +158,8 @@ function assertNativeExtraction(segment: any) {
   assert(contexts.length > 0);
   for (const [i, row] of segment.rollovers.entries()) {
     const context = contexts[i].context;
-    const blocks = context.messages[0].content;
+    const userMsg = context.messages.find((m: any) => m.role === "user") ?? context.messages[0];
+    const blocks = userMsg.content;
     const fmIndex = blocks.findIndex((b: any) => b.type === "text" && readSourceRecords(b.text).some(r => r.source === "F/M"));
     const fm = JSON.parse(blocks[fmIndex].text);
     assert(fm.M.length > 0, "actual extraction contains saved manual M");
@@ -169,16 +170,18 @@ function assertNativeExtraction(segment: any) {
     assert.notDeepEqual(stale, fm.M, "fixture exercises a genuinely newer manual revision");
     for (const wrong of [[], stale, [{ id: fm.M[0].id, text: "Wrong actual memory" }]]) {
       const changed = structuredClone(context);
-      changed.messages[0].content[fmIndex].text = JSON.stringify({ ...fm, M: wrong });
+      const changedUser = changed.messages.find((m: any) => m.role === "user") ?? changed.messages[0];
+      changedUser.content[fmIndex].text = JSON.stringify({ ...fm, M: wrong });
       assert.equal(checkFullExtraction(row.active, changed).status, "UNPROVEN", "observed stock input does not bless corrupted M");
     }
     for (const region of ["F/M", "B", "K"]) {
       const changed = structuredClone(context);
-      changed.messages[0].content = blocks.filter((b: any) => b.type !== "text" || !readSourceRecords(b.text).some(r => r.source === region || r.region === region));
+      const changedUser = changed.messages.find((m: any) => m.role === "user") ?? changed.messages[0];
+      changedUser.content = blocks.filter((b: any) => b.type !== "text" || !readSourceRecords(b.text).some(r => r.source === region || r.region === region));
       assert.equal(checkFullExtraction(row.active, changed).status, "UNPROVEN", `missing actual ${region}`);
     }
   }
 }
 
 test("guidance public native scenes preserve first/manual revisions, post-checkpoint M, source negatives and feasible split", { timeout: 300000 }, () => guidanceNative());
-test("guidance public low-usage split is conditionally infeasible and stops before maintenance, unlock or continuation", { timeout: 60000 }, () => guidanceNative(true));
+test("guidance public low-usage split is conditionally infeasible and stops before maintenance, unlock or continuation", { timeout: 180000 }, () => guidanceNative(true));

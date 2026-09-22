@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fauxProvider, fauxAssistantMessage, InMemoryCredentialStore, type FauxResponseFactory } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, InMemoryCredentialStore, type FauxResponseFactory, type TranscriptContext } from "@earendil-works/pi-ai";
 import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices, createEventBus, SessionManager, SettingsManager, ModelRegistry, ModelRuntime, type CreateAgentSessionRuntimeFactory, type ToolDefinition, type InlineExtension, type EventBus } from "@earendil-works/pi-coding-agent";
 import nunc from "pi-nunc";
 import { bindHostSettings, type MaintenanceEvent, type NuncConfig } from "pi-nunc/pi";
@@ -54,14 +54,23 @@ export async function fixture(options: {
   const credentials = new InMemoryCredentialStore();
   const modelRuntime = await ModelRuntime.create({ credentials, modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
   new ModelRegistry(modelRuntime).registerProvider(faux.provider);
-  const calls: Parameters<FauxResponseFactory>[0][] = [];
+  const calls: (TranscriptContext & { systemPrompt: string; tools: any[] })[] = [];
   const events: MaintenanceEvent[] = [];
   const errors: string[] = [];
   let responder: FauxResponseFactory = context => {
     const sources = sourceRecords(context);
     return fauxAssistantMessage(sources.length ? JSON.stringify({ add: [{ key: "fact", text: "Preserved test constraint." }], remove: [], priority: ["fact"], required: ["fact"] }) : "Task response.");
   };
-  faux.setResponses(Array.from({ length: 80 }, () => (context, opts, state, model) => { calls.push(structuredClone({ ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters }) => ({ name, description, parameters })) } : {}) })); return responder(context, opts, state, model); }));
+  faux.setResponses(Array.from({ length: 80 }, () => (context, opts, state, model) => {
+    const prompt = (context as any).systemPrompt ?? getCurrentSystemPrompt(context.messages);
+    const tools = (context as any).tools ?? getCurrentTools(context.messages);
+    calls.push(structuredClone({
+      ...context,
+      systemPrompt: prompt,
+      tools: tools.map(({ name, description, parameters }: any) => ({ name, description, parameters })),
+    }));
+    return responder(context, opts, state, model);
+  }));
   const factory: CreateAgentSessionRuntimeFactory = async target => {
     const bus = createEventBus();
     bus.on("nunc:maintenance", data => events.push(data as MaintenanceEvent));
@@ -87,7 +96,7 @@ export async function fixture(options: {
   };
   const runtime = await createAgentSessionRuntime(factory, { cwd, agentDir, sessionManager: options.ephemeral ? SessionManager.inMemory(cwd) : SessionManager.create(cwd, sessionDir) });
   return { dir, cwd, agentDir, sessionDir, configFile, config, settings, faux, runtime, modelRuntime, credentials, events, calls, errors,
-    respond(fn: FauxResponseFactory) { responder = fn; },
+    respond(fn: (context: TranscriptContext & { systemPrompt?: string; tools?: any[] }, opts?: any, state?: any, model?: any) => any) { responder = fn as any; },
     seed(label = "old") {
       const manager = runtime.session.sessionManager;
       const first = manager.appendMessage({ role: "user", content: label + ":" + "a".repeat(48000), timestamp: 0 });

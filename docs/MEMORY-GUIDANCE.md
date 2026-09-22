@@ -8,6 +8,26 @@ This document specifies accepted guidance refinements for Nunc's active working 
 
 ---
 
+## 0. Current correction: complete-task retention
+
+**Current status:** The user authorized documentation updates and creation of an implementation plan. The complete-task correction is specified but not implemented or behaviorally accepted. The status statement and §§1–3 below record the earlier guidance delivery and its historical evaluation scope; they do not establish this correction's delivery or authorize a new Gemini run.
+
+The canonical current contract is [EXTRACTION §0](EXTRACTION.md#0-当前修订保留完整任务与完成标准), with semantic rules in [§3](EXTRACTION.md#3-必查语义与任务焦点) and slot/edit behavior in [§4.1](EXTRACTION.md#41-增量操作). Keep existing `Slot {id,text}`, tool schemas, wire protocol, revisions, budget mechanics, persistence, native scheduling and stable carrier placement. No requirement entity, protected-ID set, special mutation API, semantic error code, permanent pin, extra model or automatic source retrieval is introduced.
+
+### Current production changes
+
+- `policies/default.md`: maintain the information needed to complete the whole active task correctly. Preserve decisive scope, negations, exact limits, interaction and verification conditions; a short focus cannot replace them. Keep active goals and decisive completion conditions in M even when K repeats them. Separate stable requirements from changing progress when they can be updated independently; retain valid parts of mixed notes after partial success. Consolidate superseded guidance rather than appending repeated reminders.
+- `src/engine/request.ts::extractionContext`: make the maintenance objective consistent with that policy while preserving source roles, adopted task-document scope, frozen delivered inputs, one request and no tools. Other source text cannot change the maintenance protocol.
+- `src/index.ts::registerMemoryTools`: refine read/patch descriptions and update/remove parameter guidance. Active edits must retain valid goals, constraints, completion conditions and unfinished obligations; replacing a body or merging notes must preserve qualifiers. Build success, file creation and partial test success update only their supported scope. Unknown validity calls for preserving uncertainty or ordinary source recovery by the main agent. Keep the existing revision/conflict/unconfirmed behavior, optional tool exposure and no routine read/write requirement.
+
+These are model-facing semantic responsibilities. Mechanical checks cannot determine whether a natural-language deletion dropped an unfinished obligation; do not claim that ordinary patch will reject such a deletion. Human edits remain allowed. No schema or session migration is needed; lost information outside M/K requires normal source recovery rather than automatic reconstruction.
+
+### Current verification and model selection
+Extend existing extraction/guidance scenarios and observers; preserve prior fixtures and their acceptance conditions. Cover adopted task files, repeated real compaction during a single long task, partial success followed by actual memory editing and continued work, scoped corrections, interruptions, and retirement of completed tasks without losing other work. Evaluate final artifacts and actions as well as generated M/K. A run without an actual patch does not establish active-edit coverage; a controlled edit opportunity must not supply the expected note text or patch. Keep semantic checks `UNPROVEN` when only mechanical evidence exists.
+
+For this correction's live behavioral tests, the user's selection is **`gpt-5.6-luna`, `low thinking level`**, as defined in [EXTRACTION §0.4](EXTRACTION.md#04-真实模型边界与当前授权). This applies to continuation, maintenance and any model-driven semantic observation. The Gemini-only restriction in historical §3 applies only to that earlier task. The runner already accepts the `low` name; verify actual requested/effective configuration on every relevant path, including maintenance, before live observations. Do not silently substitute a model or thinking level, or assume raw extraction defaults apply the requested setting. Keep test overrides isolated from normal production settings; report actual unsupported paths before their affected calls.
+
+Compare native Pi, the actual pre-change Nunc and the candidate under the existing defaults/matched evidence rules; distinguish tools enabled/disabled and unexercised dimensions. Build and verify the loaded `dist/src/index.js` and policy/tool resources before candidate observations. Current authorization ends at documentation and planning; implementation, deployment and live execution remain future work. Completed Plan and evidence history stay immutable.
 ## 1. Tool Description Refinements
 
 ### Problem & Motivation

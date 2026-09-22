@@ -1,13 +1,13 @@
-import type { Api, Context, Message, Model } from "@earendil-works/pi-ai";
+import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, Slot } from "../engine/index.js";
-import { mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
 import type { MemorySurface } from "./manual.js";
 import type { PayloadObservation } from "./payload.js";
-import { currentMemoryIndex, project } from "./projection.js";
+import { currentMemoryIndex, isNuncCarrier, project } from "./projection.js";
 
 export interface TokenCount { tokens: number | null; unknown: boolean }
 export interface ContextBlock {
@@ -485,17 +485,22 @@ function layoutFromProjection(fixed: FixedContext, memory: Memory, active: Activ
 }
 
 function layoutFromContext(context: Context, imageTokens: number | undefined, extraInputTokens: number, projection?: AdmissionLayoutEvent["projection"]): ContextLayout {
-  const rMessages = projection
-    ? context.messages.filter((_, index) => index !== projection.memoryIndex)
-    : context.messages;
+  const normalized = normalizeContext(context);
+  const rMessages = normalized.messages.filter(m => {
+    if (isSystemMessage(m)) return false;
+    if (projection && isNuncCarrier(m)) return false;
+    return true;
+  });
   const messages = inspectMessages(rMessages, imageTokens);
   const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: memoryTokens(projection.memory.slots, imageTokens), envelopeTokens: 0 } : undefined;
-  const tools = toolLayer(context.tools ?? []);
+  const currentTools = getCurrentTools(normalized.messages);
+  const tools = toolLayer(currentTools);
   const packagingTokens = 64 + extraInputTokens;
-  const systemTokens = textTokens(context.systemPrompt ?? "");
+  const currentPrompt = getCurrentSystemPrompt(normalized.messages);
+  const systemTokens = textTokens(currentPrompt);
   const known = knownSum([{ tokens: systemTokens, unknown: false }, tools, { tokens: packagingTokens, unknown: false }, ...(memory ? [{ tokens: memory.tokens, unknown: false }] : []), ...messages]);
   return {
-    system: { text: context.systemPrompt ?? "", tokens: systemTokens },
+    system: { text: currentPrompt, tokens: systemTokens },
     tools,
     ...(memory ? { memory } : {}),
     messages,

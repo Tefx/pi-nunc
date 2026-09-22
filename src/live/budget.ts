@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import type { Api, ApiStreamOptions, AssistantMessage, Context, Model, Provider, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { getCurrentTools, type Api, type ApiStreamOptions, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
 import type { UsageObservation } from "../engine/types.js";
@@ -47,7 +47,7 @@ function describeFailure(code: string, observation: { wrapperEntries: number; tr
 export class BudgetLedger {
   private active = false;
   constructor(readonly path: string, readonly limits: Limits, readonly deadline: number, readonly signal: AbortSignal, readonly caseKey?: string) {}
-  reserve(model: Model<Api>, context: Context, outputCeiling: number): CallRecord {
+  reserve(model: Model<Api>, context: Context | TranscriptContext, outputCeiling: number): CallRecord {
     this.signal.throwIfAborted();
     requireValue(Date.now() < this.deadline, "TIME_LIMIT", "Run deadline reached");
     requireValue(!this.active, "CONCURRENCY", "Concurrent model calls are unsupported");
@@ -110,7 +110,7 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
 }
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
 export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void } = {}): Provider {
-  function stream(model: Model<Api>, context: Context, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
+  function stream(model: Model<Api>, context: Context | TranscriptContext, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = new AssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
     void (async () => {
@@ -133,10 +133,11 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "ENDPOINT", "Authorized model baseUrl is missing");
         reservation = ledger.reserve(model, context, maxTokens);
         // Agent tools also carry executable callbacks. Observe only the public model-facing Tool fields.
-        options.onContext?.(model, structuredClone({ ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) } : {}) }), kind);
+        const activeTools = ("tools" in context && Array.isArray(context.tools)) ? context.tools : getCurrentTools(context.messages);
+        options.onContext?.(model, structuredClone({ ...context, tools: activeTools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) }), kind);
         options.onRequest?.({ callId: reservation.id, kind, model,
           outputPlanning: original?.maxTokens ?? null, reasoning: (original as SimpleStreamOptions | undefined)?.reasoning ?? null,
-          context: { ...context, ...(context.tools ? { tools: context.tools.map(({ name, description, parameters }) => ({ name, description, parameters })) } : {}) } });
+          context: { ...context, tools: activeTools.map(({ name, description, parameters }) => ({ name, description, parameters })) } });
         const combined = AbortSignal.any([ledger.signal, ...(original?.signal ? [original.signal] : [])]);
         const onPayload = async (payload: unknown, selected: Model<Api>) => {
           const replacement = await original?.onPayload?.(payload, selected);
@@ -177,7 +178,9 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         };
         const bounded = { ...original, onPayload, maxRetries: 0, timeoutMs: Math.max(1, ledger.deadline - Date.now()), signal: combined, transport: "sse" as const, fetch: boundedFetch };
         // The two public entry points have distinct API-specific option unions; preserve the caller's entry point.
-        const source = simple ? base.streamSimple(model, context, bounded as SimpleStreamOptions) : base.stream(model, context, bounded);
+        // Historical comparison targets own their older Context API. Do not
+        // normalize their input with the candidate's library before delegation.
+        const source = simple ? base.streamSimple(model, context as TranscriptContext, bounded as SimpleStreamOptions) : base.stream(model, context as TranscriptContext, bounded);
         let terminal: AssistantMessage | undefined;
         for await (const event of source) {
           if (event.type === "done") terminal = event.message;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, type Context } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Admission } from "../../src/pi/admission.js";
 import { engineConfig } from "../../src/pi/config.js";
@@ -29,8 +29,8 @@ async function env() {
   const held = registry.getProvider(model.provider);
   assert(held);
   const options = { signal, sessionId: "synthetic-session" };
-  const context: Context = { messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] };
-  const huge: Context = { messages: [{ role: "user", content: "x".repeat(16000), timestamp: 1 }] };
+  const context: TranscriptContext = normalizeContext({ messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] });
+  const huge: TranscriptContext = normalizeContext({ messages: [{ role: "user", content: "x".repeat(16000), timestamp: 1 }] });
   const rewrap = () => {
     registry.registerProvider({
       ...held,
@@ -80,9 +80,10 @@ test("maintenance same-Context replay via a held older wrapper cannot consume a 
   let statuses: string[] | undefined;
   await e.admission.complete(async request => {
     const options = { signal: request.signal, maxTokens: request.outputTokens };
-    const first = await latest.stream(e.model, request.context, options).result();
-    const guarded = await latest.stream(e.model, request.context, options).result();
-    const held = await e.held.stream(e.model, request.context, options).result();
+    const normalized = normalizeContext(request.context);
+    const first = await latest.stream(e.model, normalized, options).result();
+    const guarded = await latest.stream(e.model, normalized, options).result();
+    const held = await e.held.stream(e.model, normalized, options).result();
     statuses = [first.stopReason, guarded.stopReason, held.stopReason];
     assert.match(guarded.errorMessage ?? "", /already used or changed binding/);
     assert.equal(held.stopReason, "error");
@@ -99,12 +100,13 @@ test("held older wrapper replay from inside the native callback cannot send twic
   let replay: string | undefined;
   await e.admission.complete(async request => {
     const options = { signal: request.signal, maxTokens: request.outputTokens };
+    const normalized = normalizeContext(request.context);
     e.faux.setResponses([async () => {
-      const nested = await e.held.stream(e.model, request.context, options).result();
+      const nested = await e.held.stream(e.model, normalized, options).result();
       replay = nested.stopReason;
       return fauxAssistantMessage("synthetic answer");
     }]);
-    return latest.stream(e.model, request.context, options).result();
+    return latest.stream(e.model, normalized, options).result();
   })({ model: e.model, context: e.context, signal: e.options.signal, outputTokens: 128 });
   assert.equal(replay, "error");
   assert.equal(e.faux.state.callCount, 1);
@@ -135,7 +137,7 @@ test("repeated same-length completed calls keep a bounded receipt and bind the a
   assert(provider);
   // This component test supplies the same explicit projection boundary used by
   // the context hook; unassociated direct provider calls cannot mint receipts.
-  const bind = (context: Context) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal, model: e.model, messages: context.messages, memory: { version: 1, nextId: 1, slots: [] } });
+  const bind = (context: Context | TranscriptContext) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal, model: e.model, messages: context.messages, memory: { version: 1, nextId: 1, slots: [] } });
   bind(e.context);
   let completed = await provider.streamSimple(e.model, e.context, e.options).result();
   assert.equal(completed.stopReason, "stop", completed.errorMessage ?? "");
@@ -146,7 +148,7 @@ test("repeated same-length completed calls keep a bounded receipt and bind the a
   }
   await Promise.resolve();
   e.observations.length = 0;
-  const follow: Context = { messages: [e.context.messages[0]!, completed, { role: "user", content: "next synthetic turn", timestamp: 2 }] };
+  const follow: TranscriptContext = normalizeContext({ messages: [e.context.messages[0]!, completed, { role: "user", content: "next synthetic turn", timestamp: 2 }] });
   bind(follow);
   const next = await provider.streamSimple(e.model, follow, e.options).result();
   assert.equal(next.stopReason, "stop", next.errorMessage ?? "");
@@ -177,7 +179,7 @@ test("receipt U sums real input/cache/output components instead of inconsistent 
   const bind = (messages: Context["messages"]) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal, model: e.model, messages, memory: { version: 1, nextId: 1, slots: [] } });
   bind(e.context.messages);
   const first = await provider.streamSimple(e.model, e.context, e.options).result();
-  const follow: Context = { messages: [...e.context.messages, first, { role: "user", content: "next", timestamp: 2 }] };
+  const follow: TranscriptContext = normalizeContext({ messages: [...e.context.messages, first, { role: "user", content: "next", timestamp: 2 }] });
   bind(follow.messages);
   await provider.streamSimple(e.model, follow, e.options).result();
   assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).receiptBreakdown.observedU, 135);
@@ -188,7 +190,7 @@ test("ambiguous projection witnesses and missing bindings cannot establish pure-
   const e = await env();
   const first = e.context.messages[0]!;
   const second: Context["messages"][number] = { role: "user", content: "second witness", timestamp: 2 };
-  const context: Context = { messages: [first, second] };
+  const context: TranscriptContext = normalizeContext({ messages: [first, second] });
   const bind = (messages: Context["messages"]) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal, model: e.model, messages, memory: { version: 1, nextId: 1, slots: [] } });
   bind(context.messages);
   bind([second, first]);
@@ -197,7 +199,7 @@ test("ambiguous projection witnesses and missing bindings cannot establish pure-
   assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).estimateReason, "messages-mismatch");
   e.admission.invalidateUsage();
   const unbound = await e.held.streamSimple(e.model, context, e.options).result();
-  const follow: Context = { messages: [first, second, unbound, { role: "user", content: "follow unbound", timestamp: 3 }] };
+  const follow: TranscriptContext = normalizeContext({ messages: [first, second, unbound, { role: "user", content: "follow unbound", timestamp: 3 }] });
   bind(follow.messages);
   await e.held.streamSimple(e.model, follow, e.options).result();
   assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).estimateReason, "no-receipt");
@@ -215,4 +217,44 @@ test("after close, leftover wrappers stay transparent; a different signal stays 
   Object.defineProperty(e.ctx, "signal", { get: () => { throw new Error("stale ctx access"); } });
   const after = await latest.streamSimple(e.model, e.context, e.options).result();
   assert.equal(after.stopReason, "stop", after.errorMessage ?? "");
+});
+
+test("equal-content nested maintenance requests retain independent native identity", async () => {
+  const e = await env();
+  let nested: string | undefined;
+  await e.admission.complete(async request => {
+    e.faux.setResponses([async context => {
+      // Same contents, model, output and signal; a distinct request owns no
+      // maintenance allowance and cannot be rejected as its parent's replay.
+      const other = normalizeContext(structuredClone(context));
+      nested = (await e.held.stream(e.model, other, { signal: request.signal, maxTokens: request.outputTokens }).result()).stopReason;
+      return fauxAssistantMessage("outer maintenance");
+    }, fauxAssistantMessage("independent nested")]);
+    return e.registry.complete(e.model, request.context, { signal: request.signal, maxTokens: request.outputTokens });
+  })({ model: e.model, context: { systemPrompt: "legacy maintenance", messages: e.context.messages }, signal: e.options.signal, outputTokens: 128 });
+  assert.equal(nested, "stop");
+  assert.equal(e.faux.state.callCount, 2);
+  assert(e.observations.some(o => o.kind === "unknown" && o.outcome === "delegate"));
+  e.admission.close(e.ctx);
+});
+
+test("receipt invalidates when system history changes then reverts to the same effective state", async () => {
+  const e = await env();
+  const initial = { role: "system" as const, content: "", sections: { rule: "original" }, timestamp: 0 };
+  const first = normalizeContext({ messages: [initial, ...e.context.messages] });
+  const bind = (context: TranscriptContext) => e.admission.bindProjection({ sessionId: e.options.sessionId, signal: e.options.signal,
+    model: e.model, messages: context.messages, memory: { version: 1, nextId: 1, slots: [] } });
+  bind(first);
+  const response = await e.held.streamSimple(e.model, first, e.options).result();
+  assert.equal(response.stopReason, "stop");
+  const next = normalizeContext({ messages: [...first.messages, response,
+    { role: "system", content: "", sections: { rule: "temporary" }, timestamp: 2 },
+    { role: "system", content: "", sections: { rule: "original" }, timestamp: 3 },
+    { role: "user", content: "continue", timestamp: 4 }] });
+  bind(next);
+  assert.equal((await e.held.streamSimple(e.model, next, e.options).result()).stopReason, "stop");
+  const observation = e.observations.filter(o => o.kind === "main").at(-1) as { estimator?: string; estimateReason?: string };
+  assert.equal(observation.estimator, "pi-heuristic");
+  assert.equal(observation.estimateReason, "system-mismatch");
+  e.admission.close(e.ctx);
 });

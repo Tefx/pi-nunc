@@ -34,7 +34,7 @@ export class StockFixture {
     for (const d of ['home', 'agent', 'sessions', 'work', 'tmp', 'xdg']) await mkdir(join(this.state, d), { recursive: true });
     this.logFile = join(this.dir, 'events.jsonl'); await writeFile(this.logFile, '');
     this.watcher = watch(this.logFile, () => { const lines = readFileSync(this.logFile, 'utf8').split('\n'); lines.pop(); this.log = lines.map(s => JSON.parse(s)); this.changes.emit('change'); });
-    this.env = { PATH: '/opt/homebrew/bin:/usr/bin:/bin', HOME: join(this.state, 'home'), PI_CODING_AGENT_DIR: join(this.state, 'agent'), TMPDIR: join(this.state, 'tmp'), XDG_CONFIG_HOME: join(this.state, 'xdg'), PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0', DO_NOT_TRACK: '1', JITI_FS_CACHE: 'false', TERM: 'xterm-256color', NUNC_OBSERVATION_LOG: this.logFile };
+    this.env = { PATH: '/opt/homebrew/bin:/usr/bin:/bin', HOME: join(this.state, 'home'), PI_CODING_AGENT_DIR: join(this.state, 'agent'), TMPDIR: join(this.state, 'tmp'), XDG_CONFIG_HOME: join(this.state, 'xdg'), PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0', DO_NOT_TRACK: '1', JITI_FS_CACHE: 'false', TERM: 'xterm-256color', NUNC_OBSERVATION_LOG: this.logFile, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? '/Library/Developer/CommandLineTools' };
     this.server = createServer((req, res) => {
       const chunks = []; let bytes = 0; req.setTimeout(15000, () => req.destroy());
       req.on('data', part => { chunks.push(part); bytes += part.length; if (bytes > 2000000) req.destroy(); });
@@ -129,7 +129,7 @@ export class StockFixture {
   start(mode = 'rpc', sessionFile) {
     const host = join(root, 'node_modules/@earendil-works/pi-coding-agent');
     const manifest = JSON.parse(readFileSync(join(host, 'package.json'), 'utf8'));
-    assert.equal(manifest.version, '0.85.1');
+    assert.equal(manifest.version, '0.86.1');
     const cli = join(host, manifest.bin.pi);
     const args = [cli, ...(mode === 'rpc' ? ['--mode', 'rpc'] : []), '--no-approve', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-tools', '-e', join(root, 'dist/src/index.js'), '-e', join(root, 'dist/tests/pi/stock-extension.js'), '--nunc-config', this.configFile, '--provider', this.provider, '--model', this.modelId, '--thinking', 'off', '--system-prompt', 'Perform the current task.', '--session-dir', join(this.state, 'sessions'), ...(sessionFile ? ['--session', sessionFile] : [])];
     const command = mode === 'tui' ? ['/usr/bin/python3', join(root, 'scripts/pty-driver.py'), process.execPath, ...args] : [process.execPath, ...args];

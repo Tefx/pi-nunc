@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { getCurrentSystemPrompt } from "@earendil-works/pi-ai";
 import { parseConfig, engineConfig, readConfig } from "../../src/pi/config.js";
 import { model, user, assistant, tool } from "../engine/fixtures.js";
 import { chooseCut, inputLimit, memoryPlan } from "../../src/engine/accounting.js";
@@ -230,7 +231,7 @@ test("relative config/policy loading, one frozen policy per extraction, later ed
   assert.equal(readConfig("../nunc.json", f.cwd).configFile, f.configFile);
   const observed: string[] = [];
   f.respond(async context => {
-    observed.push(context.systemPrompt!);
+    observed.push(context.systemPrompt ?? getCurrentSystemPrompt(context.messages));
     await writeFile(policyFile, "Preference version B");
     return memoryPatch(context);
   });
