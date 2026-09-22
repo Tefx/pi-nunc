@@ -4359,7 +4359,7 @@ phases:
       dependency/build outputs eligible for deletion, code+minimal logs retained.
   - id: nunc-task-retention.observation-support
     name: 真实续做观察能力与候选整合
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
       , \"dist/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"\
@@ -4401,6 +4401,8 @@ phases:
     depends_on:
     - nunc-task-retention.semantics
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-22T02:35:32.403544Z'
   - id: nunc-task-retention.behavior
     name: 隔离 Luna 行为观察与最终整合接受
     status: pending
