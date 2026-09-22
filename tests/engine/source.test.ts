@@ -123,7 +123,11 @@ test("supported native images remain real blocks associated with their source; n
   assert(result.ok, result.ok ? "" : result.message);
   assert.deepEqual(result.candidate.kept.at(-1)!.messages, source.active[2]!.messages);
   delete source.config.imageTokens;
-  const noBudget = await maintain(source, responder()); assert(!noBudget.ok); assert.equal(noBudget.code, "UNSUPPORTED_INPUT");
+  const noBudget = await maintain(source, responder()); assert(noBudget.ok, noBudget.ok ? "" : noBudget.message);
+  assert.deepEqual(noBudget.candidate.kept.at(-1)!.messages, source.active[2]!.messages);
+  source.config.imageTokens = 1_000_000;
+  const tooLarge = await maintain(source, responder()); assert(!tooLarge.ok); assert.equal(tooLarge.code, "CAPACITY");
+  assert.equal(tooLarge.observations.requests, 0);
   source.config.imageTokens = 1200; source.model.input = ["text"];
   const noModel = await maintain(source, responder()); assert(!noModel.ok); assert.equal(noModel.code, "UNSUPPORTED_INPUT");
 });

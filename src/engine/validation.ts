@@ -32,7 +32,7 @@ export function validateConfig(c: EngineConfig): void {
   requireThat(Number.isFinite(c.memory.fraction) && c.memory.fraction >= 0 && c.memory.fraction < 1, "CONFIG", "memory.fraction must be in [0,1)");
   requireThat(Number.isFinite(c.keepRecentFraction) && c.keepRecentFraction > 0 && c.keepRecentFraction < 1, "CONFIG", "keepRecentFraction must be in (0,1)");
   requireThat(c.memory.maxTokens === undefined || integer(c.memory.maxTokens, 1), "CONFIG", "memory.maxTokens must be positive");
-  requireThat(c.imageTokens === undefined || integer(c.imageTokens, 1), "CONFIG", "imageTokens must be a positive provider bound");
+  requireThat(c.imageTokens === undefined || integer(c.imageTokens, 1), "CONFIG", "imageTokens must be a positive per-image estimate");
   for (const b of [c.main, c.extraction]) {
     requireThat(integer(b.outputTokens, 1) && integer(b.safetyTokens, 1) && integer(b.extraInputTokens), "CONFIG", "Output/safety must be positive; extra input must be nonnegative");
     requireThat(b.inputLimit === undefined || integer(b.inputLimit, 1), "CONFIG", "inputLimit must be positive");

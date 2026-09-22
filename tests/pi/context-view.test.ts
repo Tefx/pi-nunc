@@ -5,6 +5,7 @@ import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeC
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { estimateTextAndImageContentTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { bindHostSettings, contextSurface, memorySurface, type ContextSurface, type MemorySurface } from "pi-nunc/pi";
 import { emptyMemory } from "../../src/engine/index.js";
 import { mainContext, memoryTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
@@ -54,8 +55,8 @@ async function prepared(t: { after: (fn: () => Promise<void>) => void }, options
   return { f, ...captured };
 }
 
-test("current F/M/R counts, tool association, packaging, and long bodies stay original", async t => {
-  const { f, memory, context, ctx, pi } = await prepared(t);
+for (const imageTokens of [undefined, 512]) test(`current F/M/R counts, tool association, packaging, and long bodies stay original (${imageTokens ?? "Pi image default"})`, async t => {
+  const { f, memory, context, ctx, pi } = await prepared(t, { config: imageTokens === undefined ? {} : { budget: { imageTokens } } });
   f.seed(); f.respond(memoryPatch);
   await f.runtime.session.compact();
   const manager = f.runtime.session.sessionManager;
@@ -99,10 +100,11 @@ test("current F/M/R counts, tool association, packaging, and long bodies stay or
   const imaged = context().read(ctx());
   const image = imaged.current.layout.messages.flatMap(message => message.blocks).find(block => block.type === "image");
   assert(image);
-  assert.equal(image.tokens, null);
-  assert.equal(image.unknown, true);
-  assert.equal(imaged.current.layout.heuristic.unknown, true);
-  assert.notEqual(imaged.current.layout.heuristic.tokens, 0);
+  const nativeImage = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
+  assert.equal(image.tokens, 16 + (imageTokens ?? estimateTextAndImageContentTokens([nativeImage])));
+  assert.equal(image.unknown, false);
+  assert.equal(imaged.current.layout.heuristic.unknown, false);
+  assert.equal(imaged.current.layout.heuristic.tokens, expected + 32 + textTokens("user") + 16 + textTokens("see") + image.tokens!);
 });
 
 test("context layout links each occurrence of repeated tool call IDs to its own call and result order", async t => {

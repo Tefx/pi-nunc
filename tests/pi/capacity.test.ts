@@ -1,12 +1,35 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { answer, sourceRecords } from "../engine/fixtures.js";
 import { project } from "../../src/pi/projection.js";
+import { Type } from "typebox";
 
-test("native image survives actual host projection and raw Pi model bridge when capacity is explicitly bounded", async t => {
-  const f = await fixture({ config: { budget: { imageTokens: 512 } } }); t.after(() => f.close()); f.seed(); f.respond(memoryPatch);
+test("a native image tool result continues the actual host tool loop without an image budget", async t => {
+  const image = { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" };
+  let toolRuns = 0;
+  const f = await fixture({ tools: [{
+    name: "image_probe", label: "image_probe", description: "Return a native image fixture", parameters: Type.Object({}),
+    execute: async () => { toolRuns++; return { content: [image], details: {} }; },
+  }] });
+  t.after(() => f.close());
+  let responses = 0;
+  f.respond(() => ++responses === 1
+    ? fauxAssistantMessage(fauxToolCall("image_probe", {}, { id: "image-call" }), { stopReason: "toolUse" })
+    : fauxAssistantMessage("Image received."));
+  await f.runtime.session.prompt("Inspect the image from the tool");
+  assert.equal(toolRuns, 1);
+  assert.equal(f.calls.length, 2);
+  const result = f.calls[1]!.messages.find(message => message.role === "toolResult");
+  assert.deepEqual(result?.content, [image]);
+  const last = f.runtime.session.messages.at(-1);
+  assert(last?.role === "assistant");
+  assert.equal(last.stopReason, "stop");
+});
+
+for (const imageTokens of [undefined, 512]) test(`native image survives actual host projection and raw Pi model bridge with ${imageTokens ?? "Pi default"} estimate`, async t => {
+  const f = await fixture({ config: imageTokens === undefined ? {} : { budget: { imageTokens } } }); t.after(() => f.close()); f.seed(); f.respond(memoryPatch);
   const image = { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" };
   f.runtime.session.sessionManager.appendMessage({ role: "user", content: [{ type: "text", text: "Inspect native image" }, image], timestamp: 8 });
   f.runtime.session.sessionManager.appendMessage(answer({}, f.faux.getModel()));
@@ -15,6 +38,8 @@ test("native image survives actual host projection and raw Pi model bridge when 
   assert(imageMsg && Array.isArray(imageMsg.content));
   assert.deepEqual(imageMsg.content.find(b => b.type === "image"), image);
   assert(f.events[0]?.result.ok);
+  assert(f.runtime.session.sessionManager.getEntries().some(entry => entry.type === "compaction"));
+  assert(project(f.runtime.session.sessionManager.buildContextEntries()).active.some(entry => entry.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === "image" && block.data === image.data))));
 });
 
 for (const mode of ["auto", "full"] as const) test(`giant source through real hook in ${mode} mode preserves original K or cancels before dispatch`, async t => {

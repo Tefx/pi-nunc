@@ -37,7 +37,7 @@ export interface EngineConfig {
     /** One reduction pass: this many Unicode code points at EACH end per tool text block. */
     headTailChars: number;
   };
-  /** Explicit provider-specific upper bound per native image; absent means unsupported capacity. */
+  /** Optional per-image planning override; absent uses Pi's heuristic, not a hard upper bound. */
   imageTokens?: number;
 }
 export interface MaintenanceInput {

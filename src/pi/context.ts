@@ -1,7 +1,7 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, Slot } from "../engine/index.js";
-import { isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
@@ -616,9 +616,8 @@ function inspectBlock(block: { type: string; text?: string; thinking?: string; r
     }
     case "image": {
       const mimeType = typeof block.mimeType === "string" ? block.mimeType : "application/octet-stream";
-      const known = integer(imageTokens, 1);
       return {
-        type: "image", tokens: known ? 16 + imageTokens : null, unknown: !known, preview: `image ${mimeType}`, mimeType,
+        type: "image", tokens: 16 + imageTokenEstimate(imageTokens), unknown: false, preview: `image ${mimeType}`, mimeType,
       };
     }
     default:

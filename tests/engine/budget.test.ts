@@ -2,6 +2,22 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mainContext, maintain, memoryTokens, observeUsage, requestTokens } from "../../src/engine/index.js";
 import { answer, input, responder, usage, user } from "./fixtures.js";
+import { estimateTextAndImageContentTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { messageTokens } from "../../src/engine/accounting.js";
+
+test("image accounting uses Pi per-image estimates or an explicit override for user and tool messages", () => {
+  const image = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
+  for (const base of [
+    { role: "user" as const, timestamp: 0 },
+    { role: "toolResult" as const, toolCallId: "image-read", toolName: "read", isError: false, timestamp: 0 },
+  ]) {
+    const empty = { ...base, content: [] };
+    const images = { ...base, content: [image, image] };
+    assert.equal(messageTokens(images) - messageTokens(empty), 32 + estimateTextAndImageContentTokens([image, image]));
+    assert.equal(messageTokens(images, 512) - messageTokens(empty), 32 + 2 * 512);
+    assert.throws(() => messageTokens(images, 0), /positive per-image estimate/);
+  }
+});
 
 test("accounts complete F/envelope/M/R and extraction controls, independent ceilings and actual output reserve", async () => {
   const source = await input(); source.memory.slots = [{ id: "s8", text: "Exact original condition" }];

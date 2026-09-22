@@ -97,7 +97,9 @@ Implemented defaults (`src/pi/config.ts`):
 | `budget.extraMainInputTokens` | `0` |
 | `budget.extraExtractionInputTokens` | `0` |
 | `budget.inputLimit` | unset |
-| `budget.imageTokens` | unset (native images need a justified per-image bound) |
+| `budget.imageTokens` | unset (uses Pi's per-image heuristic; currently 1200 tokens in Pi 0.86.1) |
+
+Images work without extra configuration on image-capable models. `budget.imageTokens` optionally overrides the per-image planning estimate; existing explicit values retain priority. Neither the default nor an override guarantees a token upper bound. Main requests, extraction, retained-history planning and the Context panel use the same rule. Compatible request receipts supply actual usage for the historical prefix; new images are estimated. Provider overflow recovery remains Pi-owned, with no extra Nunc retry loop.
 
 Optional integers are positive except the `extra*` fields, which may be zero. Example file (every key optional):
 
@@ -142,7 +144,7 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
 - Supported host is stock Pi **0.85.1** with persistent sessions. No minimum-version or all-provider claim.
-- Images need model image input **and** `budget.imageTokens`. PDF, audio, and unknown blocks fail explicitly.
+- Images need model image input and remain native blocks. Missing `budget.imageTokens` uses Pi's heuristic instead of rejecting the request. Estimates can undercount or overcount; provider capacity failures remain possible. PDF, audio, and unknown blocks fail explicitly.
 - Unload or downgrade without a later native compaction: stock Pi reads the last native summary, not unabsorbed manual edits.
 - `scripts/check.mjs` requires the pinned Node and a hardcoded Homebrew npm CLI path. It also needs a local comparison baseline before `all`. See [local development](docs/DEVELOPMENT.md). Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.
 - Historical extraction acceptance recorded product `4f1f668` (423 tests / 52 files), UI human confirmation of IME/resize/theme, and disclosed comparison limits. That record is not proof of later source.

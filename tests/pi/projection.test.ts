@@ -63,12 +63,17 @@ test("host-visible starts exclude metadata, excluded bash, and the old compactio
   assert.deepEqual(eligible, projected.active.map(e => e.entryId));
 });
 
-test("native image missing capacity bound and orphan tool input cancel without lost-content workaround", async t => {
+test("native images on unsupported models and orphan tool input cancel without lost-content workaround", async t => {
   const f = await fixture(); t.after(() => f.close()); f.seed();
   const manager = f.runtime.session.sessionManager;
   manager.appendMessage({ role: "user", content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }], timestamp: 10 });
+  await f.runtime.session.setModel({ ...f.faux.getModel("small")!, input: ["text"] });
   await assert.rejects(f.runtime.session.compact(), /cancel/i);
   assert.equal(f.faux.state.callCount, 0);
+  const rejected = f.events[0]?.result;
+  assert(rejected && !rejected.ok);
+  assert.equal(rejected.code, "UNSUPPORTED_INPUT");
+  await f.runtime.session.setModel(f.faux.getModel());
   manager.appendMessage({ role: "toolResult", toolCallId: "unknown", toolName: "probe", content: [{ type: "text", text: "orphan" }], isError: true, timestamp: 11 });
   manager.appendMessage({ role: "user", content: "Continue after that orphan result", timestamp: 12 });
   await assert.rejects(f.runtime.session.compact(), /cancel/i);

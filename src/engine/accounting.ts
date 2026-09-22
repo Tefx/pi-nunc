@@ -1,4 +1,4 @@
-import { calculateContextTokens, estimateTextTokens, estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { calculateContextTokens, estimateTextTokens, estimateTextAndImageContentTokens, estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { getSystemMessageText, normalizeContext, type Api, type Context, type Message, type Model, type SystemMessage } from "@earendil-works/pi-ai";
 import type { ActiveEntry, EngineConfig, FixedContext, RequestBudget, Slot, UsageObservation } from "./types.js";
 import { memoryMessage } from "./memory.js";
@@ -9,6 +9,12 @@ export function textTokens(text: string): number { return estimateTextTokens(tex
 
 export function isSystemMessage(message: unknown): message is SystemMessage {
   return typeof message === "object" && message !== null && (message as { role?: unknown }).role === "system";
+}
+
+/** Pi's per-image planning heuristic; bytes/dimensions are not tokenizer inputs here. */
+export function imageTokenEstimate(override?: number): number {
+  requireThat(override === undefined || integer(override, 1), "CONFIG", "imageTokens must be a positive per-image estimate");
+  return override ?? estimateTextAndImageContentTokens([{ type: "image", data: "", mimeType: "image/png" }]);
 }
 
 export function messageTokens(message: Message, imageTokens?: number): number {
@@ -28,8 +34,7 @@ export function messageTokens(message: Message, imageTokens?: number): number {
       case "thinking": tokens += textTokens(block.thinking); break;
       case "toolCall": tokens += textTokens(block.id) + textTokens(block.name) + textTokens(JSON.stringify(block.arguments)); break;
       case "image":
-        requireThat(integer(imageTokens, 1), "UNSUPPORTED_INPUT", "Native image input needs a provider-specific imageTokens upper bound");
-        tokens += imageTokens; break;
+        tokens += imageTokenEstimate(imageTokens); break;
     }
   }
   return tokens;
@@ -49,7 +54,7 @@ function usageFields(message: Message): number | undefined {
 /** Caller must establish unchanged model/prefix before allowing historical usage.
  * Pass usageIndex to pin that assistant; omitting it keeps Pi's latest applicable usage. */
 export function admissionEstimate(context: Context, model: Model<Api>, imageTokens?: number, allowUsage = false, minimumUsageIndex = 0, usageIndex?: number): { tokens: number; estimator: "pi-heuristic" | "pi-usage-backed" } {
-  // Validate every native image even when a usage receipt covers its token cost.
+  // Fresh planning estimate for requests without a compatible usage anchor.
   const fresh = requestTokens(context, imageTokens);
   if (!allowUsage) return { tokens: fresh, estimator: "pi-heuristic" };
   if (usageIndex !== undefined) {

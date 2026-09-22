@@ -7,6 +7,24 @@ import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earend
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface } from "pi-nunc/pi";
 import { fixture, memoryPatch } from "./fixtures.js";
+import { messageTokens } from "../../src/engine/accounting.js";
+
+test("unconfigured native images reach the host provider and new images are charged after a usage receipt", async t => {
+  const { f, observations } = await receiptsFixture(t);
+  const image = { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" };
+  await f.runtime.session.prompt("First image", { images: [image] });
+  assert.equal(f.calls.length, 1);
+  assert(f.calls[0]!.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === "image" && block.data === image.data)));
+  assert.equal(mains(observations).at(-1)?.estimator, "pi-heuristic");
+  await f.runtime.session.prompt("Another image", { images: [image] });
+  assert.equal(f.calls.length, 2);
+  const second = mains(observations).at(-1)!;
+  assert.equal(second.outcome, "delegate");
+  assert.equal(second.estimator, "pi-usage-backed");
+  assert.equal(second.receiptBreakdown?.deltaRTokens, messageTokens({ role: "user", content: [{ type: "text", text: "Another image" }, image], timestamp: 0 }));
+  const images = f.calls[1]!.messages.flatMap(message => Array.isArray(message.content) ? message.content.filter(block => block.type === "image") : []);
+  assert.deepEqual(images, [image, image]);
+});
 
 const MARKER = "\n<turn-override>" + "Z".repeat(12000) + "</turn-override>";
 
