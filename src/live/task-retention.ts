@@ -67,13 +67,17 @@ export function confirmedEdits(actions: GuidanceAction[]) {
 type SetupArgs = [ScenarioInput, Record<string, string[]>, SessionEntry[], SessionEntry[], RolloverObservation[], GuidanceAction[], string, RequestObservation[]?];
 const check = (name: string, proven: boolean, observed: unknown): CheckResult => ({ check: name, status: proven ? "PROVEN" : "UNPROVEN", observed });
 const semantic = (name: string, observed: unknown): CheckResult => ({ check: name, status: "UNPROVEN", reason: "Independent semantic assessment required; observed effects alone do not establish this meaning.", observed });
-function buildSequence(actions: GuidanceAction[]) {
+function behaviorWork(action: GuidanceAction, cwd: string): boolean {
+  return ["write", "edit"].includes(action.event?.toolName) && ["solution.py", "test_solution.py"].some(path => pathIs(cwd, action.event.input?.path, path)) ||
+    action.event?.toolName === "bash" && ["tests", "solution"].includes(metricsCommand(action.event.input?.command ?? "") ?? "");
+}
+function buildSequence(actions: GuidanceAction[], cwd: string) {
   const effects = guidanceExchanges(actions);
   const builds = effects.filter(x => x.call.event.toolName === "bash" && metricsCommand(x.call.event.input?.command ?? "") === "build");
   const failed = builds.find(x => x.result?.isError === true);
   const succeeded = builds.find(x => failed && x.callIndex > failed.resultIndex && x.result?.isError === false);
   const laterWork = effects.find(x => succeeded && x.callIndex > succeeded.resultIndex && x.result?.isError === false &&
-    (["write", "edit"].includes(x.call.event.toolName) || x.call.event.toolName === "bash" && ["tests", "solution"].includes(metricsCommand(x.call.event.input?.command ?? "") ?? "")));
+    behaviorWork(x.call, cwd));
   return { failedCallId: failed?.call.event.toolCallId, successfulCallId: succeeded?.call.event.toolCallId, laterWorkCallId: laterWork?.call.event.toolCallId };
 }
 
@@ -91,7 +95,7 @@ export function taskFileChecks(...[scenario, turns, branch, active, rollovers, a
   const series = Boolean(read.entryId && first?.continued && second?.continued && third?.continued &&
     first.keptEntryIds.includes(read.entryId) && second.retiredEntryIds.includes(read.entryId) &&
     !third.keptEntryIds.includes(read.entryId) && maintainedGenerated);
-  const build = buildSequence(actions);
+  const build = buildSequence(actions, cwd);
   return [
     check("TASK.md requirements entered through the sole ordinary user request and a complete persisted read", ordinary && read.complete, { read, deliveredUserIds: delivered.map(e => e.id) }),
     check("Three committed same-task compactions: task read in K, retirement, then maintenance of generated M and actual continuation", series, { facts, maintainedGenerated }),
@@ -101,10 +105,10 @@ export function taskFileChecks(...[scenario, turns, branch, active, rollovers, a
 }
 
 export function activeEditChecks(...[scenario, turns, branch, active, rollovers, actions, cwd, requests = []]: SetupArgs): CheckResult[] {
-  const read = taskRead(scenario, branch, actions, cwd), build = buildSequence(actions), edits = confirmedEdits(actions);
+  const read = taskRead(scenario, branch, actions, cwd), build = buildSequence(actions, cwd), edits = confirmedEdits(actions);
   const facts = rollovers.map(r => retainedRollover(r, branch, requests, rollovers));
   const d = edits.filter(e => e.turn === "d" && e.confirmed);
-  const workAfter = d.some(e => guidanceExchanges(actions).some(x => x.callIndex > e.resultIndex && x.result?.isError === false && ["write", "edit", "bash"].includes(x.call.event.toolName)));
+  const workAfter = d.some(e => guidanceExchanges(actions).some(x => x.callIndex > e.resultIndex && x.result?.isError === false && behaviorWork(x.call, cwd)));
   return [
     check("Task read and build failure/repair observed before continuation", read.complete && Boolean(build.failedCallId && build.successfulCallId), { read, build }),
     semantic("Model-authored saved note mixed resolved progress and unfinished obligations", { notes: edits.filter(e => e.turn === "b"), turnStates: actions.filter(a => a.turn === "b" && a.event?.type === "turn_complete") }),

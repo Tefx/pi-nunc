@@ -10,6 +10,7 @@ import { repository } from "./fixtures.js";
 import { boundedProvider, BudgetLedger } from "../../src/live/budget.js";
 import { createAssistantMessageEventStream, type Model, type Context, type Api, type Provider } from "@earendil-works/pi-ai";
 import { resolveInput } from "../../src/live/defaults.js";
+import { taskFileChecks } from "../../src/live/task-retention.js";
 
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
@@ -92,6 +93,20 @@ async function setupWorkspace(dir: string, files: Record<string, string>) {
     await writeFile(join(dir, name), content, "utf8");
   }
 }
+
+test("unrelated file writes after a build cannot prove subsequent behavior work", () => {
+  const actions: any[] = [];
+  const effect = (id: string, name: string, input: any, isError: boolean) => actions.push(
+    { turn: "a", event: { type: "tool_call", toolCallId: id, toolName: name, input } },
+    { turn: "a", event: { type: "tool_result", toolCallId: id, toolName: name, isError, content: [{ type: "text", text: "Observed output" }] } });
+  effect("failed", "bash", { command: "python3 build.py" }, true);
+  effect("compiled", "bash", { command: "python3 build.py" }, false);
+  effect("write", "write", { path: "unrelated.txt", content: "done" }, false);
+  const scenario = { id: "g4", files: {}, turns: [{ id: "a", text: "Read TASK.md and complete the work it specifies." }] };
+  assert.equal(taskFileChecks(scenario, {}, [], [], [], actions, repository)[2]!.status, "UNPROVEN");
+  actions[4].event.input.path = "test_solution.py";
+  assert.equal(taskFileChecks(scenario, {}, [], [], [], actions, repository)[2]!.status, "PROVEN", "Only the observed artifact operation is proved, not semantic correctness");
+});
 
 test("metrics oracle passes on valid solution.py with all operations and held-out inputs", async () => {
   const dir = await mkdtemp(join(repository, ".scratch", "oracle-pass-"));
@@ -432,7 +447,9 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
         void (async () => {
           try {
             await opts?.onPayload?.({ stream: true, model: m.id, max_tokens: 1000, reasoning: { effort: "low" } }, m as any);
-            stream.end({ role: "assistant", api: m.api, provider: m.provider, model: m.id, content: [], usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() });
+            const message: any = { role: "assistant", api: m.api, provider: m.provider, model: m.id, content: [], usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() };
+            stream.push({ type: "done", reason: "stop", message });
+            stream.end(message);
           } catch (err: any) {
             stream.push({ type: "error", reason: "error", error: { role: "assistant", api: m.api, provider: m.provider, model: m.id, content: [], usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "error", errorMessage: err?.message ?? "payload error", timestamp: Date.now() } });
             stream.end();
@@ -452,9 +469,8 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
     });
 
     const streamApplied = boundedApplied.stream(mockModel, { messages: [] } as any, { maxTokens: 1000 });
-    let appliedEvents = 0;
-    for await (const _ of streamApplied) { appliedEvents++; }
-    assert(appliedEvents > 0);
+    const appliedResult = await streamApplied.result();
+    assert.equal(appliedResult.stopReason, "stop", appliedResult.errorMessage ?? "Expected a successful terminal, not merely an event");
 
     // 3. Model with reasoning=false immediately throws THINKING_UNAPPLIED before HTTP transport
     const nonReasoningModel: Model<"openai-completions"> = { ...mockModel, reasoning: false };
