@@ -59,6 +59,13 @@ export default function observer(pi: ExtensionAPI): void {
     const memoryToolsExposed = activeTools.includes("nunc_memory_read") && activeTools.includes("nunc_memory_patch");
     state.memoryToolsExposed = memoryToolsExposed;
     log("lifecycle", { phase: "session-tools", activeTools, memoryToolsExposed });
+    const maintenanceOverride = binding.input.overrides?.find(o => o.requirement === "maintenance-thinking" || (o as any).maintenanceThinking !== undefined);
+    const maintenanceThinking = typeof (maintenanceOverride as any)?.maintenanceThinking === "string"
+      ? (maintenanceOverride as any).maintenanceThinking
+      : maintenanceOverride?.requirement === "maintenance-thinking"
+        ? (binding.input.effective?.thinking ?? "low")
+        : undefined;
+    const effectiveThinking = binding.input.effective?.thinking;
     for (const id of new Set(binding.models.map(m => m.provider))) {
       let base = ctx.modelRegistry.getProvider(id);
       requireValue(base, "MODEL", "Authorized native provider unavailable");
@@ -66,6 +73,9 @@ export default function observer(pi: ExtensionAPI): void {
       const decorated = boundedProvider(base, binding.models.filter(m => m.provider === id), ledger, {
         capturePayload: binding.input.scenarios.some(s => s.id.startsWith("m")),
         classify: simple => state.compacting || !simple ? "maintenance" : "main",
+        effectiveThinking,
+        maintenanceThinking,
+        requireThinkingLevel: effectiveThinking && effectiveThinking !== "off" ? effectiveThinking : undefined,
         beforeRequest: () => {
           if (state.stop) log("stopped", { code: "PREPARATION", message: state.stop });
           requireValue(!state.stop, "PREPARATION", state.stop ?? "Boundary preparation failed");

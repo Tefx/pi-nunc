@@ -53,7 +53,7 @@ export interface Limits { maxCalls: number | null; maxTotalTokens: number | null
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5"; config: RunConfig; assets?: ScenarioAssets }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "task-file" | "active-edit" | "scoped-tasks"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string }
@@ -139,9 +139,10 @@ export function parseInput(value: unknown, execution = false): RunInput {
     if (isGuidance) {
       const id = String(model.id).toLowerCase();
       const provider = String(model.provider).toLowerCase();
-      const isForbidden = id.includes("astra") || provider === "openai-codex" || id.includes("codex");
-      const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden;
-      requireValue(!isForbidden && isGemini, "MODEL", "Guidance scenarios authorize OpenRouter google/gemini-3.8-flash only; Astra and non-Gemini models are forbidden");
+      const isForbidden = id.includes("astra") || provider.includes("astra");
+      const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden && provider !== "openai-codex" && !id.includes("codex");
+      const isLuna = (id.includes("luna") || id === "gpt-5.6-luna" || id.endsWith("/gpt-5.6-luna")) && !isForbidden;
+      requireValue(!isForbidden && (isGemini || isLuna), "MODEL", "Guidance scenarios authorize OpenRouter google/gemini-3.8-flash or gpt-5.6-luna; Astra is forbidden");
     }
     const isStableMemory = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("m"));
     if (isStableMemory) {
@@ -164,6 +165,10 @@ export function parseInput(value: unknown, execution = false): RunInput {
       requireValue(selection.variant === undefined || selection.variant === "archive-closeout", "SCENARIO", "e3 may select archive-closeout");
     } else if (selection.id === "e4") {
       requireValue(["fits-required", "required-too-large"].includes(String(selection.variant)), "SCENARIO", "e4 requires fits-required or required-too-large");
+    } else if (selection.id === "g3") {
+      requireValue(selection.variant === undefined || selection.variant === "scoped-tasks", "SCENARIO", "g3 may select scoped-tasks; others have no variant");
+    } else if (selection.id === "g4") {
+      requireValue(selection.variant === undefined || ["task-file", "active-edit"].includes(String(selection.variant)), "SCENARIO", "g4 may select task-file or active-edit");
     } else if (selection.id === "g7") {
       requireValue(selection.variant === undefined || ["conflict", "unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g7 may select conflict or unconfirmed");
     } else if (selection.id === "g8") {
@@ -284,14 +289,27 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     requireValue(curStat.isDirectory(), "TARGET", "Current baseline target must be a real directory");
     const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
     const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
-    requireValue(curHead.startsWith("70dacad"), "TARGET", `Current baseline target must be at 70dacad, found ${curHead}`);
+    const isHistorical70dacad = curHead.startsWith("70dacad");
+    let isPreChange = false;
+    try {
+      const preChangeRef = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "refs/nunc/task-retention-pre-change"], { encoding: "utf8", env: gitEnv, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      isPreChange = curHead === preChangeRef || curHead.startsWith(preChangeRef.slice(0, 7));
+    } catch {
+      isPreChange = curHead.startsWith("1d4fc4a");
+    }
+    requireValue(isHistorical70dacad || isPreChange, "TARGET", `Current baseline target must be at 70dacad or actual pre-change (1d4fc4a2), found ${curHead}`);
     const curDirty = execFileSync("/usr/bin/git", ["-C", curRepo, "status", "--porcelain", "--untracked-files=normal", "--", "src", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8", env: gitEnv }).trim();
     requireValue(curDirty === "", "CANDIDATE", "Current baseline target repository must have a committed clean working tree");
     const curIndex = join(curRepo, "dist/src/index.js");
     try { const stat = await lstat(curIndex); requireValue(stat.isFile(), "BUILD", "Current baseline target missing dist/src/index.js"); }
     catch { throw new RunnerError("BUILD", "Current baseline target must have compiled dist/src/index.js"); }
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
-    requireValue(curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version === "0.85.1", "DEPENDENCY", "Current baseline target requires Pi 0.85.1");
+    const curPiVersion = curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
+    if (isHistorical70dacad) {
+      requireValue(curPiVersion === "0.85.1", "DEPENDENCY", "Current baseline target requires Pi 0.85.1");
+    } else {
+      requireValue(curPiVersion === "0.86.1", "DEPENDENCY", `Current pre-change target requires Pi 0.86.1, found ${curPiVersion}`);
+    }
     // Verify baseline build parity against its tracked source
     if (!existingOwnedWorker) {
       const { assertBuildParity } = await import("./build.js");

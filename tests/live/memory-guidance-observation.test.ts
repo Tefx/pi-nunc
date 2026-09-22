@@ -34,9 +34,7 @@ test("complete-task variants load and seed only task files, with independent obs
   const dir = join(repository, ".scratch", `task-retention-assets-${Date.now()}`);
   try {
     for (const [id, variant] of [["g4", "task-file"], ["g4", "active-edit"], ["g3", "scoped-tasks"]] as const) {
-      // Data-loader contract only. CLI admission of these new variants belongs
-      // to observation-support; this cast does not claim they are runnable yet.
-      const selection = { id, variant, config } as unknown as Selection;
+      const selection: Selection = { id, variant, config };
       const { input, observer } = await loadScenario(repository, selection);
       const cwd = join(dir, `${id}-${variant}`);
       await seedScenario(input, cwd);

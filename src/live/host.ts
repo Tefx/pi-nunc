@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, readFileSync, chmodSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -137,8 +137,28 @@ export class NativeHost {
     const cli = join(packageDir, manifest.bin.pi);
     const isGuidance = o.input.scenarios.some(s => s.id.startsWith("g"));
     const isStableMemory = o.input.scenarios.some(s => s.id.startsWith("m"));
-    const tools = isGuidance || isStableMemory ? "read,write,edit,bash,nunc_memory_read,nunc_memory_patch" : "read,write,edit,bash";
-    const memoryToolsFlags = (isGuidance || isStableMemory) && o.group !== "native" && o.group !== "current" ? ["--nunc-memory-tools"] : [];
+    const memoryToolsOverride = o.input.overrides?.find(ov => ov.requirement === "memory-tools-off" || ov.requirement === "memory-tools-on" || ov.memoryTools !== undefined);
+    const memoryToolsExplicitOff = memoryToolsOverride?.requirement === "memory-tools-off" || memoryToolsOverride?.memoryTools === false || (o.selection as any).memoryTools === false || ((o.selection.config as any).memoryTools === false);
+    const memoryToolsEnabled = (isGuidance || isStableMemory) && !memoryToolsExplicitOff;
+
+    let groupHasMemoryTools = false;
+    if (memoryToolsEnabled) {
+      if (o.group === "candidate" || o.group === undefined) {
+        groupHasMemoryTools = true;
+      } else if (o.group === "current") {
+        const curRepo = o.targetRepos?.current ?? o.input.comparison?.targets?.current?.repository ?? o.repository;
+        try {
+          const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
+          const head = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
+          groupHasMemoryTools = !head.startsWith("70dacad");
+        } catch {
+          groupHasMemoryTools = false;
+        }
+      }
+    }
+
+    const tools = groupHasMemoryTools ? "read,write,edit,bash,nunc_memory_read,nunc_memory_patch" : "read,write,edit,bash";
+    const memoryToolsFlags = groupHasMemoryTools ? ["--nunc-memory-tools"] : [];
     const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", tools, "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...memoryToolsFlags, ...liveExtensionFlags(o.repository, o.input, o.group, o.targetRepos), ...(o.testExtensions ?? []).flatMap(path => ["-e", path]), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
     this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), ...(larvaCompaction ? { LARVA_PI_COMPACTION_CONFIG_FILE: larvaCompaction.configFile } : {}), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
@@ -184,8 +204,15 @@ export class NativeHost {
     const state = await this.command("get_state");
     requireValue(object(state) && typeof state.sessionId === "string", "RPC", "Invalid native session state");
     const selected = object(state.model) ? state.model : undefined;
-    if (selected && this.options.modelTargets.some(m => m.provider === selected.provider && m.id === selected.id)) return;
-    await this.command("set_model", { provider: authorized.provider, modelId: authorized.id });
+    if (!selected || !this.options.modelTargets.some(m => m.provider === selected.provider && m.id === selected.id)) {
+      await this.command("set_model", { provider: authorized.provider, modelId: authorized.id });
+    }
+    const desiredThinking = this.options.input.effective?.thinking;
+    if (desiredThinking && desiredThinking !== "off" && (state as any).thinkingLevel !== desiredThinking) {
+      try {
+        await this.command("set_thinking_level", { level: desiredThinking });
+      } catch {}
+    }
   }
   private eventsFile = "";
   private drain(): void {

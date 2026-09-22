@@ -27,7 +27,9 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   if (value.overrides !== undefined) {
     requireValue(Array.isArray(value.overrides), "OVERRIDE", "Overrides must be named test requirements");
     for (const override of value.overrides) {
-      requireValue(object(override) && Object.keys(override).every(k => ["requirement", "reason", "model", "smallerModel", "thinking", "config", "scenario", "extension", "compactionOwner"].includes(k)) && typeof override.requirement === "string" && override.requirement.trim() && typeof override.reason === "string" && override.reason.trim(), "OVERRIDE", "Each override requires a named requirement and reason");
+      requireValue(object(override) && Object.keys(override).every(k => ["requirement", "reason", "model", "smallerModel", "thinking", "config", "scenario", "extension", "compactionOwner", "memoryTools", "maintenanceThinking"].includes(k)) && typeof override.requirement === "string" && override.requirement.trim() && typeof override.reason === "string" && override.reason.trim(), "OVERRIDE", "Each override requires a named requirement and reason");
+      if (override.memoryTools !== undefined) requireValue(typeof override.memoryTools === "boolean", "OVERRIDE", "Invalid memoryTools override");
+      if (override.maintenanceThinking !== undefined) requireValue(typeof override.maintenanceThinking === "string" && ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(override.maintenanceThinking), "OVERRIDE", "Invalid maintenanceThinking override");
       if (override.extension !== undefined) requireValue(override.requirement === "stable-memory-larva" && typeof override.extension === "string" && override.extension.startsWith("/"), "OVERRIDE", "Only stable-memory-larva accepts an explicit absolute extension path");
       if (override.compactionOwner !== undefined) requireValue(override.requirement === "stable-memory-larva" && typeof override.extension === "string" && override.compactionOwner === "nunc", "OVERRIDE", "compactionOwner requires explicit stable-memory-larva composition and must be nunc");
       if (override.scenario !== undefined) {

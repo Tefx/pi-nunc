@@ -16,7 +16,7 @@ export function readLedger(path: string): LedgerRecord[] {
   requireValue(!text || text.endsWith("\n"), "RECONCILIATION", "Incomplete ledger write; do not retry");
   return text.trim() ? text.trim().split("\n").map(line => JSON.parse(line) as LedgerRecord) : [];
 }
-const LOCAL_GATE = new Set(["PREPARATION", "PAYLOAD", "ENDPOINT", "CALL_LIMIT", "MODEL", "AUTHORIZATION", "OUTPUT_LIMIT", "INPUT_LIMIT", "COST_LIMIT", "TOKEN_LIMIT", "TIME_LIMIT", "CONCURRENCY", "TERMINAL_FAILURE", "BILLING"]);
+const LOCAL_GATE = new Set(["PREPARATION", "PAYLOAD", "ENDPOINT", "CALL_LIMIT", "MODEL", "AUTHORIZATION", "OUTPUT_LIMIT", "INPUT_LIMIT", "COST_LIMIT", "TOKEN_LIMIT", "TIME_LIMIT", "CONCURRENCY", "TERMINAL_FAILURE", "BILLING", "THINKING_UNAPPLIED"]);
 const NETWORK_CODE = /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EPIPE|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ERR_SOCKET_CONNECTION_TIMEOUT|UND_ERR_[A-Z0-9_]{1,40}|AbortError|TimeoutError)$/;
 function httpStatusOf(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599 ? value : undefined;
@@ -32,7 +32,7 @@ function networkCode(error: unknown): string | undefined {
 }
 function describeFailure(code: string, observation: { wrapperEntries: number; transportStarted: boolean; httpStatus?: number; networkCode?: string }): CallDiagnostic & { message: string } {
   const transport = observation.transportStarted ? "started" as const : observation.wrapperEntries > 0 ? "not-started" as const : "not-observed" as const;
-  const stage = observation.httpStatus === 200 ? "protocol" : observation.httpStatus !== undefined ? "http" : code === "PAYLOAD" ? "payload" : code === "ENDPOINT" ? "endpoint" : observation.transportStarted ? "transport" : LOCAL_GATE.has(code) ? "local" : "unknown";
+  const stage = observation.httpStatus === 200 ? "protocol" : observation.httpStatus !== undefined ? "http" : code === "PAYLOAD" ? "payload" : code === "ENDPOINT" ? "endpoint" : code === "THINKING_UNAPPLIED" ? "payload" : observation.transportStarted ? "transport" : LOCAL_GATE.has(code) ? "local" : "unknown";
   const diagnostic: CallDiagnostic = {
     code, stage, transport,
     ...(observation.httpStatus !== undefined ? { httpStatus: observation.httpStatus } : {}),
@@ -109,7 +109,7 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
   requireValue(prefix === "/" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`), "ENDPOINT", "Transport path is outside authorized model baseUrl");
 }
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
-export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void } = {}): Provider {
+export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; effectiveThinking?: string | undefined; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
   function stream(model: Model<Api>, context: Context | TranscriptContext, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = new AssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
@@ -150,6 +150,24 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
             requireValue(caps.kind !== "invalid" && caps.kind !== "conflict", "PAYLOAD", "Native serialized output cap is invalid");
             if (caps.kind === "missing") requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
             else requireValue(caps.value > 0 && caps.value <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
+            if (options.requireThinkingLevel && selected.reasoning) {
+              let payloadEffort: string | undefined;
+              if (object(body.reasoning) && typeof (body.reasoning as any).effort === "string") {
+                payloadEffort = (body.reasoning as any).effort;
+              } else if (typeof (body as any).reasoning_effort === "string") {
+                payloadEffort = (body as any).reasoning_effort;
+              }
+              const expectedEffort = kind === "maintenance"
+                ? (options.maintenanceThinking ?? (options.requireThinkingLevel === "off" ? "off" : undefined))
+                : options.requireThinkingLevel;
+              if (expectedEffort !== undefined && expectedEffort !== "off") {
+                requireValue(payloadEffort === expectedEffort, "THINKING_UNAPPLIED", `${kind} request payload for ${selected.id} does not apply required thinking level "${expectedEffort}"; observed "${payloadEffort ?? "none"}"`);
+              } else if (kind === "maintenance" && options.requireThinkingLevel !== "off" && !options.maintenanceThinking) {
+                if (payloadEffort !== options.requireThinkingLevel) {
+                  throw new RunnerError("THINKING_UNAPPLIED", `Maintenance request payload for ${selected.id} does not apply specified thinking level "${options.requireThinkingLevel}"; observed "${payloadEffort ?? "none"}". Raw maintenance defaults to effort none; apply maintenance-thinking override for isolated observation.`);
+                }
+              }
+            }
             options.onPayload?.({ callId: reservation!.id, cap: caps, ...(options.capturePayload ? { finalPayload: structuredClone(body) } : {}) });
             payloadChecked = true; return replacement;
           } catch (error) { if (error instanceof RunnerError) localCode = error.code; throw error; }
@@ -176,7 +194,11 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
             throw error;
           }
         };
-        const bounded = { ...original, onPayload, maxRetries: 0, timeoutMs: Math.max(1, ledger.deadline - Date.now()), signal: combined, transport: "sse" as const, fetch: boundedFetch };
+        const bounded: Record<string, unknown> = { ...original, onPayload, maxRetries: 0, timeoutMs: Math.max(1, ledger.deadline - Date.now()), signal: combined, transport: "sse" as const, fetch: boundedFetch };
+        if (kind === "maintenance" && options.maintenanceThinking) {
+          bounded.reasoningEffort = options.maintenanceThinking;
+          bounded.reasoning = options.maintenanceThinking;
+        }
         // The two public entry points have distinct API-specific option unions; preserve the caller's entry point.
         // Historical comparison targets own their older Context API. Do not
         // normalize their input with the candidate's library before delegation.

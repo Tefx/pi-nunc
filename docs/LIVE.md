@@ -129,6 +129,38 @@ Full-extraction evidence compares F/M's M with the effective memory on the selec
 
 `src/live/guidance.ts` checks mechanical effects by identity, order and state. Every `semantic:` action and semantic artifact check deliberately returns `UNPROVEN` with evidence for the downstream Gemini observer. There is no language, keyword, character-length or slot-count classifier and no paid judge call. The observer should give bounded judgments with cited evidence and important remaining uncertainty; no precise prose requirement is implied. `OBSERVED` means the runner collected the observation, including explicitly unproven semantics; it grants no behavioral acceptance. Any relaxation of binding downstream acceptance belongs to its Plan owner.
 
+### Complete-task scenario observation and metrics oracle
+
+The complete-task retention observation suite introduces three executable variants (`g4/task-file`, `g4/active-edit`, and `g3/scoped-tasks`) defined in [docs/POLICY.md](POLICY.md#complete-task-scenario-handoff):
+
+- `g4/task-file`: Autonomous task-file read into a local metrics explorer. Requirements enter through an actual tool read of `TASK.md`. The runner observes the initial build diagnostic, compilation repair, and continued behavior work across multiple compactions. The independent executable oracle in `src/live/metrics-oracle.ts` verifies `solution.py` by executing `single`, `batch`, `history`, `graph`, and `trace` operations using held-out records absent from seeded fixtures, verifying recursive graph navigation and cross-mode null/negative/zero consistency.
+- `g4/active-edit`: Staged build and calculation work, a side question, and an explicit turn d opportunity to edit mixed saved notes. The runner classifies replacement, merge, and deletion from actual before/after note states and tool arguments without supplying answer notes or expected patches. A turn d that produces no memory patch leaves active-edit coverage unproven.
+- `g3/scoped-tasks`: Archive job completion, east-only service revision (port 9090, timeoutMs 650, database sqlite, crossTenantSharing false), cancellation of the west draft, and side question. Confirms that west was never implemented, archive completed from source data, and west-only audit was not imposed on east.
+
+Non-secret finite-budget run templates are provided in `docs/task-retention-selection.json` and `docs/task-retention-comparison-selection.json`. Replace `__CHECKOUT__` and `__NEW_CANONICAL_TASK_ROOT__` before invoking:
+
+```sh
+# Preflight complete-task retention observation:
+/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
+  node scripts/verify-live.mjs --preflight < docs/task-retention-selection.json
+```
+
+### Thinking level and maintenance-thinking verification
+
+For runs selecting `gpt-5.6-luna` with thinking level `low`:
+- Native main requests set `thinkingLevel` on the stock Pi session, which serializes `reasoning: { effort: "low" }` into provider request payloads.
+- Maintenance requests go through `registry.complete`. Raw maintenance does not set thinking level and defaults to `effort: "none"`.
+- `boundedProvider` in `src/live/budget.ts` inspects serialized request payloads for both main and maintenance calls. If the specified thinking level is not applied in the actual payload, `boundedProvider` throws `RunnerError("THINKING_UNAPPLIED", ...)` and refuses the request before any HTTP transport occurs.
+- The named override `maintenance-thinking` (`maintenanceThinking: "low"`) allows isolated observation harnesses to apply the designated thinking level to maintenance compaction requests.
+
+### Target comparison with actual pre-change Nunc
+
+The three-way comparison runner (`scripts/compare-extraction.mjs`) supports both the historical `70dacad` baseline (with Pi 0.85.1) and the actual pre-change Nunc target (`refs/nunc/task-retention-pre-change` = `1d4fc4a210b64f71871ab3f5c10093215a25990c`, with Pi 0.86.1):
+- `current` target repository HEAD is verified against either `70dacad` or `1d4fc4a2`.
+- When bound to pre-change Nunc, Pi 0.86.1 dependencies and build parity are verified.
+- The comparison report accurately records `revisions.current` as `"70dacad"` or `"1d4fc4a"`.
+- Memory tools may be enabled or disabled across comparison groups using the `memory-tools-off` override or `memoryTools: false`. When disabled, `--nunc-memory-tools` is omitted and tool declarations exclude memory tools across all groups.
+
 ## Three-way extraction comparison runner
 
 `scripts/compare-extraction.mjs` consumes a bounded JSON object on stdin and runs the three groups (`native`, `current`, `candidate`) across documented modes (`defaults`, `matched`):

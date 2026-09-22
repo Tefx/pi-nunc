@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { CheckResult } from "./scenarios.js";
+import { executeMetricsOracle } from "./metrics-oracle.js";
 
 export interface GuidanceAction { turn?: string; event?: any }
 export const VERIFY_COMMANDS = ["python3 verify.py", "/usr/bin/python3 verify.py", "python verify.py"];
@@ -35,7 +36,91 @@ export function scoreGuidance(
     memoryStates: actions.filter(a => a.event?.type === "memory_state"),
     patches: exchanges.filter(e => e.call.event.toolName === "nunc_memory_patch"),
   });
-  if (check.startsWith("semantic:")) return semantic();
+
+  if (check.startsWith("semantic:")) {
+    // If no actions have been taken (e.g. freshly seeded workspace or asset check), retain unproven semantic observation.
+    if (actions.length === 0) return semantic();
+
+    // Held-out artifact and action oracle for complete-task metrics explorer (g4/task-file and g4/active-edit)
+    if (check.includes("held-out oracle") || check.includes("execute final solution.py")) {
+      const solutionPath = resolve(cwd, "solution.py");
+      if (!existsSync(solutionPath)) {
+        return result("DISPROVEN", "Missing final solution.py artifact");
+      }
+      const oracle = executeMetricsOracle(cwd);
+      if (oracle.status === "DISPROVEN") {
+        return result("DISPROVEN", oracle.reason ?? "Metrics oracle rejected candidate behavior", oracle.observed);
+      }
+      const sem = semantic().observed;
+      return result("UNPROVEN", "Independent Gemini observation required: mechanical held-out oracle passed for all operations; verify semantic task requirement retention and reasoning.", {
+        oracle: oracle.observed,
+        ...(sem && typeof sem === "object" ? (sem as Record<string, unknown>) : {}),
+      });
+    }
+
+    // Command verification: build and unittest success against final artifact
+    if (check.includes("actual commands show build and unittest success")) {
+      const buildCalls = calls.filter(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("build.py"));
+      const unittestCalls = calls.filter(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("unittest"));
+      if (buildCalls.length === 0 && unittestCalls.length === 0) {
+        return result("UNPROVEN", "No build or unittest command was executed in the task session", semantic().observed);
+      }
+      const lastTest = calls.findLast(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && (a.event.input.command.includes("build.py") || a.event.input.command.includes("unittest")));
+      if (lastTest) {
+        const lastTestIndex = actions.indexOf(lastTest);
+        const laterEdit = calls.find(a => actions.indexOf(a) > lastTestIndex && ["write", "edit"].includes(a.event?.toolName) && pathIs(a, "solution.py"));
+        if (laterEdit) {
+          return result("DISPROVEN", "solution.py was modified after the last test run without subsequent reverification");
+        }
+      }
+      return semantic();
+    }
+
+    // Active edit note maintenance check
+    if (check.includes("autonomous absence of memory patch leaves active-edit coverage unproven")) {
+      const patchCalls = exchanges.filter(e => e.call.event.toolName === "nunc_memory_patch" && e.result?.isError === false);
+      if (patchCalls.length === 0) {
+        return result("UNPROVEN", "Autonomous run produced no memory patch; active-edit dimension remains unexercised as designed", semantic().observed);
+      }
+      return semantic();
+    }
+
+    // Scoped tasks (g3): archive completed, cancelled west never implemented, no premature service work
+    if (caseId === "g3" && check.includes("cancelled west was never implemented")) {
+      if (existsSync(resolve(cwd, "west.json"))) {
+        return result("DISPROVEN", "Cancelled west draft was implemented (west.json exists)");
+      }
+      if (!existsSync(resolve(cwd, "archive.json"))) {
+        return result("DISPROVEN", "archive.json was deleted");
+      }
+      const prematureEast = calls.find(a => a.turn !== "d" && ["write", "edit"].includes(a.event?.toolName) && pathIs(a, "east.json"));
+      if (prematureEast) {
+        return result("DISPROVEN", `east.json was modified prematurely during turn ${prematureEast.turn} before turn d`);
+      }
+      return semantic();
+    }
+
+    // Scoped tasks (g3): only east port and timeout changed; west-only audit not imposed on east
+    if (caseId === "g3" && check.includes("west-only audit was not imposed on east")) {
+      const eastPath = resolve(cwd, "east.json");
+      if (existsSync(eastPath)) {
+        try {
+          const east = JSON.parse(readFileSync(eastPath, "utf8"));
+          if (east && typeof east === "object") {
+            if ((east as any).audit !== undefined) {
+              return result("DISPROVEN", "west-only audit was incorrectly imposed on east.json");
+            }
+            if ((east as any).port !== 9090 || (east as any).timeoutMs !== 650 || (east as any).database !== "sqlite" || (east as any).crossTenantSharing !== false) {
+              return result("DISPROVEN", "east.json does not preserve unchanged sqlite/crossTenantSharing or has wrong revised port/timeout", east);
+            }
+          }
+        } catch {}
+      }
+      return semantic();
+    }
+
+    return semantic();
+  }
   if (!proven(TOOLS_CHECK)) return result("UNPROVEN", "Memory tools were not observed in the active session");
 
   if (caseId === "g1" && check === "routine-no-memory") {

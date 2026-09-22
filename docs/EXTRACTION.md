@@ -52,6 +52,13 @@
 当前 `src/live/defaults.ts` 的有效 thinking 枚举已接受 `low`，不存在该名称的解析缺口。运行前仍须核对宿主/provider 实际生效的模型和 thinking，覆盖主请求、维护及模型驱动观察，不将未经核实的提取默认设置视为已应用 `low`。若特定路径不能应用指定配置，在受影响调用前报告具体缺口，不擅自替换。保留生产环境正常模型/提取默认值，不为测试暗改日常配置；测试 override 限于隔离运行。
 
 最初授权仅更新文档并创建/修正实施计划，随后用户授权继续实施；当前 semantics 交付不包含真实模型测试或部署。后续运行仍须绑定隔离 target、非秘密有效配置、调用/token/时间及可知费用上限、证据消费者和清理边界；未知订阅费用不按零处理。当前文档更新和计划完成均不等于行为问题已修复。
+
+实施进展：`nunc-task-retention.observation-support` 已交付：
+1. 完整任务续做场景 CLI 准入：`g4/task-file`、`g4/active-edit` 与 `g3/scoped-tasks`。
+2. 独立可执行 metrics 判据（`executeMetricsOracle`）：基于 `docs/POLICY.md` 规定的 6 组 held-out 记录，覆盖 `single`、`batch`（含空数组）、`history`（north/south/west 三区）、`graph` 与递归 `trace`（margin 全图及 net 排除 cost/margin），以及构建和测试执行。
+3. 比较 runner 对实际 pre-change 基线（`refs/nunc/task-retention-pre-change` = `1d4fc4a2`，Pi 0.86.1）的绑定与准确版本报告（`1d4fc4a` vs `70dacad`），并支持 memory tools on/off。
+4. `gpt-5.6-luna` 与 `low` thinking 档位的预检与载荷核验机制：阻止未配置 thinking 的 raw maintenance 假冒 low，支持 `maintenance-thinking` 测试 override。
+5. 非秘密有限预算运行配置模板：`docs/task-retention-selection.json` 与 `docs/task-retention-comparison-selection.json`。
 ## 1. 已有能力与待交付内容
 
 产品基线 `70dacad` 已支持多项 `add`、`remove + add` 替换/拆分/合并、未变正文复用、整条容量选择，以及 Markdown slot 预览和原文编辑。现已更新实际 `policies/default.md`，要求下述焦点与续做覆盖，交付独立的 `tests/scenarios/extraction-inputs.json` / `extraction-observer.json`，并在引擎候选实现中完成了 `applyPatch()` 必要项共同容纳守卫、四字段协议解析与原生失败恢复机制。下游比较 runner 已交付；`nunc.extraction-acceptance` 消费历史 `4f1f668` 证据并披露对照限制，不证明更新源码。

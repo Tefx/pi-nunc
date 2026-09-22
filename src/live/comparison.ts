@@ -1,5 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { join, resolve } from "node:path";
 import { canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type ComparisonGroup, type ComparisonMode, type Receipt, type RunInput } from "./contract.js";
 import { ledgerSummary, readLedger, type LedgerRecord } from "./budget.js";
 import { launchWorker, type ChildReceipt } from "./runner.js";
@@ -89,7 +90,23 @@ export async function executeComparison(value: unknown, repository: string, scri
     for (const mode of input.comparison.modes) {
       const modeStarted = Date.now();
       let modeFailed = false;
-      const revisions = { native: "Pi-0.85.1-native", current: "70dacad", candidate: receipt.candidate };
+      const curRepo = resolve(input.comparison.targets.current.repository);
+      const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
+      let curHead = "70dacad";
+      try {
+        curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
+      } catch {}
+      const natRepo = resolve(input.comparison.targets.native.repository);
+      let natVersion = "0.86.1";
+      try {
+        const natPiManifest = JSON.parse(await readFile(join(natRepo, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
+        natVersion = natPiManifest.version ?? natVersion;
+      } catch {}
+      const revisions = {
+        native: `Pi-${natVersion}-native`,
+        current: curHead.startsWith("70dacad") ? "70dacad" : curHead.slice(0, 7),
+        candidate: receipt.candidate,
+      };
       const groupReport = (group: ComparisonGroup): ComparisonModeReport["groups"][ComparisonGroup] => ({ config: {
         selections: input.scenarios.map(s => ({ id: s.id, variant: s.variant, config: s.config })),
         actualConfiguration: "rawSegments[].rollovers[].preparation.settings / config / result.observations.accounting",

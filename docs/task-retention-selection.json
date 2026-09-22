@@ -1,0 +1,32 @@
+{
+  "target": {
+    "repository": "__CHECKOUT__",
+    "stateRoot": "__NEW_CANONICAL_TASK_ROOT__",
+    "cleanup": "retain"
+  },
+  "limits": {
+    "maxCalls": 100,
+    "maxTotalTokens": 20000000,
+    "maxCostUsd": null,
+    "maxDurationMs": 1800000,
+    "maxOutputTokens": 128000
+  },
+  "scenarios": [
+    { "id": "g4", "variant": "task-file" },
+    { "id": "g4", "variant": "active-edit" },
+    { "id": "g3", "variant": "scoped-tasks" }
+  ],
+  "overrides": [
+    {
+      "requirement": "task-retention-luna",
+      "reason": "Authorized gpt-5.6-luna low thinking level observation",
+      "model": { "provider": "openrouter", "id": "openai/gpt-5.6-luna" },
+      "thinking": "low"
+    },
+    {
+      "requirement": "maintenance-thinking",
+      "reason": "Apply effective thinking level low to maintenance compaction requests",
+      "maintenanceThinking": "low"
+    }
+  ]
+}
