@@ -4428,7 +4428,7 @@ phases:
       still require explicit bounded effect/cost authority and live semantic evidence.'
   - id: nunc-task-retention.behavior
     name: 隔离 Luna 行为观察与最终整合接受
-    status: pending
+    status: claimed
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"docs/EXTRACTION.md\", \"docs/LIVE.md\", \"scripts/compare-extraction.mjs\"\
       , \"src/live/**\", \"tests/scenarios/**\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -4465,6 +4465,8 @@ phases:
     depends_on:
     - nunc-task-retention.observation-repair
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-22T08:07:15.411689Z'
   - id: nunc-task-retention.observation-repair
     name: 累计预算结算与低用量真实观察准备修复
     status: done
