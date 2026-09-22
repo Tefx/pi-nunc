@@ -55,26 +55,6 @@ export async function prepareBoundary(input: {
     requireValue(t.contextTokens !== null && Number.isFinite(t.contextTokens), "PREPARATION", "Native threshold usage is unknown");
     const h = Math.min(model.contextWindow - config.compaction.reserveTokens, Math.ceil(t.contextTokens) - 1);
     requireValue(h > 0, "PREPARATION", "Native context cannot cross a positive threshold");
-
-    if (input.repository) {
-      const loadAccounting = async () => {
-        const [loadA, loadM] = await Promise.all([
-          import(pathToFileURL(join(input.repository!, "dist/src/engine/accounting.js")).href),
-          import(pathToFileURL(join(input.repository!, "dist/src/engine/memory.js")).href),
-        ]);
-        return { accounting: loadA, memory: loadM };
-      };
-      const { accounting } = await loadAccounting();
-      const fixedTokens = accounting.requestTokens(accounting.mainContext(input.fixed, [], []), config.nunc.budget?.imageTokens) + (config.nunc.budget?.extraMainInputTokens ?? 0);
-      const growthTokens = config.nunc.budget?.growthTokens ?? 1024;
-      if (h <= fixedTokens + growthTokens) {
-        if (input.allowDeferred || t.allowDeferred) {
-          throw new RunnerError("INSUFFICIENT_CONTEXT", `Native context usage ${t.contextTokens} is insufficient to establish a compaction boundary (F=${fixedTokens}, H=${h}, growth=${growthTokens}); deferring until sufficient task progress`);
-        }
-        throw new RunnerError("PREPARATION", `Native context usage ${t.contextTokens} cannot pay fixed/growth costs (F=${fixedTokens}, H=${h}, growth=${growthTokens})`);
-      }
-    }
-
     config.compaction = { ...config.compaction, enabled: true, reserveTokens: model.contextWindow - h };
   }
   let chosen: { keep: number; cut: ReturnType<typeof findCutPoint> } | undefined;
@@ -87,6 +67,20 @@ export async function prepareBoundary(input: {
     if (cut.firstKeptEntryIndex <= start) continue;
     if (branch.slice(cut.firstKeptEntryIndex).some(e => retired.has(e.id)) || branch.slice(0, cut.firstKeptEntryIndex).some(e => retained.has(e.id))) continue;
     chosen = { keep, cut }; break;
+  }
+  if (!chosen && toolIndex !== undefined) {
+    const keep = branch.slice(toolIndex).reduce((sum, e) => sum + sessionEntryToContextMessages(e).reduce((s, m) => s + estimateTokens(m), 0), 0);
+    const cut = findCutPoint(branch, start, branch.length, keep);
+    const h = model.contextWindow - config.compaction.reserveTokens;
+    if (cut.firstKeptEntryIndex === toolIndex && cut.firstKeptEntryIndex > start &&
+        !branch.slice(cut.firstKeptEntryIndex).some(e => retired.has(e.id)) &&
+        !branch.slice(0, cut.firstKeptEntryIndex).some(e => retained.has(e.id)) &&
+        keep >= h) {
+      if (input.allowDeferred || input.trigger?.allowDeferred) {
+        throw new RunnerError("INSUFFICIENT_CONTEXT", `Native context usage ${input.trigger?.contextTokens} is insufficient to establish a compaction boundary (K=${keep}, H=${h}); deferring until sufficient task progress`);
+      }
+      throw new RunnerError("PREPARATION", `Native context usage ${input.trigger?.contextTokens} cannot pay suffix costs (K=${keep}, H=${h})`);
+    }
   }
   requireValue(chosen, "CALIBRATION", "No native legal cut retains the complete requested suffix and retires its source");
   config.compaction.keepRecentTokens = chosen.keep;
@@ -117,9 +111,19 @@ export async function prepareBoundary(input: {
       fixed: input.fixed, memory: projected.memory, active: projected.active,
       eligibleKeptEntryIds: pi.eligibleStarts(branch, projected.active, projected.latestId),
       config: pi.engineConfig(config.nunc, model, config.compaction), policy: await engine.loadPolicy({ ...config.nunc, configFile: join(input.repository, "nunc-config.json") }), signal: input.signal };
-    prepared.calibration = calibrateRetention(source, control, turns, input.turnOrder,
-      input.config.retentionCalibration ?? { minFraction: Number.EPSILON, maxFraction: 1 - Number.EPSILON },
-      { firstKeptEntryId, accounting, request, validation });
+    try {
+      prepared.calibration = calibrateRetention(source, control, turns, input.turnOrder,
+        input.config.retentionCalibration ?? { minFraction: Number.EPSILON, maxFraction: 1 - Number.EPSILON },
+        { firstKeptEntryId, accounting, request, validation });
+    } catch (error) {
+      if (error instanceof RunnerError && error.code === "INSUFFICIENT_CAPACITY") {
+        if (input.allowDeferred || input.trigger?.allowDeferred) {
+          throw new RunnerError("INSUFFICIENT_CONTEXT", `Native context usage ${input.trigger?.contextTokens ?? "unknown"} is insufficient to establish a compaction boundary (${error.message}); deferring until sufficient task progress`);
+        }
+        throw new RunnerError("PREPARATION", `Native context usage ${input.trigger?.contextTokens ?? "unknown"} cannot pay fixed/memory/growth costs (${error.message})`);
+      }
+      throw error;
+    }
     config.nunc.rolling = { ...config.nunc.rolling, keepRecentFraction: prepared.calibration.selectedFraction };
   }
   return prepared;

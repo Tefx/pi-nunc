@@ -17,9 +17,17 @@ import { compactionAssociationStop, resolveCompactionIdentity, type CompactionId
 import { identityPrestateProbeEnabled, taskRetentionSelection, taskRetentionRun, object, RunnerError, requireValue, type RunInput, type Selection } from "./contract.js";
 import { authorizeVerification, metricsCommand, toolPath } from "./tool-path.js";
 
-function toolBlockReason(error: unknown, aborted: boolean): string {
+export function toolBlockReason(error: unknown, aborted: boolean, context?: { isTaskRetention?: boolean; hasVerification?: boolean }): string {
   if (aborted || (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) return "Tool action after deadline";
-  if (error instanceof RunnerError && error.code === "TOOL_COMMAND") return "Tool kind or command is outside authorization: only scenario-local read/write/edit and fixture verification command 'python3 verify.py' are permitted";
+  if (error instanceof RunnerError && error.code === "TOOL_COMMAND") {
+    if (context?.isTaskRetention) {
+      return "Tool kind or command is outside authorization: only scenario-local read/write/edit and task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py') are permitted";
+    }
+    if (context?.hasVerification) {
+      return "Tool kind or command is outside authorization: only scenario-local read/write/edit and fixture verification command 'python3 verify.py' are permitted";
+    }
+    return "Tool kind or command is outside authorization: only scenario-local read/write/edit tools are permitted";
+  }
   if (error instanceof RunnerError && error.code.startsWith("SCRIPT_")) return error.message;
   if (error instanceof RunnerError && error.code === "TOOL_KIND") return "Tool kind is outside authorization";
   if (error instanceof RunnerError && error.code === "WRITE_SIZE") return "Artifact write exceeds bound";
@@ -217,15 +225,22 @@ export default function observer(pi: ExtensionAPI): void {
       signal.throwIfAborted();
       if (event.toolName === "bash") {
         const cmd = typeof (event.input as any)?.command === "string" ? (event.input as any).command.trim() : "";
-        const isVerify = cmd === "python3 verify.py" || cmd === "/usr/bin/python3 verify.py" || cmd === "python verify.py";
-        const taskCommand = binding.selection?.id === "g4" && taskRetentionSelection(binding.selection) ? metricsCommand(cmd) : undefined;
+        const isTaskRetention = Boolean(binding.selection?.id === "g4" && taskRetentionSelection(binding.selection));
+        const hasVerification = Boolean(binding.verification !== undefined);
+        const isVerify = !isTaskRetention && (cmd === "python3 verify.py" || cmd === "/usr/bin/python3 verify.py" || cmd === "python verify.py");
+        const taskCommand = isTaskRetention ? metricsCommand(cmd) : undefined;
         const isTaskCommand = taskCommand !== undefined;
         requireValue(
           isVerify || isTaskCommand,
           "TOOL_COMMAND",
-          "Only authorized task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py') or fixture verification 'python3 verify.py' are permitted"
+          isTaskRetention
+            ? "Only authorized task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py') are permitted"
+            : hasVerification
+            ? "Only fixture verification command 'python3 verify.py' is permitted"
+            : "No bash commands are permitted"
         );
-        if (isVerify || taskCommand === "build") {
+        const isBuildScript = typeof cmd === "string" && /(?:^|\s)(?:\.\/)?build\.py$/.test(cmd);
+        if (isVerify || isBuildScript) {
           const caller = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === event.toolCallId));
           const writes = caller?.type === "message" && caller.message.role === "assistant" ? caller.message.content.flatMap(b => b.type === "toolCall" && ["write", "edit"].includes(b.name) ? [b.arguments.path] : []) : [];
           await authorizeVerification(binding.cwd, isVerify ? binding.verification?.script : binding.taskFiles?.["build.py"], writes, isVerify ? "verify.py" : "build.py");
@@ -256,7 +271,9 @@ export default function observer(pi: ExtensionAPI): void {
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       }
     } catch (error) {
-      const reason = toolBlockReason(error, signal.aborted);
+      const isTaskRetention = Boolean(binding.selection?.id === "g4" && taskRetentionSelection(binding.selection));
+      const hasVerification = Boolean(binding.verification?.script !== undefined);
+      const reason = toolBlockReason(error, signal.aborted, { isTaskRetention, hasVerification });
       log("action", { type: "tool_blocked", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input, reason });
       return { block: true, reason };
     }

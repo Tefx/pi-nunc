@@ -51,7 +51,15 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     const trigger = Math.min(config.triggerTokens, mainInput);
     const fixed = requestTokens(mainContext(source.fixed, [], []), config.imageTokens) + config.main.extraInputTokens;
     const available = trigger - fixed;
-    requireValue(available > 0, "CALIBRATION", `Effective F exhausts the work budget: F=${fixed}, H=${trigger}, mainInputLimit=${mainInput}`);
+    const wanted = target ? active.findIndex(e => e.entryId === target.firstKeptEntryId) : -1;
+    const isLegalTargetCut = wanted >= 0 && cuts.includes(wanted);
+    const targetViolatesPlacement = wanted >= 0 && (active.slice(wanted).some(e => retired.has(e.entryId)) || active.slice(0, wanted).some(e => retained.has(e.entryId)));
+    if (available <= 0) {
+      if (isLegalTargetCut && !targetViolatesPlacement) {
+        throw new RunnerError("INSUFFICIENT_CAPACITY", `Effective F exhausts the work budget: F=${fixed}, H=${trigger}, mainInputLimit=${mainInput}`);
+      }
+      requireValue(available > 0, "CALIBRATION", `Effective F exhausts the work budget: F=${fixed}, H=${trigger}, mainInputLimit=${mainInput}`);
+    }
     const memoryLimit = Math.floor(Math.min(config.memory.fraction * available, config.memory.maxTokens ?? Infinity));
     const denominator = available - memoryLimit;
     const suffix = new Array<number>(active.length + 1).fill(0);
@@ -88,7 +96,9 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
         accounting: { effectiveTrigger: trigger, fixedTokens: fixed, memoryLimit, keepTarget, keptTokens: chosen.keptTokens, mainInputLimit: mainInput, extractionInputLimit: extractionInput, fullExtractionTokens: fullExtraction, extractionTokens: extraction, normalExtractionAtTrigger: normalAtTrigger, growthReserve: config.growthTokens },
       };
     }
-    const wanted = target ? active.findIndex(e => e.entryId === target.firstKeptEntryId) : -1;
+    if (isLegalTargetCut && !targetViolatesPlacement) {
+      throw new RunnerError("INSUFFICIENT_CAPACITY", `No legal retained boundary within the authorized fraction range satisfies actual turn placement and growth: H=${trigger}, F=${fixed}, memoryLimit=${memoryLimit}, growth=${config.growthTokens}, requestedK=${suffix[wanted]}, legalCuts=${cuts.length}, feasibleCuts=${feasible.length}`);
+    }
     throw new RunnerError("CALIBRATION", `No legal retained boundary within the authorized fraction range satisfies actual turn placement and growth: H=${trigger}, F=${fixed}, memoryLimit=${memoryLimit}, growth=${config.growthTokens}, requestedK=${wanted >= 0 ? suffix[wanted] : "unselected"}, legalCuts=${cuts.length}, feasibleCuts=${feasible.length}`);
   } catch (error) {
     if (error instanceof RunnerError) throw error;

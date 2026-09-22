@@ -21,11 +21,12 @@ export async function toolPath(cwd: string, input: unknown, toolName?: "read" | 
 }
 
 /** Exact task commands only. A JSON here-document supplies stdin without authorizing arbitrary shell composition. */
+const py = "(?:python3|python|/usr/bin/python3)";
 export function metricsCommand(command: string): "build" | "tests" | "solution" | undefined {
-  if (/^(?:python3|python|\/usr\/bin\/python3) build\.py$/.test(command)) return "build";
-  if (/^(?:python3|python|\/usr\/bin\/python3) -m unittest(?: -v)? test_solution\.py$/.test(command)) return "tests";
-  if (/^(?:python3|python|\/usr\/bin\/python3) solution\.py$/.test(command)) return "solution";
-  const here = command.match(/^(?:python3|python|\/usr\/bin\/python3) solution\.py <<'JSON'\n([^]*?)\nJSON$/);
+  if (new RegExp(`^${py} (?:(?:\\./)?build\\.py|-m py_compile (?:\\./)?solution\\.py)$`).test(command)) return "build";
+  if (new RegExp(`^${py} (?:-m unittest(?: (?:-v )?(?:\\./)?test_solution(?:\\.py)?(?: -v)?| discover(?: -v)?| -v)?|(?:\\./)?test_solution\\.py(?: -v)?)$`).test(command)) return "tests";
+  if (new RegExp(`^${py} (?:\\./)?solution\\.py$`).test(command)) return "solution";
+  const here = command.match(new RegExp(`^${py} (?:\\./)?solution\\.py <<['"]?JSON['"]?\\n([^]*?)\\nJSON$`));
   if (here) { try { JSON.parse(here[1]!); return "solution"; } catch {} }
   return undefined;
 }
