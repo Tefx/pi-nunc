@@ -4535,7 +4535,7 @@ phases:
       them.
   - id: nunc-task-retention.preparation-readiness
     name: 完整维护准备判定与场景命令恢复修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
@@ -4581,3 +4581,5 @@ phases:
     depends_on:
     - nunc-task-retention.observation-repair
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-22T08:58:53.652564Z'
