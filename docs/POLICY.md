@@ -122,6 +122,9 @@ The complete-task correction extends the existing `guidance-inputs.json` / `guid
 | `g4/active-edit` | Same task, staged build/calculation work, a side question, then an explicit opportunity to edit saved notes and finish. Turn b asks for an ordinary mixed working note without prescribing its body. | Real mixed content, real saved edits, and successful subsequent task work. Qualify replacement, merge and deletion independently; missing operations or already-separated notes leave those subcases unproven. |
 | `g3/scoped-tasks` | Finish an unrelated archive, revise only east's port/timeout, cancel west, answer a side question, then finish east. | Archive actually complete; two real rollovers; east preserves sqlite and sharing prohibition; west-only audit does not spread; completed/cancelled work may retire without losing east. |
 
+**Runner status:** the pending-implementation wording above records the semantic producer's original handoff. The observation-support candidate now exposes these selections plus g4 source-loss/source-unavailable and commit-conflict/commit-unconfirmed through the existing runner. [LIVE](LIVE.md#complete-task-scenario-observation-and-metrics-oracle) documents controls, conditional premises, input isolation and offline reproduction. Controlled passing mechanics do not establish real model efficacy, semantic edit safety or final phase acceptance.
+
+
 ### Held-out artifact and action oracle
 
 Keep this section and the observer JSON outside the tested workspace and all model inputs. `TASK.md`, initial sources and each currently delivered turn are legitimate task inputs. Never seed expected M, gold patches, an observer summary, future turns or held-out examples into the candidate's environment. The task's `build.py` only compiles; its success cannot satisfy behavior checks. `handoff.json` fields are assertions to assess against actual actions, never sufficient verification.
