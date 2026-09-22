@@ -4311,7 +4311,7 @@ phases:
   steps:
   - id: nunc-task-retention.semantics
     name: 完整任务维护语义与产物导向场景
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/index.ts\"\
       , \"tests/scenarios/**\", \"docs/**\", \"tests/**\", \"dist/**\"]\n  blocked_paths:\
@@ -4342,6 +4342,21 @@ phases:
     agent: llm-agent-expert
     claimed_by: llm-agent-expert
     claimed_at: '2026-09-22T02:22:24.052166Z'
+    done_at: '2026-09-22T02:35:13.732867+00:00'
+    evidence: Integrated reviewed candidate 8c1827fbbfd9ce63d4a96f5d3f355b856c6261d7
+      by fast-forward from postclaim base1d4fc4a. Retained refs/nunc/candidates/task-retention-semantics
+      and actual prechange refs/nunc/task-retention-pre-change. Parent inspected all
+      three production prompt diffs, scenario inputs/observer additions and docs/POLICY
+      independent executable artifact oracle; existing scenarios retained, only description
+      strings changed in TS, schema/engine behavior untouched. Canonical complete-task
+      retention, scoped revision/retirement and source-authority responsibilities
+      preserved. Node26.7.0/npm11.19.0/Pi0.86.1 build+engine93/93; active-memory and
+      guidance loader/contracts32/32, no skipped/cancelled/failures. Logs retained
+      .scratch/task-retention-evidence/semantics/check-engine-final.log and check-affected-final.log.
+      New variants only data-loadable; downstream observation-support owns CLI admission,
+      executable oracles and real observation mechanisms. No live model effects; behavioral
+      effectiveness unproven. Child terminal and no task processes; disposable worktree
+      dependency/build outputs eligible for deletion, code+minimal logs retained.
   - id: nunc-task-retention.observation-support
     name: 真实续做观察能力与候选整合
     status: pending
