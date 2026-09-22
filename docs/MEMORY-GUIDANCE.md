@@ -10,7 +10,7 @@ This document specifies accepted guidance refinements for Nunc's active working 
 
 ## 0. Current correction: complete-task retention
 
-**Current status:** The user authorized documentation updates and creation of an implementation plan. The complete-task correction is specified but not implemented or behaviorally accepted. The status statement and §§1–3 below record the earlier guidance delivery and its historical evaluation scope; they do not establish this correction's delivery or authorize a new Gemini run.
+**Current status:** The user authorized resumed implementation. `nunc-task-retention.semantics` delivers candidate policy/request/tool guidance and incremental task/oracle assets; runner support, integration and behavioral acceptance remain pending. The status statement and §§1–3 below record the earlier guidance delivery and its historical evaluation scope; they do not establish this correction's delivery or authorize a new Gemini run.
 
 The canonical current contract is [EXTRACTION §0](EXTRACTION.md#0-当前修订保留完整任务与完成标准), with semantic rules in [§3](EXTRACTION.md#3-必查语义与任务焦点) and slot/edit behavior in [§4.1](EXTRACTION.md#41-增量操作). Keep existing `Slot {id,text}`, tool schemas, wire protocol, revisions, budget mechanics, persistence, native scheduling and stable carrier placement. No requirement entity, protected-ID set, special mutation API, semantic error code, permanent pin, extra model or automatic source retrieval is introduced.
 
@@ -27,7 +27,7 @@ Extend existing extraction/guidance scenarios and observers; preserve prior fixt
 
 For this correction's live behavioral tests, the user's selection is **`gpt-5.6-luna`, `low thinking level`**, as defined in [EXTRACTION §0.4](EXTRACTION.md#04-真实模型边界与当前授权). This applies to continuation, maintenance and any model-driven semantic observation. The Gemini-only restriction in historical §3 applies only to that earlier task. The runner already accepts the `low` name; verify actual requested/effective configuration on every relevant path, including maintenance, before live observations. Do not silently substitute a model or thinking level, or assume raw extraction defaults apply the requested setting. Keep test overrides isolated from normal production settings; report actual unsupported paths before their affected calls.
 
-Compare native Pi, the actual pre-change Nunc and the candidate under the existing defaults/matched evidence rules; distinguish tools enabled/disabled and unexercised dimensions. Build and verify the loaded `dist/src/index.js` and policy/tool resources before candidate observations. Current authorization ends at documentation and planning; implementation, deployment and live execution remain future work. Completed Plan and evidence history stay immutable.
+Compare native Pi, the actual pre-change Nunc and the candidate under the existing defaults/matched evidence rules; distinguish tools enabled/disabled and unexercised dimensions. Build and verify the loaded `dist/src/index.js` and policy/tool resources before candidate observations. The resumed semantics assignment authorizes local semantic assets and offline checks; deployment and live execution are outside this step. New scenario content and remaining runner work are specified in [POLICY.md](POLICY.md#complete-task-scenario-handoff). Completed Plan and evidence history stay immutable.
 ## 1. Tool Description Refinements
 
 ### Problem & Motivation

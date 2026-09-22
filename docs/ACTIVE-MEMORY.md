@@ -51,7 +51,9 @@
 - 允许一次显式 remove 列出所有当前 IDs；结果可为空。没有绕过 revision 的隐式 clear-all。
 - 成功返回新 revision、新增 key→ID 映射及预算摘要，不重复回传完整 M。失败沿用/扩展现有稳定类别 invalid/conflict/occupied/overbudget/unknown-budget/unconfirmed，并给出有界恢复信息；文案不是判断协议。
 
-笔记是 session 工作数据。工具说明提示记录已确认决策、必要理由、当前阻塞/恢复入口，并标明推测与未完成状态；编辑笔记不改变原用户指令或历史事实。不以特定措辞、笔记频率或模型复述作为行为覆盖。关于工具描述与使用指导的进一步优化规范见 [MEMORY-GUIDANCE.md](MEMORY-GUIDANCE.md)（文本实现已在 `nunc.memory-guidance-implementation` 落地于 `src/index.ts`，跟踪观察能力已在 `nunc.memory-guidance-observation-support` 交付，Gemini 真实模型行为评测挂起待执行于 `nunc.memory-guidance-gemini-eval`；下游评测选用 OpenRouter `google/gemini-3.8-flash`，早期 1.5/2.5 仅为旧示例）。
+笔记是 session 工作数据。完整任务保留指导要求编辑时检查目标、有效约束、决定性完成条件及未完成义务；替换或合并混合笔记应保留所有有效部分。构建成功、文件生成和部分测试通过仅更新对应进度，不解除其余条件。任务结束或明确取消且内容不再影响其他工作时可退役；不确定有效性时保留未知或由主 agent 使用普通工具恢复已知来源。编辑笔记不改变用户要求，工具也不会检测自然语言的语义丢失。普通轮次不要求读写；revision 冲突后先重读并协调，未确认保存不得自动重放。
+
+当前修订及真实模型边界见 [MEMORY-GUIDANCE.md §0](MEMORY-GUIDANCE.md#0-current-correction-complete-task-retention)。先前 guidance 实现和 Gemini 观察任务保持各自历史范围；本次语义资产候选与离线加载检查不能证明续做效果。新增场景及独立产物判据见 [POLICY.md](POLICY.md#complete-task-scenario-handoff)。
 
 ## 3. 统一提交、并发与持久化
 

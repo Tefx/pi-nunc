@@ -7,6 +7,7 @@ import { loadScenario, scoreArtifacts, seedScenario, type CheckResult } from "..
 import { scoreGuidance, TOOLS_CHECK, SPLIT_CHECK, type GuidanceAction } from "../../src/live/guidance.js";
 import { repository } from "./fixtures.js";
 import { checkRequiredRetention } from "../../src/live/capacity-observation.js";
+import type { Selection } from "../../src/live/contract.js";
 
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 const exposed: CheckResult[] = [{ check: TOOLS_CHECK, status: "PROVEN" }];
@@ -25,6 +26,30 @@ test("guidance assets seed task inputs without private observer or future-turn f
       const cwd = join(dir, `${selection.id}-${"variant" in selection ? selection.variant : "base"}`);
       await seedScenario(input, cwd);
       assert.deepEqual((await readdir(cwd)).sort(), Object.keys(input.files).sort());
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("complete-task variants load and seed only task files, with independent observer checks", async () => {
+  const dir = join(repository, ".scratch", `task-retention-assets-${Date.now()}`);
+  try {
+    for (const [id, variant] of [["g4", "task-file"], ["g4", "active-edit"], ["g3", "scoped-tasks"]] as const) {
+      // Data-loader contract only. CLI admission of these new variants belongs
+      // to observation-support; this cast does not claim they are runnable yet.
+      const selection = { id, variant, config } as unknown as Selection;
+      const { input, observer } = await loadScenario(repository, selection);
+      const cwd = join(dir, `${id}-${variant}`);
+      await seedScenario(input, cwd);
+      assert.deepEqual((await readdir(cwd)).sort(), Object.keys(input.files).sort());
+      for (const [path, contents] of Object.entries(input.files)) {
+        assert.equal(await readFile(join(cwd, path), "utf8"), contents);
+      }
+      assert(observer.artifactChecks.length > 0);
+      // A seeded workspace has no completed artifact. It cannot pass merely
+      // because scenario data is valid or a future turn asks for completion.
+      const result = await scoreArtifacts(cwd, observer, exposed);
+      assert(result.checks.every(check => check.status === "DISPROVEN"));
+      assert(result.actionReview.every(check => check.status === "UNPROVEN"));
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

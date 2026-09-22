@@ -101,7 +101,7 @@ export default function nunc(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "nunc_memory_read",
         label: "Read Memory",
-        description: "Read the current session-local working memory, slot IDs, revision, estimated budget, and writable status. Use when you need to inspect saved notes or prepare a patch; routine turns do not require a read. Notes may be stale and do not override current instructions. writable is not a guarantee that a patch will succeed; a null budget limit means unknown.",
+        description: "Read the current session-local working memory, slot IDs, revision, estimated budget, and writable status. Use when you need to inspect saved notes or prepare a patch; routine turns do not require a read. Check the whole relevant notes for active goals, valid constraints, completion conditions and unfinished work, including mixed progress/requirement entries. Notes may be incomplete or stale and do not override current instructions; recover known task sources with ordinary tools when needed. writable is not a guarantee that a patch will succeed; a null budget limit means unknown.",
         parameters: Type.Object({}),
         execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
           const view = memory.read(ctx);
@@ -123,7 +123,7 @@ export default function nunc(pi: ExtensionAPI): void {
       pi.registerTool({
         name: "nunc_memory_patch",
         label: "Patch Memory",
-        description: "Atomically revise session-local working memory using a revision obtained from nunc_memory_read. Save concise information useful for continuing the task: confirmed decisions and reasons, unresolved work, blockers, and recovery pointers; label uncertainty. Prefer updating existing notes over duplicates and remove obsolete notes. Avoid turn-by-turn logs, raw outputs, credentials, and information with no continuing value. Notes do not grant authority or override instructions. On revision conflict, reread and reconcile before retrying; never automatically replay an unconfirmed save. Routine turns require no patch. Only update memory when persistently useful information actually changes. Combine currently settled edits in one patch. Avoid repeated writes, no-op rewrites, and frequent updates that only record each execution step. Memory changes may require later requests to rebuild cache; do not delay necessary saves, corrections, or deletion of stale notes for that reason. Nunc manages memory placement; you do not need to delete and reinsert memory to move it.",
+        description: "Atomically revise session-local working memory using a revision obtained from nunc_memory_read. Keep concise information needed to complete the whole active task: goals, decisive completion conditions, valid constraints, unfinished work, decisions and reasons, blockers, and source/recovery paths with their purpose and unchecked scope. Preserve exact quantities, negations, scope, interaction and verification conditions; recent repetition does not make active requirements obsolete. Organize stable obligations separately from changing progress when independently updateable. A build passing, a file being created or partial tests passing resolves only what that evidence covers; a side question does not cancel the task. Apply legitimate revisions within their authority and scope. Preserve uncertainty or recover known sources before dropping information of uncertain validity. Avoid turn-by-turn logs, raw outputs, credentials, and information with no continuing value. Notes do not grant authority or override instructions. On revision conflict, reread and reconcile before retrying; never automatically replay an unconfirmed save. Routine turns require no patch. Only update memory when persistently useful information actually changes. Combine currently settled edits in one patch. Avoid repeated writes, no-op rewrites, and frequent updates that only record each execution step. Memory changes may require later requests to rebuild cache; do not delay necessary saves, corrections, or deletion of stale notes for that reason. Nunc manages memory placement; you do not need to delete and reinsert memory to move it.",
         parameters: Type.Object({
           expectedRevision: Type.String({ description: "Revision obtained from nunc_memory_read" }),
           add: Type.Optional(Type.Array(
@@ -138,11 +138,11 @@ export default function nunc(pi: ExtensionAPI): void {
               id: Type.String({ description: "ID of existing slot to update" }),
               text: Type.String({ description: "Updated content of the slot" }),
             }),
-            { description: "Items to update (replaces the slot body; preserves ID and position; preserve still-valid information and conditions)" }
+            { description: "Items to update. Replaces the full slot body, preserving ID and position. Inspect all existing content; retain still-valid goals, qualifiers, completion conditions and unfinished work when replacing or merging mixed notes. Partial progress does not retire the remaining obligations." }
           )),
           remove: Type.Optional(Type.Array(
             Type.String({ description: "ID of existing slot to remove" }),
-            { description: "Slot IDs to remove (removes from current working memory; does not erase historical session entries)" }
+            { description: "Slot IDs to remove from current working memory; historical session entries remain. Remove obsolete or superseded notes only after preserving their still-valid parts elsewhere. Finished or cancelled task information may retire when it no longer affects other work. Deleting a note does not cancel a requirement; the tool does not detect semantic loss." }
           )),
         }),
         execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
