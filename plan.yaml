@@ -4302,7 +4302,7 @@ phases:
       target/new stateRoot and remaining cumulative budgets.'
 - id: nunc-task-retention
   name: 完整任务与完成条件保留修正
-  status: pending
+  status: in_progress
   gate: Orchestrator 在 behavior 完成程序作唯一整合接受：消费 semantics、observation-support 及 behavior
     的适用证据，对本 phase 全部 material requirements、最终候选完整适用离线库存、加载入口及真实续做/编辑/对照作判断。必要缺陷、检查失败、未证明维度阻止接受；不增设重复
     gate、不重开 DONE，不以文案或 producer 完成宣称修复。
@@ -4311,7 +4311,7 @@ phases:
   steps:
   - id: nunc-task-retention.semantics
     name: 完整任务维护语义与产物导向场景
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/index.ts\"\
       , \"tests/scenarios/**\", \"docs/**\", \"tests/**\", \"dist/**\"]\n  blocked_paths:\
@@ -4340,6 +4340,8 @@ phases:
     - package.json
     - scripts/check.mjs
     agent: llm-agent-expert
+    claimed_by: llm-agent-expert
+    claimed_at: '2026-09-22T02:22:24.052166Z'
   - id: nunc-task-retention.observation-support
     name: 真实续做观察能力与候选整合
     status: pending
