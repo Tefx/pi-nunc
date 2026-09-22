@@ -460,7 +460,8 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
       streamSimple: (m: any, ctx: any, opts: any) => createAssistantMessageEventStream() as any,
     } as unknown as Provider;
 
-    const boundedApplied = boundedProvider(mockBaseApplied, [mockModel], ledger, {
+    const appliedLedger = new BudgetLedger(ledger.path, ledger.limits, ledger.deadline, ledger.signal, "applied-independent-case");
+    const boundedApplied = boundedProvider(mockBaseApplied, [mockModel], appliedLedger, {
       classify: () => "maintenance",
       requireThinkingLevel: "low",
       maintenanceThinking: "low",
