@@ -4359,7 +4359,7 @@ phases:
       dependency/build outputs eligible for deletion, code+minimal logs retained.
   - id: nunc-task-retention.observation-support
     name: 真实续做观察能力与候选整合
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
       , \"dist/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"\
@@ -4403,6 +4403,29 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-22T02:35:32.403544Z'
+    done_at: '2026-09-22T05:17:12.776701+00:00'
+    evidence: 'Accepted and fast-forward integrated exact e8e5346aa4ee012ec263b2b2f694780f7a6af879
+      from fea8aba (rebase up to date). Planned/claimed owner node-typescript-engineer;
+      actual final executor Principal Engineer after repeated incomplete success claims/unsound
+      keyword and count proofs, prior writer terminal and reconciled. Parent inspected
+      final lifecycle/observer/tool-command/preparation/model/exact target binding
+      diff and task-retention evidence reducer against actual snapshot/cut/M/K/paired
+      effects; no Plan/engine/pi schema changes. Semantics UNPROVEN remains explicit,
+      not interpreted as model effectiveness. Full 73-file inventory reconciled no
+      gaps. Applicable union599 tests: final12 unit+15 native/branch+190 unaffected
+      live/queue+382 unaffected engine/pi, no outstanding skipped/cancelled/failures;
+      original all01 exit1/19 failures preserved and closed by affected216 pass plus
+      targeted reruns. Whole build and diff check passed. Canonical logs/report copied
+      .scratch/task-retention-evidence/observation-support/{HANDOFF.md,inventory.txt,all-01.log,affected-02.log,retention-final.log,oracle-final-02.log}.
+      Evidence consumer behavior: real model low main/maintenance enforcement, three
+      hosts/tools modes/defaults-matched, actual multiphase native compaction, source
+      loss/recovery, confirmed edits/fault recovery and independent executable artifact
+      oracle now available. No real model effects yet. Worktree and its .scratch/prechange
+      retained for immediate behavior target consumer (shared dependency link requires
+      worktree while used); release after behavior target/acceptance consumer ends.
+      Prior obsolete baseline/caches/56 superseded fixture directories removed by
+      owner, measured ~719MiB. All writers/descendants stopped. Future behavior calls
+      still require explicit bounded effect/cost authority and live semantic evidence.'
   - id: nunc-task-retention.behavior
     name: 隔离 Luna 行为观察与最终整合接受
     status: pending
