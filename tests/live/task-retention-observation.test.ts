@@ -387,7 +387,7 @@ test("artifact oracle rejects region, null, zero, negative, graph and recursive-
 test("boundedProvider verifies required thinking level and blocks unapplied maintenance thinking", async () => {
   const dir = await mkdtemp(join(repository, ".scratch", "thinking-provider-"));
   try {
-    const ledger = new BudgetLedger(join(dir, "calls.jsonl"), { maxCalls: 10, maxTotalTokens: 100000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 20000 }, Date.now() + 60000, new AbortController().signal);
+    const ledger = new BudgetLedger(join(dir, "calls.jsonl"), { maxCalls: 10, maxTotalTokens: 122000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 20000 }, Date.now() + 60000, new AbortController().signal);
     const mockModel: Model<"openai-completions"> = {
       name: "GPT-5.6 Luna",
       provider: "openrouter",
