@@ -1,8 +1,9 @@
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type ComparisonGroup, type ComparisonMode, type Receipt, type RunInput } from "./contract.js";
-import { ledgerSummary, readLedger, type LedgerRecord } from "./budget.js";
+import { ledgerSummary, readLedger, resolveBatchContext, type LedgerRecord } from "./budget.js";
 import { launchWorker, type ChildReceipt } from "./runner.js";
 import type { SegmentReport } from "./worker.js";
 import { matchedParity, rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
@@ -55,10 +56,10 @@ export async function finalizeComparisonRun(input: RunInput, receipt: Receipt, r
   }
 }
 /** Call-ID joining is shared by segment, case and group totals. Missing terminals stay unknown. */
-export function scopedUsage(records: LedgerRecord[], ids: Set<number>) {
+export function scopedUsage(records: LedgerRecord[], ids: Set<number>, limits?: RunInput["limits"]) {
   const scoped = records.filter(r => ids.has(r.id));
-  const summary = ledgerSummary(scoped);
-  return { callIds: [...ids], calls: summary.calls, tokens: summary.totalTokens, costUsd: summary.costUsd,
+  const summary = ledgerSummary(scoped, limits);
+  return { callIds: [...ids], calls: summary.calls, tokens: summary.totalTokens, chargedTokens: summary.chargedTokens, reservedTokens: summary.reservedTokens, costUsd: summary.costUsd, chargedCostUsd: summary.chargedCostUsd, reservedCostUsd: summary.reservedCostUsd,
     latencyMs: scoped.filter(r => r.kind === "terminal").reduce((n, r) => n + r.latencyMs, 0) };
 }
 export function joinedObservations(segments: SegmentReport[]) {
@@ -75,7 +76,14 @@ export async function executeComparison(value: unknown, repository: string, scri
   const receipt = await preflight(input, repository); input.receipt = receipt;
   const root = input.target.stateRoot;
   await mkdir(root, { mode: 0o700 }); await mkdir(join(root, "tmp"), { mode: 0o700 });
-  const started = Date.now(), deadline = started + input.limits.maxDurationMs;
+  const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
+  const started = Date.now();
+  requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
+  const readAll = () => {
+    const priorRecords = priorLedgerPaths.flatMap(p => existsSync(p) ? readLedger(p) : []);
+    const currentRecords = existsSync(join(root, "calls.jsonl")) ? readLedger(join(root, "calls.jsonl")) : [];
+    return [...priorRecords, ...currentRecords];
+  };
   await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600, flag: "wx" });
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
   const report: ComparisonReport = { version: 1, status: "STOPPED", selection: publicInput(input), comparison: { modes: [] }, matrix: [], rawSegments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
@@ -128,20 +136,20 @@ export async function executeComparison(value: unknown, repository: string, scri
           if (input.limits.maxCalls !== null) requireValue(report.usage.calls < input.limits.maxCalls, "CALL_LIMIT", "Shared call ceiling exhausted; no further child/session effects");
           if (input.limits.maxTotalTokens !== null) {
             const smallestReservation = Math.min(...input.models.map(m => m.contextWindow + m.maxTokens));
-            requireValue(report.usage.reservedTokens + smallestReservation <= input.limits.maxTotalTokens, "TOKEN_LIMIT", "Shared token ceiling cannot reserve another task request");
+            requireValue(report.usage.chargedTokens + smallestReservation <= input.limits.maxTotalTokens, "TOKEN_LIMIT", "Shared token ceiling cannot reserve another task request");
           }
-          if (input.limits.maxCostUsd !== null) requireValue(report.usage.reservedCostUsd !== null && report.usage.reservedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
-          const beforeIds = new Set(readLedger(join(root, "calls.jsonl")).filter(r => r.kind === "reserve").map(r => r.id));
+          if (input.limits.maxCostUsd !== null) requireValue(report.usage.chargedCostUsd !== null && report.usage.chargedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
+          const beforeIds = new Set(readAll().filter(r => r.kind === "reserve").map(r => r.id));
           const native = joinedObservations(completed.get(`native:${label}`) ?? []);
           const matchReferences: MatchReference[] = native.rows.map(row => {
             if (row.association?.status === "UNPROVEN" || !row.snapshot) return { snapshotId: "unobserved", mTokens: null, outputCaps: [] };
             const f = rolloverFacts(row, native.requests, "native");
             return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps };
           });
-          const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences }, signal);
+          const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences, priorLedgers: priorLedgerPaths }, signal);
           report.children.push(child);
           if (child.timing) segmentIntervals.push(child.timing);
-          const records = readLedger(join(root, "calls.jsonl")); report.usage = ledgerSummary(records);
+          const records = readAll(); report.usage = ledgerSummary(records, input.limits);
           requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete");
           const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
           segments.push(segment); report.rawSegments!.push(segment);
@@ -168,8 +176,8 @@ export async function executeComparison(value: unknown, repository: string, scri
       modeReport.records.hComparison = groupRecords(f => f.h);
       modeReport.records.memorySizeComparison = groupRecords(f => ({ realized: f.mTokens, limit: f.memoryLimit, finalContext: f.finalContextTokens, remaining: f.remainingContextTokens }));
       modeReport.records.overheadComparison = groupRecords(f => f.overhead);
-      const records = readLedger(join(root, "calls.jsonl"));
-      modeReport.records.usageComparison = Object.fromEntries(ALL_GROUPS.map(group => [group, scopedUsage(records, new Set(records.filter(r => r.kind === "reserve" && r.caseKey?.startsWith(`${mode}:${group}:`)).map(r => r.id)))]));
+      const records = readAll();
+      modeReport.records.usageComparison = Object.fromEntries(ALL_GROUPS.map(group => [group, scopedUsage(records, new Set(records.filter(r => r.kind === "reserve" && r.caseKey?.startsWith(`${mode}:${group}:`)).map(r => r.id)), input.limits)]));
       if (mode === "matched") modeReport.records.matchedParity = matchedParity(input.scenarios.map(s => {
         const label = `${s.id}${s.variant ? `-${s.variant}` : ""}`;
         return { label, groups: ALL_GROUPS.map(group => { const key = `${group}:${label}`, segments = completed.get(key) ?? []; return {
@@ -185,8 +193,8 @@ export async function executeComparison(value: unknown, repository: string, scri
   } catch (error) {
     report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR";
   } finally {
-    try { report.ledger = readLedger(join(root, "calls.jsonl")); report.usage = ledgerSummary(report.ledger); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
-    report.elapsedMs = Date.now() - started;
+    try { report.ledger = readAll(); report.usage = ledgerSummary(report.ledger, input.limits); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
+    report.elapsedMs = Date.now() - (firstDispatchAt ?? started);
     await finalizeComparisonRun(input, receipt, report);
   }
   return report;

@@ -156,6 +156,16 @@ For runs selecting `gpt-5.6-luna` with thinking level `low`:
 - `boundedProvider` in `src/live/budget.ts` inspects serialized request payloads for both main and maintenance calls. If the specified thinking level is not applied in the actual payload, `boundedProvider` throws `RunnerError("THINKING_UNAPPLIED", ...)` and refuses the request before any HTTP transport occurs.
 - The named override `maintenance-thinking` (`maintenanceThinking: "low"`) allows isolated observation harnesses to apply the designated thinking level to maintenance compaction requests.
 
+### Cumulative budget settlement, shared batch accounting, and low-usage preparation
+
+- **Terminal settlement:** Trustworthy terminal actual usage settles and releases unused token reserves (`chargedTokens`). Active, in-flight, missing, unknown, interrupted, or untrusted usage remains covered at worst-case reservation.
+- **Independent cost enforcement:** Costs are bounded independently from tokens. Unknown provider costs never settle to zero; token settlement does not imply known cost.
+- **Duplicate/inconsistent terminals:** Duplicate terminal records or inconsistent usage cannot undercharge, and retain full worst-case reservations.
+- **Append-only receipts:** Prior `calls.jsonl` files are strictly read-only and never modified or rewritten across invocations. New records append only to the active run's ledger.
+- **Shared batch accounting:** Callers supply original authority and prior effects through `batch` or `authority` (`priorLedgers`, `firstDispatchAt`, `deadline`). Cumulative calls, charged tokens, and costs are shared and enforced across sequential invocations, comparison groups, scenarios, and maintenance calls without resetting limits.
+- **Wallclock elapsed time and deadline:** Walltime elapsed is measured continuously from the original first model dispatch, including intervals between invocations and preparation. Expired authorizations refuse new calls before transport.
+- **Low-usage boundary preparation:** Boundary preparation checks feasibility against the invariant `H > F + growthTokens`. When native context at an early read is smaller than the fixed prefix `F`, compaction is mathematically infeasible under Pi's auto-compaction trigger; the runner honestly reports the design contradiction as `UNPROVEN` without fabricating synthetic padding, fake failures, or leaked answers. Reachable success paths are established when genuine task progression or realistic task specification context provides sufficient tokens for legal cuts.
+
 ### Target comparison with actual pre-change Nunc
 `comparison.targets.current` accepts `{repository, ref}`. The runner resolves that ref to a commit in the runner repository and requires exact equality with the prepared current target's HEAD, plus clean source and build/lock parity. The resolved HEAD participates in the execution receipt and is reported in full. Complete-task comparisons require an explicit ref; the template uses the controller-retained `refs/nunc/task-retention-pre-change`. No new commit hash or prefix is hardcoded in runtime selection. Omitting `ref` retains the historical `70dacad` fixture and its original report label/Pi 0.85.1 meaning.
 

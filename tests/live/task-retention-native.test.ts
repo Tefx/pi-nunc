@@ -43,7 +43,7 @@ test("real native serializer refuses missing/off/wrong thinking and wrong model 
 
 // No model calls: stock serialization, HTTP, tool effects, reload, compaction and JSONL all execute.
 // Controlled usage intentionally supplies the positive threshold premise; the low-usage case falsifies it.
-async function taskFileHost(group: "native" | "current" | "candidate", tools = true, lowUsage = false, ordinaryExtra = false) {
+async function taskFileHost(group: "native" | "current" | "candidate", tools = true, lowUsage: boolean | "infeasible" | "reachable" = false, ordinaryExtra = false) {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 160000 });
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
@@ -55,7 +55,7 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
     overrides: [{ requirement: "maintenance-thinking", maintenanceThinking: "low", reason: "Controlled low-effort native serializer proof" }, ...(tools ? [] : [{ requirement: "memory-tools-off", memoryTools: false, reason: "Actual tools-off comparison" }])],
     limits: { maxCalls: 40, maxTotalTokens: 3200000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
     scenarios: [{ id: "g4", variant: "task-file", config: { compaction: { enabled: ordinaryExtra, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
-  const tool = (name: string, input: any) => ({ tool: { name, input }, input: lowUsage ? 100 : 18000 });
+  const tool = (name: string, input: any) => ({ tool: { name, input }, input: lowUsage === true || lowUsage === "infeasible" ? 100 : lowUsage === "reachable" ? 5000 : 18000 });
   const sequence = [tool("read", { path: "TASK.md" }), tool("bash", { command: "python3 build.py" }),
     tool("edit", { path: "solution.py", oldText: "def evaluate(record)", newText: "def evaluate(record):" }),
     tool("bash", { command: "python3 build.py" }), tool("write", { path: "solution.py", content: metricsSolution }),
@@ -78,7 +78,7 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
       models: [model], controlledModels: { providers: { openrouter: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [model] } } },
     });
     await writeFile(join(f.dir, "task-retention-report.json"), JSON.stringify(report));
-    if (lowUsage) {
+    if (lowUsage === true || lowUsage === "infeasible") {
       assert.equal(report.status, "UNPROVEN"); assert.equal(report.reason, "PREPARATION");
       assert.equal(step, 1); assert.equal(maintenance, 0); assert.equal(report.rollovers!.length, 0); return;
     }
@@ -115,4 +115,5 @@ for (const group of ["candidate", "current", "native"] as const) {
   for (const tools of group === "native" ? [false] : [true, false]) test(`task-file ${group} tools=${tools}: real three-cut loop, restored configuration and final artifact`, { timeout: 180000 }, () => taskFileHost(group, tools));
 }
 test("task-file low native usage stops before infeasible maintenance or subsequent effects", { timeout: 30000 }, () => taskFileHost("candidate", true, true));
+test("task-file reachable low-usage preparation succeeds when genuine task context fits threshold", { timeout: 45000 }, () => taskFileHost("candidate", true, "reachable"));
 test("task-file continues ordinary native compaction after its three observed opportunities", { timeout: 30000 }, () => taskFileHost("candidate", true, false, true));

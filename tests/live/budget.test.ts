@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendFile, mkdir, rm } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
+import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, type CallRecord, type CallEnd } from "../../src/live/budget.js";
 import { selectedModels } from "../../src/live/contract.js";
 import { fixture } from "./fixtures.js";
 const context: TranscriptContext = normalizeContext({ systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] });
@@ -154,5 +155,326 @@ test("real Anthropic adapter uses bounded fetch, exact serialized output cap, no
     const response = await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result();
     assert.equal(transportError, undefined); assert.equal(requests, 1); assert.equal(response.stopReason, "stop", response.errorMessage ?? "");
     const summary = ledgerSummary(readLedger(ledger.path)); assert.equal(summary.calls, 1); assert.equal(summary.input, 12); assert.equal(summary.output, 4); assert.deepEqual(summary.unreconciledCallIds, []);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("trustworthy complete terminal actual usage settles unused token reserve and admits second call under finite cap", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "luna-like", contextWindow: 1050000, maxTokens: 128000 }] });
+    const model = faux.getModel();
+    model.cost = { input: 0.25, output: 1.0, cacheRead: 0.05, cacheWrite: 0.25 };
+    const limits = { maxCalls: 10, maxTotalTokens: 2000000, maxCostUsd: 20, maxDurationMs: 60000, maxOutputTokens: 128000 };
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "settle.jsonl"), limits, Date.now() + 60000, new AbortController().signal);
+
+    // Call 1 reserves full 1,178,000 tokens
+    const call1 = ledger.reserve(model, context, 128000);
+    assert.equal(call1.reservedTokens, 1178000);
+    assert.equal(typeof call1.reservedCostUsd, "number");
+
+    // Call 1 completes cleanly with small actual usage (1255 tokens, $0.00034875)
+    const msg1 = fauxAssistantMessage("call 1 ok");
+    msg1.usage = { input: 3, output: 37, cacheRead: 0, cacheWrite: 1215, totalTokens: 1255, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.00034875 } };
+    ledger.finish(call1, msg1);
+
+    // Verify summary distinguishes actual, reserved, charged, and remaining
+    const summary1 = ledgerSummary(readLedger(ledger.path), limits);
+    assert.equal(summary1.calls, 1);
+    assert.equal(summary1.reservedTokens, 1178000);
+    assert.equal(summary1.chargedTokens, 1255, "trustworthy terminal settled unused reserve");
+    assert.equal(summary1.actualTokens, 1255);
+    assert.equal(summary1.costUsd, 0.00034875);
+    assert.equal(summary1.chargedCostUsd, 0.00034875);
+    assert.equal(summary1.remainingTokens, 2000000 - 1255);
+    assert.equal(summary1.activeReservedTokens, 0);
+    assert.deepEqual(summary1.unreconciledCallIds, []);
+
+    // Call 2 can now reserve 1,178,000 tokens because 1255 + 1178000 = 1179255 <= 2000000!
+    // (Under the un-repaired algorithm, this threw TOKEN_LIMIT because 1178000 + 1178000 > 2000000)
+    const call2 = ledger.reserve(model, context, 128000);
+    assert.equal(call2.id, 2);
+    assert.equal(call2.reservedTokens, 1178000);
+
+    // Call 2 completes cleanly with 2500 tokens
+    const msg2 = fauxAssistantMessage("call 2 ok");
+    msg2.usage = { input: 2000, output: 500, cacheRead: 0, cacheWrite: 0, totalTokens: 2500, cost: { input: 0.0005, output: 0.0005, cacheRead: 0, cacheWrite: 0, total: 0.001 } };
+    ledger.finish(call2, msg2);
+
+    const summary2 = ledgerSummary(readLedger(ledger.path), limits);
+    assert.equal(summary2.calls, 2);
+    assert.equal(summary2.reservedTokens, 2356000);
+    assert.equal(summary2.chargedTokens, 1255 + 2500);
+    assert.equal(summary2.actualTokens, 3755);
+    assert.equal(summary2.costUsd, 0.00034875 + 0.001);
+    assert.equal(summary2.remainingTokens, 2000000 - 3755);
+
+    // Call 3 is also admitted under 2,000,000 token limit because 3755 + 1178000 <= 2000000
+    const call3 = ledger.reserve(model, context, 128000);
+    assert.equal(call3.id, 3);
+    ledger.finish(call3, msg2);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("active in-flight call retains full worst-case reserve coverage and blocks concurrent/unreconciled calls", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    model.cost = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+    const limits = { maxCalls: 10, maxTotalTokens: 100000, maxCostUsd: null, maxDurationMs: 10000, maxOutputTokens: 8192 };
+    const path = join(input.target.stateRoot, "active.jsonl");
+    const ledger = new BudgetLedger(path, limits, Date.now() + 10000, new AbortController().signal);
+
+    const call1 = ledger.reserve(model, context, 8192); // reserves 68,192 tokens
+    assert.equal(call1.reservedTokens, 68192);
+
+    // Active ledger blocks concurrency
+    assert.throws(() => ledger.reserve(model, context, 8192), /Concurrent model calls are unsupported|CONCURRENCY/);
+
+    // A fresh ledger instance reading the file sees the unreconciled active call
+    const ledger2 = new BudgetLedger(path, limits, Date.now() + 10000, new AbortController().signal);
+    assert.throws(() => ledger2.reserve(model, context, 8192), /has no terminal receipt|RECONCILIATION/);
+
+    // Summary reflects active reserved tokens
+    const summary = ledgerSummary(readLedger(path), limits);
+    assert.equal(summary.calls, 1);
+    assert.equal(summary.activeReservedTokens, 68192);
+    assert.equal(summary.chargedTokens, 68192, "in-flight call remains covered worst-case");
+    assert.deepEqual(summary.unreconciledCallIds, [1]);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("missing, unknown, interrupted, error, or aborted usage does not release token reserve", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    model.cost = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+    const limits = { maxCalls: 10, maxTotalTokens: 100000, maxCostUsd: null, maxDurationMs: 10000, maxOutputTokens: 8192 };
+
+    // Case A: unknown usage (totalTokens is null)
+    const pathA = join(input.target.stateRoot, "unknown-usage.jsonl");
+    const ledgerA = new BudgetLedger(pathA, limits, Date.now() + 10000, new AbortController().signal);
+    const rA = ledgerA.reserve(model, context, 8192); // 68,192 tokens
+    const msgUnknown = fauxAssistantMessage("unknown");
+    msgUnknown.usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    ledgerA.finish(rA, msgUnknown); // observeUsage turns all-zero to nulls
+    const sumA = ledgerSummary(readLedger(pathA), limits);
+    assert.equal(sumA.chargedTokens, 68192, "unknown usage does NOT release reserve");
+    // Under 100,000 cap: 68192 + 68192 = 136384 > 100000 -> rejected!
+    assert.throws(() => ledgerA.reserve(model, context, 8192), (err: any) => err.code === "TOKEN_LIMIT");
+
+    // Case B: error stopReason
+    const pathB = join(input.target.stateRoot, "error-stop.jsonl");
+    const ledgerB = new BudgetLedger(pathB, limits, Date.now() + 10000, new AbortController().signal, "case-b");
+    const rB = ledgerB.reserve(model, context, 8192);
+    const msgError = fauxAssistantMessage("failed");
+    msgError.stopReason = "error";
+    ledgerB.finish(rB, msgError);
+    assert.equal(callChargedTokens(rB, [readLedger(pathB).find((r): r is CallEnd => r.kind === "terminal")!]), 68192);
+    assert.throws(() => ledgerB.reserve(model, context, 8192), (err: any) => err.code === "TERMINAL_FAILURE");
+
+    // Case C: aborted stopReason
+    const pathC = join(input.target.stateRoot, "aborted-stop.jsonl");
+    const ledgerC = new BudgetLedger(pathC, limits, Date.now() + 10000, new AbortController().signal, "case-c");
+    const rC = ledgerC.reserve(model, context, 8192);
+    const msgAborted = fauxAssistantMessage("aborted");
+    msgAborted.stopReason = "aborted";
+    ledgerC.finish(rC, msgAborted);
+    assert.equal(callChargedTokens(rC, [readLedger(pathC).find((r): r is CallEnd => r.kind === "terminal")!]), 68192);
+    assert.throws(() => ledgerC.reserve(model, context, 8192), (err: any) => err.code === "TERMINAL_FAILURE");
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("unknown cost never settles to 0; token settlement does not imply known cost", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "cost-model", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    model.cost = { input: 10, output: 10, cacheRead: 0, cacheWrite: 0 };
+    // Model reservation cost: (60000 * 10 + 8192 * 10) / 1e6 = 0.68192 USD
+    const limits = { maxCalls: 10, maxTotalTokens: 2000000, maxCostUsd: 1.0, maxDurationMs: 10000, maxOutputTokens: 8192 };
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "cost.jsonl"), limits, Date.now() + 10000, new AbortController().signal);
+
+    const call1 = ledger.reserve(model, context, 8192);
+    assert.equal(call1.reservedCostUsd, 0.68192);
+
+    // Call 1 finishes with known token usage (1000 tokens), but NO cost report (cost: null)
+    const msg = fauxAssistantMessage("ok");
+    msg.usage = { input: 500, output: 500, cacheRead: 0, cacheWrite: 0, totalTokens: 1000, cost: undefined as any };
+    ledger.finish(call1, msg);
+
+    const summary = ledgerSummary(readLedger(ledger.path), limits);
+    assert.equal(summary.chargedTokens, 1000, "token reserve settled to actual");
+    assert.equal(summary.costUsd, null, "actual cost remains null");
+    assert.equal(summary.chargedCostUsd, 0.68192, "unknown cost cannot settle to 0; remains covered worst-case");
+
+    // Call 2 needs 0.68192 USD. 0.68192 + 0.68192 = 1.36384 > 1.0 USD ceiling!
+    // It must be rejected with COST_LIMIT before transport!
+    assert.throws(() => ledger.reserve(model, context, 8192), (err: any) => err.code === "COST_LIMIT");
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("duplicate or inconsistent terminal records cannot undercharge and keep worst-case reservation", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "dup-model", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    model.cost = { input: 10, output: 10, cacheRead: 0, cacheWrite: 0 };
+    const r: import("../../src/live/budget.js").CallRecord = {
+      kind: "reserve", id: 1, model: "test/model", inputEstimate: 100, outputCeiling: 8192,
+      reservedTokens: 68192, reservedCostUsd: 0.68192, at: Date.now()
+    };
+
+    // Single trustworthy terminal settles
+    const tClean: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+      usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, contextInput: 50, reasoning: null, totalTokens: 100, cost: 0.001 }
+    };
+    assert.equal(callChargedTokens(r, [tClean]), 100);
+    assert.equal(callChargedCost(r, [tClean]), 0.001);
+
+    // Duplicate terminals cannot undercharge: must return worst-case reservedTokens
+    const tDup: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 200, stopReason: "stop",
+      usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: 20, cost: 0.0002 }
+    };
+    assert.equal(callChargedTokens(r, [tClean, tDup]), 68192);
+    assert.equal(callChargedCost(r, [tClean, tDup]), 0.68192);
+
+    // Inconsistent / invalid terminal (tokens exceed reservation)
+    const tExceed: import("../../src/live/budget.js").CallEnd = {
+      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+      usage: { input: 100000, output: 100000, cacheRead: 0, cacheWrite: 0, contextInput: 100000, reasoning: null, totalTokens: 200000, cost: 2.0 }
+    };
+    assert.equal(callChargedTokens(r, [tExceed]), 68192);
+    assert.equal(callChargedCost(r, [tExceed]), 0.68192);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("shared batch accounting across invocations/comparison preserves cumulative usage and caps", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "batch-model", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    model.cost = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+    const run1Dir = join(input.target.stateRoot, "run1"); await mkdir(run1Dir);
+    const run2Dir = join(input.target.stateRoot, "run2"); await mkdir(run2Dir);
+    const run1Path = join(run1Dir, "calls.jsonl");
+    const run2Path = join(run2Dir, "calls.jsonl");
+
+    // Invocation 1: makes 1 call with actual usage 1255 tokens
+    const limits = { maxCalls: 2, maxTotalTokens: 100000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 8192 };
+    const ledger1 = new BudgetLedger(run1Path, limits, Date.now() + 60000, new AbortController().signal);
+    const r1 = ledger1.reserve(model, context, 8192);
+    assert.equal(r1.id, 1);
+    const msg1 = fauxAssistantMessage("invocation 1 done");
+    msg1.usage = { input: 1000, output: 255, cacheRead: 0, cacheWrite: 0, totalTokens: 1255, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } as any };
+    delete (msg1.usage as any).cost;
+    ledger1.finish(r1, msg1);
+
+    // Invocation 2: starts with run2Path and priorLedgerPaths = [run1Path]
+    const ledger2 = new BudgetLedger(run2Path, limits, Date.now() + 60000, new AbortController().signal, undefined, [run1Path]);
+    const allRecords = ledger2.readAllRecords();
+    assert.equal(allRecords.length, 2, "reads prior reserve and terminal records");
+
+    // Call in Invocation 2 receives id: 2
+    const r2 = ledger2.reserve(model, context, 8192);
+    assert.equal(r2.id, 2, "cumulative call ID continues from prior invocation");
+    assert.equal(r2.reservedTokens, 68192);
+
+    // Admitted because 1255 (settled) + 68192 <= 100,000!
+    const msg2 = fauxAssistantMessage("invocation 2 done");
+    msg2.usage = { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0, totalTokens: 1500, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } as any };
+    delete (msg2.usage as any).cost;
+    ledger2.finish(r2, msg2);
+
+    // Now total cumulative calls across batch is 2 (reaching maxCalls: 2).
+    // A 3rd call in Invocation 2 MUST be refused with CALL_LIMIT!
+    assert.throws(() => ledger2.reserve(model, context, 8192), /CALL_LIMIT|Call ceiling/);
+
+    // Summary across all records reflects cumulative usage
+    const summary = ledgerSummary(ledger2.readAllRecords(), limits);
+    assert.equal(summary.calls, 2);
+    assert.equal(summary.chargedTokens, 1255 + 1500);
+    assert.equal(summary.actualTokens, 2755);
+    assert.equal(summary.remainingCalls, 0);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("prior append-only receipts are compatible and never modified across invocations", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    model.cost = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+    const run1Dir = join(input.target.stateRoot, "run1"); await mkdir(run1Dir);
+    const run2Dir = join(input.target.stateRoot, "run2"); await mkdir(run2Dir);
+    const run1Path = join(run1Dir, "calls.jsonl");
+    const run2Path = join(run2Dir, "calls.jsonl");
+
+    const limits = { maxCalls: 5, maxTotalTokens: 200000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 8192 };
+    const ledger1 = new BudgetLedger(run1Path, limits, Date.now() + 60000, new AbortController().signal);
+    const r1 = ledger1.reserve(model, context, 8192);
+    ledger1.finish(r1, fauxAssistantMessage("ok"));
+
+    const contentBefore = await readFile(run1Path, "utf8");
+    const hashBefore = createHash("sha256").update(contentBefore).digest("hex");
+
+    // Second run links to prior ledger
+    const ledger2 = new BudgetLedger(run2Path, limits, Date.now() + 60000, new AbortController().signal, undefined, [run1Path]);
+    const r2 = ledger2.reserve(model, context, 8192);
+    ledger2.finish(r2, fauxAssistantMessage("ok 2"));
+
+    const contentAfter = await readFile(run1Path, "utf8");
+    const hashAfter = createHash("sha256").update(contentAfter).digest("hex");
+    assert.equal(hashBefore, hashAfter, "prior ledger was never rewritten or modified");
+
+    // Real behavior-batch-01 calls.jsonl compatibility check
+    const realBatch01 = "/Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc-task-retention.observation-support/.scratch/behavior-batch-01/nunc-live-retention-01/calls.jsonl";
+    const realRecords = readLedger(realBatch01);
+    assert.equal(realRecords.length, 2);
+    assert(realRecords[0] && realRecords[0].kind === "reserve");
+    assert(realRecords[1] && realRecords[1].kind === "terminal");
+    const realSummary = ledgerSummary(realRecords);
+    assert.equal(realSummary.calls, 1);
+    assert.equal(realSummary.reservedTokens, 1178000);
+    assert.equal(realSummary.chargedTokens, 1255);
+    assert.equal(realSummary.actualTokens, 1255);
+    assert.equal(realSummary.costUsd, 0.00034875);
+    assert.equal(realSummary.chargedCostUsd, 0.00034875);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("wallclock deadline from first dispatch and interval elapsed time; expired authorization refuses before transport", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    model.cost = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+
+    // Case A: Expired authorization refuses before transport
+    const expiredDispatchAt = Date.now() - 3700000; // 61 minutes ago
+    const limitsExpired = { maxCalls: 10, maxTotalTokens: 200000, maxCostUsd: null, maxDurationMs: 3600000, maxOutputTokens: 8192, firstDispatchAt: expiredDispatchAt };
+    const batchContextA = resolveBatchContext({ ...input, limits: limitsExpired });
+    assert(batchContextA.deadline <= Date.now(), "deadline is in the past");
+
+    const ledgerExpired = new BudgetLedger(join(input.target.stateRoot, "expired.jsonl"), limitsExpired, batchContextA.deadline, new AbortController().signal);
+    assert.throws(() => ledgerExpired.reserve(model, context, 8192), /TIME_LIMIT|deadline reached/);
+
+    // Case B: Unexpired authorization calculates elapsed time from first dispatch
+    const pastDispatchAt = Date.now() - 60000; // 1 minute ago
+    const limitsUnexpired = { maxCalls: 10, maxTotalTokens: 200000, maxCostUsd: null, maxDurationMs: 3600000, maxOutputTokens: 8192, firstDispatchAt: pastDispatchAt };
+    const batchContextB = resolveBatchContext({ ...input, limits: limitsUnexpired });
+    assert(batchContextB.deadline > Date.now(), "deadline is in the future");
+    assert.equal(batchContextB.firstDispatchAt, pastDispatchAt);
+
+    const ledgerUnexpired = new BudgetLedger(join(input.target.stateRoot, "unexpired.jsonl"), limitsUnexpired, batchContextB.deadline, new AbortController().signal);
+    const r = ledgerUnexpired.reserve(model, context, 8192);
+    assert.equal(r.id, 1);
+    ledgerUnexpired.finish(r, fauxAssistantMessage("ok"));
+
+    const elapsed = Date.now() - batchContextB.firstDispatchAt!;
+    assert(elapsed >= 60000, "elapsed time includes interval before invocation");
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });

@@ -49,7 +49,23 @@ function optionalPositive(value: unknown, key: string): number | null {
   return value;
 }
 function text(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0 && value.length <= 4096; }
-export interface Limits { maxCalls: number | null; maxTotalTokens: number | null; maxCostUsd: number | null; maxDurationMs: number; maxOutputTokens: number }
+export interface BatchAuthority {
+  firstDispatchAt?: number | string;
+  deadline?: number | string;
+  priorLedgers?: string[];
+  sharedLedger?: string;
+}
+export interface Limits {
+  maxCalls: number | null;
+  maxTotalTokens: number | null;
+  maxCostUsd: number | null;
+  maxDurationMs: number;
+  maxOutputTokens: number;
+  firstDispatchAt?: number | string;
+  deadline?: number | string;
+  priorLedgers?: string[];
+  sharedLedger?: string;
+}
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
@@ -88,6 +104,8 @@ export interface RunInput {
   observations?: Array<"stock_rpc" | "stock_tui" | "continuation">;
   comparison?: ComparisonConfig;
   assets?: ScenarioAssets;
+  batch?: BatchAuthority;
+  authority?: BatchAuthority;
 }
 export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.86.1"; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
@@ -116,7 +134,7 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
   if (config.policyFile !== undefined) requireValue(text(config.policyFile) && isAbsolute(config.policyFile), "CONFIG", "Runner policyFile must be absolute and repository-local");
 }
 export function parseInput(value: unknown, execution = false): RunInput {
-  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison", "assets"], "input");
+  keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison", "assets", "batch", "authority"], "input");
   requireValue(value.version === 1, "INPUT", "Expected input version 1");
   requireValue(value.mode === "controlled" || value.mode === "native", "INPUT", "Invalid internal execution mode");
   if (execution) {
@@ -134,11 +152,43 @@ export function parseInput(value: unknown, execution = false): RunInput {
   keys(value.target, ["repository", "stateRoot", "cleanup"], "target");
   requireValue(text(value.target.repository) && isAbsolute(value.target.repository) && text(value.target.stateRoot) && isAbsolute(value.target.stateRoot), "TARGET", "Explicit absolute repository and new stateRoot required");
   requireValue(value.target.cleanup === "retain" || value.target.cleanup === "remove", "TARGET", "Explicit cleanup disposition required");
-  keys(value.limits, ["maxCalls", "maxTotalTokens", "maxCostUsd", "maxDurationMs", "maxOutputTokens"], "limits");
+  keys(value.limits, ["maxCalls", "maxTotalTokens", "maxCostUsd", "maxDurationMs", "maxOutputTokens", "firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], "limits");
   value.limits.maxCalls = optionalPositive(value.limits.maxCalls, "maxCalls");
   value.limits.maxTotalTokens = optionalPositive(value.limits.maxTotalTokens, "maxTotalTokens");
   for (const key of ["maxDurationMs", "maxOutputTokens"]) requireValue(positive(value.limits[key]), "LIMIT", `Positive bounded ${key} required`);
   requireValue(Number(value.limits.maxDurationMs) <= 86400000 && (value.limits.maxCostUsd === null || typeof value.limits.maxCostUsd === "number" && Number.isFinite(value.limits.maxCostUsd) && value.limits.maxCostUsd > 0), "LIMIT", "Invalid time/cost ceiling");
+  const lim = value.limits as any;
+  if (lim.firstDispatchAt !== undefined) {
+    requireValue((typeof lim.firstDispatchAt === "number" && Number.isFinite(lim.firstDispatchAt) && lim.firstDispatchAt > 0) || (typeof lim.firstDispatchAt === "string" && !isNaN(Date.parse(lim.firstDispatchAt))), "LIMIT", "limits.firstDispatchAt must be a positive timestamp or valid ISO date");
+  }
+  if (lim.deadline !== undefined) {
+    requireValue((typeof lim.deadline === "number" && Number.isFinite(lim.deadline) && lim.deadline > 0) || (typeof lim.deadline === "string" && !isNaN(Date.parse(lim.deadline))), "LIMIT", "limits.deadline must be a positive timestamp or valid ISO date");
+  }
+  if (lim.priorLedgers !== undefined) {
+    requireValue(Array.isArray(lim.priorLedgers) && lim.priorLedgers.every((p: any) => typeof p === "string" && p.trim().length > 0), "LIMIT", "limits.priorLedgers must be an array of non-empty paths");
+  }
+  if (lim.sharedLedger !== undefined) {
+    requireValue(typeof lim.sharedLedger === "string" && lim.sharedLedger.trim().length > 0, "LIMIT", "limits.sharedLedger must be a non-empty string path");
+  }
+  for (const bKey of ["batch", "authority"] as const) {
+    if ((value as any)[bKey] !== undefined) {
+      requireValue(object((value as any)[bKey]), "BATCH", `${bKey} must be an object`);
+      keys((value as any)[bKey], ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], bKey);
+      const b = (value as any)[bKey];
+      if (b.firstDispatchAt !== undefined) {
+        requireValue((typeof b.firstDispatchAt === "number" && Number.isFinite(b.firstDispatchAt) && b.firstDispatchAt > 0) || (typeof b.firstDispatchAt === "string" && !isNaN(Date.parse(b.firstDispatchAt))), "BATCH", `${bKey}.firstDispatchAt must be a positive timestamp or valid ISO date`);
+      }
+      if (b.deadline !== undefined) {
+        requireValue((typeof b.deadline === "number" && Number.isFinite(b.deadline) && b.deadline > 0) || (typeof b.deadline === "string" && !isNaN(Date.parse(b.deadline))), "BATCH", `${bKey}.deadline must be a positive timestamp or valid ISO date`);
+      }
+      if (b.priorLedgers !== undefined) {
+        requireValue(Array.isArray(b.priorLedgers) && b.priorLedgers.every((p: any) => typeof p === "string" && p.trim().length > 0), "BATCH", `${bKey}.priorLedgers must be an array of non-empty paths`);
+      }
+      if (b.sharedLedger !== undefined) {
+        requireValue(typeof b.sharedLedger === "string" && b.sharedLedger.trim().length > 0, "BATCH", `${bKey}.sharedLedger must be a non-empty string path`);
+      }
+    }
+  }
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
   const isGuidance = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("g"));

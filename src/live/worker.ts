@@ -21,7 +21,7 @@ import { rolloverFacts, type RolloverFacts, type RolloverObservation, type Reque
 import { qualifyMemoryOnly, archiveMemoryArtifact } from "./stable-memory-task.js";
 import { layoutsFromRequests, scoreStableMemory, type LayoutObservation } from "./stable-memory-observation.js";
 
-export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined; matchReferences?: MatchReference[] | undefined }
+export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined; matchReferences?: MatchReference[] | undefined; priorLedgers?: string[] | undefined }
 interface Checkpoint { pid: number; sessionFile: string; sessionId: string; leafId: string | null; nextTurn: number; turnEntries: Record<string, string[]>; rebuilt: SessionEntry[]; prerequisites: CheckResult[]; nuncConfig: NuncConfig; actions?: unknown[]; lastBeforeActive?: SessionEntry[]; rollovers?: RolloverObservation[]; requests?: RequestObservation[]; runConfig?: Selection["config"]; noWork?: NonNullable<SegmentReport["noWork"]> }
 export interface SegmentReport {
   pid: number;
@@ -185,6 +185,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       taskFiles: scenario.files,
       boundaries, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
       ...(guidanceControls?.length ? { guidanceControls } : {}),
+      priorLedgers: job.priorLedgers,
       onBoundary: async data => {
         try {
           const idx = data.boundaryIndex ?? currentBoundaryIndex;
@@ -747,5 +748,6 @@ export async function workerMain(value: unknown, repository: string): Promise<Se
     mode: typeof (value as { mode?: unknown }).mode === "string" ? (value as { mode: ComparisonMode }).mode : undefined,
     caseRoot: typeof (value as { caseRoot?: unknown }).caseRoot === "string" ? (value as { caseRoot: string }).caseRoot : undefined,
     matchReferences: Array.isArray(value.matchReferences) ? value.matchReferences as MatchReference[] : undefined,
+    priorLedgers: Array.isArray((value as any).priorLedgers) ? (value as any).priorLedgers : undefined,
   });
 }

@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { object, canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
-import { ledgerSummary, readLedger } from "./budget.js";
+import { ledgerSummary, readLedger, resolveBatchContext } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
 import { childEnvironment, nativeEnvironment } from "./host.js";
 export { childEnvironment } from "./host.js";
@@ -51,8 +52,15 @@ export async function execute(value: unknown, repository: string, script: string
   await mkdir(join(input.target.stateRoot, "tmp"), { mode: 0o700 });
   input.receipt = receipt;
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
-  const started = Date.now(), deadline = started + input.limits.maxDurationMs;
+  const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
+  const started = Date.now();
+  requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
   const root = input.target.stateRoot;
+  const readAll = () => {
+    const priorRecords = priorLedgerPaths.flatMap(p => existsSync(p) ? readLedger(p) : []);
+    const currentRecords = existsSync(join(root, "calls.jsonl")) ? readLedger(join(root, "calls.jsonl")) : [];
+    return [...priorRecords, ...currentRecords];
+  };
   // A newly created target is single-use; no silent rerun of possible prior effects.
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
   const report: RunReport = { version: 1, status: "STOPPED", selection: publicInput(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
@@ -71,8 +79,8 @@ export async function execute(value: unknown, repository: string, script: string
       let resume = false;
       do {
         signal.throwIfAborted(); requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
-        const child = await launchWorker(script, { input, scenarioIndex, deadline, resume }, signal); report.children.push(child);
-        report.usage = ledgerSummary(readLedger(join(root, "calls.jsonl")));
+        const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, priorLedgers: priorLedgerPaths }, signal); report.children.push(child);
+        report.usage = ledgerSummary(readAll(), input.limits);
         requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete; inspect saved state before any new run");
         const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
         report.segments.push(segment);
@@ -92,8 +100,8 @@ export async function execute(value: unknown, repository: string, script: string
     if (failed) report.reason = report.segments.find(s => s.status === "UNPROVEN" || s.status === "STOPPED" || (s.status === "PAUSED" && s.prerequisites.some(c => c.status !== "PROVEN")))?.reason ?? "OBSERVATION";
   } catch (error) { report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR"; }
   finally {
-    try { report.usage = ledgerSummary(readLedger(join(root, "calls.jsonl"))); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
-    report.elapsedMs = Date.now() - started;
+    try { report.usage = ledgerSummary(readAll(), input.limits); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
+    report.elapsedMs = Date.now() - (firstDispatchAt ?? started);
     if (report.usage.unreconciledCallIds.length > 0) report.cleanup = "retained-for-reconciliation";
     await finalizeRun(input, receipt, report);
   }
