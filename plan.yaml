@@ -4603,7 +4603,7 @@ phases:
       stillnotproven; onlyofflinecapabilityrepair complete.'
   - id: nunc-task-retention.same-task-history
     name: 同任务真实前置工作与多次维护观察方法修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"tests/scenarios/**\", \"src/live/**\", \"tests/**\", \"\
       docs/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
@@ -4656,3 +4656,5 @@ phases:
     depends_on:
     - nunc-task-retention.preparation-readiness
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-22T10:44:13.167132Z'
