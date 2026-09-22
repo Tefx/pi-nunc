@@ -4302,7 +4302,7 @@ phases:
       target/new stateRoot and remaining cumulative budgets.'
 - id: nunc-task-retention
   name: 完整任务与完成条件保留修正
-  status: in_progress
+  status: done
   gate: 按用户接受的确定性机械保证范围收尾。Orchestrator 在同一 behavior 完成程序作唯一整合接受，消费 semantics、observation-support、observation-repair、preparation-readiness、same-task-history、behavior
     全部适用结果及最终候选完整适用离线库存、实际加载 seam 证据。非法 patch 拒绝、原子性、revision conflict/unconfirmed
     不重放、source/tool identity、预算结算及配置 deadline 等机械保证的必要缺陷、失败或未证明项仍阻止接受。用户已排除无法稳定复现的
@@ -4431,7 +4431,7 @@ phases:
       still require explicit bounded effect/cost authority and live semantic evidence.'
   - id: nunc-task-retention.behavior
     name: 确定性机械保证核验与限定范围收尾
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       dist/**\", \"package.json\", \"package-lock.json\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -4481,6 +4481,27 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-22T13:53:08.896532Z'
+    done_at: '2026-09-22T14:14:27.241794+00:00'
+    evidence: 'Accepted under current user-authorized deterministic closeout scope
+      (''收尾'', excluding unstableLLM outcomes); completed history/original INCONCLUSIVE
+      reports unchanged. Exact product32e1d5b2e102b093d6c2784c29de82ddfcedab6d integrated;
+      source/tests committed, parentmain tsc0. New closeout/report.json validated
+      via review_report_validator kindverifier binding.json: validtrue binding_checkedtrue
+      POSITIVE_EVIDENCE, all6requirementsPROVEN. Parent checked applicable evidence:
+      illegalpatch rejection/atomicity, revision/unconfirmednonreplay, source/tool
+      identity, fullcalibration/commands, settledreservation/unknownusage/cost/deadline;75fileinventory8engine32pi35live
+      via applicablepriorresults+finalfocusedchecks, no blanket rerun or oldfailure
+      relabel. Live297reserves297terminals1087807tokens, costaggregateunknown (catalogreservation123.1503912USD
+      NOTspend); boundedpositive firstcommittedM+continuation andfinalartifact/agentchecks,
+      incomplete3maint/editmerge-delete/matched/source-recovery andMemptyinstructionfailure
+      explicitly limitations, notclaimsresolved. Canonical report .scratch/task-retention-evidence/closeout/FINAL.md
+      plus report.json,binding.json,verification-commands.jsonl,integration-build.log.
+      Retained224files70.2MiB unique liveledger/session/observations/artifacts under
+      .scratch/task-retention-evidence/retained-live with evidence-migration.md; originalworktreepaths
+      intentionallyretired. Allwriters/effects reconciled, no livecallsduringcloseout.
+      Deleted7remaining task-ownedregisteredworktrees/dependencies; onlymain remains,
+      recoveryrefs retained. Actualfilesystemavail113865676->120477932KiB (+6612256KiB/~6.31GiB).
+      No furthermodelcalls scheduled, allscope-approvedcloseout obligations complete.'
   - id: nunc-task-retention.observation-repair
     name: 累计预算结算与低用量真实观察准备修复
     status: done
