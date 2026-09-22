@@ -4441,19 +4441,21 @@ phases:
       \ M/K 和保存状态、恢复读取、行动、最终产物及错误完成声明，区分记忆丢失/仍在而未执行；机械不确定保持 UNPROVEN，不用字数/关键词/模型自报\
       \ PASS。\n\nBoundary: 只读候选/仓库，允许的效果仅为届时明确授权的新隔离 runtime、模型调用及外部非秘密证据文件；不改源码、生产默认值、日常\
       \ settings/session、历史日志产物，不部署/发布/push，不复制凭据。owner 可执行受授权 Node/宿主观察，无修复源码权限。\n\
-      \nAdmit: observation-support 已交付跟踪 runner、有效配置观察能力、最终候选构建及离线证据。任何 live call\
-      \ 前，controller 必须获得相应执行/费用权限并绑定 native/pre-change/candidate 实际版本、新隔离 target、累计有限\
-      \ calls/input-output tokens/walltime/可知费用上限（含继续、维护、semantic observer 与 native\
-      \ split calls）、认证由宿主持有、停止/清理策略。未知订阅费用不记零，旧预算/历史调用不授权重放。先非秘密核实宿主/provider 请求与实际生效的模型/thinking，确认主请求、维护及模型驱动语义观察均使用\
-      \ gpt-5.6-luna 与 low；不用未经核实的提取默认设置代替。特定路径无法应用指定配置时停止受影响调用并报告，不自行替换。对照版本及 target\
-      \ 绑定用于真实观察消费者，不额外做无消费者的 hashes。\n\nRecovery: 到边界、预算或失败后停新调用，核对已发出/可能发出 effects、保存最小有用原始事实；未发生的观察不得报通过。仅报告/观察缺口继续本步；需修改仓库时暂停\
-      \ consumer，交给兼容 writable producer，完成历史不改，修后复用未受影响证据。历史 UNTest 记录只是诊断，绝不重放或覆盖。接受后删除可复现缓存/隔离环境，保留最小不可重构观察及报告。\n\
-      \n最终接受责任: Orchestrator 在本步完成程序消费本 phase semantics、observation-support、behavior\
+      \nAdmit: observation-support 及后续 repair 交付跟踪 runner、有效配置观察能力、最终候选构建及离线证据。用户后续“Luna可以随便用”已授权本任务继续使用\
+      \ Luna，不再沿用旧批次 calls/token/cost/walltime 上限，也不按步骤重复申请同一权限；此授权不扩展 target、模型或其他效果。任何\
+      \ live call 前，controller 绑定 native/pre-change/candidate 实际版本、新隔离 target、适用授权、有限操作\
+      \ deadline、停止/清理策略，认证由宿主持有；汇总继续、维护、semantic observer 与 native split calls 的真实用量/费用及未结\
+      \ effects。未知订阅费用不记零，历史记录保持原授权语义，不重放历史调用；通用配置 deadline enforcement 保留。先非秘密核实宿主/provider\
+      \ 请求与实际生效的模型/thinking，确认主请求、维护及模型驱动语义观察均使用 gpt-5.6-luna 与 low；不用未经核实的提取默认设置代替。特定路径无法应用指定配置时停止受影响调用并报告，不自行替换。对照版本及\
+      \ target 绑定用于真实观察消费者，不额外做无消费者的 hashes。\n\nRecovery: 到边界、适用限额或失败后停新调用，核对已发出/可能发出\
+      \ effects、保存最小有用原始事实；未发生的观察不得报通过。仅报告/观察缺口继续本步；需修改仓库时暂停 consumer，交给兼容 writable\
+      \ producer，完成历史不改，修后复用未受影响证据。历史 UNTest 记录只是诊断，绝不重放或覆盖。接受后删除可复现缓存/隔离环境，保留最小不可重构观察及报告。\n\
+      \n最终接受责任: Orchestrator 在本步完成程序消费本 phase semantics、observation-support、observation-repair、preparation-readiness、behavior\
       \ 全部结果，对最终整合候选完整适用 project-native offline inventory、加载 dist/策略/工具 seam、完整当前语义要求与新真实效果作唯一结论。必要缺陷、check\
       \ 失败或必要维度 UNPROVEN 均不能宣称项目修复已接受。可在本完成程序请 llm-agent-expert 对独立产物/轨迹作内容判断，不能再发未授权模型调用或以建议取代事实；没有第二个\
       \ gate。既有 completed phases 的无关历史不重开。"
-    verification: 先无调用 preflight 核对安全 target、有效模型/thinking 与整体限额，再按已授权有界场景收集真实证据。所需证据消费者是本步
-      Orchestrator 最终整合判断。新策略/工具指导的真实行为必须来自当前候选；已有容量/持久化/恢复/稳定位置与其他机械证据在执行身份和相关输入未变时可复用。比较差异、未行使编辑维度、来源缺口、无法匹配约束均显式记录，不把有限试验泛化为普遍优越性。最终报告覆盖所有
+    verification: 先无调用 preflight 核对安全 target、有效模型/thinking、当前适用授权及有限操作 deadline，再按已授权场景收集真实证据；本任务
+      Luna 使用不重新施加旧批次 call/token/cost/walltime 上限。所需证据消费者是本步 Orchestrator 最终整合判断。新策略/工具指导的真实行为必须来自当前候选；已有容量/持久化/恢复/稳定位置与其他机械证据在执行身份和相关输入未变时可复用。比较差异、未行使编辑维度、来源缺口、无法匹配约束均显式记录，不把有限试验泛化为普遍优越性。最终报告覆盖所有
       material requirements 并说明适用库存与新旧证据的绑定；无必要缺口才可接受。
     refs:
     - docs/EXTRACTION.md
@@ -4463,7 +4465,7 @@ phases:
     - scripts/compare-extraction.mjs
     - scripts/check.mjs
     depends_on:
-    - nunc-task-retention.observation-repair
+    - nunc-task-retention.preparation-readiness
     agent: node-typescript-engineer
   - id: nunc-task-retention.observation-repair
     name: 累计预算结算与低用量真实观察准备修复
@@ -4531,3 +4533,51 @@ phases:
       and must consume live evidence, not controlledtest success. Repair worktree+prechange/dependencies
       temporarily retained for immediate behavior consumer until that runtime releases
       them.
+  - id: nunc-task-retention.preparation-readiness
+    name: 完整维护准备判定与场景命令恢复修复
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
+      .pi/**\", \".agents/**\", \".env*\", \"**/auth.json\", \"src/engine/**\", \"\
+      src/pi/**\", \"policies/**\"]\n\nDeliver: 交付现有 runner 可真实到达维护并允许场景内验证恢复的完整修复，由\
+      \ node-typescript-engineer 负责实现、缺陷、相关测试和文档；消费者为同一未完成 behavior。修正 preparation\
+      \ 的 readiness：仅判断 H 是否覆盖 F+growth 不足以判定可维护，必须消费实际目标的完整 legal calibration，包括\
+      \ memory、required K、合法 cut、保留/退役 placement、授权 fraction 与 extraction 约束。对真实任务进展可改变的暂时容量不足，允许延后并在因果改变的实际宿主状态重新判定；不得\
+      \ blanket catch CALIBRATION 而掩盖无效配置、损坏映射、provenance/placement 等合同错误。保留 frozen\
+      \ 原始来源、工具 batch、provenance、真实 cut 和保留要求，不能通过换掉必须保留的来源、放宽判据、padding、假失败或答案泄漏建立前提。不能证明可行时明确\
+      \ UNPROVEN，不重复同一无变化失败或误报维护成功。\n\n修正 observer 的 TOOL_COMMAND 反馈与必要的 invocation\
+      \ 识别：诊断必须与当前 scenario 的真实允许命令一致；task-retention metrics 的 build/unittest/solution\
+      \ 路径不能被只允许 verify.py 的硬编码反馈否认。从实际 blocked command 建立反例并验证有效恢复；仅识别符合既有场景授权含义的必要形式，不扩大到任意\
+      \ shell 命令，不弱化 legacy verify.py、路径、脚本完整性或其他授权检查。保持既有场景不受影响。\n\nBoundary: 仅现有\
+      \ src/live、必要 scripts、tests、docs；不改 engine/Pi/memory schemas、生产预算、策略、日常配置、全局路由、秘密或历史\
+      \ effects/receipts。仅离线 unit/state-machine 与隔离 controlled-native tests，无 live\
+      \ 模型调用、部署、发布或 push；controller 负责 worktree、集成及后续 Luna 观察。本步需要具体跨模块 calibration/observer\
+      \ 生命周期判断，普通 Node/TypeScript owner 适配；先前遗漏不自动升级为 Principal。\n\nAdmit: 已完成 observation-repair\
+      \ 及 controller 核对的真实失败事实。已知反例 usage=2929、H=2928、F=1854、growth=1024、memoryLimit=107、requestedK=2019\
+      \ 可越过早期判断但无合法 cut；应验证该完整数学缺口。保留通用配置 deadline enforcement、累计账本及历史授权适用性，不将已过期批次的额度/时间重新施加给后续已获新授权的观察，也不通过本离线修复执行效果。M\
+      \ 空、noWork、完整历史仍在时的 scoped-east 失败只支持指令执行失败，不能据此修改记忆策略。调用方超时造成 matched matrix\
+      \ 未完成留在 behavior 的观察恢复，未证明代码缺陷不扩展本步。\n\nRecovery: 本 unfinished writable step\
+      \ 内修复完整兼容缺陷集；合同错误保持可见，暂不可达路径诚实保留缺口。完成后同一 behavior 消费修复及适用旧证据，不重开 DONE，不另建 gate；Orchestrator\
+      \ 在原 behavior 完成程序作本 phase 唯一最终整合接受，覆盖本修复及全部必要真实观察。保留不可重构原始事实，不回写或重放历史调用。"
+    verification: Node 26.7.0/npm 11.19.0，tracked package-lock.json 锁定依赖，NODE_OPTIONS
+      unset。沿用 scripts/check.mjs 原生完整适用库存；node scripts/check.mjs all 是库存参考，允许复用最终候选上输入未变且适用的既有证据。新增可失败
+      unit/state-machine 测试，区分 F+growth 可过但 memory+requiredK 不可行、因果进展后的合法校准、不可行保留
+      UNPROVEN、无效配置/映射/placement 合同错误不得变成 defer。通过实际 controlled-native 宿主 seam 先复现反例，再证明真实任务进展下
+      defer/rearm 后合法维护、来源/cut/retention 保持；不以手动塞入期望 ready 状态替代。复现实际 blocked command，验证当前
+      scenario 的准确诊断、允许验证命令的恢复执行、必要 invocation 识别，并对未授权命令及 legacy 场景保持拒绝。检查不重复效果、不假
+      PROVEN、deadline 和累计账本不退化。构建及受影响 runner/observer/加载 seam 回归须通过；交付最终候选完整适用离线库存覆盖与复用理由，缺口诚实报告。controlled
+      provider 结果不得宣称真实 Luna 维护或模型成效；这些证据仍由 behavior 获得。
+    refs:
+    - src/live/preparation.ts
+    - src/live/calibration.ts
+    - src/live/observer.ts
+    - src/live/tool-path.ts
+    - docs/LIVE.md
+    - docs/EXTRACTION.md
+    - scripts/check.mjs
+    - package.json
+    - package-lock.json
+    depends_on:
+    - nunc-task-retention.observation-repair
+    agent: node-typescript-engineer
