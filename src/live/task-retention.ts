@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isDeepStrictEqual as same } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
@@ -104,6 +105,23 @@ export function taskFileChecks(...[scenario, turns, branch, active, rollovers, a
   ];
 }
 
+/** Derive expected normalized regional dataset directly from raw regional feeds. */
+export function deriveExpectedRecords(scenario: ScenarioInput): Record<"north" | "south" | "west", Array<{ gross: number | null; refunds: number | null; cost: number | null }>> {
+  const regions = ["north", "south", "west"] as const;
+  const result: Record<"north" | "south" | "west", Array<{ gross: number | null; refunds: number | null; cost: number | null }>> = {
+    north: [],
+    south: [],
+    west: [],
+  };
+  for (const r of regions) {
+    const raw = JSON.parse(scenario.files[`inputs/${r}.json`] ?? "[]");
+    result[r] = raw
+      .filter((rec: any) => rec && typeof rec === "object" && rec.status === "cleared")
+      .map((rec: any) => ({ gross: rec.gross, refunds: rec.refunds, cost: rec.cost }));
+  }
+  return result;
+}
+
 /** Preliminary regional ingest and validation effects before the core task. */
 export function sameTaskHistoryEffects(scenario: ScenarioInput, actions: unknown[], cwd: string): CheckResult {
   const rows = actions as GuidanceAction[];
@@ -116,43 +134,56 @@ export function sameTaskHistoryEffects(scenario: ScenarioInput, actions: unknown
     return { path: p, complete: Boolean(ex), callId: ex?.call.event.toolCallId, end: ex?.resultIndex };
   });
 
-  const writeEx = exchanges.find(x => x.call.turn === "setup" && ["write", "edit"].includes(x.call.event.toolName) &&
+  const writeOps = exchanges.filter(x => ["write", "edit"].includes(x.call.event.toolName) &&
     pathIs(cwd, x.call.event.input?.path, "records.json") && x.result?.isError === false);
+  const lastWriteOp = writeOps.at(-1);
+
+  const expectedRecords = deriveExpectedRecords(scenario);
   let recordsValid = false;
   let parsedRecords: any = null;
-  if (writeEx) {
+
+  const diskPath = resolve(cwd, "records.json");
+  if (existsSync(diskPath)) {
     try {
-      const content = contentText(writeEx.call.event.input?.content ?? "");
-      parsedRecords = JSON.parse(content);
-      const hasNorth = Array.isArray(parsedRecords.north) && parsedRecords.north.length === 2 &&
-        same(parsedRecords.north[0], { gross: 10, refunds: 3, cost: 9 }) &&
-        same(parsedRecords.north[1], { gross: 0, refunds: 0, cost: 0 });
-      const hasSouth = Array.isArray(parsedRecords.south) && parsedRecords.south.length === 1 &&
-        same(parsedRecords.south[0], { gross: null, refunds: 2, cost: 1 });
-      const hasWest = Array.isArray(parsedRecords.west) && parsedRecords.west.length === 2 &&
-        same(parsedRecords.west[0], { gross: -2, refunds: 1, cost: 4 }) &&
-        same(parsedRecords.west[1], { gross: 8, refunds: null, cost: 0 });
-      recordsValid = Boolean(hasNorth && hasSouth && hasWest);
-    } catch {
-      recordsValid = false;
-    }
+      parsedRecords = JSON.parse(readFileSync(diskPath, "utf8"));
+      recordsValid = same(parsedRecords, expectedRecords);
+    } catch {}
+  }
+  if (!recordsValid && lastWriteOp) {
+    try {
+      if (lastWriteOp.call.event.toolName === "write" && typeof lastWriteOp.call.event.input?.content === "string") {
+        parsedRecords = JSON.parse(lastWriteOp.call.event.input.content);
+      } else {
+        const readBack = exchanges.find(x => x.callIndex > lastWriteOp.resultIndex && x.call.event.toolName === "read" &&
+          pathIs(cwd, x.call.event.input?.path, "records.json") && x.result?.isError === false);
+        if (readBack) parsedRecords = JSON.parse(contentText(readBack.result.content));
+      }
+      recordsValid = Boolean(parsedRecords && same(parsedRecords, expectedRecords));
+    } catch {}
   }
 
-  const preflightCmd = exchanges.find(x => x.call.turn === "preflight" && (
-    (x.call.event.toolName === "bash" && metricsCommand(x.call.event.input?.command ?? "") === "validate" && x.result?.isError === false) ||
-    (x.call.event.toolName === "read" && pathIs(cwd, x.call.event.input?.path, "records.json") && x.result?.isError === false)
-  ));
+  // User turn requires execution of python3 scripts/validate_records.py; file-read alone cannot establish validation
+  const preflightScript = exchanges.find(x => x.call.turn === "preflight" &&
+    x.call.event.toolName === "bash" && metricsCommand(x.call.event.input?.command ?? "") === "validate" && x.result?.isError === false);
+
+  const scriptFollowsWrites = Boolean(preflightScript && lastWriteOp && preflightScript.callIndex > lastWriteOp.resultIndex);
+  const noPostValidationMutation = !writeOps.some(w => preflightScript && w.callIndex > preflightScript.resultIndex);
+  const scriptTampered = exchanges.some(x => ["write", "edit"].includes(x.call.event.toolName) &&
+    pathIs(cwd, x.call.event.input?.path, "scripts/validate_records.py"));
 
   const prematureTaskRead = exchanges.some(x => Boolean(x.call.turn && ["setup", "preflight"].includes(x.call.turn)) &&
     x.call.event.toolName === "read" && pathIs(cwd, x.call.event.input?.path, "TASK.md"));
 
-  const readsPrecedeWrite = Boolean(writeEx && readPaths.every(r => r.complete && r.end !== undefined && r.end < writeEx.callIndex));
+  const readsPrecedeWrite = Boolean(lastWriteOp && readPaths.every(r => r.complete && r.end !== undefined && r.end < lastWriteOp.callIndex));
 
   const complete = Boolean(
     readPaths.every(r => r.complete) &&
     recordsValid &&
-    preflightCmd &&
+    preflightScript &&
     readsPrecedeWrite &&
+    scriptFollowsWrites &&
+    noPostValidationMutation &&
+    !scriptTampered &&
     !prematureTaskRead
   );
 
@@ -161,9 +192,12 @@ export function sameTaskHistoryEffects(scenario: ScenarioInput, actions: unknown
     status: complete ? "PROVEN" : "UNPROVEN",
     observed: {
       reads: readPaths,
-      writeRecordsCallId: writeEx?.call.event.toolCallId ?? null,
+      writeRecordsCallId: lastWriteOp?.call.event.toolCallId ?? null,
       recordsValid,
-      preflightCallId: preflightCmd?.call.event.toolCallId ?? null,
+      preflightCallId: preflightScript?.call.event.toolCallId ?? null,
+      scriptFollowsWrites,
+      noPostValidationMutation,
+      scriptTampered,
       prematureTaskRead,
       readsPrecedeWrite,
     },
