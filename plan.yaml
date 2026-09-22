@@ -4303,9 +4303,12 @@ phases:
 - id: nunc-task-retention
   name: 完整任务与完成条件保留修正
   status: in_progress
-  gate: Orchestrator 在 behavior 完成程序作唯一整合接受：消费 semantics、observation-support 及 behavior
-    的适用证据，对本 phase 全部 material requirements、最终候选完整适用离线库存、加载入口及真实续做/编辑/对照作判断。必要缺陷、检查失败、未证明维度阻止接受；不增设重复
-    gate、不重开 DONE，不以文案或 producer 完成宣称修复。
+  gate: 按用户接受的确定性机械保证范围收尾。Orchestrator 在同一 behavior 完成程序作唯一整合接受，消费 semantics、observation-support、observation-repair、preparation-readiness、same-task-history、behavior
+    全部适用结果及最终候选完整适用离线库存、实际加载 seam 证据。非法 patch 拒绝、原子性、revision conflict/unconfirmed
+    不重放、source/tool identity、预算结算及配置 deadline 等机械保证的必要缺陷、失败或未证明项仍阻止接受。用户已排除无法稳定复现的
+    LLM 行为作为本次阻断：固定三次维护成功、必现 merge/delete、完整 matched 优势或稳定指令遵循不再是完成条件。报告保留真实成功、失败、未知和适用边界；一次已观察
+    committed memory+continuation/产物 oracle 不证明普遍保留或优越性。无需新增 live calls，不改 DONE 历史，不新增
+    gate。收尾由 controller 确认源码/测试 Git 可恢复、最终范围报告与最小独特证据保留并清理已释放消费者的任务环境。
   depends_on:
   - nunc-stable-memory
   steps:
@@ -4427,38 +4430,45 @@ phases:
       owner, measured ~719MiB. All writers/descendants stopped. Future behavior calls
       still require explicit bounded effect/cost authority and live semantic evidence.'
   - id: nunc-task-retention.behavior
-    name: 隔离 Luna 行为观察与最终整合接受
+    name: 确定性机械保证核验与限定范围收尾
     status: pending
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
-      \  allowed_paths: [\"docs/EXTRACTION.md\", \"docs/LIVE.md\", \"scripts/compare-extraction.mjs\"\
-      , \"src/live/**\", \"tests/scenarios/**\"]\n  blocked_paths: [\"plan.yaml\"\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      dist/**\", \"package.json\", \"package-lock.json\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \".git/**\", \".pi/**\", \".agents/**\", \".env*\"\
-      , \"**/auth.json\"]\n\nDeliver: 使用交付的实际宿主跟踪 runner，产生面向 Orchestrator 最终接受的观察事实。采用\
-      \ gpt-5.6-luna、low thinking level 覆盖续做、维护及任何模型语义观察。比较原生 Pi、实际修改前 Nunc、候选，分别报告\
-      \ defaults/matched 的实际来源/预算可比维度及 memory tools on/off。保留 stock native 行为，不额外泄露\
-      \ K 或裁切 native 输出来伪造等预算。\n\n完整覆盖 EXTRACTION §0.3 与仍适用 §7：要求从真实读取任务文件进入，持续任务经多次真实压缩与排错后最终产物满足早期精确/否定/范围/交互/验证条件；构建或部分测试成功不提前结束；主动替换/合并/删除混合条目仍续做未完义务，未实际调用\
-      \ patch 明确未覆盖，另观察有效编辑机会且不给正确 slot/操作答案；局部修订只影响对应条件，插问/暂停与多个任务退役不丢失其他工作；来源省略、容量和提交失败诚实报告并保留已交付恢复/无重复效果合同。使用真实生成的\
-      \ M/K 和保存状态、恢复读取、行动、最终产物及错误完成声明，区分记忆丢失/仍在而未执行；机械不确定保持 UNPROVEN，不用字数/关键词/模型自报\
-      \ PASS。\n\nBoundary: 只读候选/仓库，允许的效果仅为届时明确授权的新隔离 runtime、模型调用及外部非秘密证据文件；不改源码、生产默认值、日常\
-      \ settings/session、历史日志产物，不部署/发布/push，不复制凭据。owner 可执行受授权 Node/宿主观察，无修复源码权限。\n\
-      \nAdmit: observation-support 及后续 repair 交付跟踪 runner、有效配置观察能力、最终候选构建及离线证据。用户后续“Luna可以随便用”已授权本任务继续使用\
-      \ Luna，不再沿用旧批次 calls/token/cost/walltime 上限，也不按步骤重复申请同一权限；此授权不扩展 target、模型或其他效果。任何\
-      \ live call 前，controller 绑定 native/pre-change/candidate 实际版本、新隔离 target、适用授权、有限操作\
-      \ deadline、停止/清理策略，认证由宿主持有；汇总继续、维护、semantic observer 与 native split calls 的真实用量/费用及未结\
-      \ effects。未知订阅费用不记零，历史记录保持原授权语义，不重放历史调用；通用配置 deadline enforcement 保留。先非秘密核实宿主/provider\
-      \ 请求与实际生效的模型/thinking，确认主请求、维护及模型驱动语义观察均使用 gpt-5.6-luna 与 low；不用未经核实的提取默认设置代替。特定路径无法应用指定配置时停止受影响调用并报告，不自行替换。对照版本及\
-      \ target 绑定用于真实观察消费者，不额外做无消费者的 hashes。\n\nRecovery: 到边界、适用限额或失败后停新调用，核对已发出/可能发出\
-      \ effects、保存最小有用原始事实；未发生的观察不得报通过。仅报告/观察缺口继续本步；需修改仓库时暂停 consumer，交给兼容 writable\
-      \ producer，完成历史不改，修后复用未受影响证据。历史 UNTest 记录只是诊断，绝不重放或覆盖。接受后删除可复现缓存/隔离环境，保留最小不可重构观察及报告。\n\
-      \n最终接受责任: Orchestrator 在本步完成程序消费本 phase semantics、observation-support、observation-repair、preparation-readiness、behavior\
-      \ 全部结果，对最终整合候选完整适用 project-native offline inventory、加载 dist/策略/工具 seam、完整当前语义要求与新真实效果作唯一结论。必要缺陷、check\
-      \ 失败或必要维度 UNPROVEN 均不能宣称项目修复已接受。可在本完成程序请 llm-agent-expert 对独立产物/轨迹作内容判断，不能再发未授权模型调用或以建议取代事实；没有第二个\
-      \ gate。既有 completed phases 的无关历史不重开。"
-    verification: 先无调用 preflight 核对安全 target、有效模型/thinking、当前适用授权及有限操作 deadline，再按已授权场景收集真实证据；本任务
-      Luna 使用不重新施加旧批次 call/token/cost/walltime 上限。所需证据消费者是本步 Orchestrator 最终整合判断，包含
-      same-task-history 方法修复及本 phase 全部既有结果。核对新的同任务准备有真实消费者/效果且无 padding 或答案泄漏；实际历史必须独立满足
-      first TASK read 在 K、随后退役到 M、再维护真实生成 M 的完整序列，controlled-native 方法通过不替代真实模型行为。新策略/工具指导的真实行为必须来自当前候选；已有容量/持久化/恢复/稳定位置与其他机械证据在执行身份和相关输入未变时可复用。比较差异、未行使编辑维度、来源缺口、无法匹配约束均显式记录，不把有限试验泛化为普遍优越性。最终报告覆盖所有
-      material requirements 并说明适用库存与新旧证据的绑定；无必要缺口才可接受。
+      , \"**/auth.json\"]\n\nDeliver: 按用户明确接受并以“收尾”授权的缩窄范围，交付最终整合候选的确定性机械保证核验、适用离线库存覆盖和诚实有限的既有\
+      \ live 观察总结。消费者仍为 Orchestrator 在本步完成程序的唯一最终整合接受。用户已接受 LLM 输出无法保证确定性，并排除无法稳定复现的模型行为问题作为本次完成阻断；此当前合同替代本\
+      \ pending step 旧的强制三次真实维护/完整行为维度门槛，完成历史、原始报告和失败记录不改写。\n\n必须证明实际交付的机械合同：非法 memory\
+      \ patch/schema 拒绝与无非法提交、原子性、revision conflict、unconfirmed save 核对及不自动重放、source/tool\
+      \ identity 与真实绑定、已提供预算结算及配置 deadline 执行。保留既有适用容量、持久化、恢复、工具授权、来源/provenance、场景/准备/比较报告诚实性及无重复效果等机械不变量。覆盖本\
+      \ phase 全部交付在最终候选上的整合和实际 dist/策略/工具加载 seam；源码检查不能替代必要的宿主/持久化机械证据。确定性产品缺陷、失败检查或必要机械维度\
+      \ UNPROVEN 仍阻止接受，不能借模型非确定性排除。\n\n不再要求模型必然完成固定三次维护序列、必现 merge/delete、完整 matched\
+      \ matrix 或优越性、稳定指令遵循或普遍条件保留。仍报告这些维度实际观察到什么、未发生什么、失败原因与未知；已有 controlled 方法机械能力与真实模型结果分开。有限正面事实包括已观察一次\
+      \ committed memory transition 加 continuation 及最终 artifact oracle/实际执行检查，须以相应原始证据和适用目标为准；不能据此宣称普遍保留、模型问题已修复、三段真实序列完成或对所有\
+      \ native/current/candidate 配置更优。非法模型响应被拒绝保留为失败响应，同时可按事实支持验证器拒绝机制，绝不改记模型成功。保留\
+      \ source omission/工具身份、预算及配置差异的真实说明，不为补齐比较伪造等预算。\n\nBoundary: node-typescript-engineer\
+      \ 保持只读验证责任；可执行必要隔离离线检查并生成外部非秘密报告，不修改 tracked source/tests/docs、生产 defaults、全局模型路由、日常配置/会话、凭据或历史记录，不部署/发布/push。本次收尾不需要新增\
+      \ live calls，也不重放已核对效果。controller 独立承担集成、Git durability 和任务环境清理，未授予 verifier\
+      \ 写仓库或删除 worktree 的权限。\n\nAdmit: semantics、observation-support、observation-repair、preparation-readiness、same-task-history\
+      \ 全部 DONE 结果及其既有证明；原 behavior 报告在旧合同下的 INCONCLUSIVE 保持原意，不直接改标签冒充旧范围通过。按当前最终候选、当前缩窄合同生成新的适用性/接受判断，复用有效底层观察。用户已授予同任务收尾，所需工作是机械核验与准确报告，无需重复申请模型权限或为新报告重跑模型。真实调用数量、tokens、已知/未知费用及\
+      \ effects 核对依据原始 ledgers；reservation 总额不是实际花费，未知不记零。\n\n最终接受及收尾: Orchestrator\
+      \ 在本步完成程序消费本 phase 六项交付及完整适用 project-native offline inventory，判断缩窄范围的所有 material\
+      \ requirements，而非仅看到 producer DONE。最终报告明确当前外部承诺及不承诺的 LLM 行为，以本次用户范围决定解释旧 docs/历史场景目标，不谎称已经更新\
+      \ tracked 文档。优先用现有 completion evidence 和非 tracked 最终报告准确表达范围；本步不因报告便利新增 writable\
+      \ producer 或把 verification 改成 writable。controller 确认实际交付 source/tests 已在 Git\
+      \ 持久保存且可恢复，保留最小不可重构的成功/失败/未知观察、来源和命令结果；核对 writers/descendants/effects 及剩余消费者后，删除已无消费者的任务\
+      \ owned worktrees、依赖环境、缓存和冗余产物。若声明回收容量须报告实际 filesystem free-space 变化。最小原始失败事实不能因收尾而抹除，已接受后无需保留整套可重建环境。\n\
+      \nRecovery: 报告/目标绑定缺口在本步修正；未变底层观察不因改报告或范围而失效。必要机械证明缺口用最小受影响离线检查补齐，新增确定性缺陷按原只读消费者/独立\
+      \ writable repair 规则处理，完成历史不重开。因用户明确范围变更而不再阻断的模型维度以限制保留，不宣称解决。不新增 gate、live\
+      \ replay 或其他项目工作。"
+    verification: 使用 Node 26.7.0/npm 11.19.0、tracked package-lock.json 锁定依赖与 NODE_OPTIONS
+      unset 所对应的项目原生证明。scripts/check.mjs（node scripts/check.mjs all）为完整适用离线库存参考；最终候选覆盖可由有适用性理由的历史有效结果与必要受影响新检查组成，不要求
+      fresh full run 或重新调用模型。核对 phase 全部机械交付、跨组件行为及实际 dist/src/index.js/策略/工具加载 seam；针对源/锁/配置/集成改变或仍未证明的机械维度补最小充分检查。已有必要失败不得藏入证据
+      union。非法 patch/schema 拒绝、原子提交、revision conflict/unconfirmed 不重放、source/tool
+      identity、settled-reservation/未知用量保守处理及 configured deadline 必须有可回归的行为证据。旧报告 INCONCLUSIVE
+      和原始失败保留，按当前目标与缩窄合同单独给出最终接受判断，逐项区分机械保证与有限 live 观察；无需证明固定三次维护、必现 merge/delete、完整
+      matched 优势、稳定模型遵循或普遍保留。controller 完成最终限定范围报告、源码/测试持久化与任务 owned 环境释放，保留必要独特原始证据后才宣告收尾；verification
+      owner 无 tracked 写入或清理权限。
     refs:
     - docs/EXTRACTION.md
     - docs/DESIGN.md
