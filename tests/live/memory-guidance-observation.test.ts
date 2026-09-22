@@ -46,8 +46,11 @@ test("complete-task variants load and seed only task files, with independent obs
       // A seeded workspace has no completed artifact. It cannot pass merely
       // because scenario data is valid or a future turn asks for completion.
       const result = await scoreArtifacts(cwd, observer, exposed);
-      assert(result.checks.every(check => check.status === "DISPROVEN"));
+      for (const [index, check] of result.checks.entries()) assert.equal(check.status, observer.artifactChecks[index]!.operator === "semantic" ? "UNPROVEN" : "DISPROVEN");
       assert(result.actionReview.every(check => check.status === "UNPROVEN"));
+      await writeFile(join(cwd, "handoff.json"), '{"complete":true,"verified":true}');
+      const claimed = await scoreArtifacts(cwd, observer, exposed, { actions: [terminal("d")], fixtures: Object.fromEntries(Object.entries(input.files).filter(([name]) => name !== "solution.py")) });
+      assert.equal(claimed.actionReview.find(check => check.check === (id === "g4" ? "metrics-artifact" : "scoped-artifacts"))?.status, "DISPROVEN", "Self-reported success cannot replace executable final artifacts");
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

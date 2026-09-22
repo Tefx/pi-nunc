@@ -146,6 +146,8 @@ Use `docs/task-retention-selection.json` and `docs/task-retention-comparison-sel
 
 Offline reproduction uses Node 26.7.0/npm 11.19.0 and the tracked lock. Build first. `node scripts/check.mjs all` discovers every `*.test.ts` across engine/pi/live, compiles and runs with file concurrency 2; `NUNC_TEST_CONCURRENCY=1` lowers it for heavy hosts. The historical comparison fixture needs a clean, built `.scratch/baseline-70dacad` with its own Pi 0.85.1 lock; new three-target tests additionally need clean built `.scratch/prechange` at the caller's retained pre-change ref, using the matching Pi 0.86.1 lock. Neither target is recreated from a deleted external scratch path. Controlled HTTP tests prove observation mechanics only; the behavior step owns real model efficacy and final acceptance.
 
+The task-file queue supplies three observation opportunities, without imposing a three-compaction ceiling. Ordinary native compactions may continue under the restored configuration and remain separately recorded. E3 keeps its historical single-boundary refusal. A natural compaction between controlled opportunities may change which source premise can be established; it never justifies replaying task work.
+
 ### Thinking level and maintenance-thinking verification
 
 For runs selecting `gpt-5.6-luna` with thinking level `low`:

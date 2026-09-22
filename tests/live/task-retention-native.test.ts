@@ -19,6 +19,9 @@ test("real native serializer refuses missing/off/wrong thinking and wrong model 
   const model: Model<"openai-completions"> = { id: "openai/gpt-5.6-luna", name: "Controlled serializer", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint, reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const ledger = new BudgetLedger(join(f.dir, "ledger.jsonl"), { maxCalls: 20, maxTotalTokens: 1600000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 25000 }, Date.now() + 25000, new AbortController().signal);
   try {
+    const rawLedger = new BudgetLedger(ledger.path, ledger.limits, ledger.deadline, ledger.signal, "raw-maintenance-default");
+    const raw = await boundedProvider(openrouterProvider(), [model], rawLedger, { requireThinkingLevel: "low" }).stream(model, normalizeContext({ messages: [] }), { apiKey: "isolated-nunc-fixture", maxTokens: 1000 }).result();
+    assert.equal(raw.stopReason, "error"); assert.match(raw.errorMessage!, /THINKING_UNAPPLIED/); assert.equal(f.requests.length, 0);
     for (const kind of ["main", "maintenance"] as const) for (const effort of [undefined, "off", "high"]) {
       const caseLedger = new BudgetLedger(ledger.path, ledger.limits, ledger.deadline, ledger.signal, `${kind}-${effort ?? "missing"}`);
       const provider = boundedProvider(openrouterProvider(), [model], caseLedger, { requireThinkingLevel: "low", maintenanceThinking: "low", classify: () => kind });
@@ -40,24 +43,25 @@ test("real native serializer refuses missing/off/wrong thinking and wrong model 
 
 // No model calls: stock serialization, HTTP, tool effects, reload, compaction and JSONL all execute.
 // Controlled usage intentionally supplies the positive threshold premise; the low-usage case falsifies it.
-async function taskFileHost(group: "native" | "current" | "candidate", tools = true, lowUsage = false) {
+async function taskFileHost(group: "native" | "current" | "candidate", tools = true, lowUsage = false, ordinaryExtra = false) {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 160000 });
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
-    effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, settings: {} },
+    effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
     comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "refs/nunc/task-retention-pre-change" } } },
     overrides: [{ requirement: "maintenance-thinking", maintenanceThinking: "low", reason: "Controlled low-effort native serializer proof" }, ...(tools ? [] : [{ requirement: "memory-tools-off", memoryTools: false, reason: "Actual tools-off comparison" }])],
     limits: { maxCalls: 40, maxTotalTokens: 3200000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
-    scenarios: [{ id: "g4", variant: "task-file", config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
+    scenarios: [{ id: "g4", variant: "task-file", config: { compaction: { enabled: ordinaryExtra, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
   const tool = (name: string, input: any) => ({ tool: { name, input }, input: lowUsage ? 100 : 18000 });
   const sequence = [tool("read", { path: "TASK.md" }), tool("bash", { command: "python3 build.py" }),
     tool("edit", { path: "solution.py", oldText: "def evaluate(record)", newText: "def evaluate(record):" }),
     tool("bash", { command: "python3 build.py" }), tool("write", { path: "solution.py", content: metricsSolution }),
     tool("write", { path: "test_solution.py", content: metricsTests }), tool("bash", { command: "python3 build.py" }),
     tool("bash", { command: "python3 -m unittest test_solution.py" }), tool("write", { path: "handoff.json", content: JSON.stringify({ implemented: true, verified: true, complete: true, remaining: [], commands: ["python3 build.py", "python3 -m unittest test_solution.py"] }) }), { text: "Controlled task completed.", input: 18000 }];
+  if (ordinaryExtra) sequence[6]!.input = 30000; // An ordinary later tool batch crosses the restored threshold.
   let step = 0, maintenance = 0;
   f.response = (row: any, source: any) => {
     assert.equal(row.payload.model, model.id);
@@ -80,13 +84,14 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
     }
     assert.equal(report.status, "OBSERVED", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic, prerequisites: report.prerequisites }));
     assert.equal(report.nextTurn, 1);
-    assert.equal(step, sequence.length); assert.equal(maintenance, group === "native" ? 0 : 3);
+    assert.equal(report.observedFacts!.guardApplicability, group === "native" ? "NOT_APPLICABLE" : "APPLICABLE", "actual prechange retains the required-item protocol");
+    assert.equal(step, sequence.length); assert.equal(maintenance, group === "native" ? 0 : ordinaryExtra ? 4 : 3);
     for (const request of report.requests!.filter(r => r.kind === "main")) {
       const names = request.context.tools?.map(t => t.name) ?? [];
       assert.equal(names.includes("nunc_memory_patch"), tools && group !== "native");
       assert.equal(names.includes("nunc_memory_read"), tools && group !== "native");
     }
-    assert.equal(new Set(report.rollovers!.map(r => r.snapshot!.id)).size, 3);
+    assert.equal(new Set(report.rollovers!.map(r => r.snapshot!.id)).size, ordinaryExtra ? 4 : 3);
     assert.equal(report.configurationChanges!.length, 6);
     for (let i = 0; i < 6; i += 2) assert.deepEqual(report.configurationChanges![i + 1]!.to, report.configurationChanges![i]!.from);
     assert.equal(report.setupChecks![1]!.status, group === "native" ? "UNPROVEN" : "PROVEN", JSON.stringify(report.setupChecks!.slice(0, 3)));
@@ -110,3 +115,4 @@ for (const group of ["candidate", "current", "native"] as const) {
   for (const tools of group === "native" ? [false] : [true, false]) test(`task-file ${group} tools=${tools}: real three-cut loop, restored configuration and final artifact`, { timeout: 180000 }, () => taskFileHost(group, tools));
 }
 test("task-file low native usage stops before infeasible maintenance or subsequent effects", { timeout: 30000 }, () => taskFileHost("candidate", true, true));
+test("task-file continues ordinary native compaction after its three observed opportunities", { timeout: 30000 }, () => taskFileHost("candidate", true, false, true));

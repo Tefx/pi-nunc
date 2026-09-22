@@ -2,7 +2,6 @@ import { archiveCloseoutEffects } from "./archive-closeout.js";
 import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
 import { qualifyCapacity, checkCapacityRecovery, checkRequiredRetention } from "./capacity-observation.js";
 import { elapsedInterval, type WallClockInterval } from "./timing.js";
-import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -10,7 +9,7 @@ import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { convertToLlm, sessionEntryToContextMessages, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { closeHost, openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection, taskRetentionSelection } from "./contract.js";
-import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult, type ScenarioInput } from "./scenarios.js";
+import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult } from "./scenarios.js";
 import { isSystemMessage } from "../engine/accounting.js";
 import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
 import type { MaintenanceResult } from "../engine/types.js";
@@ -224,11 +223,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           if (data.phase === "maintenance-failed") boundaryFailure ??= "Automatic boundary maintenance failed; suffix is unproven";
         }
         if (type === "preparation") {
-          const control = boundaryControls[currentBoundaryIndex]?.duringTurn === turn ? boundaryControls[currentBoundaryIndex] : observer.controls.find(c => c.action === "rollover" && c.afterTurn === turn);
+          const control = prepared && boundaryControls[currentBoundaryIndex]?.duringTurn === turn ? boundaryControls[currentBoundaryIndex] : observer.controls.find(c => c.action === "rollover" && c.afterTurn === turn);
           report.rollovers!.push({ ...data, turn, config: structuredClone(runConfig), ...(prepared ? { prepared } : {}),
             ...(control ? { placement: { control, turns: scenario.turns.slice(0, scenario.turns.findIndex(t => t.id === turn) + 1), files: scenario.files,
               turnEntries: { ...structuredClone(turns), [turn]: data.branch.filter((e: SessionEntry) => e.type === "message" && !isSystemMessage(e.message) && !turnBeforeIds.has(e.id)).map((e: SessionEntry) => e.id) },
-              requiredReads: control.placement?.retainToolExchange ? [{ turn: control.placement.retainToolExchange.turn, path: control.placement.retainToolExchange.pathArgument }]
+              requiredReads: control.placement?.retainToolExchange?.toolName === "read" ? [{ turn: control.placement.retainToolExchange.turn, path: control.placement.retainToolExchange.pathArgument }]
                 : selection.id === "e1" && turn === "b" ? [{ turn: "a", path: "rows.json" }]
                 : selection.id === "e2" && ["c", "d"].includes(turn) ? [{ turn: "c", path: "probe.json" }] : [] } } : {}), callIds: [] });
           prepared = undefined;
@@ -548,7 +547,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                     report.setupChecks!.push({ check: "required-too-large rollover eligibility", status: reqExceeds ? "DISPROVEN" : "UNPROVEN", reason: reqExceeds ? "Maintenance succeeded despite the measured necessary-set overflow" : "Successful ordinary continuation remains eligible; the capacity variant did not qualify" });
                   }
                 } else if (group === "current") {
-                  report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "current", guardApplicability: "NOT_APPLICABLE", note: "Product baseline 70dacad has no required-item guard" } });
+                  report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "current", guardApplicability: result.observations.required === undefined ? "NOT_APPLICABLE" : "APPLICABLE", required: result.observations.required ?? null } });
                 }
               } else if (selection.id === "c4") {
                 const exception = scenario.generatedFiles?.[0]?.segments.find(s => s.repeat === 1)?.text.trim();

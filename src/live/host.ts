@@ -25,8 +25,8 @@ export function liveExtensionFlags(repository: string, input: RunInput, group?: 
     requireValue(typeof larva.extension === "string" && existsSync(larva.extension), "EXTENSION", "Explicit Larva extension is unavailable");
     flags.push("-e", larva.extension, "--larva-agent-persona-switch", "manual");
   }
-  // Last loaded: every prepared boundary (including g6 and repeated g4) restores before next-loop tool capture.
-  flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
+  // Last loaded only for scenarios with an in-loop prepared boundary.
+  if (input.scenarios.some(s => s.id === "e3" || s.id === "g6" || s.id === "g4" && s.variant === "task-file")) flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
   return flags;
 }
 import type { Control, ToolTrigger } from "./scenarios.js";
@@ -109,7 +109,10 @@ export class NativeHost {
     if (o.controlledModels) for (const path of [host, join(state, "home")]) await mkdir(path, { recursive: true });
     const config = join(o.caseRoot, "nunc-config.json"), binding = join(o.caseRoot, "observer-binding.json");
     if (o.group !== "native") await writeFile(config, JSON.stringify(o.selection.config.nunc), { mode: 0o600 });
-    const taskSettings = { ...o.input.effective?.settings, compaction: o.selection.config.compaction, retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0 } }, transport: "sse", packages: [], extensions: [], skills: [], prompts: [], themes: [], enableSkillCommands: false };
+    const memoryToolsOverride = o.input.overrides?.find(ov => ov.requirement === "memory-tools-off" || ov.requirement === "memory-tools-on" || ov.memoryTools !== undefined);
+    const memoryToolsExplicitOff = memoryToolsOverride?.requirement === "memory-tools-off" || memoryToolsOverride?.memoryTools === false;
+    const memoryToolsEnabled = (o.selection.id.startsWith("g") || o.selection.id.startsWith("m")) && !memoryToolsExplicitOff;
+    const taskSettings = { ...o.input.effective?.settings, nunc: { memoryTools: memoryToolsEnabled && o.group !== "native" }, compaction: o.selection.config.compaction, retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0 } }, transport: "sse", packages: [], extensions: [], skills: [], prompts: [], themes: [], enableSkillCommands: false };
     if (o.controlledModels) await writeFile(join(host, "settings.json"), JSON.stringify(taskSettings), { mode: 0o600 });
     else if (!o.sessionFile) {
       // Only this newly created task's narrow nonsecret settings overlay. Native
@@ -139,12 +142,6 @@ export class NativeHost {
     const packageDir = join(hostRepo, "node_modules/@earendil-works/pi-coding-agent");
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
     const cli = join(packageDir, manifest.bin.pi);
-    const isGuidance = o.selection.id.startsWith("g");
-    const isStableMemory = o.selection.id.startsWith("m");
-    const memoryToolsOverride = o.input.overrides?.find(ov => ov.requirement === "memory-tools-off" || ov.requirement === "memory-tools-on" || ov.memoryTools !== undefined);
-    const memoryToolsExplicitOff = memoryToolsOverride?.requirement === "memory-tools-off" || memoryToolsOverride?.memoryTools === false;
-    const memoryToolsEnabled = (isGuidance || isStableMemory) && !memoryToolsExplicitOff;
-
     let groupHasMemoryTools = false;
     if (memoryToolsEnabled) {
       if (o.group === "candidate" || o.group === undefined) {

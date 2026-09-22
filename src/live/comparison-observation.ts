@@ -71,7 +71,7 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
       nativeTruncatedTools: native ? nativeTruncatedTools : null, omissions: row.result?.observations.omissions ?? null },
     callIds: row.callIds, continuationCallId: row.continuationCallId ?? null,
     requiredObservation: row.result?.observations.required ?? null,
-    guardApplicability: native || group === "current" ? "NOT_APPLICABLE" : "APPLICABLE" };
+    guardApplicability: native ? "NOT_APPLICABLE" : group !== "current" || row.result?.observations.required !== undefined ? "APPLICABLE" : row.result?.ok ? "NOT_APPLICABLE" : "UNPROVEN" };
 }
 export type RolloverFacts = ReturnType<typeof rolloverFacts>;
 

@@ -138,8 +138,9 @@ export default function observer(pi: ExtensionAPI): void {
       log("preparation", { reason: event.reason, model: ctx.model, thinking: ctx.thinkingLevel,
         preparation: { ...event.preparation, fileOps: Object.fromEntries(Object.entries(event.preparation.fileOps).map(([k, v]) => [k, [...v]])) },
         branch: event.branchEntries, active: ctx.sessionManager.buildContextEntries() });
-      if (binding.boundary && (state.boundaryCommitted || !activeBoundary())) state.stop ??= "Requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
-      if (binding.boundary && (!state.boundaryDone || !state.expectedFirst || state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select an armed eligible tool boundary";
+      const autonomousTask = binding.selection?.id === "g4" && binding.selection.variant === "task-file";
+      if (binding.boundary && !autonomousTask && (state.boundaryCommitted || !activeBoundary())) state.stop ??= "Requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
+      if (binding.boundary && (!autonomousTask || state.expectedFirst) && (!state.boundaryDone || !state.expectedFirst || state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select an armed eligible tool boundary";
       log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryDone: state.boundaryDone, expectedFirst: state.expectedFirst, stopped: state.stop });
       if (state.stop) {
         delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;

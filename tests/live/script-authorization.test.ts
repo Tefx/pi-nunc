@@ -27,6 +27,9 @@ test("stock CLI/worker rejects absent, unprovided, modified and concurrently wri
         { tools: [write("verify.py", rewritten).tool, verify.tool] }, write("verify.py", original), verify, note, read,
         write("product.json", '{"value":7}'), verify, "Finished controlled operations."] :
         [verify, write("verify.py", rewritten), verify, note, read, "Finished controlled operations."];
+      replies.splice(replies.length - 1, 0,
+        { tool: { name: "bash", input: { command: "python3 build.py" } } },
+        { tool: { name: "bash", input: { command: "python3 -m unittest test_solution.py" } } });
       let step = 0, groupIndex = -1;
       f.response = (row: any, source: any) => {
         const text = (m: any) => typeof m.content === "string" ? m.content : JSON.stringify(m.content);
@@ -56,7 +59,8 @@ test("stock CLI/worker rejects absent, unprovided, modified and concurrently wri
       for (const segment of report.rawSegments) {
         const actions = segment.actions.map((a: any) => a.event);
         const blocked = actions.filter((a: any) => a.type === "tool_blocked");
-        assert.equal(blocked.length, provided ? 3 : 2);
+        assert.equal(blocked.length, provided ? 5 : 4);
+        assert(blocked.slice(-2).every((a: any) => /outside authorization/.test(a.reason)), "New task commands do not widen legacy scenarios");
         if (provided) {
           assert.match(blocked[0].reason, /missing/);
           assert.match(blocked[1].reason, /modified/);
@@ -68,7 +72,7 @@ test("stock CLI/worker rejects absent, unprovided, modified and concurrently wri
           assert.equal(results[1].isError, false);
           assert.deepEqual(results[1].verification, { scriptUnchanged: true, artifact: { artifact: "product.json", passed: true } });
         } else {
-          assert(blocked.every((a: any) => /No fixture verification script was provided/.test(a.reason)));
+          assert(blocked.slice(0, 2).every((a: any) => /No fixture verification script was provided/.test(a.reason)));
           assert.equal(actions.filter((a: any) => a.type === "tool_call" && a.toolName === "bash").length, 0);
         }
         assert(actions.some((a: any) => a.type === "tool_result" && a.toolName === "read" && !a.isError && JSON.stringify(a.content).includes("Ordinary recovery note.")));

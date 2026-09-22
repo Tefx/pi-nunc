@@ -210,7 +210,7 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
       } else if (control.action === "move_task_source" || control.action === "remove_task_source") {
         requireValue(selection.id === "g4" && selection.variant === (control.action === "move_task_source" ? "source-loss" : "source-unavailable"), "SCENARIO", "Source transition belongs only to its selected long-task variant");
       } else {
-        const hasRollover = controls.has(`${at}/rollover`) || controls.has(`${at}/rollover_at_tool_boundary`);
+        const hasRollover = controls.has(`${at}/rollover`) || [...controls].some(key => key.startsWith(`${at}/rollover_at_tool_boundary/`));
         requireValue(hasRollover && ((control as Control).action === "pause_resume_same_session" ? ["c3", "e1", "e3"].includes(selection.id) : selection.id === "c5"), "SCENARIO", "Unsupported restart/switch placement");
       }
     }
