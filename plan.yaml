@@ -4455,7 +4455,9 @@ phases:
       \ 失败或必要维度 UNPROVEN 均不能宣称项目修复已接受。可在本完成程序请 llm-agent-expert 对独立产物/轨迹作内容判断，不能再发未授权模型调用或以建议取代事实；没有第二个\
       \ gate。既有 completed phases 的无关历史不重开。"
     verification: 先无调用 preflight 核对安全 target、有效模型/thinking、当前适用授权及有限操作 deadline，再按已授权场景收集真实证据；本任务
-      Luna 使用不重新施加旧批次 call/token/cost/walltime 上限。所需证据消费者是本步 Orchestrator 最终整合判断。新策略/工具指导的真实行为必须来自当前候选；已有容量/持久化/恢复/稳定位置与其他机械证据在执行身份和相关输入未变时可复用。比较差异、未行使编辑维度、来源缺口、无法匹配约束均显式记录，不把有限试验泛化为普遍优越性。最终报告覆盖所有
+      Luna 使用不重新施加旧批次 call/token/cost/walltime 上限。所需证据消费者是本步 Orchestrator 最终整合判断，包含
+      same-task-history 方法修复及本 phase 全部既有结果。核对新的同任务准备有真实消费者/效果且无 padding 或答案泄漏；实际历史必须独立满足
+      first TASK read 在 K、随后退役到 M、再维护真实生成 M 的完整序列，controlled-native 方法通过不替代真实模型行为。新策略/工具指导的真实行为必须来自当前候选；已有容量/持久化/恢复/稳定位置与其他机械证据在执行身份和相关输入未变时可复用。比较差异、未行使编辑维度、来源缺口、无法匹配约束均显式记录，不把有限试验泛化为普遍优越性。最终报告覆盖所有
       material requirements 并说明适用库存与新旧证据的绑定；无必要缺口才可接受。
     refs:
     - docs/EXTRACTION.md
@@ -4465,7 +4467,7 @@ phases:
     - scripts/compare-extraction.mjs
     - scripts/check.mjs
     depends_on:
-    - nunc-task-retention.preparation-readiness
+    - nunc-task-retention.same-task-history
     agent: node-typescript-engineer
   - id: nunc-task-retention.observation-repair
     name: 累计预算结算与低用量真实观察准备修复
@@ -4599,3 +4601,58 @@ phases:
       Childterminal and no descendants. Worktree temporarilyheldforimmediatebehaviorruntime
       target; source recoverable refs/nunc/candidates/preparation-readiness. Behavior
       stillnotproven; onlyofflinecapabilityrepair complete.'
+  - id: nunc-task-retention.same-task-history
+    name: 同任务真实前置工作与多次维护观察方法修复
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"tests/scenarios/**\", \"src/live/**\", \"tests/**\", \"\
+      docs/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
+      , \".pi/**\", \".agents/**\", \".env*\", \"**/auth.json\", \"src/engine/**\"\
+      , \"src/pi/**\", \"policies/**\"]\n\nDeliver: 在现有 runner 内交付一个可被原 behavior 消费的同任务观察方法修复，涵盖\
+      \ scenario、turn/source 绑定、准备诊断、机械观察、测试和文档。node-typescript-engineer 负责该跨模块 Node/TypeScript\
+      \ 场景生命周期结果及其缺陷；controller 负责 worktree/集成和后续 live 观察。\n\n保留接受的完整任务条件与 docs/POLICY.md\
+      \ 的 first-K 序列：精确条件通过真实 TASK.md read 进入；首次真实维护时 read 仍在 K，随后真实维护退役该 read 到 M，再维护此前真实生成的\
+      \ M，期间同一长任务持续实际工作并最终交付产物。最少三次真实维护、真实 cut/source/保存/续做及独立最终 oracle 均不得以标签、计数或伪造状态替代。\n\
+      \nController 已判定 sole-user-request 是旧 fixture 的可替换实现选择，允许在新的 TASK read 前安排同一\
+      \ metrics 项目内有实际消费者、效果及验证的有用前置工作，例如真实输入/schema/setup 前提的检查与修复。该准备必须服务后续同一任务，不能用无关\
+      \ archive、人工长日志、重复内容、假失败或仅为凑 token 的工作制造 retiring prefix；不透露精确 requirement 答案、gold\
+      \ notes、未来 turns 或 held-out oracle。前置工作不提前完成待观察的核心任务，也不提前读入/复制待观察 TASK 条件来伪造来源。保留旧\
+      \ variant/历史证据的可辨识性，选择最小清晰标识的新 selection 或兼容 variant 调整，不重写完成定义或旧观察含义；不新增平行\
+      \ harness。\n\n用实际请求、delivered turn IDs、完整工具 batch 和 TASK source provenance 绑定替换只允许\
+      \ sole request 的方法断言；多 user turns 必须仍是同一持续任务，不重述早期条件或给答案。首个 cut 前应存在真实可退役的有用前缀，且能在实际宿主历史下保留完整\
+      \ TASK read。新增或扩展现有只读准备诊断，在 live 前对已取得的真实历史与实际目标配置检查 retiring prefix、合法 cut\
+      \ 和完整 calibration 可行性；离线 controlled 历史只证明方法机制，不能保证未来模型会生成相同历史。运行时仍据实际历史重新判断，缺乏可行前提则诚实报告\
+      \ UNPROVEN，不靠无变化重试推进。\n\nAdmit: preparation-readiness 已完成；已观察运行的首个 TASK read\
+      \ 前只能退役一个短 user request，后续工作全部累加在必须保留的 K，末次 H=5220 而 F+M+K+growth=1855+336+4645+1024=7860。该事实支持本次方法修复，不推出所有\
+      \ sole-request 运行普遍不可能。Controller 已授权上述同任务准备方向作为实现选择；原用户产品要求、首次 K/后续 M 序列和最终行为接受均不缩减。native/current/candidate\
+      \ 使用真实版本及实际配置，defaults/matched、tools on/off 的局限显式报告，不伪造等预算。\n\nBoundary: 仅本仓库场景、live\
+      \ runner、相关 tests/docs；不改 engine budgets、Pi、memory schemas、生产 defaults、策略、凭据、日常会话或全局配置。仅离线隔离\
+      \ controlled-native tests，无 live calls、部署、发布、push 或历史效果 replay。通用 deadline/累计\
+      \ effects 核对保留，后续 Luna 权限仍按原 behavior 的当前授权，不恢复旧批次 caps。\n\nRecovery: 在本 unfinished\
+      \ writable step 内修复完整兼容缺陷，保留原始观察和完成历史；无真实前置消费者、可行 cut 或可追溯来源时停止受影响机制并报告具体缺口，不制造证据。交付仅确立机械观察方法；模型行为质量仍待同一\
+      \ behavior 验证。Orchestrator 原 behavior 完成程序消费本步及本 phase 全部交付作唯一最终整合接受，不新增 gate\
+      \ 或改写 DONE。"
+    verification: Node 26.7.0/npm 11.19.0，tracked package-lock.json 锁定依赖，NODE_OPTIONS
+      unset；沿用 node scripts/check.mjs all 所代表的完整项目原生离线库存。新增完整多 user-turn controlled-native
+      流程：真实有用前置工作及验证、实际 TASK read、首次 read 在 K 的合法维护、随后 read 退役并生成 M、再次维护该 M 与实际续做，最终产物经现有独立
+      executable oracle 判断。检查真实请求/turn/source/cut/保存绑定，不能 mock 所需宿主 seam、人工填充预期 ready/rollover
+      或把 coached provider 当模型成效。负例须覆盖无 retiring prefix 或容量不足不假 PROVEN、来源/turn 错绑与不完整
+      read 不通过、padding/重复内容不能替代有用准备的 provenance；无法自动判定准备语义时由 Orchestrator 在本步完成程序独立检查真实消费者、效果及输入/oracle
+      隔离，不用提示词 token-presence 测试充数。保持现有 variant、工具授权、首 K 序列与后续 M provenance、comparison
+      实际配置、deadline 和 effects 行为回归。构建及受影响 runner/scenario/observer/加载 seam 检查须通过，交付最终候选完整适用库存的覆盖及证据适用性；可复用输入未变的有效结果，受影响
+      proof 必须更新。缺陷或必要机械缺口阻止本步接受；controlled 通过不能满足 behavior 的真实 Luna 维护、完整条件保留及最终行为质量证明。
+    refs:
+    - src/live/task-retention.ts
+    - src/live/preparation.ts
+    - src/live/calibration.ts
+    - tests/scenarios/guidance-inputs.json
+    - tests/scenarios/guidance-observer.json
+    - docs/POLICY.md
+    - docs/LIVE.md
+    - docs/EXTRACTION.md
+    - scripts/check.mjs
+    - package.json
+    - package-lock.json
+    depends_on:
+    - nunc-task-retention.preparation-readiness
+    agent: node-typescript-engineer
