@@ -8,7 +8,7 @@ import { setObserverMemoryLayout } from "../pi/projection.js";
 
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; unconfirmedMode?: number; unconfirmedCallId?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
+export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; held?: () => void; boundaryDone?: boolean; boundaryIndex?: number; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; unconfirmedMode?: number; unconfirmedCallId?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
 export function observerState(source: string): ObserverState | undefined { return states.get(source); }
@@ -33,7 +33,9 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; larvaCompaction?: { owner: "nunc"; configFile: string }; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving" };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; larvaCompaction?: { owner: "nunc"; configFile: string }; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }>; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving" };
+  const boundaries = binding.boundaries ?? (binding.boundary ? [binding.boundary] : []);
+  const activeBoundary = () => boundaries[state.boundaryIndex ?? 0];
   const controlFor = (action: "revision_conflict" | "unconfirmed_save", ctx: ExtensionContext) => {
     const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
     const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
@@ -59,6 +61,10 @@ export default function observer(pi: ExtensionAPI): void {
     const memoryToolsExposed = activeTools.includes("nunc_memory_read") && activeTools.includes("nunc_memory_patch");
     state.memoryToolsExposed = memoryToolsExposed;
     log("lifecycle", { phase: "session-tools", activeTools, memoryToolsExposed });
+    const isTaskRetention = binding.input.scenarios.some(s =>
+      (s.id === "g3" && s.variant === "scoped-tasks") ||
+      (s.id === "g4" && ["task-file", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(s.variant)))
+    );
     const maintenanceOverride = binding.input.overrides?.find(o => o.requirement === "maintenance-thinking" || (o as any).maintenanceThinking !== undefined);
     const maintenanceThinking = typeof (maintenanceOverride as any)?.maintenanceThinking === "string"
       ? (maintenanceOverride as any).maintenanceThinking
@@ -66,6 +72,7 @@ export default function observer(pi: ExtensionAPI): void {
         ? (binding.input.effective?.thinking ?? "low")
         : undefined;
     const effectiveThinking = binding.input.effective?.thinking;
+    const requireThinkingLevel = isTaskRetention ? "low" : undefined;
     for (const id of new Set(binding.models.map(m => m.provider))) {
       let base = ctx.modelRegistry.getProvider(id);
       requireValue(base, "MODEL", "Authorized native provider unavailable");
@@ -75,7 +82,7 @@ export default function observer(pi: ExtensionAPI): void {
         classify: simple => state.compacting || !simple ? "maintenance" : "main",
         effectiveThinking,
         maintenanceThinking,
-        requireThinkingLevel: effectiveThinking && effectiveThinking !== "off" ? effectiveThinking : undefined,
+        requireThinkingLevel,
         beforeRequest: () => {
           if (state.stop) log("stopped", { code: "PREPARATION", message: state.stop });
           requireValue(!state.stop, "PREPARATION", state.stop ?? "Boundary preparation failed");
@@ -184,32 +191,41 @@ export default function observer(pi: ExtensionAPI): void {
     }
   });
   pi.on("turn_end", async (event, ctx) => {
-    if (!binding.boundary || state.boundaryDone || !state.triggerId || !event.toolResults.some(r => r.toolCallId === state.triggerId)) return;
+    const currentBnd = activeBoundary();
+    if (!currentBnd || state.boundaryDone || !state.triggerId || !event.toolResults.some(r => r.toolCallId === state.triggerId)) return;
     state.boundaryDone = true;
     const held = new Promise<void>(resolve => { state.held = resolve; });
     log("tool-boundary", { branch: ctx.sessionManager.getBranch(), active: ctx.sessionManager.buildContextEntries(),
-      model: ctx.model, thinking: ctx.thinkingLevel, usage: ctx.getContextUsage(), triggerId: state.triggerId });
+      model: ctx.model, thinking: ctx.thinkingLevel, usage: ctx.getContextUsage(), triggerId: state.triggerId, boundaryIndex: state.boundaryIndex ?? 0 });
     // The command/reload path releases plain state. Do not touch ctx/pi after await.
     await held;
   });
   pi.on("tool_call", async (event, ctx) => {
-    if (binding.boundary && !state.boundaryDone && event.toolName === binding.boundary.control.trigger?.toolName && typeof (event.input as any).path === "string" && binding.boundary.control.trigger?.pathArgument && resolve(binding.cwd, (event.input as any).path) === resolve(binding.cwd, binding.boundary.control.trigger.pathArgument)) {
+    const currentBnd = activeBoundary();
+    if (currentBnd && !state.boundaryDone && event.toolName === currentBnd.control.trigger?.toolName &&
+        ((typeof (event.input as any).path === "string" && currentBnd.control.trigger?.pathArgument && resolve(binding.cwd, (event.input as any).path) === resolve(binding.cwd, currentBnd.control.trigger.pathArgument)) ||
+         (typeof (event.input as any).command === "string" && (currentBnd.control.trigger as any)?.command && (event.input as any).command.includes((currentBnd.control.trigger as any).command)))) {
       const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
       const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
-      if (text === binding.boundary.requestText && ++state.occurrence === binding.boundary.control.trigger.occurrence) state.triggerId = event.toolCallId;
+      if (text === currentBnd.requestText && ++state.occurrence === currentBnd.control.trigger.occurrence) state.triggerId = event.toolCallId;
     }
     try {
       signal.throwIfAborted();
       if (event.toolName === "bash") {
         const cmd = typeof (event.input as any)?.command === "string" ? (event.input as any).command.trim() : "";
+        const isVerify = cmd === "python3 verify.py" || cmd === "/usr/bin/python3 verify.py" || cmd === "python verify.py";
+        const isTaskCommand = cmd.startsWith("python3 build.py") || cmd.startsWith("python build.py") ||
+          cmd.includes("unittest") || cmd.startsWith("python3 solution.py") || cmd.startsWith("python solution.py");
         requireValue(
-          cmd === "python3 verify.py" || cmd === "/usr/bin/python3 verify.py" || cmd === "python verify.py",
+          isVerify || isTaskCommand,
           "TOOL_COMMAND",
-          "Only authorized fixture verification command 'python3 verify.py' is permitted"
+          "Only authorized task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py') or fixture verification 'python3 verify.py' are permitted"
         );
-        const caller = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === event.toolCallId));
-        const writes = caller?.type === "message" && caller.message.role === "assistant" ? caller.message.content.flatMap(b => b.type === "toolCall" && ["write", "edit"].includes(b.name) ? [b.arguments.path] : []) : [];
-        await authorizeVerification(binding.cwd, binding.verification?.script, writes);
+        if (isVerify) {
+          const caller = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === event.toolCallId));
+          const writes = caller?.type === "message" && caller.message.role === "assistant" ? caller.message.content.flatMap(b => b.type === "toolCall" && ["write", "edit"].includes(b.name) ? [b.arguments.path] : []) : [];
+          await authorizeVerification(binding.cwd, binding.verification?.script, writes);
+        }
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       } else if (event.toolName === "nunc_memory_read" || event.toolName === "nunc_memory_patch") {
         if (event.toolName === "nunc_memory_patch") {
@@ -290,7 +306,14 @@ export default function observer(pi: ExtensionAPI): void {
     const decision = JSON.parse(args) as { firstKeptEntryId?: string; stop?: string; restored?: boolean };
     if (decision.stop) state.stop ??= decision.stop;
     if (decision.firstKeptEntryId) state.expectedFirst = decision.firstKeptEntryId;
-    if (decision.restored) { state.restorePending = false; log("lifecycle", { phase: "boundary-config-restored" }); }
+    if (decision.restored) {
+      state.restorePending = false;
+      state.boundaryIndex = (state.boundaryIndex ?? 0) + 1;
+      state.boundaryDone = false;
+      delete state.triggerId;
+      state.occurrence = 0;
+      log("lifecycle", { phase: "boundary-config-restored", nextBoundaryIndex: state.boundaryIndex });
+    }
     state.held?.(); delete state.held;
   } });
   pi.registerCommand("nunc-observer-quit", { handler: async (_args, ctx) => ctx.shutdown() });

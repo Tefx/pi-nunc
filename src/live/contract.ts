@@ -53,7 +53,7 @@ export interface Limits { maxCalls: number | null; maxTotalTokens: number | null
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "task-file" | "active-edit" | "scoped-tasks"; config: RunConfig; assets?: ScenarioAssets }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "task-file" | "active-edit" | "scoped-tasks" | "source-loss" | "source-unavailable" | "commit-conflict" | "commit-unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string }
@@ -133,16 +133,27 @@ export function parseInput(value: unknown, execution = false): RunInput {
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
   const isGuidance = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("g"));
+  const isTaskRetention = Array.isArray(value.scenarios) && value.scenarios.some((s: any) =>
+    typeof s?.id === "string" && (
+      (s.id === "g3" && s.variant !== undefined) ||
+      (s.id === "g4")
+    )
+  );
   for (const model of value.models) {
     keys(model, ["provider", "id", "contextWindow", "maxTokens", "baseUrl"], "model");
     requireValue(text(model.provider) && text(model.id) && positive(model.contextWindow) && positive(model.maxTokens) && text(model.baseUrl), "MODEL", "Authorize provider/id with native capacity and endpoint");
-    if (isGuidance) {
+    if (isTaskRetention) {
       const id = String(model.id).toLowerCase();
       const provider = String(model.provider).toLowerCase();
       const isForbidden = id.includes("astra") || provider.includes("astra");
-      const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden && provider !== "openai-codex" && !id.includes("codex");
-      const isLuna = (id.includes("luna") || id === "gpt-5.6-luna" || id.endsWith("/gpt-5.6-luna")) && !isForbidden;
-      requireValue(!isForbidden && (isGemini || isLuna), "MODEL", "Guidance scenarios authorize OpenRouter google/gemini-3.8-flash or gpt-5.6-luna; Astra is forbidden");
+      const isExactLuna = id === "gpt-5.6-luna" || id === "openai/gpt-5.6-luna";
+      requireValue(!isForbidden && isExactLuna, "MODEL", "Complete-task retention scenarios authorize exact model gpt-5.6-luna or openai/gpt-5.6-luna only; Gemini, Astra and model aliases are forbidden");
+    } else if (isGuidance) {
+      const id = String(model.id).toLowerCase();
+      const provider = String(model.provider).toLowerCase();
+      const isForbidden = id.includes("astra") || provider === "openai-codex" || id.includes("codex") || provider.includes("astra");
+      const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden;
+      requireValue(!isForbidden && isGemini, "MODEL", "Legacy guidance scenarios authorize OpenRouter google/gemini-3.8-flash only; Astra and non-Gemini models are forbidden");
     }
     const isStableMemory = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("m"));
     if (isStableMemory) {
@@ -151,6 +162,9 @@ export function parseInput(value: unknown, execution = false): RunInput {
       requireValue(!id.includes("astra") && !provider.includes("astra"), "MODEL", "Stable-memory observations forbid Astra");
     }
     const key = `${model.provider}/${model.id}`; requireValue(!modelKeys.has(key), "MODEL", "Duplicate model"); modelKeys.add(key);
+  }
+  if (isTaskRetention && (value as any).effective?.thinking !== undefined) {
+    requireValue((value as any).effective.thinking === "low", "CONFIG", `Complete-task retention scenarios require exact thinking level "low", found "${(value as any).effective.thinking}"`);
   }
   requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0, "SCENARIO", "Nonempty scenario selection required");
   const ids = new Set<string>();
@@ -168,7 +182,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
     } else if (selection.id === "g3") {
       requireValue(selection.variant === undefined || selection.variant === "scoped-tasks", "SCENARIO", "g3 may select scoped-tasks; others have no variant");
     } else if (selection.id === "g4") {
-      requireValue(selection.variant === undefined || ["task-file", "active-edit"].includes(String(selection.variant)), "SCENARIO", "g4 may select task-file or active-edit");
+      requireValue(selection.variant === undefined || ["task-file", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g4 variant must be one of: task-file, active-edit, source-loss, source-unavailable, commit-conflict, commit-unconfirmed");
     } else if (selection.id === "g7") {
       requireValue(selection.variant === undefined || ["conflict", "unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g7 may select conflict or unconfirmed");
     } else if (selection.id === "g8") {
@@ -290,14 +304,12 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
     const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
     const isHistorical70dacad = curHead.startsWith("70dacad");
-    let isPreChange = false;
+    let boundPreChangeCommit: string | undefined;
     try {
-      const preChangeRef = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "refs/nunc/task-retention-pre-change"], { encoding: "utf8", env: gitEnv, stdio: ["pipe", "pipe", "pipe"] }).trim();
-      isPreChange = curHead === preChangeRef || curHead.startsWith(preChangeRef.slice(0, 7));
-    } catch {
-      isPreChange = curHead.startsWith("1d4fc4a");
-    }
-    requireValue(isHistorical70dacad || isPreChange, "TARGET", `Current baseline target must be at 70dacad or actual pre-change (1d4fc4a2), found ${curHead}`);
+      boundPreChangeCommit = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "refs/nunc/task-retention-pre-change"], { encoding: "utf8", env: gitEnv, stdio: ["pipe", "pipe", "pipe"] }).trim();
+    } catch {}
+    const isPreChange = Boolean(boundPreChangeCommit && curHead === boundPreChangeCommit);
+    requireValue(isHistorical70dacad || isPreChange, "TARGET", `Current baseline target at ${curRepo} (HEAD: ${curHead}) does not match expected baseline (70dacad or bound ${boundPreChangeCommit ?? "refs/nunc/task-retention-pre-change"})`);
     const curDirty = execFileSync("/usr/bin/git", ["-C", curRepo, "status", "--porcelain", "--untracked-files=normal", "--", "src", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8", env: gitEnv }).trim();
     requireValue(curDirty === "", "CANDIDATE", "Current baseline target repository must have a committed clean working tree");
     const curIndex = join(curRepo, "dist/src/index.js");
@@ -306,7 +318,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
     const curPiVersion = curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
     if (isHistorical70dacad) {
-      requireValue(curPiVersion === "0.85.1", "DEPENDENCY", "Current baseline target requires Pi 0.85.1");
+      requireValue(curPiVersion === "0.85.1", "DEPENDENCY", "Historical 70dacad baseline target requires Pi 0.85.1");
     } else {
       requireValue(curPiVersion === "0.86.1", "DEPENDENCY", `Current pre-change target requires Pi 0.86.1, found ${curPiVersion}`);
     }

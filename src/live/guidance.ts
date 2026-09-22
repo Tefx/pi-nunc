@@ -31,7 +31,7 @@ export function scoreGuidance(
   const completed = (turn: string) => actions.some(a => a.turn === turn && a.event?.type === "turn_complete" && a.event.stopReason === "stop");
   const pathIs = (a: GuidanceAction, path: string) => typeof a.event?.input?.path === "string" && resolve(cwd, a.event.input.path.replace(/^@/, "")) === resolve(cwd, path);
   const writes = (path: string) => calls.filter(a => ["write", "edit"].includes(a.event.toolName) && pathIs(a, path));
-  const semantic = () => result("UNPROVEN", "Independent Gemini observation required: judge meaning against task requirements, actual saved M + delivered K/recovery reads, responses and artifacts; no keyword, language, length or slot-count oracle.", {
+  const semantic = () => result("UNPROVEN", "Independent observation required: judge meaning against task requirements, actual saved M + delivered K/recovery reads, responses and artifacts; no keyword, language, length or slot-count oracle.", {
     completedTurns: actions.filter(a => a.event?.type === "turn_complete"),
     memoryStates: actions.filter(a => a.event?.type === "memory_state"),
     patches: exchanges.filter(e => e.call.event.toolName === "nunc_memory_patch"),
@@ -42,7 +42,7 @@ export function scoreGuidance(
     if (actions.length === 0) return semantic();
 
     // Held-out artifact and action oracle for complete-task metrics explorer (g4/task-file and g4/active-edit)
-    if (check.includes("held-out oracle") || check.includes("execute final solution.py")) {
+    if (check.includes("solution.py") && (check.includes("oracle") || check.includes("held-out"))) {
       const solutionPath = resolve(cwd, "solution.py");
       if (!existsSync(solutionPath)) {
         return result("DISPROVEN", "Missing final solution.py artifact");
@@ -52,7 +52,7 @@ export function scoreGuidance(
         return result("DISPROVEN", oracle.reason ?? "Metrics oracle rejected candidate behavior", oracle.observed);
       }
       const sem = semantic().observed;
-      return result("UNPROVEN", "Independent Gemini observation required: mechanical held-out oracle passed for all operations; verify semantic task requirement retention and reasoning.", {
+      return result("UNPROVEN", "Independent observation required: mechanical held-out oracle passed for all operations; verify semantic task requirement retention and reasoning.", {
         oracle: oracle.observed,
         ...(sem && typeof sem === "object" ? (sem as Record<string, unknown>) : {}),
       });

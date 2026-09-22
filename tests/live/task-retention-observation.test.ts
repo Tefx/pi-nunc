@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { executeMetricsOracle, HELD_OUT_RECORDS } from "../../src/live/metrics-oracle.js";
@@ -199,10 +200,51 @@ test("CLI admission accepts new variants g3/scoped-tasks, g4/task-file, g4/activ
 
   // Rejects invalid variants
   assert.throws(() => parseInput({ ...baseInput, scenarios: [{ id: "g3", variant: "invalid", config }] }), /g3 may select scoped-tasks/);
-  assert.throws(() => parseInput({ ...baseInput, scenarios: [{ id: "g4", variant: "invalid", config }] }), /g4 may select task-file or active-edit/);
+  assert.throws(() => parseInput({ ...baseInput, scenarios: [{ id: "g4", variant: "invalid", config }] }), /g4 variant must be one of/);
 });
 
-test("model validation admits gpt-5.6-luna and blocks Astra for guidance scenarios", () => {
+test("scoreGuidance evaluates held-out oracle for both stored g4 observer strings without bypass", async () => {
+  const dir = await mkdtemp(join(repository, ".scratch", "guidance-g4-both-"));
+  const prerequisites = [{ check: TOOLS_CHECK, status: "PROVEN" as const }];
+  const actionsWithTurn = [{ turn: "a", event: { type: "turn_complete", stopReason: "stop" } }];
+  try {
+    const observerJson = JSON.parse(readFileSync(join(repository, "tests/scenarios/guidance-observer.json"), "utf8"));
+    const g4Case = observerJson.cases.find((c: any) => c.id === "g4");
+    const taskFileObs = g4Case.variants.find((v: any) => v.id === "task-file");
+    const activeEditObs = g4Case.variants.find((v: any) => v.id === "active-edit");
+
+    const checkTaskFile = taskFileObs.actionChecks[0];
+    const checkActiveEdit = activeEditObs.actionChecks[0];
+
+    // Both must reject a missing solution.py
+    assert.equal(scoreGuidance("g4", checkTaskFile, actionsWithTurn, prerequisites, dir).status, "DISPROVEN");
+    assert.equal(scoreGuidance("g4", checkActiveEdit, actionsWithTurn, prerequisites, dir).status, "DISPROVEN");
+
+    // Both must reject a broken solution.py
+    await setupWorkspace(dir, {
+      "solution.py": "def broken(): return 0\n",
+      "build.py": VALID_BUILD_PY,
+      "TASK.md": "# Task\n",
+      "records.json": "{}\n",
+    });
+    assert.equal(scoreGuidance("g4", checkTaskFile, actionsWithTurn, prerequisites, dir).status, "DISPROVEN");
+    assert.equal(scoreGuidance("g4", checkActiveEdit, actionsWithTurn, prerequisites, dir).status, "DISPROVEN");
+
+    // Both must pass valid solution.py and return UNPROVEN for semantic review
+    await writeFile(join(dir, "solution.py"), VALID_SOLUTION_PY);
+    await writeFile(join(dir, "test_solution.py"), VALID_TEST_SOLUTION_PY);
+    const passTaskFile = scoreGuidance("g4", checkTaskFile, actionsWithTurn, prerequisites, dir);
+    const passActiveEdit = scoreGuidance("g4", checkActiveEdit, actionsWithTurn, prerequisites, dir);
+    assert.equal(passTaskFile.status, "UNPROVEN");
+    assert.equal(passActiveEdit.status, "UNPROVEN");
+    assert((passTaskFile.observed as any)?.oracle?.singleRecords === HELD_OUT_RECORDS.length);
+    assert((passActiveEdit.observed as any)?.oracle?.singleRecords === HELD_OUT_RECORDS.length);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("task-retention model validation enforces exact gpt-5.6-luna and low thinking", () => {
   const baseInput = {
     version: 1,
     mode: "controlled",
@@ -210,17 +252,33 @@ test("model validation admits gpt-5.6-luna and blocks Astra for guidance scenari
     limits: { maxCalls: 10, maxTotalTokens: 100000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 20000 },
     models: [{ provider: "openrouter", id: "openai/gpt-5.6-luna", contextWindow: 60000, maxTokens: 20000, baseUrl: "http://127.0.0.1:8080" }],
     scenarios: [{ id: "g4", variant: "task-file", config }],
+    effective: { source: "invoking-runtime", provider: "openrouter", model: "openai/gpt-5.6-luna", thinking: "low", transport: "sse", compaction: config.compaction, settings: {} },
   };
-  // Valid Luna model
+
+  // 1. Exact Luna with low thinking passes
   const parsed = parseInput(baseInput);
   assert.equal(parsed.models[0]!.id, "openai/gpt-5.6-luna");
 
-  // Forbidden Astra model
-  const astraInput = {
+  // 2. Gemini rejected for task retention
+  const geminiInput = {
     ...baseInput,
-    models: [{ provider: "openrouter", id: "gpt-6-astra", contextWindow: 60000, maxTokens: 20000, baseUrl: "http://127.0.0.1:8080" }],
+    models: [{ provider: "openrouter", id: "google/gemini-3.8-flash", contextWindow: 60000, maxTokens: 20000, baseUrl: "http://127.0.0.1:8080" }],
   };
-  assert.throws(() => parseInput(astraInput), /Astra is forbidden/);
+  assert.throws(() => parseInput(geminiInput), /Complete-task retention scenarios authorize exact model gpt-5.6-luna/);
+
+  // 3. Luna alias rejected
+  const aliasInput = {
+    ...baseInput,
+    models: [{ provider: "openrouter", id: "openai/gpt-5.6-luna-pro", contextWindow: 60000, maxTokens: 20000, baseUrl: "http://127.0.0.1:8080" }],
+  };
+  assert.throws(() => parseInput(aliasInput), /Complete-task retention scenarios authorize exact model gpt-5.6-luna/);
+
+  // 4. Thinking level other than low rejected
+  const mediumInput = {
+    ...baseInput,
+    effective: { ...baseInput.effective, thinking: "medium" },
+  };
+  assert.throws(() => parseInput(mediumInput), /require exact thinking level "low"/);
 });
 
 test("scoreGuidance evaluates held-out oracle for g4/task-file", async () => {
@@ -373,6 +431,19 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
     let appliedEvents = 0;
     for await (const _ of streamApplied) { appliedEvents++; }
     assert(appliedEvents > 0);
+
+    // 3. Model with reasoning=false immediately throws THINKING_UNAPPLIED before HTTP transport
+    const nonReasoningModel: Model<"openai-completions"> = { ...mockModel, reasoning: false };
+    const boundedNonReasoning = boundedProvider(mockBaseApplied, [nonReasoningModel], ledger, {
+      requireThinkingLevel: "low",
+      fetch: async () => new Response(""),
+    });
+    const streamNonReasoning = boundedNonReasoning.stream(nonReasoningModel, { messages: [] } as any, { maxTokens: 1000 });
+    const eventsNonReasoning: any[] = [];
+    for await (const ev of streamNonReasoning) { eventsNonReasoning.push(ev); }
+    const errNonReasoning = eventsNonReasoning.find(e => e.type === "error");
+    assert(errNonReasoning);
+    assert(errNonReasoning.error?.errorMessage?.includes("THINKING_UNAPPLIED"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

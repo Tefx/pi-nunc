@@ -133,7 +133,65 @@
       "variants": [
         {
           "id": "task-file",
-          "controls": [],
+          "controls": [
+            {
+              "duringTurn": "a",
+              "action": "rollover_at_tool_boundary",
+              "trigger": {
+                "occurrence": 1,
+                "pathArgument": "TASK.md",
+                "toolName": "read",
+                "when": "after_result_before_continuation"
+              },
+              "placement": {
+                "retireRequestOfTurn": "a",
+                "retainToolExchange": {
+                  "occurrence": 1,
+                  "pathArgument": "TASK.md",
+                  "toolName": "read",
+                  "turn": "a"
+                }
+              }
+            },
+            {
+              "duringTurn": "a",
+              "action": "rollover_at_tool_boundary",
+              "trigger": {
+                "occurrence": 1,
+                "pathArgument": "solution.py",
+                "toolName": "write",
+                "when": "after_result_before_continuation"
+              },
+              "placement": {
+                "retireRequestOfTurn": "a",
+                "retainToolExchange": {
+                  "occurrence": 1,
+                  "pathArgument": "solution.py",
+                  "toolName": "write",
+                  "turn": "a"
+                }
+              }
+            },
+            {
+              "duringTurn": "a",
+              "action": "rollover_at_tool_boundary",
+              "trigger": {
+                "occurrence": 1,
+                "pathArgument": "test_solution.py",
+                "toolName": "write",
+                "when": "after_result_before_continuation"
+              },
+              "placement": {
+                "retireRequestOfTurn": "a",
+                "retainToolExchange": {
+                  "occurrence": 1,
+                  "pathArgument": "test_solution.py",
+                  "toolName": "write",
+                  "turn": "a"
+                }
+              }
+            }
+          ],
           "setupChecks": [
             "Only the ordinary request to read TASK.md and complete its work was delivered; TASK.md requirements entered through an actual successful tool read",
             "At least three actual native compactions committed during this same task, including one while TASK.md requirements were still in K, one retiring that tool evidence, and one later maintenance using the previously generated memory",

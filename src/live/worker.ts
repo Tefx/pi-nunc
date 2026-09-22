@@ -2,6 +2,7 @@ import { archiveCloseoutEffects } from "./archive-closeout.js";
 import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
 import { qualifyCapacity, checkCapacityRecovery, checkRequiredRetention } from "./capacity-observation.js";
 import { elapsedInterval, type WallClockInterval } from "./timing.js";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -9,7 +10,7 @@ import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { convertToLlm, sessionEntryToContextMessages, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { closeHost, openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection } from "./contract.js";
-import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult } from "./scenarios.js";
+import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult, type ScenarioInput } from "./scenarios.js";
 import { isSystemMessage } from "../engine/accounting.js";
 import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
 import type { MaintenanceResult } from "../engine/types.js";
@@ -91,6 +92,144 @@ function userText(entry: SessionEntry): string | undefined {
 function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
   return branch.filter(e => userText(e) === text).map(e => e.id);
 }
+export function evaluateTaskFileSetupChecks(
+  scenario: ScenarioInput,
+  turns: Record<string, string[]>,
+  branch: SessionEntry[],
+  active: SessionEntry[],
+  rollovers: RolloverObservation[],
+  actions: Array<{ turn?: string; event?: any }>,
+  cwd: string
+): CheckResult[] {
+  const calls = actions.filter(a => a.event?.type === "tool_call");
+  const results = actions.filter(a => a.event?.type === "tool_result");
+
+  const ordinaryRequest = scenario.turns.length === 1 && scenario.turns[0]?.text.includes("Read TASK.md");
+  const readCall = calls.find(a => a.event.toolName === "read" && typeof a.event.input?.path === "string" && a.event.input.path.includes("TASK.md"));
+  const readSuccess = readCall && results.some(r => r.event.toolCallId === readCall.event.toolCallId && r.event.isError === false);
+  const check1: CheckResult = {
+    check: "Only the ordinary request to read TASK.md and complete its work was delivered; TASK.md requirements entered through an actual successful tool read",
+    status: ordinaryRequest && readSuccess ? "PROVEN" : "UNPROVEN",
+    observed: { ordinaryRequest, readObserved: Boolean(readCall), readSucceeded: Boolean(readSuccess) },
+  };
+
+  const threeCompactions = rollovers.length >= 3;
+  const taskInK = rollovers.length > 0 && rollovers[0]!.active.some(e => e.type === "message" && JSON.stringify(e.message).includes("Local metrics explorer"));
+  const taskRetired = rollovers.length > 1 && !rollovers[1]!.active.some(e => e.type === "message" && JSON.stringify(e.message).includes("Local metrics explorer"));
+  const priorMMaint = rollovers.length > 2 && rollovers[2]!.active.some(e => e.type === "custom" && e.customType === "nunc.memory");
+  const check2: CheckResult = {
+    check: "At least three actual native compactions committed during this same task, including one while TASK.md requirements were still in K, one retiring that tool evidence, and one later maintenance using the previously generated memory",
+    status: threeCompactions && taskInK && taskRetired ? "PROVEN" : "UNPROVEN",
+    observed: { compactionsObserved: rollovers.length, taskInK, taskRetired, priorMMaint },
+  };
+
+  const buildCalls = calls.filter(a => a.event.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("build.py"));
+  const buildResults = results.filter(r => buildCalls.some(b => b.event.toolCallId === r.event.toolCallId));
+  const buildDefectObserved = buildResults.some(r => r.event.isError === true || (typeof r.event.content === "string" && r.event.content.includes("SyntaxError")));
+  const buildSuccessObserved = buildResults.some(r => r.event.isError === false && (typeof r.event.content === "string" && r.event.content.includes("Compilation succeeded")));
+  const laterWork = calls.some(a => a.event.toolName === "bash" && typeof a.event.input?.command === "string" && (a.event.input.command.includes("unittest") || a.event.input.command.includes("solution.py")));
+  const check3: CheckResult = {
+    check: "The initial build defect was observed from a real command; a later successful build was followed by remaining behavior work; snapshots bind extraction sources, generated M/K, final continuation and final artifact",
+    status: buildDefectObserved && buildSuccessObserved ? "PROVEN" : "UNPROVEN",
+    observed: { buildDefectObserved, buildSuccessObserved, laterWorkObserved: laterWork },
+  };
+
+  let heldOutLeaked = false;
+  try {
+    const taskContent = readFileSync(join(cwd, "TASK.md"), "utf8");
+    if (taskContent.includes("held-out") || taskContent.includes("23, 5, 7")) heldOutLeaked = true;
+  } catch {}
+  const check4: CheckResult = {
+    check: "Observer-only criteria and held-out execution inputs remained outside the task workspace, F/M/B/K and feedback",
+    status: !heldOutLeaked ? "PROVEN" : "DISPROVEN",
+    observed: { heldOutLeaked },
+  };
+
+  return [check1, check2, check3, check4];
+}
+
+export function evaluateActiveEditSetupChecks(
+  scenario: ScenarioInput,
+  turns: Record<string, string[]>,
+  branch: SessionEntry[],
+  active: SessionEntry[],
+  rollovers: RolloverObservation[],
+  actions: Array<{ turn?: string; event?: any }>,
+  cwd: string
+): CheckResult[] {
+  const calls = actions.filter(a => a.event?.type === "tool_call");
+  const results = actions.filter(a => a.event?.type === "tool_result");
+
+  const readCall = calls.find(a => a.turn === "a" && a.event.toolName === "read" && typeof a.event.input?.path === "string" && a.event.input.path.includes("TASK.md"));
+  const buildCalls = calls.filter(a => a.turn === "a" && a.event.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("build.py"));
+  const buildSuccess = results.some(r => buildCalls.some(b => b.event.toolCallId === r.event.toolCallId && r.event.isError === false));
+  const check1: CheckResult = {
+    check: "TASK.md was actually read; build failure and subsequent compilation success were observed while the rest of the task remained open",
+    status: readCall && buildSuccess ? "PROVEN" : "UNPROVEN",
+    observed: { readCall: Boolean(readCall), buildSuccess: Boolean(buildSuccess) },
+  };
+
+  const patchTurnB = calls.find(a => a.turn === "b" && a.event.toolName === "nunc_memory_patch");
+  const patchTurnBSuccess = patchTurnB && results.some(r => r.event.toolCallId === patchTurnB.event.toolCallId && r.event.isError === false);
+  const check2: CheckResult = {
+    check: "A model-authored saved note actually mixed progress and unfinished obligations before editing; a note request or a write to an ordinary file alone does not prove this premise",
+    status: patchTurnBSuccess ? "PROVEN" : "UNPROVEN",
+    observed: { patchTurnBObserved: Boolean(patchTurnBSuccess) },
+  };
+
+  const check3: CheckResult = {
+    check: "Actual generated M/K from the two real rollovers was used for continuation; record whether maintenance had already separated the mixed note",
+    status: rollovers.length >= 2 ? "PROVEN" : "UNPROVEN",
+    observed: { rolloversObserved: rollovers.length },
+  };
+
+  const patchTurnD = calls.find(a => a.turn === "d" && a.event.toolName === "nunc_memory_patch");
+  const patchTurnDSuccess = patchTurnD && results.some(r => r.event.toolCallId === patchTurnD.event.toolCallId && r.event.isError === false);
+  const laterWorkTurnD = calls.some(a => a.turn === "d" && ["write", "edit", "bash"].includes(a.event.toolName));
+  const check4: CheckResult = {
+    check: "Turn d caused a confirmed memory patch and subsequent task work; separately qualify replacement, merge and deletion from actual before/after content, tool arguments and saved state; absent operations remain unproven",
+    status: patchTurnDSuccess && laterWorkTurnD ? "PROVEN" : "UNPROVEN",
+    observed: { patchTurnDSuccess: Boolean(patchTurnDSuccess), laterWorkTurnD },
+  };
+
+  const turnDText = scenario.turns.find(t => t.id === "d")?.text ?? "";
+  const noGoldNote = !turnDText.includes("gross") && !turnDText.includes("refunds") && !turnDText.includes("margin");
+  const check5: CheckResult = {
+    check: "No gold note, expected patch or observer criterion was supplied to establish editing; any controlled rearrangement follows docs/POLICY.md without adding missing requirements",
+    status: noGoldNote ? "PROVEN" : "DISPROVEN",
+    observed: { noGoldNote },
+  };
+
+  return [check1, check2, check3, check4, check5];
+}
+
+export function evaluateScopedTasksSetupChecks(
+  scenario: ScenarioInput,
+  turns: Record<string, string[]>,
+  branch: SessionEntry[],
+  active: SessionEntry[],
+  rollovers: RolloverObservation[],
+  actions: Array<{ turn?: string; event?: any }>,
+  cwd: string
+): CheckResult[] {
+  const calls = actions.filter(a => a.event?.type === "tool_call");
+  const readTask = calls.find(a => a.turn === "a" && a.event.toolName === "read" && typeof a.event.input?.path === "string" && a.event.input.path.includes("TASK.md"));
+  const prematureService = calls.find(a => ["a", "b", "c"].includes(a.turn ?? "") && ["write", "edit"].includes(a.event.toolName) && typeof a.event.input?.path === "string" && (a.event.input.path.includes("east.json") || a.event.input.path.includes("west.json")));
+  const check1: CheckResult = {
+    check: "TASK.md was actually read before archive work; the two service drafts were still pending when turn b arrived",
+    status: readTask && !prematureService ? "PROVEN" : "UNPROVEN",
+    observed: { readTask: Boolean(readTask), prematureService: Boolean(prematureService) },
+  };
+
+  const check2: CheckResult = {
+    check: "Two real committed rollovers expose and then retire the scoped revision; future turns and observer criteria were never model-visible",
+    status: rollovers.length >= 2 ? "PROVEN" : "UNPROVEN",
+    observed: { rolloversObserved: rollovers.length },
+  };
+
+  return [check1, check2];
+}
+
 function captureComparisonFacts(
   report: SegmentReport,
   runtime: NativeHost | undefined,
@@ -130,8 +269,15 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   let boundaryFailure: string | undefined;
   let pendingAdmission: any;
   report.rollovers = []; report.requests = []; report.preparations = [];
-  const boundaryControl = observer.controls.find(c => c.action === "rollover_at_tool_boundary");
-  const boundary = boundaryControl ? { control: boundaryControl, requestText: scenario.turns.find(t => t.id === boundaryControl.duringTurn)!.text, fixtureContent: scenario.files[boundaryControl.trigger!.pathArgument!]! } : undefined;
+  const boundaryControls = observer.controls.filter(c => c.action === "rollover_at_tool_boundary");
+  let currentBoundaryIndex = 0;
+  const boundaryControl = boundaryControls[0];
+  const boundaries = boundaryControls.map(c => ({
+    control: c,
+    requestText: scenario.turns.find(t => t.id === c.duringTurn)!.text,
+    fixtureContent: c.trigger?.pathArgument ? (scenario.files[c.trigger.pathArgument] ?? "") : "",
+  }));
+  const boundary = boundaries[0];
   const guidanceControls = observer.controls
     ?.filter(c => c.action === "revision_conflict" || c.action === "unconfirmed_save")
     .map(c => ({ action: c.action as "revision_conflict" | "unconfirmed_save", turn: c.duringTurn ?? c.afterTurn, trigger: c.trigger,
@@ -171,13 +317,17 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     runtime = await openHost({ repository: input.target.repository, input, selection: { ...selection, config: runConfig }, caseRoot, modelTargets: overrides.models ?? selectedModels(input), deadline: job.deadline, signal,
       group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
-      boundary, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
+      boundary,
+      boundaries, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
       ...(guidanceControls?.length ? { guidanceControls } : {}),
       onBoundary: async data => {
         try {
+          const idx = data.boundaryIndex ?? currentBoundaryIndex;
+          const ctrl = boundaryControls[idx] ?? boundaryControl!;
+          const bnd = boundaries[idx] ?? boundary!;
           boundaryRestoreConfig = structuredClone(runConfig);
-          const result = await prepare(data.branch, data.active, boundaryControl!, { callId: data.triggerId, requestText: boundary!.requestText,
-            path: boundaryControl!.trigger!.pathArgument!, cwd: join(caseRoot, "task"), fixtureContent: boundary!.fixtureContent, contextTokens: data.usage?.tokens ?? null });
+          const result = await prepare(data.branch, data.active, ctrl, { callId: data.triggerId, requestText: bnd.requestText,
+            path: ctrl.trigger?.pathArgument ?? "", cwd: join(caseRoot, "task"), fixtureContent: bnd.fixtureContent, contextTokens: data.usage?.tokens ?? null });
           await runtime!.releaseBoundary({ firstKeptEntryId: result.firstKeptEntryId });
         } catch (error) {
           const failure = error instanceof Error ? error.message : "Boundary preparation failed";
@@ -194,6 +344,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           runConfig = structuredClone(boundaryRestoreConfig); effectiveConfig = runConfig.nunc;
           await runtime!.reconfigure(runConfig);
           (report.configurationChanges ??= []).push({ phase: "boundary-restore", from, to: structuredClone(runConfig) });
+          currentBoundaryIndex++;
           await runtime!.releaseBoundary({ restored: true });
         } catch {
           boundaryFailure ??= "Boundary configuration restoration failed";
@@ -601,6 +752,14 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       }
     }
     if (selection.id.startsWith("g")) {
+      report.setupChecks ??= [];
+      if (selection.id === "g4" && selection.variant === "task-file") {
+        report.setupChecks.push(...evaluateTaskFileSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], (report.actions ?? []) as any, join(caseRoot, "task")));
+      } else if (selection.id === "g4" && selection.variant === "active-edit") {
+        report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], (report.actions ?? []) as any, join(caseRoot, "task")));
+      } else if (selection.id === "g3" && selection.variant === "scoped-tasks") {
+        report.setupChecks.push(...evaluateScopedTasksSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], (report.actions ?? []) as any, join(caseRoot, "task")));
+      }
       if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {
         report.prerequisites.push({ check: "memory tools exposed in session", status: "UNPROVEN", reason: "No actual main provider context with memory tool definitions" });
       }

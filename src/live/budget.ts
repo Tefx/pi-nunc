@@ -128,6 +128,9 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         const selected = models.find(m => m.id === model.id && m.provider === model.provider);
         requireValue(selected && ["id", "provider", "api", "baseUrl", "contextWindow", "maxTokens", "cost"].every(key => canonical(selected[key as keyof Model<Api>]) === canonical(model[key as keyof Model<Api>])), "MODEL", "Request changed its authorized model");
         options.checkAuth?.(model);
+        if (options.requireThinkingLevel && options.requireThinkingLevel !== "off") {
+          requireValue(selected.reasoning === true, "THINKING_UNAPPLIED", `Model ${selected.id} does not support reasoning/thinking, but thinking level "${options.requireThinkingLevel}" was required.`);
+        }
         // Planning values on uncapped APIs cannot lower consumption authorization.
         const maxTokens = omitsSerializedOutputCap(model) ? model.maxTokens : original?.maxTokens ?? model.maxTokens;
         requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "ENDPOINT", "Authorized model baseUrl is missing");

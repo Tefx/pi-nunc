@@ -188,7 +188,10 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
   for (const control of finalObs.controls as unknown[]) {
     validateControl(control, turns);
     const targetTurn = (control as Control).afterTurn ?? (control as Control).duringTurn!;
-    const at = turns.indexOf(targetTurn), key = `${at}/${(control as Control).action}`;
+    const at = turns.indexOf(targetTurn);
+    const key = (control as Control).action === "rollover_at_tool_boundary"
+      ? `${at}/rollover_at_tool_boundary/${(control as Control).trigger?.toolName}:${(control as Control).trigger?.pathArgument}:${(control as Control).trigger?.occurrence}`
+      : `${at}/${(control as Control).action}`;
     requireValue(at >= lastTurn && !controls.has(key), "SCENARIO", "Duplicate/out-of-order observer control"); lastTurn = at; controls.add(key);
     if ((control as Control).steer) { requireValue(!steered.has((control as Control).steer!), "SCENARIO", "Duplicate steer turn"); steered.add((control as Control).steer!); }
     if ((control as Control).action !== "rollover" && (control as Control).action !== "rollover_at_tool_boundary") {
