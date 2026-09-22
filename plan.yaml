@@ -4603,7 +4603,7 @@ phases:
       stillnotproven; onlyofflinecapabilityrepair complete.'
   - id: nunc-task-retention.same-task-history
     name: 同任务真实前置工作与多次维护观察方法修复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"tests/scenarios/**\", \"src/live/**\", \"tests/**\", \"\
       docs/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\"\
@@ -4658,3 +4658,19 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-09-22T10:44:13.167132Z'
+    done_at: '2026-09-22T12:17:15.135315+00:00'
+    evidence: Integrated actual Git candidate32e1d5b2e102b093d6c2784c29de82ddfcedab6d
+      FF fromd1c4adc afterrebaseuptodate/diffcheck; worker callback supplied erroneous
+      fullSHA suffix, parent resolved actualHEAD and retainedrefs/nunc/candidates/same-task-history,
+      no source lost. Parent reviewed finaldiag nowdelegatesprepareBoundary/fullcalibration(no1216magic/noinequality-onlyFEASIBLE),
+      effectcheck requiresactualvalidation script afterwrites, derivedcleared/voiddata
+      and readprovenance, no earlyTASKread; rawirrelevantmetadata removed. Sameprojectnormalizedrecords
+      are consumed bylatermetrics/tests; exactfirstTASKinK->retireM->maintainM preserved,
+      oldvariantdistinct. New9tests andaffected34+59 tests passed; engine93 baselinepassed,
+      75files8engine32pi35live inventorywithunchangedpriorresults reused; not a freshsingleallpass
+      claim. Originaltoolresults in exactchildsession2026-09-22T10-46-53-527Z_01a0c8b9-c756-768c-b5d3-57e0321bc823
+      include failedthenfinalobservations; no skippedproof treatedpassed. Offlinecontrolledmulti-turnnativeflow
+      andnegativeprovenance/scriptmutation/read-onlyvalidation/illegalcutcases verified.
+      No live effects/sourceoutside scope. Worktree/deps heldforimmediatebehavior
+      targetconsumer, source refs retained. Onlymechanicalmethodcomplete, Luna efficacy
+      and allbehaviorrequirements remainunproven untilrealobservations.
