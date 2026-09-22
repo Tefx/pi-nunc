@@ -4467,7 +4467,7 @@ phases:
     agent: node-typescript-engineer
   - id: nunc-task-retention.observation-repair
     name: 累计预算结算与低用量真实观察准备修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
@@ -4510,3 +4510,5 @@ phases:
     depends_on:
     - nunc-task-retention.observation-support
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-22T06:24:00.612500Z'
