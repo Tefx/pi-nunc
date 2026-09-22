@@ -18,8 +18,8 @@ export interface Turn { id: string; text: string }
 export interface GeneratedFile { path: string; segments: Array<{ repeat: number; text: string }> }
 export interface ScenarioInput { id: string; files: Record<string, string>; generatedFiles?: GeneratedFile[]; turns: Turn[] }
 export interface ToolExchange { occurrence: number; pathArgument: string; toolName: string; turn: string }
-export interface ToolTrigger { occurrence: number; pathArgument?: string; toolName: string; when: "after_result_before_continuation" | "after_read_before_patch" }
-export interface Control { afterTurn?: string; duringTurn?: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model" | "rollover_at_tool_boundary" | "revision_conflict" | "unconfirmed_save"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string; retireRequestOfTurn?: string; retainToolExchange?: ToolExchange }; capacity?: string; steer?: string; trigger?: ToolTrigger }
+export interface ToolTrigger { occurrence: number; pathArgument?: string; toolName: string; alternateToolName?: string; when: "after_result_before_continuation" | "after_read_before_patch" }
+export interface Control { afterTurn?: string; duringTurn?: string; action: "rollover" | "pause_resume_same_session" | "switch_to_authorized_smaller_model" | "rollover_at_tool_boundary" | "revision_conflict" | "unconfirmed_save" | "move_task_source" | "remove_task_source"; placement?: { retireThroughTurn?: string; retainTurns?: string[]; retireEvidenceFromTurn?: string; retireRequestOfTurn?: string; retainToolExchange?: ToolExchange }; capacity?: string; steer?: string; trigger?: ToolTrigger }
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type ArtifactCheck = { path: string; pointer: string } & ({ operator: "equal" | "contains" | "unequal"; value: JsonValue } | { operator: "semantic"; criterion: string });
 export interface ScenarioObserver { id: string; controls: Control[]; setupChecks: string[]; artifactChecks: ArtifactCheck[]; actionChecks: string[] }
@@ -55,7 +55,7 @@ export function qualifyFullGiantSource(generated: GeneratedFile[] | undefined): 
 }
 export function validateControl(value: unknown, turns: string[]): asserts value is Control {
   fields(value, ["afterTurn", "duringTurn", "action", "placement", "capacity", "steer", "trigger"], "control");
-  requireValue(nonempty(value.action) && ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model", "rollover_at_tool_boundary", "revision_conflict", "unconfirmed_save"].includes(String(value.action)), "SCENARIO", "Invalid control action");
+  requireValue(nonempty(value.action) && ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model", "rollover_at_tool_boundary", "revision_conflict", "unconfirmed_save", "move_task_source", "remove_task_source"].includes(String(value.action)), "SCENARIO", "Invalid control action");
   if (value.action === "revision_conflict" || value.action === "unconfirmed_save") {
     requireValue((typeof value.duringTurn === "string" && turns.includes(value.duringTurn)) || (typeof value.afterTurn === "string" && turns.includes(value.afterTurn)), "SCENARIO", "Invalid guidance control turn");
     if (value.trigger !== undefined) {
@@ -66,19 +66,24 @@ export function validateControl(value: unknown, turns: string[]): asserts value 
       requireValue(trig.when === "after_result_before_continuation" || trig.when === "after_read_before_patch", "SCENARIO", "Invalid trigger when");
     }
     const trigger = value.trigger as Record<string, unknown> | undefined;
-    requireValue(value.duringTurn === turns[0] && value.afterTurn === undefined && value.placement === undefined && value.capacity === undefined && value.steer === undefined &&
+    requireValue(typeof value.duringTurn === "string" && turns.includes(value.duringTurn) && value.afterTurn === undefined && value.placement === undefined && value.capacity === undefined && value.steer === undefined &&
       trigger?.occurrence === 1 && trigger.pathArgument === undefined && trigger.when === "after_result_before_continuation" &&
-      trigger.toolName === (value.action === "revision_conflict" ? "nunc_memory_read" : "nunc_memory_patch"), "SCENARIO", "Guidance fault control supports only the first memory operation of the first turn");
+      trigger.toolName === (value.action === "revision_conflict" ? "nunc_memory_read" : "nunc_memory_patch"), "SCENARIO", "Guidance fault control supports only the first memory operation of its named turn");
+    return;
+  }
+  if (value.action === "move_task_source" || value.action === "remove_task_source") {
+    requireValue(value.afterTurn === "a" && value.duringTurn === undefined && value.placement === undefined && value.capacity === undefined && value.steer === undefined && value.trigger === undefined, "SCENARIO", "Task source transition must follow turn a without extra controls");
     return;
   }
   if (value.action === "rollover_at_tool_boundary") {
     requireValue(nonempty(value.duringTurn) && turns.includes(value.duringTurn), "SCENARIO", "Invalid duringTurn");
     requireValue(value.afterTurn === undefined && value.capacity === undefined && value.steer === undefined, "SCENARIO", "Invalid rollover_at_tool_boundary fields");
-    fields(value.trigger, ["occurrence", "pathArgument", "toolName", "when"], "trigger");
+    fields(value.trigger, ["occurrence", "pathArgument", "toolName", "alternateToolName", "when"], "trigger");
     const trig = value.trigger as Record<string, unknown>;
     requireValue(Number.isSafeInteger(trig.occurrence) && Number(trig.occurrence) > 0, "SCENARIO", "Invalid trigger occurrence");
     requireValue(localPath(trig.pathArgument), "SCENARIO", "Invalid trigger pathArgument");
-    requireValue(nonempty(trig.toolName), "SCENARIO", "Invalid trigger toolName");
+    requireValue(["read", "write", "edit"].includes(String(trig.toolName)), "SCENARIO", "Invalid trigger toolName");
+    requireValue(trig.alternateToolName === undefined || trig.toolName === "write" && trig.alternateToolName === "edit", "SCENARIO", "Only write/edit alternatives share a boundary");
     requireValue(trig.when === "after_result_before_continuation", "SCENARIO", "trigger when must be after_result_before_continuation");
     fields(value.placement, ["retireRequestOfTurn", "retainToolExchange"], "placement");
     const p = value.placement as Record<string, unknown>;
@@ -123,7 +128,12 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
     if (selection.variant) {
       const overlay = raw.variants.find(v => v.id === selection.variant);
       if (overlay !== undefined) {
-        fields(overlay, ["id", "files", "generatedFiles", "turns"], "input variant");
+        fields(overlay, ["id", "files", "filesFrom", "generatedFiles", "turns"], "input variant");
+        if (overlay.filesFrom !== undefined) {
+          const origin = raw.variants.find(v => v.id === overlay.filesFrom);
+          requireValue(overlay.files === undefined && origin && origin !== overlay && object(origin.files) && origin.filesFrom === undefined, "SCENARIO", "filesFrom must name a sibling with explicit files (no chained inheritance)");
+          raw.files = structuredClone(origin.files);
+        }
         if (overlay.files !== undefined) raw.files = overlay.files;
         if (overlay.generatedFiles !== undefined) raw.generatedFiles = overlay.generatedFiles;
         if (overlay.turns !== undefined) raw.turns = overlay.turns;
@@ -196,7 +206,9 @@ export function parseScenario(source: unknown, reference: unknown, selection: Se
     if ((control as Control).steer) { requireValue(!steered.has((control as Control).steer!), "SCENARIO", "Duplicate steer turn"); steered.add((control as Control).steer!); }
     if ((control as Control).action !== "rollover" && (control as Control).action !== "rollover_at_tool_boundary") {
       if ((control as Control).action === "revision_conflict" || (control as Control).action === "unconfirmed_save") {
-        requireValue(selection.id.startsWith("g"), "SCENARIO", "Guidance controls apply only to guidance scenarios");
+        requireValue(selection.id === "g7" && control.duringTurn === turns[0] || selection.id === "g4" && ["commit-conflict", "commit-unconfirmed"].includes(String(selection.variant)) && control.duringTurn === "d", "SCENARIO", "Fault must belong to the legacy g7 first turn or long-task commit turn d");
+      } else if (control.action === "move_task_source" || control.action === "remove_task_source") {
+        requireValue(selection.id === "g4" && selection.variant === (control.action === "move_task_source" ? "source-loss" : "source-unavailable"), "SCENARIO", "Source transition belongs only to its selected long-task variant");
       } else {
         const hasRollover = controls.has(`${at}/rollover`) || controls.has(`${at}/rollover_at_tool_boundary`);
         requireValue(hasRollover && ((control as Control).action === "pause_resume_same_session" ? ["c3", "e1", "e3"].includes(selection.id) : selection.id === "c5"), "SCENARIO", "Unsupported restart/switch placement");
@@ -270,7 +282,7 @@ function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: st
   }
   return records;
 }
-export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean; artifactSnapshots?: Record<string, unknown> }) {
+export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean; artifactSnapshots?: Record<string, unknown>; fixtures?: Record<string, string> }) {
   const artifacts: Record<string, unknown> = { ...context?.artifactSnapshots };
   for (const check of observer.artifactChecks) {
     if (Object.hasOwn(artifacts, check.path)) continue;
@@ -284,7 +296,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview: CheckResult[] = observer.actionChecks.map(check => {
     if (observer.id.startsWith("g")) {
-      return scoreGuidanceCheck(observer.id, check, rawActions, prerequisites, cwd);
+      return scoreGuidanceCheck(observer.id, check, rawActions, prerequisites, cwd, context?.fixtures);
     }
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;

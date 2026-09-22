@@ -1,4 +1,4 @@
-import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, readFileSync, chmodSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -25,7 +25,8 @@ export function liveExtensionFlags(repository: string, input: RunInput, group?: 
     requireValue(typeof larva.extension === "string" && existsSync(larva.extension), "EXTENSION", "Explicit Larva extension is unavailable");
     flags.push("-e", larva.extension, "--larva-agent-persona-switch", "manual");
   }
-  if (input.scenarios.some(s => s.id === "e3")) flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
+  // Last loaded: every prepared boundary (including g6 and repeated g4) restores before next-loop tool capture.
+  flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
   return flags;
 }
 import type { Control, ToolTrigger } from "./scenarios.js";
@@ -48,6 +49,7 @@ export interface HostOptions {
   boundary?: { control: Control; requestText: string; fixtureContent: string } | undefined;
   boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }> | undefined;
   verification?: { script: string; artifact: string } | undefined;
+  taskFiles?: Record<string, string> | undefined;
   guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string | undefined; trigger?: ToolTrigger | undefined }> | undefined;
   boundaryCompleted?: boolean | undefined;
   onBoundary?: ((data: any) => Promise<void>) | undefined;
@@ -130,17 +132,17 @@ export class NativeHost {
       ? `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`
       : `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
     const boundaries = o.boundaries ?? (o.boundary ? [o.boundary] : []);
-    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, larvaCompaction, boundary: boundaries[0], boundaries, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable" }), { mode: 0o600 });
+    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, selection: o.selection, taskFiles: o.taskFiles, larvaCompaction, boundary: boundaries[0], boundaries, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable" }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
     const hostRepo = o.group === "current" ? (o.targetRepos?.current ?? o.input.comparison?.targets?.current?.repository ?? o.repository) : (o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository);
     const packageDir = join(hostRepo, "node_modules/@earendil-works/pi-coding-agent");
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")) as { bin: { pi: string } };
     const cli = join(packageDir, manifest.bin.pi);
-    const isGuidance = o.input.scenarios.some(s => s.id.startsWith("g"));
-    const isStableMemory = o.input.scenarios.some(s => s.id.startsWith("m"));
+    const isGuidance = o.selection.id.startsWith("g");
+    const isStableMemory = o.selection.id.startsWith("m");
     const memoryToolsOverride = o.input.overrides?.find(ov => ov.requirement === "memory-tools-off" || ov.requirement === "memory-tools-on" || ov.memoryTools !== undefined);
-    const memoryToolsExplicitOff = memoryToolsOverride?.requirement === "memory-tools-off" || memoryToolsOverride?.memoryTools === false || (o.selection as any).memoryTools === false || ((o.selection.config as any).memoryTools === false);
+    const memoryToolsExplicitOff = memoryToolsOverride?.requirement === "memory-tools-off" || memoryToolsOverride?.memoryTools === false;
     const memoryToolsEnabled = (isGuidance || isStableMemory) && !memoryToolsExplicitOff;
 
     let groupHasMemoryTools = false;
@@ -150,9 +152,9 @@ export class NativeHost {
       } else if (o.group === "current") {
         const curRepo = o.targetRepos?.current ?? o.input.comparison?.targets?.current?.repository ?? o.repository;
         try {
-          const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
-          const head = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
-          groupHasMemoryTools = !head.startsWith("70dacad");
+          // The supported pre-change .86 target exposes this flag; the historical .85 fixture does not.
+          const pkg = JSON.parse(readFileSync(join(curRepo, "package-lock.json"), "utf8"));
+          groupHasMemoryTools = pkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version === "0.86.1";
         } catch {
           groupHasMemoryTools = false;
         }

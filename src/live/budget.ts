@@ -148,21 +148,19 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
             const body = replacement === undefined ? payload : replacement;
             requireValue(object(body), "PAYLOAD", "Native payload is not a JSON object");
             requireValue(body.stream === true && body.background !== true, "PAYLOAD", "Native payload is not a single SSE request");
-            if (Object.hasOwn(body, "model")) requireValue(body.model === model.id, "PAYLOAD", "Native payload model differs from authorization");
+            if (Object.hasOwn(body, "model") || options.requireThinkingLevel) requireValue(body.model === model.id, "PAYLOAD", "Native payload model differs from authorization");
             const caps = outputCapState(body);
             requireValue(caps.kind !== "invalid" && caps.kind !== "conflict", "PAYLOAD", "Native serialized output cap is invalid");
             if (caps.kind === "missing") requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
             else requireValue(caps.value > 0 && caps.value <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
-            if (options.requireThinkingLevel && selected.reasoning) {
+            if (options.requireThinkingLevel) {
               let payloadEffort: string | undefined;
               if (object(body.reasoning) && typeof (body.reasoning as any).effort === "string") {
                 payloadEffort = (body.reasoning as any).effort;
               } else if (typeof (body as any).reasoning_effort === "string") {
                 payloadEffort = (body as any).reasoning_effort;
               }
-              const expectedEffort = kind === "maintenance"
-                ? (options.maintenanceThinking ?? (options.requireThinkingLevel === "off" ? "off" : undefined))
-                : options.requireThinkingLevel;
+              const expectedEffort = options.requireThinkingLevel;
               if (expectedEffort !== undefined && expectedEffort !== "off") {
                 requireValue(payloadEffort === expectedEffort, "THINKING_UNAPPLIED", `${kind} request payload for ${selected.id} does not apply required thinking level "${expectedEffort}"; observed "${payloadEffort ?? "none"}"`);
               } else if (kind === "maintenance" && options.requireThinkingLevel !== "off" && !options.maintenanceThinking) {

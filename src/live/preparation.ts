@@ -8,6 +8,7 @@ import { calibrateRetention } from "./calibration.js";
 
 export interface PreparedBoundary {
   firstKeptEntryId: string;
+  triggerCallId?: string;
   config: RunConfig;
   native: { keepRecentTokens: number; cut: ReturnType<typeof findCutPoint>; contextTokens: number | null; trigger: number; contextTokensSource: "public turn_end getContextUsage().tokens" | "not a threshold observation" };
   calibration?: ReturnType<typeof calibrateRetention>;
@@ -35,7 +36,7 @@ export async function prepareBoundary(input: {
   if (input.trigger) {
     const t = input.trigger;
     const req = branch.findLast(e => e.type === "message" && e.message.role === "user" && (typeof e.message.content === "string" ? e.message.content : e.message.content.filter(b => b.type === "text").map(b => b.text).join("")) === t.requestText);
-    toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === t.callId && b.name === "read" && typeof b.arguments.path === "string" && resolve(t.cwd, b.arguments.path) === resolve(t.cwd, t.path)));
+    toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === t.callId && (b.name === control.trigger?.toolName || b.name === control.trigger?.alternateToolName) && typeof b.arguments.path === "string" && resolve(t.cwd, b.arguments.path.replace(/^@/, "")) === resolve(t.cwd, t.path)));
     requireValue(req && toolIndex > branch.indexOf(req), "PREPARATION", "Matching request/calling assistant not present");
     retired.add(req.id);
     const call = branch[toolIndex]!;
@@ -45,7 +46,8 @@ export async function prepareBoundary(input: {
     const results = tail;
     requireValue(siblings.length > 0 && new Set(siblings.map(c => c.id)).size === siblings.length && results.length === siblings.length && siblings.every(c => results.filter(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === c.id && e.message.toolName === c.name).length === 1), "PREPARATION", "Incomplete persisted sibling tool batch");
     const result = results.find(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === t.callId);
-    requireValue(result?.type === "message" && result.message.role === "toolResult" && !result.message.isError && result.message.content.filter(b => b.type === "text").map(b => b.text).join("").trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was unsuccessful or incomplete");
+    requireValue(result?.type === "message" && result.message.role === "toolResult" && !result.message.isError, "PREPARATION", "Required tool operation was unsuccessful");
+    if (result.message.toolName === "read") requireValue(result.message.content.filter(b => b.type === "text").map(b => b.text).join("").trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was incomplete");
     [call, ...results].forEach(e => retained.add(e.id));
     requireValue(t.contextTokens !== null && Number.isFinite(t.contextTokens), "PREPARATION", "Native threshold usage is unknown");
     const h = Math.min(model.contextWindow - config.compaction.reserveTokens, Math.ceil(t.contextTokens) - 1);
@@ -66,7 +68,7 @@ export async function prepareBoundary(input: {
   requireValue(chosen, "CALIBRATION", "No native legal cut retains the complete requested suffix and retires its source");
   config.compaction.keepRecentTokens = chosen.keep;
   const firstKeptEntryId = branch[chosen.cut.firstKeptEntryIndex]!.id;
-  const prepared: PreparedBoundary = { firstKeptEntryId, config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens, contextTokensSource: input.trigger ? "public turn_end getContextUsage().tokens" : "not a threshold observation" } };
+  const prepared: PreparedBoundary = { firstKeptEntryId, ...(input.trigger ? { triggerCallId: input.trigger.callId } : {}), config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens, contextTokensSource: input.trigger ? "public turn_end getContextUsage().tokens" : "not a threshold observation" } };
   if (input.repository) {
     // Arithmetic comes from the actually loaded product target, including its policy and wire contract.
     const load = (file: string) => import(pathToFileURL(join(input.repository!, `dist/src/${file}.js`)).href);

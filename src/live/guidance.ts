@@ -8,6 +8,7 @@ export interface GuidanceAction { turn?: string; event?: any }
 export const VERIFY_COMMANDS = ["python3 verify.py", "/usr/bin/python3 verify.py", "python verify.py"];
 export const TOOLS_CHECK = "memory tools exposed in session";
 export const SPLIT_CHECK = "actual tool batch followed by automatic native split compaction and same-loop continuation";
+const sameScopedEast = (value: unknown) => isDeepStrictEqual(value, { port: 9090, timeoutMs: 650, database: "sqlite", crossTenantSharing: false });
 
 /** Pair effects by identity, tool, turn and temporal order. A call alone is never a save. */
 export function guidanceExchanges(actions: GuidanceAction[]) {
@@ -21,7 +22,7 @@ export function guidanceExchanges(actions: GuidanceAction[]) {
 
 /** Mechanical checks deliberately do not classify arbitrary natural-language notes. */
 export function scoreGuidance(
-  caseId: string, check: string, actions: GuidanceAction[], prerequisites: CheckResult[], cwd: string,
+  caseId: string, check: string, actions: GuidanceAction[], prerequisites: CheckResult[], cwd: string, fixtures?: Record<string, string>,
 ): CheckResult {
   const result = (status: CheckResult["status"], reason: string, observed?: unknown): CheckResult => ({ check, status, reason, ...(observed === undefined ? {} : { observed }) });
   const proven = (name: string) => prerequisites.some(p => p.check === name && p.status === "PROVEN");
@@ -37,6 +38,24 @@ export function scoreGuidance(
     patches: exchanges.filter(e => e.call.event.toolName === "nunc_memory_patch"),
   });
 
+  if (check === "scoped-artifacts") {
+    if (!completed("d") || !fixtures?.["archive.json"]) return result("UNPROVEN", "No complete final turn or frozen archive source");
+    try {
+      const archive = JSON.parse(fixtures["archive.json"]);
+      const closeout = JSON.parse(readFileSync(resolve(cwd, "closeout.json"), "utf8"));
+      const east = JSON.parse(readFileSync(resolve(cwd, "east.json"), "utf8"));
+      const pass = readFileSync(resolve(cwd, "archive.json"), "utf8") === fixtures["archive.json"] && closeout.netUnits === archive.units - archive.returns &&
+        sameScopedEast(east) && !existsSync(resolve(cwd, "west.json"));
+      return result(pass ? "PROVEN" : "DISPROVEN", "Final scoped artifacts independently checked; action timing and note retirement remain separate", { closeout, east });
+    } catch { return result("DISPROVEN", "Missing or invalid final scoped-task artifact"); }
+  }
+  if (check === "metrics-artifact") {
+    if (!actions.some(a => a.event?.type === "turn_complete")) return result("UNPROVEN", "No completed task turn to evaluate");
+    const altered = fixtures && Object.keys(fixtures).find(path => exchanges.some(e => writes(path).includes(e.call) && e.result?.isError === false));
+    if (altered) return result("DISPROVEN", `Model modified frozen fixture ${altered}`);
+    const oracle = executeMetricsOracle(cwd, fixtures);
+    return result(oracle.status, oracle.reason ?? "Executed final artifact with independent held-out operations; test adequacy and retention remain semantic", { ...oracle.observed, operations: oracle.operations });
+  }
   if (check.startsWith("semantic:")) {
     // If no actions have been taken (e.g. freshly seeded workspace or asset check), retain unproven semantic observation.
     if (actions.length === 0) return semantic();
@@ -47,12 +66,12 @@ export function scoreGuidance(
       if (!existsSync(solutionPath)) {
         return result("DISPROVEN", "Missing final solution.py artifact");
       }
-      const oracle = executeMetricsOracle(cwd);
+      const oracle = executeMetricsOracle(cwd, fixtures);
       if (oracle.status === "DISPROVEN") {
         return result("DISPROVEN", oracle.reason ?? "Metrics oracle rejected candidate behavior", oracle.observed);
       }
       const sem = semantic().observed;
-      return result("UNPROVEN", "Independent observation required: mechanical held-out oracle passed for all operations; verify semantic task requirement retention and reasoning.", {
+      return result("UNPROVEN", "Independent observation required: mechanical held-out oracle passed for operations; verify fixture binding, test adequacy and semantic task retention.", {
         oracle: oracle.observed,
         ...(sem && typeof sem === "object" ? (sem as Record<string, unknown>) : {}),
       });
@@ -198,7 +217,7 @@ export function scoreGuidance(
     const after = actions.slice(failure.resultIndex + 1);
     const replay = after.find(a => ["tool_call", "tool_blocked", "tool_intent"].includes(a.event?.type) && a.event.toolName === "nunc_memory_patch");
     if (replay) return result("DISPROVEN", "Agent attempted another patch after unconfirmed save without new write authorization", replay);
-    if (!completed("b")) return result("UNPROVEN", "No completed later action opportunity following unconfirmed save");
+    if (!completed(caseId === "g4" ? "e" : "b")) return result("UNPROVEN", "No completed later action opportunity following unconfirmed save");
     return result("PROVEN", "No patch replay attempted through the later completed turn, including blocked attempts");
   }
   if (check === "capacity-fit-effects" || check === "capacity-failure-effects") {

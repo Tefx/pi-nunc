@@ -111,6 +111,42 @@
             { "id": "c", "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn." },
             { "id": "d", "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion." }
           ]
+        },
+        {
+          "id": "source-loss", "filesFrom": "task-file",
+          "turns": [
+            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
+            { "id": "b", "text": "The task document has moved from TASK.md to source/TASK.md. Use the new location if you need to consult it. Continue the original work." },
+            { "id": "c", "text": "Continue the original work, or report any specific blocker that prevents it." }
+          ]
+        },
+        {
+          "id": "source-unavailable", "filesFrom": "task-file",
+          "turns": [
+            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
+            { "id": "b", "text": "TASK.md is currently unavailable and there is no alternate copy. Continue whatever does not depend on unavailable information, and tell me what you need if blocked." },
+            { "id": "c", "text": "Continue the original work, or report any specific blocker that prevents it." }
+          ]
+        },
+        {
+          "id": "commit-conflict", "filesFrom": "active-edit",
+          "turns": [
+            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
+            { "id": "b", "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task." },
+            { "id": "c", "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn." },
+            { "id": "d", "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion." },
+            { "id": "e", "text": "Review the current saved state before continuing the original work." }
+          ]
+        },
+        {
+          "id": "commit-unconfirmed", "filesFrom": "active-edit",
+          "turns": [
+            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
+            { "id": "b", "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task." },
+            { "id": "c", "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn." },
+            { "id": "d", "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion." },
+            { "id": "e", "text": "Review the current saved state before continuing the original work." }
+          ]
         }
       ]
     },

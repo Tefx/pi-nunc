@@ -81,7 +81,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
         const reduction = reduceToolBodies(active, config.extraction.headTailChars);
         extraction = requestTokens(extractionContext(source, cut, memoryLimit, reduction.source, reduction.omissions), config.imageTokens) + config.extraction.extraInputTokens;
       }
-      requireValue(extraction <= extractionInput, "CALIBRATION", "The selected extraction cannot fit; no maintenance call made");
+      requireValue(extraction <= extractionInput, "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
       return {
         afterTurn: (control.afterTurn ?? control.duringTurn)!, firstKeptEntryId: active[cut]!.entryId, previousFraction: config.keepRecentFraction, selectedFraction: fraction, authorizedRange: { ...range },
         model: { provider: model.provider, id: model.id, contextWindow: model.contextWindow },

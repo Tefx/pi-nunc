@@ -92,10 +92,7 @@ export async function executeComparison(value: unknown, repository: string, scri
       let modeFailed = false;
       const curRepo = resolve(input.comparison.targets.current.repository);
       const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
-      let curHead = "70dacad";
-      try {
-        curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
-      } catch {}
+      const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
       const natRepo = resolve(input.comparison.targets.native.repository);
       let natVersion = "0.86.1";
       try {
@@ -104,7 +101,7 @@ export async function executeComparison(value: unknown, repository: string, scri
       } catch {}
       const revisions = {
         native: `Pi-${natVersion}-native`,
-        current: curHead.startsWith("70dacad") ? "70dacad" : curHead.slice(0, 7),
+        current: input.comparison.targets.current.ref === undefined ? "70dacad" : curHead,
         candidate: receipt.candidate,
       };
       const groupReport = (group: ComparisonGroup): ComparisonModeReport["groups"][ComparisonGroup] => ({ config: {

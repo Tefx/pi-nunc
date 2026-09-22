@@ -20,16 +20,26 @@ export async function toolPath(cwd: string, input: unknown, toolName?: "read" | 
   return path;
 }
 
+/** Exact task commands only. A JSON here-document supplies stdin without authorizing arbitrary shell composition. */
+export function metricsCommand(command: string): "build" | "tests" | "solution" | undefined {
+  if (/^(?:python3|python|\/usr\/bin\/python3) build\.py$/.test(command)) return "build";
+  if (/^(?:python3|python|\/usr\/bin\/python3) -m unittest(?: -v)? test_solution\.py$/.test(command)) return "tests";
+  if (/^(?:python3|python|\/usr\/bin\/python3) solution\.py$/.test(command)) return "solution";
+  const here = command.match(/^(?:python3|python|\/usr\/bin\/python3) solution\.py <<'JSON'\n([^]*?)\nJSON$/);
+  if (here) { try { JSON.parse(here[1]!); return "solution"; } catch {} }
+  return undefined;
+}
+
 /** Authorization belongs to the seeded fixture, never to a model-created filename.
  * Stock Pi preflights a whole parallel batch before executing it, so a sibling
  * script write must also prevent verification even if the old bytes still match.
  */
-export async function authorizeVerification(cwd: string, script: string | undefined, siblingWrites: unknown[] = []): Promise<void> {
+export async function authorizeVerification(cwd: string, script: string | undefined, siblingWrites: unknown[] = [], name = "verify.py"): Promise<void> {
   requireValue(script !== undefined, "SCRIPT_UNPROVIDED", "No fixture verification script was provided");
-  const path = resolve(cwd, "verify.py");
+  const path = resolve(cwd, name);
   requireValue(!siblingWrites.some(p => typeof p === "string" && resolve(cwd, p.replace(/^@/, "")) === path), "SCRIPT_BUSY", "Verification cannot run in the same tool batch as a script write");
   try {
-    await toolPath(cwd, "verify.py", "read");
+    await toolPath(cwd, name, "read");
     requireValue((await lstat(path)).isFile(), "SCRIPT_CHANGED", "Fixture verification script is not an original regular file");
     requireValue((await readFile(path)).equals(Buffer.from(script)), "SCRIPT_CHANGED", "Fixture verification script was modified; execution refused");
   } catch (error) {

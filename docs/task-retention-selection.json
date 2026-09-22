@@ -19,7 +19,7 @@
   "overrides": [
     {
       "requirement": "task-retention-luna",
-      "reason": "Authorized gpt-5.6-luna low thinking level observation",
+      "reason": "Requested gpt-5.6-luna low selection; a future run still needs parent-bound effect limits",
       "model": { "provider": "openrouter", "id": "openai/gpt-5.6-luna" },
       "thinking": "low"
     },

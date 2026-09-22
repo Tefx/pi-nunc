@@ -56,7 +56,16 @@ export interface ScenarioAssets { inputs?: string; observer?: string }
 export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "task-file" | "active-edit" | "scoped-tasks" | "source-loss" | "source-unavailable" | "commit-conflict" | "commit-unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
-export interface ComparisonTarget { repository: string }
+export interface ComparisonTarget { repository: string; ref?: string }
+/** Only the incremental variants select the new model contract; legacy g4 stays legacy. */
+export function taskRetentionSelection(s: { id?: unknown; variant?: unknown }): boolean {
+  return s.id === "g3" && s.variant === "scoped-tasks" || s.id === "g4" &&
+    ["task-file", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(s.variant));
+}
+export function taskRetentionRun(input: { scenarios: unknown; overrides?: unknown }): boolean {
+  return Array.isArray(input.scenarios) && input.scenarios.some(s => object(s) && taskRetentionSelection(s)) ||
+    Array.isArray(input.overrides) && input.overrides.some(o => object(o) && o.requirement === "task-retention-luna");
+}
 export interface ComparisonConfig {
   modes: ComparisonMode[];
   targets: {
@@ -133,12 +142,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
   const isGuidance = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("g"));
-  const isTaskRetention = Array.isArray(value.scenarios) && value.scenarios.some((s: any) =>
-    typeof s?.id === "string" && (
-      (s.id === "g3" && s.variant !== undefined) ||
-      (s.id === "g4")
-    )
-  );
+  const isTaskRetention = taskRetentionRun({ scenarios: value.scenarios, overrides: value.overrides });
   for (const model of value.models) {
     keys(model, ["provider", "id", "contextWindow", "maxTokens", "baseUrl"], "model");
     requireValue(text(model.provider) && text(model.id) && positive(model.contextWindow) && positive(model.maxTokens) && text(model.baseUrl), "MODEL", "Authorize provider/id with native capacity and endpoint");
@@ -163,8 +167,11 @@ export function parseInput(value: unknown, execution = false): RunInput {
     }
     const key = `${model.provider}/${model.id}`; requireValue(!modelKeys.has(key), "MODEL", "Duplicate model"); modelKeys.add(key);
   }
-  if (isTaskRetention && (value as any).effective?.thinking !== undefined) {
-    requireValue((value as any).effective.thinking === "low", "CONFIG", `Complete-task retention scenarios require exact thinking level "low", found "${(value as any).effective.thinking}"`);
+  if (isTaskRetention) {
+    requireValue(object(value.effective) && value.effective.thinking === "low", "CONFIG", 'Complete-task retention scenarios require exact thinking level "low"');
+    for (const override of (Array.isArray(value.overrides) ? value.overrides : [])) {
+      if (object(override) && override.maintenanceThinking !== undefined) requireValue(override.maintenanceThinking === "low", "CONFIG", 'Complete-task maintenance requires exact thinking level "low"');
+    }
   }
   requireValue(Array.isArray(value.scenarios) && value.scenarios.length > 0, "SCENARIO", "Nonempty scenario selection required");
   const ids = new Set<string>();
@@ -220,9 +227,11 @@ export function parseInput(value: unknown, execution = false): RunInput {
     for (const group of ["native", "current", "candidate"] as const) {
       let t = value.comparison.targets[group];
       if (typeof t === "string") t = { repository: t };
-      keys(t, ["repository"], `comparison.targets.${group}`);
+      keys(t, group === "current" ? ["repository", "ref"] : ["repository"], `comparison.targets.${group}`);
       requireValue(text(t.repository) && isAbsolute(t.repository), "TARGET", `comparison.targets.${group}.repository must be an absolute canonical path`);
-      value.comparison.targets[group] = { repository: resolve(t.repository) };
+      if (t.ref !== undefined) requireValue(text(t.ref) && !t.ref.startsWith("-"), "TARGET", "Current target ref must name a Git commit/ref in the runner repository");
+      if (group === "current" && isTaskRetention) requireValue(text(t.ref), "TARGET", "Complete-task comparison requires an explicit current target ref");
+      value.comparison.targets[group] = { repository: resolve(t.repository), ...(t.ref === undefined ? {} : { ref: t.ref }) };
     }
   }
   if (value.observations !== undefined) requireValue(Array.isArray(value.observations) && value.observations.length > 0 && new Set(value.observations).size === value.observations.length && value.observations.every(m => ["stock_rpc", "stock_tui", "continuation"].includes(String(m))) && (!value.observations.includes("continuation") || value.observations.length === 1), "OBSERVATION", "Select stock_rpc/stock_tui together, or continuation alone; controlled and live budgets use separate runs");
@@ -303,13 +312,11 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     requireValue(curStat.isDirectory(), "TARGET", "Current baseline target must be a real directory");
     const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
     const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
-    const isHistorical70dacad = curHead.startsWith("70dacad");
-    let boundPreChangeCommit: string | undefined;
-    try {
-      boundPreChangeCommit = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "refs/nunc/task-retention-pre-change"], { encoding: "utf8", env: gitEnv, stdio: ["pipe", "pipe", "pipe"] }).trim();
-    } catch {}
-    const isPreChange = Boolean(boundPreChangeCommit && curHead === boundPreChangeCommit);
-    requireValue(isHistorical70dacad || isPreChange, "TARGET", `Current baseline target at ${curRepo} (HEAD: ${curHead}) does not match expected baseline (70dacad or bound ${boundPreChangeCommit ?? "refs/nunc/task-retention-pre-change"})`);
+    const requestedRef = input.comparison.targets.current.ref ?? "70dacad";
+    let expectedCommit: string;
+    try { expectedCommit = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "--verify", `${requestedRef}^{commit}`], { encoding: "utf8", env: gitEnv, stdio: ["pipe", "pipe", "pipe"] }).trim(); }
+    catch { throw new RunnerError("TARGET", `Current baseline ref ${requestedRef} cannot be resolved`); }
+    requireValue(curHead === expectedCommit, "TARGET", `Current baseline HEAD ${curHead} differs from declared ref ${requestedRef} (${expectedCommit})`);
     const curDirty = execFileSync("/usr/bin/git", ["-C", curRepo, "status", "--porcelain", "--untracked-files=normal", "--", "src", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8", env: gitEnv }).trim();
     requireValue(curDirty === "", "CANDIDATE", "Current baseline target repository must have a committed clean working tree");
     const curIndex = join(curRepo, "dist/src/index.js");
@@ -317,11 +324,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     catch { throw new RunnerError("BUILD", "Current baseline target must have compiled dist/src/index.js"); }
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
     const curPiVersion = curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
-    if (isHistorical70dacad) {
-      requireValue(curPiVersion === "0.85.1", "DEPENDENCY", "Historical 70dacad baseline target requires Pi 0.85.1");
-    } else {
-      requireValue(curPiVersion === "0.86.1", "DEPENDENCY", `Current pre-change target requires Pi 0.86.1, found ${curPiVersion}`);
-    }
+    requireValue(curPiVersion === (requestedRef === "70dacad" ? "0.85.1" : "0.86.1"), "DEPENDENCY", "Current target uses an unsupported locked Pi version");
     // Verify baseline build parity against its tracked source
     if (!existingOwnedWorker) {
       const { assertBuildParity } = await import("./build.js");

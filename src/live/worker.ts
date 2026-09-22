@@ -9,7 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { convertToLlm, sessionEntryToContextMessages, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { closeHost, openHost, type NativeHost } from "./host.js";
-import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection } from "./contract.js";
+import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection, taskRetentionSelection } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult, type ScenarioInput } from "./scenarios.js";
 import { isSystemMessage } from "../engine/accounting.js";
 import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
@@ -92,143 +92,8 @@ function userText(entry: SessionEntry): string | undefined {
 function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
   return branch.filter(e => userText(e) === text).map(e => e.id);
 }
-export function evaluateTaskFileSetupChecks(
-  scenario: ScenarioInput,
-  turns: Record<string, string[]>,
-  branch: SessionEntry[],
-  active: SessionEntry[],
-  rollovers: RolloverObservation[],
-  actions: Array<{ turn?: string; event?: any }>,
-  cwd: string
-): CheckResult[] {
-  const calls = actions.filter(a => a.event?.type === "tool_call");
-  const results = actions.filter(a => a.event?.type === "tool_result");
-
-  const ordinaryRequest = scenario.turns.length === 1 && scenario.turns[0]?.text.includes("Read TASK.md");
-  const readCall = calls.find(a => a.event.toolName === "read" && typeof a.event.input?.path === "string" && a.event.input.path.includes("TASK.md"));
-  const readSuccess = readCall && results.some(r => r.event.toolCallId === readCall.event.toolCallId && r.event.isError === false);
-  const check1: CheckResult = {
-    check: "Only the ordinary request to read TASK.md and complete its work was delivered; TASK.md requirements entered through an actual successful tool read",
-    status: ordinaryRequest && readSuccess ? "PROVEN" : "UNPROVEN",
-    observed: { ordinaryRequest, readObserved: Boolean(readCall), readSucceeded: Boolean(readSuccess) },
-  };
-
-  const threeCompactions = rollovers.length >= 3;
-  const taskInK = rollovers.length > 0 && rollovers[0]!.active.some(e => e.type === "message" && JSON.stringify(e.message).includes("Local metrics explorer"));
-  const taskRetired = rollovers.length > 1 && !rollovers[1]!.active.some(e => e.type === "message" && JSON.stringify(e.message).includes("Local metrics explorer"));
-  const priorMMaint = rollovers.length > 2 && rollovers[2]!.active.some(e => e.type === "custom" && e.customType === "nunc.memory");
-  const check2: CheckResult = {
-    check: "At least three actual native compactions committed during this same task, including one while TASK.md requirements were still in K, one retiring that tool evidence, and one later maintenance using the previously generated memory",
-    status: threeCompactions && taskInK && taskRetired ? "PROVEN" : "UNPROVEN",
-    observed: { compactionsObserved: rollovers.length, taskInK, taskRetired, priorMMaint },
-  };
-
-  const buildCalls = calls.filter(a => a.event.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("build.py"));
-  const buildResults = results.filter(r => buildCalls.some(b => b.event.toolCallId === r.event.toolCallId));
-  const buildDefectObserved = buildResults.some(r => r.event.isError === true || (typeof r.event.content === "string" && r.event.content.includes("SyntaxError")));
-  const buildSuccessObserved = buildResults.some(r => r.event.isError === false && (typeof r.event.content === "string" && r.event.content.includes("Compilation succeeded")));
-  const laterWork = calls.some(a => a.event.toolName === "bash" && typeof a.event.input?.command === "string" && (a.event.input.command.includes("unittest") || a.event.input.command.includes("solution.py")));
-  const check3: CheckResult = {
-    check: "The initial build defect was observed from a real command; a later successful build was followed by remaining behavior work; snapshots bind extraction sources, generated M/K, final continuation and final artifact",
-    status: buildDefectObserved && buildSuccessObserved ? "PROVEN" : "UNPROVEN",
-    observed: { buildDefectObserved, buildSuccessObserved, laterWorkObserved: laterWork },
-  };
-
-  let heldOutLeaked = false;
-  try {
-    const taskContent = readFileSync(join(cwd, "TASK.md"), "utf8");
-    if (taskContent.includes("held-out") || taskContent.includes("23, 5, 7")) heldOutLeaked = true;
-  } catch {}
-  const check4: CheckResult = {
-    check: "Observer-only criteria and held-out execution inputs remained outside the task workspace, F/M/B/K and feedback",
-    status: !heldOutLeaked ? "PROVEN" : "DISPROVEN",
-    observed: { heldOutLeaked },
-  };
-
-  return [check1, check2, check3, check4];
-}
-
-export function evaluateActiveEditSetupChecks(
-  scenario: ScenarioInput,
-  turns: Record<string, string[]>,
-  branch: SessionEntry[],
-  active: SessionEntry[],
-  rollovers: RolloverObservation[],
-  actions: Array<{ turn?: string; event?: any }>,
-  cwd: string
-): CheckResult[] {
-  const calls = actions.filter(a => a.event?.type === "tool_call");
-  const results = actions.filter(a => a.event?.type === "tool_result");
-
-  const readCall = calls.find(a => a.turn === "a" && a.event.toolName === "read" && typeof a.event.input?.path === "string" && a.event.input.path.includes("TASK.md"));
-  const buildCalls = calls.filter(a => a.turn === "a" && a.event.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("build.py"));
-  const buildSuccess = results.some(r => buildCalls.some(b => b.event.toolCallId === r.event.toolCallId && r.event.isError === false));
-  const check1: CheckResult = {
-    check: "TASK.md was actually read; build failure and subsequent compilation success were observed while the rest of the task remained open",
-    status: readCall && buildSuccess ? "PROVEN" : "UNPROVEN",
-    observed: { readCall: Boolean(readCall), buildSuccess: Boolean(buildSuccess) },
-  };
-
-  const patchTurnB = calls.find(a => a.turn === "b" && a.event.toolName === "nunc_memory_patch");
-  const patchTurnBSuccess = patchTurnB && results.some(r => r.event.toolCallId === patchTurnB.event.toolCallId && r.event.isError === false);
-  const check2: CheckResult = {
-    check: "A model-authored saved note actually mixed progress and unfinished obligations before editing; a note request or a write to an ordinary file alone does not prove this premise",
-    status: patchTurnBSuccess ? "PROVEN" : "UNPROVEN",
-    observed: { patchTurnBObserved: Boolean(patchTurnBSuccess) },
-  };
-
-  const check3: CheckResult = {
-    check: "Actual generated M/K from the two real rollovers was used for continuation; record whether maintenance had already separated the mixed note",
-    status: rollovers.length >= 2 ? "PROVEN" : "UNPROVEN",
-    observed: { rolloversObserved: rollovers.length },
-  };
-
-  const patchTurnD = calls.find(a => a.turn === "d" && a.event.toolName === "nunc_memory_patch");
-  const patchTurnDSuccess = patchTurnD && results.some(r => r.event.toolCallId === patchTurnD.event.toolCallId && r.event.isError === false);
-  const laterWorkTurnD = calls.some(a => a.turn === "d" && ["write", "edit", "bash"].includes(a.event.toolName));
-  const check4: CheckResult = {
-    check: "Turn d caused a confirmed memory patch and subsequent task work; separately qualify replacement, merge and deletion from actual before/after content, tool arguments and saved state; absent operations remain unproven",
-    status: patchTurnDSuccess && laterWorkTurnD ? "PROVEN" : "UNPROVEN",
-    observed: { patchTurnDSuccess: Boolean(patchTurnDSuccess), laterWorkTurnD },
-  };
-
-  const turnDText = scenario.turns.find(t => t.id === "d")?.text ?? "";
-  const noGoldNote = !turnDText.includes("gross") && !turnDText.includes("refunds") && !turnDText.includes("margin");
-  const check5: CheckResult = {
-    check: "No gold note, expected patch or observer criterion was supplied to establish editing; any controlled rearrangement follows docs/POLICY.md without adding missing requirements",
-    status: noGoldNote ? "PROVEN" : "DISPROVEN",
-    observed: { noGoldNote },
-  };
-
-  return [check1, check2, check3, check4, check5];
-}
-
-export function evaluateScopedTasksSetupChecks(
-  scenario: ScenarioInput,
-  turns: Record<string, string[]>,
-  branch: SessionEntry[],
-  active: SessionEntry[],
-  rollovers: RolloverObservation[],
-  actions: Array<{ turn?: string; event?: any }>,
-  cwd: string
-): CheckResult[] {
-  const calls = actions.filter(a => a.event?.type === "tool_call");
-  const readTask = calls.find(a => a.turn === "a" && a.event.toolName === "read" && typeof a.event.input?.path === "string" && a.event.input.path.includes("TASK.md"));
-  const prematureService = calls.find(a => ["a", "b", "c"].includes(a.turn ?? "") && ["write", "edit"].includes(a.event.toolName) && typeof a.event.input?.path === "string" && (a.event.input.path.includes("east.json") || a.event.input.path.includes("west.json")));
-  const check1: CheckResult = {
-    check: "TASK.md was actually read before archive work; the two service drafts were still pending when turn b arrived",
-    status: readTask && !prematureService ? "PROVEN" : "UNPROVEN",
-    observed: { readTask: Boolean(readTask), prematureService: Boolean(prematureService) },
-  };
-
-  const check2: CheckResult = {
-    check: "Two real committed rollovers expose and then retire the scoped revision; future turns and observer criteria were never model-visible",
-    status: rollovers.length >= 2 ? "PROVEN" : "UNPROVEN",
-    observed: { rolloversObserved: rollovers.length },
-  };
-
-  return [check1, check2];
-}
+export { taskFileChecks as evaluateTaskFileSetupChecks, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks } from "./task-retention.js";
+import { taskFileChecks as evaluateTaskFileSetupChecks, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks, taskRead, sourceLossChecks } from "./task-retention.js";
 
 function captureComparisonFacts(
   report: SegmentReport,
@@ -318,6 +183,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
       boundary,
+      taskFiles: scenario.files,
       boundaries, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
       ...(guidanceControls?.length ? { guidanceControls } : {}),
       onBoundary: async data => {
@@ -358,7 +224,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           if (data.phase === "maintenance-failed") boundaryFailure ??= "Automatic boundary maintenance failed; suffix is unproven";
         }
         if (type === "preparation") {
-          const control = observer.controls.find(c => c.action === "rollover_at_tool_boundary" ? c.duringTurn === turn : c.action === "rollover" && c.afterTurn === turn);
+          const control = boundaryControls[currentBoundaryIndex]?.duringTurn === turn ? boundaryControls[currentBoundaryIndex] : observer.controls.find(c => c.action === "rollover" && c.afterTurn === turn);
           report.rollovers!.push({ ...data, turn, config: structuredClone(runConfig), ...(prepared ? { prepared } : {}),
             ...(control ? { placement: { control, turns: scenario.turns.slice(0, scenario.turns.findIndex(t => t.id === turn) + 1), files: scenario.files,
               turnEntries: { ...structuredClone(turns), [turn]: data.branch.filter((e: SessionEntry) => e.type === "message" && !isSystemMessage(e.message) && !turnBeforeIds.has(e.id)).map((e: SessionEntry) => e.id) },
@@ -399,9 +265,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         if (selection.id.startsWith("g") && kind === "main") {
           const activeTools = context.tools?.map(t => t.name) ?? [];
           const exposed = ["nunc_memory_read", "nunc_memory_patch"].every(name => activeTools.includes(name));
-          const previous = report.prerequisites.find(p => p.check === "memory tools exposed in session");
-          if (!previous) report.prerequisites.push({ check: "memory tools exposed in session", status: exposed ? "PROVEN" : "UNPROVEN", observed: { activeTools, source: "actual main provider context" } });
-          else if (!exposed) { previous.status = "UNPROVEN"; previous.reason = "A main request omitted memory tool definitions"; }
+          const expected = group !== "native" && !input.overrides?.some(o => o.requirement === "memory-tools-off" || o.memoryTools === false);
+          const name = expected ? "memory tools exposed in session" : "memory tools absent under selected tools-off/native mode";
+          const previous = report.prerequisites.find(p => p.check === name);
+          if (!previous) report.prerequisites.push({ check: name, status: exposed === expected ? "PROVEN" : "UNPROVEN", observed: { activeTools, expected, exposed, source: "actual main provider context" } });
+          else if (exposed !== expected) { previous.status = "UNPROVEN"; previous.reason = "A main request disagreed with selected tool exposure"; }
         }
       },
       onAction: event => {
@@ -450,6 +318,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       }
       if (selection.id === "m2" && ["b2", "d2", "f"].includes(turn)) {
         report.prerequisites.push(await qualifyMemoryOnly(turn, sm.buildContextEntries(), join(caseRoot, "task")));
+      }
+      if (selection.id === "g4" && selection.variant === "active-edit" && turn === "d" && input.overrides?.some(o => o.requirement === "mixed-note-opportunity")) {
+        await runtime.command("prompt", { message: "/nunc-observer-note-opportunity" }); await runtime.refresh();
       }
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
       turnBeforeIds = beforeIds;
@@ -512,7 +383,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       if (selection.id === "e3" && selection.variant === "archive-closeout" && turn === "closeout") report.prerequisites.push(archiveCloseoutEffects(scenario, report.actions, join(caseRoot, "task")));
       for (const control of observer.controls.filter(c => c.afterTurn === turn || c.duringTurn === turn)) {
         if (control.action === "rollover_at_tool_boundary") {
-          const row = report.rollovers!.find(r => r.turn === turn && r.reason === "threshold");
+          const row = report.rollovers!.find(r => r.turn === turn && r.reason === "threshold" && isDeepStrictEqual(r.placement?.control, control));
           if (row?.association?.status === "UNPROVEN") {
             const e3Assoc = compactionAssociationError(row)!;
             report.prerequisites.push({ check: "actual compaction transaction identity", status: "UNPROVEN", reason: e3Assoc });
@@ -525,10 +396,22 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           const expectedMessages = convertToLlm(retained.flatMap(e => sessionEntryToContextMessages(e))).map(semanticEvidence);
           const delivered = next?.context.messages.map(semanticEvidence) ?? [];
           const suffixDelivered = expectedMessages.length > 0 && delivered.some((_m, i) => isDeepStrictEqual(delivered.slice(i, i + expectedMessages.length), expectedMessages));
-          const requestRetired = Boolean(row && row.preparation.turnPrefixMessages.some((m: any) => m.role === "user" && (typeof m.content === "string" ? m.content : m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("")) === boundary!.requestText));
-          const check = { check: "actual tool batch followed by automatic native split compaction and same-loop continuation", status: row && snap && expected === snap.firstKeptEntryId && unchanged && suffixDelivered && requestRetired && next && row.preparation.isSplitTurn ? "PROVEN" as const : "UNPROVEN" as const,
+          const request = row?.branch.find(e => userText(e) === scenario.turns.find(t => t.id === control.duringTurn)?.text);
+          const requestRetired = Boolean(request && snap && row!.branch.indexOf(request) < row!.branch.findIndex(e => e.id === snap.firstKeptEntryId) && !retained.some(e => e.id === request.id));
+          const alreadyRetired = Boolean(request && row && !row.active.some(e => e.id === request.id));
+          const check = { check: alreadyRetired ? "actual tool batch followed by repeated native compaction and same-loop continuation" : "actual tool batch followed by automatic native split compaction and same-loop continuation", status: row && snap && expected === snap.firstKeptEntryId && unchanged && suffixDelivered && requestRetired && next && (row.preparation.isSplitTurn || alreadyRetired) ? "PROVEN" as const : "UNPROVEN" as const,
             observed: { snapshotId: snap?.id, expectedFirst: expected, actualFirst: snap?.firstKeptEntryId, continuationCallId: row?.continuationCallId, retainedEntryIds: retained.map(e => e.id), reason: row?.reason } };
           report.prerequisites.push(check);
+        } else if (control.action === "move_task_source" || control.action === "remove_task_source") {
+          const cwd = join(caseRoot, "task");
+          requireValue(taskRead(scenario, sm.getBranch(), report.actions as any, cwd).complete, "PREREQUISITE", "Source transition requires a complete real task read");
+          requireValue(await readFile(join(cwd, "TASK.md"), "utf8") === scenario.files["TASK.md"], "PREREQUISITE", "Task source changed before controlled transition");
+          if (control.action === "move_task_source") {
+            await mkdir(join(cwd, "source"), { recursive: true });
+            await writeFile(join(cwd, "source/TASK.md"), scenario.files["TASK.md"]!, { flag: "wx", mode: 0o600 });
+          }
+          await unlink(join(cwd, "TASK.md"));
+          report.actions.push({ turn, event: { type: "fixture_state", path: "TASK.md", removed: true, recoveryPath: control.action === "move_task_source" ? "source/TASK.md" : null } });
         } else if (control.action === "switch_to_authorized_smaller_model") {
           const models = overrides.models ?? selectedModels(input), next = models[1];
           requireValue(next && session.model && next.contextWindow < session.model.contextWindow, "MODEL", "No authorized smaller target");
@@ -683,6 +566,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                   const accounting = result.observations.accounting;
                   report.prerequisites.push({ check: "actual full-request overflow triggered bounded reduction", status: accounting && accounting.fullExtractionTokens > accounting.extractionInputLimit && result.observations.omissions.length > 0 ? "PROVEN" : "UNPROVEN", observed: { accounting, omissions: result.observations.omissions, middleVisibleBefore: visible, middleVisibleExtraction: extracted } });
                 }
+              } else if (selection.id === "g4" && ["source-loss", "source-unavailable"].includes(String(selection.variant))) {
+                const a = result.observations.accounting;
+                report.prerequisites.push({ check: "source-loss extraction used full input or an actual bounded capacity reduction", status: result.observations.omissions.length === 0 || a && a.fullExtractionTokens > a.extractionInputLimit && a.extractionTokens <= a.extractionInputLimit ? "PROVEN" : "UNPROVEN", observed: { accounting: a, omissions: result.observations.omissions } });
               } else report.prerequisites.push({ check: "normal rollover used full extraction", status: result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
               if (steerTurn) {
                 const frozen = frozenContext();
@@ -754,13 +640,14 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     if (selection.id.startsWith("g")) {
       report.setupChecks ??= [];
       if (selection.id === "g4" && selection.variant === "task-file") {
-        report.setupChecks.push(...evaluateTaskFileSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], (report.actions ?? []) as any, join(caseRoot, "task")));
-      } else if (selection.id === "g4" && selection.variant === "active-edit") {
-        report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], (report.actions ?? []) as any, join(caseRoot, "task")));
+        report.setupChecks.push(...evaluateTaskFileSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
+      } else if (selection.id === "g4" && ["active-edit", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant))) {
+        report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       } else if (selection.id === "g3" && selection.variant === "scoped-tasks") {
-        report.setupChecks.push(...evaluateScopedTasksSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], (report.actions ?? []) as any, join(caseRoot, "task")));
+        report.setupChecks.push(...evaluateScopedTasksSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       }
-      if (!report.prerequisites.some(p => p.check === "memory tools exposed in session")) {
+      if (selection.id === "g4" && ["source-loss", "source-unavailable"].includes(String(selection.variant))) report.setupChecks.push(...sourceLossChecks(scenario, sm.getBranch(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), selection.variant === "source-unavailable"));
+      if (!report.prerequisites.some(p => p.check === "memory tools exposed in session" || p.check === "memory tools absent under selected tools-off/native mode")) {
         report.prerequisites.push({ check: "memory tools exposed in session", status: "UNPROVEN", reason: "No actual main provider context with memory tool definitions" });
       }
       if (selection.id === "g7") {
@@ -794,7 +681,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const qualified = report.rolloverSeries.length >= 3 && report.rolloverSeries.every(row => row.reason === "threshold" && row.facts.snapshotId && row.facts.cutPoint !== null && row.beforeInput !== undefined && row.afterInput !== undefined) && report.rolloverSeries.slice(1).every(row => (row.mainRequestsSincePrevious ?? 0) > 0);
       report.prerequisites.push({ check: "at least two native threshold-driven compression intervals with actual retained input and release measurements", status: qualified ? "PROVEN" : "UNPROVEN", observed: report.rolloverSeries });
     }
-    const scoreContext = { actions: report.actions, requireVerificationReceipt: true, ...(report.artifactSnapshots ? { artifactSnapshots: report.artifactSnapshots } : {}) };
+    const fixtures = taskRetentionSelection(selection) ? Object.fromEntries(Object.entries(scenario.files).filter(([name]) => ["TASK.md", "records.json", "build.py", "archive.json"].includes(name))) : undefined;
+    if (fixtures && selection.id === "g4" && ["source-loss", "source-unavailable"].includes(String(selection.variant))) {
+      if (selection.variant === "source-loss") fixtures["source/TASK.md"] = fixtures["TASK.md"]!;
+      delete fixtures["TASK.md"];
+    }
+    const scoreContext = { actions: report.actions, ...(fixtures ? { fixtures } : {}), requireVerificationReceipt: true, ...(report.artifactSnapshots ? { artifactSnapshots: report.artifactSnapshots } : {}) };
     const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? report.setupChecks ?? [] : [])];
     if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...scorePrerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);

@@ -11,6 +11,7 @@ import { boundedProvider, BudgetLedger } from "../../src/live/budget.js";
 import { createAssistantMessageEventStream, type Model, type Context, type Api, type Provider } from "@earendil-works/pi-ai";
 import { resolveInput } from "../../src/live/defaults.js";
 
+import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 
 const VALID_SOLUTION_PY = `
@@ -76,27 +77,18 @@ py_compile.compile('solution.py', doraise=True)
 print('Compilation succeeded; behavior has not been checked by this command.')
 `;
 
-const VALID_TEST_SOLUTION_PY = `
-import unittest, json, sys
+const VALID_TEST_SOLUTION_PY = `import unittest
 from solution import calc_single
-
-class SolutionTest(unittest.TestCase):
-    def test_regions_and_edges(self):
-        # north, south, west regions
-        for region in ['north', 'south', 'west']:
-            self.assertTrue(len(region) > 0)
-        self.assertEqual(calc_single({'gross': 10, 'refunds': 3, 'cost': 5}), {'net': 7, 'margin': 2})
-        self.assertEqual(calc_single({'gross': None, 'refunds': 3, 'cost': 5}), {'net': None, 'margin': None})
+class Regression(unittest.TestCase):
+    def test_values(self):
         self.assertEqual(calc_single({'gross': 0, 'refunds': 0, 'cost': 0}), {'net': 0, 'margin': 0})
-        self.assertEqual(calc_single({'gross': -4, 'refunds': 2, 'cost': 3}), {'net': -6, 'margin': -9})
-
-if __name__ == '__main__':
-    unittest.main()
 `;
+// This fixture exercises only single; the oracle must never claim candidate test adequacy from it.
+const FIXTURES = { "TASK.md": "# Task\n", "records.json": "{}\n", "build.py": VALID_BUILD_PY };
 
 async function setupWorkspace(dir: string, files: Record<string, string>) {
   await mkdir(dir, { recursive: true });
-  for (const [name, content] of Object.entries(files)) {
+  for (const [name, content] of Object.entries({ "test_solution.py": "import unittest\nclass Smoke(unittest.TestCase):\n    def test_arithmetic(self): self.assertEqual(1 + 1, 2)\n", ...files })) {
     await writeFile(join(dir, name), content, "utf8");
   }
 }
@@ -111,8 +103,9 @@ test("metrics oracle passes on valid solution.py with all operations and held-ou
       "records.json": "{}\n",
       "test_solution.py": VALID_TEST_SOLUTION_PY,
     });
-    const report = executeMetricsOracle(dir);
+    const report = executeMetricsOracle(dir, FIXTURES);
     assert.equal(report.status, "PROVEN", JSON.stringify(report));
+    assert.equal(report.observed?.candidateTestCoverage, "UNPROVEN");
     assert(report.observed?.buildSuccess === true);
     assert(report.observed?.unittestSuccess === true);
     assert(report.observed?.singleRecords === HELD_OUT_RECORDS.length);
@@ -186,6 +179,7 @@ test("CLI admission accepts new variants g3/scoped-tasks, g4/task-file, g4/activ
     target: { repository, stateRoot: join(repository, ".scratch/nunc-live-test"), cleanup: "retain" },
     limits: { maxCalls: 10, maxTotalTokens: 100000, maxCostUsd: null, maxDurationMs: 60000, maxOutputTokens: 20000 },
     models: [{ provider: "openrouter", id: "openai/gpt-5.6-luna", contextWindow: 60000, maxTokens: 20000, baseUrl: "http://127.0.0.1:8080" }],
+    effective: { thinking: "low" },
     scenarios: [
       { id: "g3", variant: "scoped-tasks", config },
       { id: "g4", variant: "task-file", config },
@@ -199,8 +193,8 @@ test("CLI admission accepts new variants g3/scoped-tasks, g4/task-file, g4/activ
   assert.equal(parsed.scenarios[2]!.variant, "active-edit");
 
   // Rejects invalid variants
-  assert.throws(() => parseInput({ ...baseInput, scenarios: [{ id: "g3", variant: "invalid", config }] }), /g3 may select scoped-tasks/);
-  assert.throws(() => parseInput({ ...baseInput, scenarios: [{ id: "g4", variant: "invalid", config }] }), /g4 variant must be one of/);
+  assert.throws(() => parseInput({ ...baseInput, scenarios: [...baseInput.scenarios, { id: "g3", variant: "invalid", config }] }), /g3 may select scoped-tasks/);
+  assert.throws(() => parseInput({ ...baseInput, scenarios: [...baseInput.scenarios, { id: "g4", variant: "invalid", config }] }), /g4 variant must be one of/);
 });
 
 test("scoreGuidance evaluates held-out oracle for both stored g4 observer strings without bypass", async () => {
@@ -235,10 +229,11 @@ test("scoreGuidance evaluates held-out oracle for both stored g4 observer string
     await writeFile(join(dir, "test_solution.py"), VALID_TEST_SOLUTION_PY);
     const passTaskFile = scoreGuidance("g4", checkTaskFile, actionsWithTurn, prerequisites, dir);
     const passActiveEdit = scoreGuidance("g4", checkActiveEdit, actionsWithTurn, prerequisites, dir);
-    assert.equal(passTaskFile.status, "UNPROVEN");
+    assert.equal(passTaskFile.status, "UNPROVEN", "No original fixture binding supplied");
     assert.equal(passActiveEdit.status, "UNPROVEN");
-    assert((passTaskFile.observed as any)?.oracle?.singleRecords === HELD_OUT_RECORDS.length);
-    assert((passActiveEdit.observed as any)?.oracle?.singleRecords === HELD_OUT_RECORDS.length);
+    assert((passTaskFile.observed as any)?.singleRecords === HELD_OUT_RECORDS.length);
+    assert((passActiveEdit.observed as any)?.singleRecords === HELD_OUT_RECORDS.length);
+    for (const check of [checkTaskFile, checkActiveEdit]) assert.equal(scoreGuidance("g4", check, actionsWithTurn, prerequisites, dir, FIXTURES).status, "PROVEN");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -343,6 +338,35 @@ test("scoreGuidance evaluates scoped-tasks cancellations and property preservati
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("artifact oracle rejects region, null, zero, negative, graph and recursive-trace regressions and fixture mutation", async () => {
+  const dir = await mkdtemp(join(repository, ".scratch", "metrics-mutations-"));
+  try {
+    const mutations = [
+      metricsSolution.replace("for k, rs in q['series'].items()", "for k, rs in q['series'].items() if k != 'west'"),
+      metricsSolution.replace("return {'net': net,", "net = 0 if net is None else net\n    return {'net': net,"),
+      metricsSolution.replace("return {'net': net,", "net = 1 if net == 0 else net\n    return {'net': net,"),
+      metricsSolution.replace("return {'net': net,", "net = abs(net) if net is not None else net\n    return {'net': net,"),
+      metricsSolution.replace("result = {'nodes': nodes, 'edges': edges}", "result = {'nodes': nodes + ['net'], 'edges': edges}"),
+      metricsSolution.replace("result = {'nodes': nodes, 'edges': edges}", "result = {'nodes': nodes, 'edges': edges + [['net', 'margin']]}"),
+      metricsSolution.replace("result['values'] = {n: values[n] for n in nodes}", "result['values'] = {q['metric']: values[q['metric']]}"),
+    ];
+    // A minimal passing candidate test must not hide any held-out behavior regression.
+    for (const solution of mutations) {
+      assert.notEqual(solution, metricsSolution);
+      await setupWorkspace(dir, { ...FIXTURES, "solution.py": solution });
+      assert.equal(executeMetricsOracle(dir, FIXTURES).status, "DISPROVEN");
+    }
+    await setupWorkspace(dir, { ...FIXTURES, "solution.py": metricsSolution, "test_solution.py": metricsTests });
+    assert.equal(executeMetricsOracle(dir, FIXTURES).status, "PROVEN");
+    await writeFile(join(dir, "build.py"), "print('success')\n");
+    assert.equal(executeMetricsOracle(dir, FIXTURES).status, "DISPROVEN", "script success cannot replace frozen build");
+    await writeFile(join(dir, "build.py"), FIXTURES["build.py"]);
+    await writeFile(join(dir, "test_solution.py"), "import pathlib\npathlib.Path('records.json').write_text('{}')\n");
+    const mutated = executeMetricsOracle(dir, FIXTURES);
+    assert.equal(mutated.status, "DISPROVEN"); assert.match(mutated.reason!, /modified its input/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test("boundedProvider verifies required thinking level and blocks unapplied maintenance thinking", async () => {

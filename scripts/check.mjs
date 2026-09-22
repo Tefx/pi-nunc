@@ -36,5 +36,8 @@ function run(args) {
 run([resolve(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"]);
 const compiled = tests.map(name => `dist/tests/${name.replace(/\.ts$/, ".js")}`);
 for (const test of compiled) if (!existsSync(resolve(root, test))) fail(`Missing emitted test ${test}`);
-run(["--test", ...compiled]);
+// Stock-host suites spawn their own children. Bound file-level concurrency even on large machines.
+const concurrency = process.env.NUNC_TEST_CONCURRENCY ?? "2";
+if (!["1", "2"].includes(concurrency)) fail("NUNC_TEST_CONCURRENCY must be 1 or 2");
+run(["--test", `--test-concurrency=${concurrency}`, ...compiled]);
 console.log(`${selected[0]} checks completed (${tests.length} test files). ${selected[0] === "all" ? "Actual stock CLI/RPC/TUI, native transports/auth delegation and JSONL with controlled services; bounded preflight stdin included." : "Engine/model bridge with controlled service only."} Real-model task effectiveness remains separately authorized evidence.`);

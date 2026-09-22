@@ -34,7 +34,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
       if (override.compactionOwner !== undefined) requireValue(override.requirement === "stable-memory-larva" && typeof override.extension === "string" && override.compactionOwner === "nunc", "OVERRIDE", "compactionOwner requires explicit stable-memory-larva composition and must be nunc");
       if (override.scenario !== undefined) {
         requireValue(typeof override.scenario === "string" && value.scenarios.some(s => object(s) && `${s.id}${s.variant ? `/${s.variant}` : ""}` === override.scenario) &&
-          object(override.config) && override.model === undefined && override.smallerModel === undefined && override.thinking === undefined && override.extension === undefined && override.compactionOwner === undefined && !scopedConfigs.has(override.scenario),
+          object(override.config) && override.model === undefined && override.smallerModel === undefined && override.thinking === undefined && override.extension === undefined && override.compactionOwner === undefined && override.memoryTools === undefined && override.maintenanceThinking === undefined && !scopedConfigs.has(override.scenario),
           "OVERRIDE", "A scenario override must uniquely name a selected id[/variant] and contain only config");
         scopedConfigs.set(override.scenario, override.config);
         differences.push(structuredClone(override));
@@ -79,6 +79,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   const input = parseInput({ version: 1,
     mode: offline ? "controlled" : "native",
     target: value.target, limits, models,
+    effective: { thinking }, overrides: differences,
     scenarios: value.scenarios.map(s => {
       requireValue(object(s) && Object.keys(s).every(k => ["id", "variant", "assets"].includes(k)), "SCENARIO", "Scenario config belongs in a named override");
       const scoped = scopedConfigs.get(`${s.id}${s.variant ? `/${s.variant}` : ""}`);

@@ -20,14 +20,14 @@
     "modes": ["defaults", "matched"],
     "targets": {
       "native": { "repository": "__CHECKOUT__" },
-      "current": { "repository": "__ACTUAL_PRECHANGE_CHECKOUT_1D4FC4A__" },
+      "current": { "repository": "__ACTUAL_PRECHANGE_CHECKOUT__", "ref": "refs/nunc/task-retention-pre-change" },
       "candidate": { "repository": "__CHECKOUT__" }
     }
   },
   "overrides": [
     {
       "requirement": "task-retention-luna",
-      "reason": "Authorized gpt-5.6-luna low thinking level observation",
+      "reason": "Requested gpt-5.6-luna low selection; a future run still needs parent-bound effect limits",
       "model": { "provider": "openrouter", "id": "openai/gpt-5.6-luna" },
       "thinking": "low"
     },

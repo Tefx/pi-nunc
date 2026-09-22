@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -76,10 +76,10 @@ function runSolutionSubprocess(cwd: string, requestPayload: unknown): { status: 
 function compareEdges(actualEdges: unknown, expectedEdges: readonly [string, string][]): boolean {
   if (!Array.isArray(actualEdges)) return false;
   if (actualEdges.length !== expectedEdges.length) return false;
-  const normalizeEdge = (e: unknown) => (Array.isArray(e) && e.length === 2 ? `${e[0]}->${e[1]}` : "");
+  const normalizeEdge = (e: unknown) => (Array.isArray(e) && e.length === 2 && e.every(v => typeof v === "string") ? JSON.stringify(e) : "");
   const actualSet = new Set(actualEdges.map(normalizeEdge));
   if (actualSet.size !== expectedEdges.length) return false; // Duplicate edges rejected
-  const expectedSet = new Set(expectedEdges.map(e => `${e[0]}->${e[1]}`));
+  const expectedSet = new Set(expectedEdges.map(e => JSON.stringify(e)));
   return isDeepStrictEqual(actualSet, expectedSet);
 }
 
@@ -90,8 +90,14 @@ function compareNodes(actualNodes: unknown, expectedNodes: Set<string>): boolean
   return isDeepStrictEqual(actualSet, expectedNodes);
 }
 
-export function executeMetricsOracle(cwd: string): MetricsOracleReport {
+export function executeMetricsOracle(cwd: string, fixtures?: Record<string, string>): MetricsOracleReport {
   const operations: Array<{ op: string; passed: boolean; error?: string }> = [];
+  const frozen = new Map<string, string>();
+  for (const name of [...Object.keys(fixtures ?? {}), "solution.py", "test_solution.py"]) {
+    if (existsSync(join(cwd, name))) frozen.set(name, readFileSync(join(cwd, name), "utf8"));
+  }
+  const mismatch = Object.entries(fixtures ?? {}).find(([name, expected]) => frozen.get(name) !== expected);
+  if (mismatch) return { status: "DISPROVEN", reason: `Frozen task fixture changed or missing: ${mismatch[0]}`, operations };
 
   // 1. Fixture file integrity checks
   const solutionPath = join(cwd, "solution.py");
@@ -101,10 +107,6 @@ export function executeMetricsOracle(cwd: string): MetricsOracleReport {
   const buildPath = join(cwd, "build.py");
   if (!existsSync(buildPath)) {
     return { status: "DISPROVEN", reason: "build.py is missing from task directory", operations };
-  }
-  const taskMdPath = join(cwd, "TASK.md");
-  if (!existsSync(taskMdPath)) {
-    return { status: "DISPROVEN", reason: "TASK.md was deleted", operations };
   }
   const recordsPath = join(cwd, "records.json");
   if (!existsSync(recordsPath)) {
@@ -140,18 +142,10 @@ export function executeMetricsOracle(cwd: string): MetricsOracleReport {
       operations.push({ op: "test_solution.py", passed: false, error });
       return { status: "DISPROVEN", reason: error, operations };
     }
-    // Inspect candidate test source for cross-mode relations and all-region/null/zero/negative
-    const testContent = readFileSync(testSolutionPath, "utf8");
-    const hasRegions = testContent.includes("north") && testContent.includes("south") && testContent.includes("west");
-    const hasEdgeCases = testContent.includes("None") || testContent.includes("null");
-    if (!hasRegions) {
-      const error = "test_solution.py does not test all three regions (north, south, west)";
-      operations.push({ op: "test_solution.py_coverage", passed: false, error });
-      return { status: "DISPROVEN", reason: error, operations };
-    }
+    // Execution is observed; the tests' semantic adequacy needs independent review.
     testSuiteChecked = true;
     operations.push({ op: "test_solution.py", passed: true });
-  }
+  } else return { status: "DISPROVEN", reason: "Required test_solution.py is missing", operations };
 
   // 4. Held-out single records evaluation
   for (let i = 0; i < HELD_OUT_RECORDS.length; i++) {
@@ -214,7 +208,7 @@ export function executeMetricsOracle(cwd: string): MetricsOracleReport {
       return { status: "DISPROVEN", reason: error, operations };
     }
   }
-  if (!isDeepStrictEqual(hist.north, EXPECTED_HELD_OUT_RESULTS.slice(0, 2)) ||
+  if (!isDeepStrictEqual(Object.keys(hist).sort(), ["north", "south", "west"]) || !isDeepStrictEqual(hist.north, EXPECTED_HELD_OUT_RESULTS.slice(0, 2)) ||
       !isDeepStrictEqual(hist.south, EXPECTED_HELD_OUT_RESULTS.slice(2, 4)) ||
       !isDeepStrictEqual(hist.west, EXPECTED_HELD_OUT_RESULTS.slice(4, 6))) {
     const error = "op: history results do not match expected series computations";
@@ -338,9 +332,14 @@ export function executeMetricsOracle(cwd: string): MetricsOracleReport {
   }
   operations.push({ op: "trace_net_5", passed: true });
 
+  const mutated = [...frozen].find(([name, before]) => !existsSync(join(cwd, name)) || readFileSync(join(cwd, name), "utf8") !== before);
+  if (mutated) return { status: "DISPROVEN", reason: `Oracle execution modified its input: ${mutated[0]}`, operations };
   return {
-    status: "PROVEN",
+    status: fixtures ? "PROVEN" : "UNPROVEN",
+    ...(fixtures ? {} : { reason: "Behavior checks passed; original fixture binding was not supplied" }),
     observed: {
+      fixtureIntegrity: fixtures ? "PROVEN" : "UNPROVEN",
+      candidateTestCoverage: "UNPROVEN", testSource: frozen.get("test_solution.py"),
       operationsEvaluated: operations.length,
       singleRecords: HELD_OUT_RECORDS.length,
       batch: true,
