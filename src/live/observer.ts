@@ -21,7 +21,7 @@ export function toolBlockReason(error: unknown, aborted: boolean, context?: { is
   if (aborted || (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) return "Tool action after deadline";
   if (error instanceof RunnerError && error.code === "TOOL_COMMAND") {
     if (context?.isTaskRetention) {
-      return "Tool kind or command is outside authorization: only scenario-local read/write/edit and task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py') are permitted";
+      return "Tool kind or command is outside authorization: only scenario-local read/write/edit and task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py', 'python3 scripts/validate_records.py') are permitted";
     }
     if (context?.hasVerification) {
       return "Tool kind or command is outside authorization: only scenario-local read/write/edit and fixture verification command 'python3 verify.py' are permitted";
@@ -234,16 +234,18 @@ export default function observer(pi: ExtensionAPI): void {
           isVerify || isTaskCommand,
           "TOOL_COMMAND",
           isTaskRetention
-            ? "Only authorized task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py') are permitted"
+            ? "Only authorized task commands ('python3 build.py', 'python3 -m unittest ...', 'python3 solution.py', 'python3 scripts/validate_records.py') are permitted"
             : hasVerification
             ? "Only fixture verification command 'python3 verify.py' is permitted"
             : "No bash commands are permitted"
         );
         const isBuildScript = typeof cmd === "string" && /(?:^|\s)(?:\.\/)?build\.py$/.test(cmd);
-        if (isVerify || isBuildScript) {
+        const isValidateScript = typeof cmd === "string" && /(?:^|\s)(?:\.\/)?scripts\/validate_records\.py$/.test(cmd);
+        if (isVerify || isBuildScript || isValidateScript) {
           const caller = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === event.toolCallId));
           const writes = caller?.type === "message" && caller.message.role === "assistant" ? caller.message.content.flatMap(b => b.type === "toolCall" && ["write", "edit"].includes(b.name) ? [b.arguments.path] : []) : [];
-          await authorizeVerification(binding.cwd, isVerify ? binding.verification?.script : binding.taskFiles?.["build.py"], writes, isVerify ? "verify.py" : "build.py");
+          const scriptName = isVerify ? "verify.py" : isBuildScript ? "build.py" : "scripts/validate_records.py";
+          await authorizeVerification(binding.cwd, isVerify ? binding.verification?.script : binding.taskFiles?.[scriptName], writes, scriptName);
         }
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       } else if (event.toolName === "nunc_memory_read" || event.toolName === "nunc_memory_patch") {

@@ -69,14 +69,14 @@ export interface Limits {
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "task-file" | "active-edit" | "scoped-tasks" | "source-loss" | "source-unavailable" | "commit-conflict" | "commit-unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "task-file" | "same-task-history" | "active-edit" | "scoped-tasks" | "source-loss" | "source-unavailable" | "commit-conflict" | "commit-unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string; ref?: string }
 /** Only the incremental variants select the new model contract; legacy g4 stays legacy. */
 export function taskRetentionSelection(s: { id?: unknown; variant?: unknown }): boolean {
   return s.id === "g3" && s.variant === "scoped-tasks" || s.id === "g4" &&
-    ["task-file", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(s.variant));
+    ["task-file", "same-task-history", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(s.variant));
 }
 export function taskRetentionRun(input: { scenarios: unknown; overrides?: unknown }): boolean {
   return Array.isArray(input.scenarios) && input.scenarios.some(s => object(s) && taskRetentionSelection(s)) ||
@@ -236,7 +236,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
     } else if (selection.id === "g3") {
       requireValue(selection.variant === undefined || selection.variant === "scoped-tasks", "SCENARIO", "g3 may select scoped-tasks; others have no variant");
     } else if (selection.id === "g4") {
-      requireValue(selection.variant === undefined || ["task-file", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g4 variant must be one of: task-file, active-edit, source-loss, source-unavailable, commit-conflict, commit-unconfirmed");
+      requireValue(selection.variant === undefined || ["task-file", "same-task-history", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g4 variant must be one of: task-file, same-task-history, active-edit, source-loss, source-unavailable, commit-conflict, commit-unconfirmed");
     } else if (selection.id === "g7") {
       requireValue(selection.variant === undefined || ["conflict", "unconfirmed"].includes(String(selection.variant)), "SCENARIO", "g7 may select conflict or unconfirmed");
     } else if (selection.id === "g8") {

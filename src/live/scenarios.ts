@@ -85,9 +85,13 @@ export function validateControl(value: unknown, turns: string[]): asserts value 
     requireValue(["read", "write", "edit"].includes(String(trig.toolName)), "SCENARIO", "Invalid trigger toolName");
     requireValue(trig.alternateToolName === undefined || trig.toolName === "write" && trig.alternateToolName === "edit", "SCENARIO", "Only write/edit alternatives share a boundary");
     requireValue(trig.when === "after_result_before_continuation", "SCENARIO", "trigger when must be after_result_before_continuation");
-    fields(value.placement, ["retireRequestOfTurn", "retainToolExchange"], "placement");
+    fields(value.placement, ["retireRequestOfTurn", "retainToolExchange", "retireThroughTurn"], "placement");
     const p = value.placement as Record<string, unknown>;
     requireValue(p.retireRequestOfTurn === value.duringTurn, "SCENARIO", "retireRequestOfTurn must match duringTurn");
+    if (p.retireThroughTurn !== undefined) {
+      requireValue(turns.includes(String(p.retireThroughTurn)), "SCENARIO", "retireThroughTurn must name a valid turn");
+      requireValue(turns.indexOf(String(p.retireThroughTurn)) < turns.indexOf(value.duringTurn), "SCENARIO", "retireThroughTurn must precede duringTurn");
+    }
     fields(p.retainToolExchange, ["occurrence", "pathArgument", "toolName", "turn"], "retainToolExchange");
     const ex = p.retainToolExchange as Record<string, unknown>;
     requireValue(Number.isSafeInteger(ex.occurrence) && Number(ex.occurrence) > 0, "SCENARIO", "Invalid retainToolExchange occurrence");

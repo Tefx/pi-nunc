@@ -128,3 +128,127 @@ export async function prepareBoundary(input: {
   }
   return prepared;
 }
+
+export interface PreparationFeasibilityDiagnostic {
+  feasible: boolean;
+  status: "FEASIBLE" | "INSUFFICIENT_PREFIX" | "INSUFFICIENT_CONTEXT" | "NO_LEGAL_CUT" | "INVALID_PLACEMENT";
+  retiringPrefixTokens: number;
+  minimumRetiringPrefixTokens: number;
+  requiredSuffixTokens: number;
+  deficitTokens: number;
+  nativeTriggerH: number;
+  accounting?: {
+    F: number;
+    M: number;
+    K: number;
+    G: number;
+    LHS: number;
+    H: number;
+  };
+  explanation: string;
+}
+
+/** Readonly preparation diagnostic evaluating retiring prefix, legal cut and complete calibration feasibility. */
+export async function diagnosePreparationFeasibility(input: {
+  branch: SessionEntry[];
+  active?: SessionEntry[];
+  control: Control;
+  turns: Record<string, string[]>;
+  turnOrder: string[];
+  config: RunConfig;
+  model: Model<Api>;
+  fixed: { systemPrompt: string; tools: NonNullable<Context["tools"]> };
+  repository?: string;
+  trigger?: { callId: string; requestText: string; path: string; cwd: string; fixtureContent: string; contextTokens: number | null };
+}): Promise<PreparationFeasibilityDiagnostic> {
+  const { branch, control, config, model, fixed } = input;
+  const placement = control.placement;
+  if (!placement) {
+    return {
+      feasible: false,
+      status: "INVALID_PLACEMENT",
+      retiringPrefixTokens: 0,
+      minimumRetiringPrefixTokens: 0,
+      requiredSuffixTokens: 0,
+      deficitTokens: 0,
+      nativeTriggerH: 0,
+      explanation: "Control requires explicit placement",
+    };
+  }
+
+  let toolIndex: number | undefined;
+  if (input.trigger) {
+    const t = input.trigger;
+    const req = branch.findLast(e => e.type === "message" && e.message.role === "user" &&
+      (typeof e.message.content === "string" ? e.message.content : e.message.content.filter(b => b.type === "text").map(b => b.text).join("")) === t.requestText);
+    toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" &&
+      e.message.content.some(b => b.type === "toolCall" && b.id === t.callId &&
+        (b.name === control.trigger?.toolName || b.name === control.trigger?.alternateToolName) &&
+        typeof b.arguments.path === "string" && resolve(t.cwd, b.arguments.path.replace(/^@/, "")) === resolve(t.cwd, t.path)));
+    if (!req || toolIndex <= branch.indexOf(req)) {
+      return {
+        feasible: false,
+        status: "INVALID_PLACEMENT",
+        retiringPrefixTokens: 0,
+        minimumRetiringPrefixTokens: 0,
+        requiredSuffixTokens: 0,
+        deficitTokens: 0,
+        nativeTriggerH: 0,
+        explanation: "Matching request or trigger assistant tool call not found in session branch",
+      };
+    }
+  }
+
+  const cutIndex = toolIndex ?? (placement.retireThroughTurn ? input.turns[placement.retireThroughTurn]?.length ?? 0 : 0);
+  const prefixEntries = branch.slice(0, cutIndex);
+  const suffixEntries = branch.slice(cutIndex);
+
+  const retiringPrefixTokens = prefixEntries.reduce((sum, e) => sum + sessionEntryToContextMessages(e).reduce((s, m) => s + estimateTokens(m), 0), 0);
+  const requiredSuffixTokens = suffixEntries.reduce((sum, e) => sum + sessionEntryToContextMessages(e).reduce((s, m) => s + estimateTokens(m), 0), 0);
+
+  const sysMsg: any = { role: "system", content: fixed.systemPrompt, timestamp: Date.now() };
+  const contextTokens = input.trigger?.contextTokens ?? (estimateTokens(sysMsg) + retiringPrefixTokens + requiredSuffixTokens);
+  const H = Math.min(model.contextWindow - config.compaction.reserveTokens, Math.ceil(contextTokens) - 1);
+
+  const load = (file: string) => import(pathToFileURL(join(input.repository!, `dist/src/${file}.js`)).href);
+  const [pi, accountingMod]: [any, any] = input.repository
+    ? await Promise.all([load("pi/index"), load("engine/accounting")])
+    : await Promise.all([import("../pi/index.js"), import("../engine/accounting.js")]);
+
+  const ec = pi.engineConfig(config.nunc, model, config.compaction);
+  const fixedTokens = accountingMod.requestTokens(accountingMod.mainContext(fixed, [], []), ec.imageTokens) + ec.main.extraInputTokens;
+  const available = H - fixedTokens;
+  const memoryLimit = available > 0 ? Math.floor(Math.min((config.nunc.memory?.fraction ?? 0.2) * available, config.nunc.memory?.maxTokens ?? Infinity)) : 0;
+  const growth = ec.growthTokens;
+  const keptTokens = suffixEntries.reduce((sum, e) => sum + sessionEntryToContextMessages(e).reduce((s, m) => s + accountingMod.messageTokens(m as any, ec.imageTokens), 0), 0);
+
+  const LHS = fixedTokens + memoryLimit + keptTokens + growth;
+  const deficit = Math.max(0, LHS - H);
+  const minimumRetiringPrefixTokens = Math.max(0, growth + 1 + (fixedTokens - 1216) + memoryLimit);
+
+  if (available <= 0 || deficit > 0) {
+    return {
+      feasible: false,
+      status: "INSUFFICIENT_PREFIX",
+      retiringPrefixTokens,
+      minimumRetiringPrefixTokens,
+      requiredSuffixTokens,
+      deficitTokens: deficit > 0 ? deficit : Math.abs(available) + memoryLimit + keptTokens + growth,
+      nativeTriggerH: H,
+      accounting: { F: fixedTokens, M: memoryLimit, K: keptTokens, G: growth, LHS, H },
+      explanation: `Native context usage (${H}) cannot pay fixed/memory/growth costs: LHS=${LHS} (F=${fixedTokens}, M=${memoryLimit}, K=${keptTokens}, G=${growth}) > H=${H} (deficit: ${deficit} tokens). Retiring prefix has ${retiringPrefixTokens} tokens, requiring at least ${minimumRetiringPrefixTokens} tokens.`,
+    };
+  }
+
+  return {
+    feasible: true,
+    status: "FEASIBLE",
+    retiringPrefixTokens,
+    minimumRetiringPrefixTokens,
+    requiredSuffixTokens,
+    deficitTokens: 0,
+    nativeTriggerH: H,
+    accounting: { F: fixedTokens, M: memoryLimit, K: keptTokens, G: growth, LHS, H },
+    explanation: `Compaction boundary is feasible: retiring prefix has ${retiringPrefixTokens} tokens (minimum required: ${minimumRetiringPrefixTokens}); LHS=${LHS} <= H=${H} with ${H - LHS} tokens headroom.`,
+  };
+}

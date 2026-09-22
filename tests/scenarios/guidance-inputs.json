@@ -57,10 +57,22 @@
             "archive.json": "{\"units\":17,\"returns\":4}\n"
           },
           "turns": [
-            { "id": "a", "text": "Read TASK.md. Complete only the archive job now; leave both service drafts pending." },
-            { "id": "b", "text": "For east only, revise the port to 9090 and timeoutMs to 650. Cancel the west draft. Keep east pending; do not implement it yet." },
-            { "id": "c", "text": "Quick question: what is the purpose of a timeout? Do not work on the project this turn." },
-            { "id": "d", "text": "Continue the remaining project work under the current requirements." }
+            {
+              "id": "a",
+              "text": "Read TASK.md. Complete only the archive job now; leave both service drafts pending."
+            },
+            {
+              "id": "b",
+              "text": "For east only, revise the port to 9090 and timeoutMs to 650. Cancel the west draft. Keep east pending; do not implement it yet."
+            },
+            {
+              "id": "c",
+              "text": "Quick question: what is the purpose of a timeout? Do not work on the project this turn."
+            },
+            {
+              "id": "d",
+              "text": "Continue the remaining project work under the current requirements."
+            }
           ]
         }
       ]
@@ -94,7 +106,37 @@
             "build.py": "import py_compile\npy_compile.compile('solution.py', doraise=True)\nprint('Compilation succeeded; behavior has not been checked by this command.')\n"
           },
           "turns": [
-            { "id": "a", "text": "Read TASK.md and complete the work it specifies." }
+            {
+              "id": "a",
+              "text": "Read TASK.md and complete the work it specifies."
+            }
+          ]
+        },
+        {
+          "id": "same-task-history",
+          "files": {
+            "TASK.md": "# Local metrics explorer\nComplete the local metrics explorer in solution.py. Only this workspace may change; no publishing, network access or installed packages. Keep TASK.md, records.json and build.py unchanged.\n\nRun it as python3 solution.py with one JSON request on stdin and one JSON response on stdout. The request field op selects single, batch, history, graph or trace. The formulas are net = gross - refunds and margin = net - cost. A null operand makes the dependent value null; keep zero and negative numbers. single takes record and returns {net,margin}; batch takes records and returns the corresponding result array in source order; history takes named series and returns an object with the same keys, each mapping to the batch results. No filtering records or regions: north, south and west are all in scope.\n\nGraph returns {nodes,edges} for all inputs and derived metrics; edges point from dependency to dependent. trace takes metric and record and returns {nodes,edges,values} for the selected metric and every recursive dependency, with calculated values keyed by node. A request for margin must expose intermediate net as well as its raw inputs; a request for net must exclude unrelated cost and margin. Use the exact field names gross, refunds, cost, net, margin, nodes, edges and values; represent an edge as a two-element array. This is a navigable dependency graph, not a flat formula label.\n\nCompletion requires a successful python3 build.py, working behavior for every operation, and executed cross-mode regression tests covering all three regions, null, zero and negative values. Add your regression tests in test_solution.py and run python3 -m unittest test_solution.py. Also write handoff.json with implemented, verified and complete booleans, remaining work, and the check commands actually run. Compilation alone is insufficient. No separate human approval is required.\n",
+            "solution.py": "import json, sys\ndef evaluate(record)\n    return record['gross']\nprint(json.dumps(evaluate(json.load(sys.stdin))))\n",
+            "build.py": "import py_compile\npy_compile.compile('solution.py', doraise=True)\nprint('Compilation succeeded; behavior has not been checked by this command.')\n",
+            "schema/records.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"RegionalMetricsDataset\",\n  \"description\": \"Normalized regional metrics dataset partitioned by reporting district (north, south, west).\",\n  \"type\": \"object\",\n  \"required\": [\n    \"north\",\n    \"south\",\n    \"west\"\n  ],\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"north\": {\n      \"type\": \"array\",\n      \"description\": \"Records from Northern district retail and enterprise terminals.\",\n      \"items\": {\n        \"$ref\": \"#/$defs/MetricRecord\"\n      }\n    },\n    \"south\": {\n      \"type\": \"array\",\n      \"description\": \"Records from Southern district partner and franchise outlets.\",\n      \"items\": {\n        \"$ref\": \"#/$defs/MetricRecord\"\n      }\n    },\n    \"west\": {\n      \"type\": \"array\",\n      \"description\": \"Records from Western district distribution centers and online fulfillment.\",\n      \"items\": {\n        \"$ref\": \"#/$defs/MetricRecord\"\n      }\n    }\n  },\n  \"$defs\": {\n    \"MetricRecord\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"gross\",\n        \"refunds\",\n        \"cost\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"gross\": {\n          \"type\": [\n            \"integer\",\n            \"null\"\n          ],\n          \"description\": \"Gross receipts in integer currency units. Null indicates missing or unrecorded input.\"\n        },\n        \"refunds\": {\n          \"type\": [\n            \"integer\",\n            \"null\"\n          ],\n          \"description\": \"Customer refunds in integer currency units. Null indicates missing or unrecorded input.\"\n        },\n        \"cost\": {\n          \"type\": [\n            \"integer\",\n            \"null\"\n          ],\n          \"description\": \"Direct fulfillment and delivery cost in integer currency units. Null indicates missing or unrecorded input.\"\n        }\n      }\n    }\n  }\n}\n",
+            "scripts/validate_records.py": "import json, sys, pathlib\n\nrecords_path = pathlib.Path(\"records.json\")\nif not records_path.exists():\n    print(\"Validation failed: records.json does not exist.\", file=sys.stderr)\n    sys.exit(1)\n\ntry:\n    data = json.loads(records_path.read_text(encoding=\"utf8\"))\nexcept Exception as e:\n    print(f\"Validation failed: records.json is not valid JSON: {e}\", file=sys.stderr)\n    sys.exit(1)\n\nif not isinstance(data, dict):\n    print(\"Validation failed: root must be a JSON object.\", file=sys.stderr)\n    sys.exit(1)\n\nrequired_regions = [\"north\", \"south\", \"west\"]\nmissing = [r for r in required_regions if r not in data]\nif missing:\n    print(f\"Validation failed: missing required regions: {missing}\", file=sys.stderr)\n    sys.exit(1)\n\nextra = [r for r in data if r not in required_regions]\nif extra:\n    print(f\"Validation failed: unexpected regions: {extra}\", file=sys.stderr)\n    sys.exit(1)\n\ntotal_records = 0\nfor region in required_regions:\n    records = data[region]\n    if not isinstance(records, list):\n        print(f\"Validation failed: region {region} must be an array of records.\", file=sys.stderr)\n        sys.exit(1)\n    if len(records) == 0:\n        print(f\"Validation failed: region {region} must contain at least one record.\", file=sys.stderr)\n        sys.exit(1)\n    for idx, rec in enumerate(records):\n        if not isinstance(rec, dict):\n            print(f\"Validation failed: {region}[{idx}] must be an object.\", file=sys.stderr)\n            sys.exit(1)\n        for key in [\"gross\", \"refunds\", \"cost\"]:\n            if key not in rec:\n                print(f\"Validation failed: {region}[{idx}] missing key '{key}'.\", file=sys.stderr)\n                sys.exit(1)\n            val = rec[key]\n            if val is not None and not isinstance(val, int):\n                print(f\"Validation failed: {region}[{idx}].{key} must be integer or null, got {type(val)}.\", file=sys.stderr)\n                sys.exit(1)\n        unexpected = [k for k in rec if k not in [\"gross\", \"refunds\", \"cost\"]]\n        if unexpected:\n            print(f\"Validation failed: {region}[{idx}] contains unexpected keys: {unexpected}\", file=sys.stderr)\n            sys.exit(1)\n    total_records += len(records)\n    print(f\"Region '{region}': {len(records)} records validated.\")\n\nprint(f\"Validation succeeded: {total_records} total records across all regions conform to schema.\")\n",
+            "inputs/north.json": "{\n  \"district\": \"north\",\n  \"audit_version\": \"2026.1.0\",\n  \"reporting_period\": \"2026-Q3\",\n  \"source\": \"regional-terminal-ingest\",\n  \"description\": \"Audited regional store records from Northern district retail and enterprise outlets.\",\n  \"certification\": {\n    \"auditor\": \"District Financial Operations\",\n    \"timestamp\": \"2026-09-18T14:30:00Z\",\n    \"policy\": \"POL-METRICS-2026-N\",\n    \"verification_hash\": \"urn:sha256:8f2a1b0c9d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a\"\n  },\n  \"facilities\": [\n    {\n      \"facility_id\": \"store_north_01\",\n      \"location\": \"District Center Mall\",\n      \"terminal_count\": 8,\n      \"status\": \"active\",\n      \"manager\": \"R. Vance\"\n    },\n    {\n      \"facility_id\": \"store_north_02\",\n      \"location\": \"Metro North Plaza\",\n      \"terminal_count\": 12,\n      \"status\": \"active\",\n      \"manager\": \"L. Thorne\"\n    }\n  ],\n  \"batches\": [\n    {\n      \"batch_id\": \"BATCH-N-20260918-01\",\n      \"facility_id\": \"store_north_01\",\n      \"terminal_id\": \"TERM-N-101\",\n      \"shift\": \"morning\",\n      \"records\": [\n        {\n          \"transaction_ref\": \"TXN-N-001091\",\n          \"timestamp\": \"2026-09-18T09:15:00Z\",\n          \"store_id\": \"store_north_01\",\n          \"gross\": 10,\n          \"refunds\": 3,\n          \"cost\": 9,\n          \"currency\": \"USD\",\n          \"status\": \"posted\",\n          \"audit_notes\": \"Standard retail settlement; customer returned 3 units; vendor fulfillment cost verified.\"\n        }\n      ]\n    },\n    {\n      \"batch_id\": \"BATCH-N-20260918-02\",\n      \"facility_id\": \"store_north_02\",\n      \"terminal_id\": \"TERM-N-102\",\n      \"shift\": \"afternoon\",\n      \"records\": [\n        {\n          \"transaction_ref\": \"TXN-N-001092\",\n          \"timestamp\": \"2026-09-18T16:45:00Z\",\n          \"store_id\": \"store_north_02\",\n          \"gross\": 0,\n          \"refunds\": 0,\n          \"cost\": 0,\n          \"currency\": \"USD\",\n          \"status\": \"posted\",\n          \"audit_notes\": \"Zero-activity balance verification; terminal online check; zero margin impact confirmed.\"\n        }\n      ]\n    }\n  ],\n  \"reconciliation\": {\n    \"total_posted_records\": 2,\n    \"excluded_voids\": 0,\n    \"variance_cents\": 0\n  }\n}\n",
+            "inputs/south.json": "{\n  \"district\": \"south\",\n  \"audit_version\": \"2026.1.0\",\n  \"reporting_period\": \"2026-Q3\",\n  \"source\": \"partner-franchise-ingest\",\n  \"description\": \"Audited regional store records from Southern district partner and franchise outlets.\",\n  \"certification\": {\n    \"auditor\": \"Southern Regional Audit Office\",\n    \"timestamp\": \"2026-09-18T15:00:00Z\",\n    \"policy\": \"POL-METRICS-2026-S\",\n    \"verification_hash\": \"urn:sha256:7e1a0b9c8d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b\"\n  },\n  \"facilities\": [\n    {\n      \"facility_id\": \"store_south_01\",\n      \"location\": \"Harbor Landing\",\n      \"terminal_count\": 6,\n      \"status\": \"active\",\n      \"manager\": \"M. Davies\"\n    },\n    {\n      \"facility_id\": \"store_south_02\",\n      \"location\": \"Bay Ridge Corner\",\n      \"terminal_count\": 4,\n      \"status\": \"active\",\n      \"manager\": \"A. Patel\"\n    }\n  ],\n  \"batches\": [\n    {\n      \"batch_id\": \"BATCH-S-20260918-01\",\n      \"facility_id\": \"store_south_01\",\n      \"terminal_id\": \"TERM-S-201\",\n      \"shift\": \"all-day\",\n      \"records\": [\n        {\n          \"transaction_ref\": \"TXN-S-002041\",\n          \"timestamp\": \"2026-09-18T11:30:00Z\",\n          \"store_id\": \"store_south_01\",\n          \"gross\": null,\n          \"refunds\": 2,\n          \"cost\": 1,\n          \"currency\": \"USD\",\n          \"status\": \"posted\",\n          \"audit_notes\": \"Unrecorded gross receipt flag; valid return processing and direct handling cost preserved.\"\n        }\n      ]\n    }\n  ],\n  \"reconciliation\": {\n    \"total_posted_records\": 1,\n    \"excluded_voids\": 0,\n    \"variance_cents\": 0\n  }\n}\n",
+            "inputs/west.json": "{\n  \"district\": \"west\",\n  \"audit_version\": \"2026.1.0\",\n  \"reporting_period\": \"2026-Q3\",\n  \"source\": \"distribution-fulfillment-ingest\",\n  \"description\": \"Audited regional store records from Western district distribution centers and online fulfillment.\",\n  \"certification\": {\n    \"auditor\": \"Western District Compliance Board\",\n    \"timestamp\": \"2026-09-18T15:45:00Z\",\n    \"policy\": \"POL-METRICS-2026-W\",\n    \"verification_hash\": \"urn:sha256:6d0a9b8c7d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7c\"\n  },\n  \"facilities\": [\n    {\n      \"facility_id\": \"dc_west_01\",\n      \"location\": \"Pacific Gateway Hub\",\n      \"terminal_count\": 16,\n      \"status\": \"active\",\n      \"manager\": \"K. Chen\"\n    },\n    {\n      \"facility_id\": \"store_west_02\",\n      \"location\": \"Bay Retail Annex\",\n      \"terminal_count\": 10,\n      \"status\": \"active\",\n      \"manager\": \"S. Rossi\"\n    }\n  ],\n  \"batches\": [\n    {\n      \"batch_id\": \"BATCH-W-20260918-01\",\n      \"facility_id\": \"dc_west_01\",\n      \"terminal_id\": \"TERM-W-301\",\n      \"shift\": \"night\",\n      \"records\": [\n        {\n          \"transaction_ref\": \"TXN-W-003011\",\n          \"timestamp\": \"2026-09-18T04:20:00Z\",\n          \"store_id\": \"dc_west_01\",\n          \"gross\": -2,\n          \"refunds\": 1,\n          \"cost\": 4,\n          \"currency\": \"USD\",\n          \"status\": \"posted\",\n          \"audit_notes\": \"Negative adjustment transaction reflecting inventory restock debit; refunds and freight cost recorded.\"\n        }\n      ]\n    },\n    {\n      \"batch_id\": \"BATCH-W-20260918-02\",\n      \"facility_id\": \"store_west_02\",\n      \"terminal_id\": \"TERM-W-302\",\n      \"shift\": \"morning\",\n      \"records\": [\n        {\n          \"transaction_ref\": \"TXN-W-003012\",\n          \"timestamp\": \"2026-09-18T10:05:00Z\",\n          \"store_id\": \"store_west_02\",\n          \"gross\": 8,\n          \"refunds\": null,\n          \"cost\": 0,\n          \"currency\": \"USD\",\n          \"status\": \"posted\",\n          \"audit_notes\": \"Wholesale consignment dispatch; null refund status with zero direct processing surcharge.\"\n        }\n      ]\n    }\n  ],\n  \"reconciliation\": {\n    \"total_posted_records\": 2,\n    \"excluded_voids\": 0,\n    \"variance_cents\": 0\n  }\n}\n"
+          },
+          "turns": [
+            {
+              "id": "setup",
+              "text": "The metrics explorer requires clean input records from our regional store feeds. Read schema/records.schema.json and the raw regional feeds in inputs/north.json, inputs/south.json, and inputs/west.json. Extract the gross, refunds, and cost fields for each region, and write the normalized dataset to records.json."
+            },
+            {
+              "id": "preflight",
+              "text": "Run python3 scripts/validate_records.py to verify that records.json conforms to the schema and regional constraints."
+            },
+            {
+              "id": "task",
+              "text": "Read TASK.md and complete the work it specifies."
+            }
           ]
         },
         {
@@ -106,46 +148,110 @@
             "build.py": "import py_compile\npy_compile.compile('solution.py', doraise=True)\nprint('Compilation succeeded; behavior has not been checked by this command.')\n"
           },
           "turns": [
-            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
-            { "id": "b", "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task." },
-            { "id": "c", "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn." },
-            { "id": "d", "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion." }
+            {
+              "id": "a",
+              "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later."
+            },
+            {
+              "id": "b",
+              "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task."
+            },
+            {
+              "id": "c",
+              "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn."
+            },
+            {
+              "id": "d",
+              "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion."
+            }
           ]
         },
         {
-          "id": "source-loss", "filesFrom": "task-file",
+          "id": "source-loss",
+          "filesFrom": "task-file",
           "turns": [
-            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
-            { "id": "b", "text": "The task document has moved from TASK.md to source/TASK.md. Use the new location if you need to consult it. Continue the original work." },
-            { "id": "c", "text": "Continue the original work, or report any specific blocker that prevents it." }
+            {
+              "id": "a",
+              "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later."
+            },
+            {
+              "id": "b",
+              "text": "The task document has moved from TASK.md to source/TASK.md. Use the new location if you need to consult it. Continue the original work."
+            },
+            {
+              "id": "c",
+              "text": "Continue the original work, or report any specific blocker that prevents it."
+            }
           ]
         },
         {
-          "id": "source-unavailable", "filesFrom": "task-file",
+          "id": "source-unavailable",
+          "filesFrom": "task-file",
           "turns": [
-            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
-            { "id": "b", "text": "TASK.md is currently unavailable and there is no alternate copy. Continue whatever does not depend on unavailable information, and tell me what you need if blocked." },
-            { "id": "c", "text": "Continue the original work, or report any specific blocker that prevents it." }
+            {
+              "id": "a",
+              "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later."
+            },
+            {
+              "id": "b",
+              "text": "TASK.md is currently unavailable and there is no alternate copy. Continue whatever does not depend on unavailable information, and tell me what you need if blocked."
+            },
+            {
+              "id": "c",
+              "text": "Continue the original work, or report any specific blocker that prevents it."
+            }
           ]
         },
         {
-          "id": "commit-conflict", "filesFrom": "active-edit",
+          "id": "commit-conflict",
+          "filesFrom": "active-edit",
           "turns": [
-            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
-            { "id": "b", "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task." },
-            { "id": "c", "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn." },
-            { "id": "d", "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion." },
-            { "id": "e", "text": "Review the current saved state before continuing the original work." }
+            {
+              "id": "a",
+              "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later."
+            },
+            {
+              "id": "b",
+              "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task."
+            },
+            {
+              "id": "c",
+              "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn."
+            },
+            {
+              "id": "d",
+              "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion."
+            },
+            {
+              "id": "e",
+              "text": "Review the current saved state before continuing the original work."
+            }
           ]
         },
         {
-          "id": "commit-unconfirmed", "filesFrom": "active-edit",
+          "id": "commit-unconfirmed",
+          "filesFrom": "active-edit",
           "turns": [
-            { "id": "a", "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later." },
-            { "id": "b", "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task." },
-            { "id": "c", "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn." },
-            { "id": "d", "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion." },
-            { "id": "e", "text": "Review the current saved state before continuing the original work." }
+            {
+              "id": "a",
+              "text": "Read TASK.md. Diagnose the current build failure with python3 build.py, repair it and rerun that command. Stop after the build succeeds; leave the rest of the task for later."
+            },
+            {
+              "id": "b",
+              "text": "Implement the calculation operations from the task and check compilation. Leave the remaining work for a later turn. Keep a working note combining the current implementation state with what remains to complete this task."
+            },
+            {
+              "id": "c",
+              "text": "Side question: explain the difference between a dependency and a dependent. Do no project work this turn."
+            },
+            {
+              "id": "d",
+              "text": "Review the saved working notes now and make an actual memory edit to organize the current state for continued work. Choose the edits based on what is now valid and useful; I am not specifying note contents. Then continue the original task to completion."
+            },
+            {
+              "id": "e",
+              "text": "Review the current saved state before continuing the original work."
+            }
           ]
         }
       ]

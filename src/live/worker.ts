@@ -91,8 +91,8 @@ function userText(entry: SessionEntry): string | undefined {
 function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
   return branch.filter(e => userText(e) === text).map(e => e.id);
 }
-export { taskFileChecks as evaluateTaskFileSetupChecks, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks } from "./task-retention.js";
-import { taskFileChecks as evaluateTaskFileSetupChecks, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks, taskRead, sourceLossChecks } from "./task-retention.js";
+export { taskFileChecks as evaluateTaskFileSetupChecks, sameTaskHistoryChecks as evaluateSameTaskHistorySetupChecks, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks } from "./task-retention.js";
+import { taskFileChecks as evaluateTaskFileSetupChecks, sameTaskHistoryChecks as evaluateSameTaskHistorySetupChecks, sameTaskHistoryEffects, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks, taskRead, sourceLossChecks } from "./task-retention.js";
 
 function captureComparisonFacts(
   report: SegmentReport,
@@ -392,6 +392,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         report.prerequisites.push({ check: "complete probe result actually visible before rollover", status: visible ? "PROVEN" : "UNPROVEN" });
       }
       if (selection.id === "e3" && selection.variant === "archive-closeout" && turn === "closeout") report.prerequisites.push(archiveCloseoutEffects(scenario, report.actions, join(caseRoot, "task")));
+      if (selection.id === "g4" && selection.variant === "same-task-history" && turn === "preflight") report.prerequisites.push(sameTaskHistoryEffects(scenario, report.actions, join(caseRoot, "task")));
       for (const control of observer.controls.filter(c => c.afterTurn === turn || c.duringTurn === turn)) {
         if (control.action === "rollover_at_tool_boundary") {
           const row = report.rollovers!.find(r => r.turn === turn && r.reason === "threshold" && isDeepStrictEqual(r.placement?.control, control));
@@ -652,6 +653,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       report.setupChecks ??= [];
       if (selection.id === "g4" && selection.variant === "task-file") {
         report.setupChecks.push(...evaluateTaskFileSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
+      } else if (selection.id === "g4" && selection.variant === "same-task-history") {
+        report.setupChecks.push(...evaluateSameTaskHistorySetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       } else if (selection.id === "g4" && ["active-edit", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant))) {
         report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       } else if (selection.id === "g3" && selection.variant === "scoped-tasks") {

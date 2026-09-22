@@ -104,6 +104,103 @@ export function taskFileChecks(...[scenario, turns, branch, active, rollovers, a
   ];
 }
 
+/** Preliminary regional ingest and validation effects before the core task. */
+export function sameTaskHistoryEffects(scenario: ScenarioInput, actions: unknown[], cwd: string): CheckResult {
+  const rows = actions as GuidanceAction[];
+  const exchanges = guidanceExchanges(rows);
+  const expectedReads = ["schema/records.schema.json", "inputs/north.json", "inputs/south.json", "inputs/west.json"];
+  const readExchanges = exchanges.filter(x => x.call.turn === "setup" && x.call.event.toolName === "read");
+  const readPaths = expectedReads.map(p => {
+    const ex = readExchanges.find(x => pathIs(cwd, x.call.event.input?.path, p) && x.result?.isError === false &&
+      contentText(x.result.content).trim() === (scenario.files[p] ?? "").trim());
+    return { path: p, complete: Boolean(ex), callId: ex?.call.event.toolCallId, end: ex?.resultIndex };
+  });
+
+  const writeEx = exchanges.find(x => x.call.turn === "setup" && ["write", "edit"].includes(x.call.event.toolName) &&
+    pathIs(cwd, x.call.event.input?.path, "records.json") && x.result?.isError === false);
+  let recordsValid = false;
+  let parsedRecords: any = null;
+  if (writeEx) {
+    try {
+      const content = contentText(writeEx.call.event.input?.content ?? "");
+      parsedRecords = JSON.parse(content);
+      const hasNorth = Array.isArray(parsedRecords.north) && parsedRecords.north.length === 2 &&
+        same(parsedRecords.north[0], { gross: 10, refunds: 3, cost: 9 }) &&
+        same(parsedRecords.north[1], { gross: 0, refunds: 0, cost: 0 });
+      const hasSouth = Array.isArray(parsedRecords.south) && parsedRecords.south.length === 1 &&
+        same(parsedRecords.south[0], { gross: null, refunds: 2, cost: 1 });
+      const hasWest = Array.isArray(parsedRecords.west) && parsedRecords.west.length === 2 &&
+        same(parsedRecords.west[0], { gross: -2, refunds: 1, cost: 4 }) &&
+        same(parsedRecords.west[1], { gross: 8, refunds: null, cost: 0 });
+      recordsValid = Boolean(hasNorth && hasSouth && hasWest);
+    } catch {
+      recordsValid = false;
+    }
+  }
+
+  const preflightCmd = exchanges.find(x => x.call.turn === "preflight" && (
+    (x.call.event.toolName === "bash" && metricsCommand(x.call.event.input?.command ?? "") === "validate" && x.result?.isError === false) ||
+    (x.call.event.toolName === "read" && pathIs(cwd, x.call.event.input?.path, "records.json") && x.result?.isError === false)
+  ));
+
+  const prematureTaskRead = exchanges.some(x => Boolean(x.call.turn && ["setup", "preflight"].includes(x.call.turn)) &&
+    x.call.event.toolName === "read" && pathIs(cwd, x.call.event.input?.path, "TASK.md"));
+
+  const readsPrecedeWrite = Boolean(writeEx && readPaths.every(r => r.complete && r.end !== undefined && r.end < writeEx.callIndex));
+
+  const complete = Boolean(
+    readPaths.every(r => r.complete) &&
+    recordsValid &&
+    preflightCmd &&
+    readsPrecedeWrite &&
+    !prematureTaskRead
+  );
+
+  return {
+    check: "Preliminary regional schema and input records were ingested, verified and written to records.json before task read",
+    status: complete ? "PROVEN" : "UNPROVEN",
+    observed: {
+      reads: readPaths,
+      writeRecordsCallId: writeEx?.call.event.toolCallId ?? null,
+      recordsValid,
+      preflightCallId: preflightCmd?.call.event.toolCallId ?? null,
+      prematureTaskRead,
+      readsPrecedeWrite,
+    },
+  };
+}
+
+export function sameTaskHistoryChecks(...[scenario, turns, branch, active, rollovers, actions, cwd, requests = []]: SetupArgs): CheckResult[] {
+  const read = taskRead(scenario, branch, actions, cwd);
+  const delivered = branch.filter(e => e.type === "message" && e.message.role === "user");
+  const turnOrderMatch = scenario.turns.length === delivered.length && scenario.turns.every((t, i) =>
+    contentText((delivered[i] as any)?.message.content) === t.text);
+  const exchanges = guidanceExchanges(actions);
+  const taskReadEx = exchanges.find(x => x.call.turn === "task" && x.call.event.toolName === "read" && pathIs(cwd, x.call.event.input?.path, "TASK.md") && x.result?.isError === false);
+  const noSetupRead = !exchanges.some(x => x.call.turn !== "task" && x.call.event.toolName === "read" && pathIs(cwd, x.call.event.input?.path, "TASK.md"));
+  const effects = sameTaskHistoryEffects(scenario, actions, cwd);
+
+  const facts = rollovers.map(r => retainedRollover(r, branch, requests, rollovers));
+  const first = facts[0], second = facts[1], third = facts[2];
+  const thirdRequests = rollovers[2]?.callIds.map(id => requests.find(r => r.callId === id && r.kind === "maintenance")).filter(Boolean) ?? [];
+  const records = thirdRequests.flatMap(r => r!.context.messages.flatMap(m => typeof m.content === "string" ? readSourceRecords(m.content) : m.content.flatMap(b => b.type === "text" ? readSourceRecords(b.text) : [])));
+  const previousMemory = rollovers[1]?.rebuilt ? project(rollovers[1].rebuilt!).memory.slots : [];
+  const maintainedGenerated = previousMemory.length > 0 && records.filter(r => r.source === "F/M").length === 1 &&
+    same(records.find(r => r.source === "F/M")?.M, previousMemory);
+  const series = Boolean(read.entryId && first?.continued && second?.continued && third?.continued &&
+    first.keptEntryIds.includes(read.entryId) && second.retiredEntryIds.includes(read.entryId) &&
+    !third.keptEntryIds.includes(read.entryId) && maintainedGenerated);
+  const build = buildSequence(actions, cwd);
+
+  return [
+    check("TASK.md requirements entered through the designated task request and complete persisted read following verified same-task preliminary setup", Boolean(turnOrderMatch && read.complete && taskReadEx && noSetupRead), { read, deliveredUserIds: delivered.map(e => e.id) }),
+    check("Preliminary regional schema and input records were ingested, verified and written to records.json before task read", effects.status === "PROVEN", effects.observed),
+    check("Three committed same-task compactions: task read in K, retirement, then maintenance of generated M and actual continuation", series, { facts, maintainedGenerated }),
+    check("Observed build failure, successful repair build, then remaining task work in temporal order", Boolean(build.failedCallId && build.successfulCallId && build.laterWorkCallId), build),
+    semantic("Input/oracle separation and condition availability versus execution", { deliveredTurns: turns, activeEntryIds: active.map(e => e.id), evidence: "scenario input asset; report.actions, contexts, requests and rollovers" }),
+  ];
+}
+
 export function activeEditChecks(...[scenario, turns, branch, active, rollovers, actions, cwd, requests = []]: SetupArgs): CheckResult[] {
   const read = taskRead(scenario, branch, actions, cwd), build = buildSequence(actions, cwd), edits = confirmedEdits(actions);
   const facts = rollovers.map(r => retainedRollover(r, branch, requests, rollovers));

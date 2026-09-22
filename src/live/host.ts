@@ -26,7 +26,7 @@ export function liveExtensionFlags(repository: string, input: RunInput, group?: 
     flags.push("-e", larva.extension, "--larva-agent-persona-switch", "manual");
   }
   // Last loaded only for scenarios with an in-loop prepared boundary.
-  if (input.scenarios.some(s => s.id === "e3" || s.id === "g6" || s.id === "g4" && s.variant === "task-file")) flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
+  if (input.scenarios.some(s => s.id === "e3" || s.id === "g6" || s.id === "g4" && (s.variant === "task-file" || s.variant === "same-task-history"))) flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
   return flags;
 }
 import type { Control, ToolTrigger } from "./scenarios.js";
