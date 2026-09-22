@@ -4463,5 +4463,50 @@ phases:
     - scripts/compare-extraction.mjs
     - scripts/check.mjs
     depends_on:
+    - nunc-task-retention.observation-repair
+    agent: node-typescript-engineer
+  - id: nunc-task-retention.observation-repair
+    name: 累计预算结算与低用量真实观察准备修复
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/**\", \"scripts/**\", \"tests/**\", \"docs/**\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".git/**\", \"\
+      .pi/**\", \".agents/**\", \".env*\", \"**/auth.json\", \"src/engine/**\", \"\
+      src/pi/**\"]\n\nDeliver: 修复现有观察 runner 的累计预算结算、授权 wallclock 和真实低用量准备，使同一未完成\
+      \ behavior 能消费可信候选及离线证明；不另建 harness 或 gate。node-typescript-engineer 负责此 Node/TypeScript\
+      \ 预算与宿主准备生命周期结果的实现、缺陷、测试和文档。完整可信的终态实际 usage 可结算并释放未用 token reserve；活动调用须保留完整最坏情况覆盖，未知、缺失、中断或不可信\
+      \ usage 不得以零值或部分 usage 释放 reserve。保留未结算 effects 的阻止/核对机制。成本同样有界且未知费用不得记零；不得仅凭\
+      \ token 结算推断成本已知。累计调用、实际 tokens、未结算 reserve、已知成本及未知项跨 invocation、场景、comparison、main/maintenance/observer\
+      \ 保持一致，报告清晰区分实际与预留，已有 receipts/effects/history 不重写、不重放。\n\n授权 walltime 从首次 dispatch\
+      \ 的原始时间起计算真实 elapsed，包括 invocation 间隔与准备时间，重启、续做、修复、切换场景均不得重置或以各次运行 duration\
+      \ 相加替代。消费 controller 保留的原始授权与 effects 记录，维持同一累计 20 USD、150 calls、2,000,000 actual\
+      \ tokens、60 分钟额度；新请求仍须满足活动 reserve 覆盖。原授权截止已过时阻止新调用，修复不续期、不提额。\n\n真实低用量准备须处理首个真实\
+      \ read 后 native usage 与固定开销导致切点/阈值不可行的情形。基于真实宿主状态、真实任务进展及因果改变的准备输入建立可达且合法的维护前提；不能合成\
+      \ padding、伪造失败、泄露答案/正确 slot、改生产预算或放松判据以制造可行性。无法建立前提时诚实保留 UNPROVEN 并停止受影响观察，不把重复同一失败运行当作进展。保持\
+      \ native/pre-change/candidate、defaults/matched、tools on/off 的真实可比性和既有完整任务保留判据。\n\
+      \nBoundary: 仅本仓库现有 live runner、必要 scripts、tests 和 docs；不改生产 memory schemas、engine\
+      \ budgets、Pi core、日常配置/会话、全局设置、凭据或历史记录。无 live model calls、费用、部署、发布、push 或历史效果\
+      \ replay；controlled-native 本地隔离测试不代表 Luna 观察。controller 负责 worktree、集成和生命周期，owner\
+      \ 负责上述完整修复。\n\nAdmit: observation-support 已完成交付及 controller 核对过的失败观察/原始非秘密授权和账本。完成历史保持不变；本步消费者仍为原\
+      \ behavior，其 Orchestrator 唯一最终接受程序消费本修复及既有 semantics、observation-support 和 behavior\
+      \ 的适用证据。修复的离线成功不证明真实模型成效，也不消除任何 behavior 必要维度。\n\nRecovery: 在本 unfinished writable\
+      \ step 内修复完整兼容缺陷；停止无因果变化的重复尝试，保留最小可用诊断及原始 receipts。不可确定 usage、成本或 effects 时保守计费并阻止不安全续做。修后由\
+      \ controller 将候选集成并继续同一个 behavior，复用仍适用证据；不得创建第二接受判断或重开 DONE。"
+    verification: Node 26.7.0/npm 11.19.0、tracked package-lock.json 的锁定依赖及 NODE_OPTIONS
+      unset；沿用 scripts/check.mjs 原生库存（node scripts/check.mjs all 为完整库存参考，不要求无差别重跑）。新增/更新有可失败回归关系的
+      unit/state-machine tests：可信终态结算及第二调用准入、active reserve 覆盖、缺失/未知/中断/无效 usage 不退款、未知成本、重复或不一致
+      terminal 不低估、跨 invocation/comparison 累计不重置、历史 receipts 兼容且不修改、首次 dispatch deadline
+      和间隔耗时/过期阻止。以 controlled-native 实际宿主 seam 验证低 usage 准备的可达成功路径及确实不可行时拒绝/UNPROVEN、真实切点与维护条件，不以
+      mock 内部 handler 或文本 PASS 替代；不得伪造真实模型证据。覆盖预算/报告/准备相关调用路径、原生 runner 与加载 dist 的受影响回归，构建须通过。交付最终候选完整适用离线库存的覆盖及适用性说明，未变输入的有效历史结果可复用，受影响输入须新证据；必要失败或缺口阻止本修复接受。behavior
+      保留全部真实观察和唯一最终整合接受责任，本步零 live calls。
+    refs:
+    - src/live/budget.ts
+    - src/live/preparation.ts
+    - docs/LIVE.md
+    - docs/EXTRACTION.md
+    - scripts/check.mjs
+    - package.json
+    - package-lock.json
+    depends_on:
     - nunc-task-retention.observation-support
     agent: node-typescript-engineer
