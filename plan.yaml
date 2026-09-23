@@ -4719,7 +4719,7 @@ phases:
   steps:
   - id: nunc-tool-result-cleanup.rules
     name: 完整来源到安全清理决定的引擎合同
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"tests/engine/**\", \"policies/**\",\
       \ \"docs/ENGINE.md\", \"docs/POLICY.md\", \"docs/TOOL-RESULT-CLEANUP.md\"]\n\
@@ -4755,6 +4755,8 @@ phases:
     - tests/engine/memory.test.ts
     - tests/engine/lifecycle.test.ts
     agent: senior-engineer
+    claimed_by: senior-engineer
+    claimed_at: '2026-09-23T12:50:45.518352Z'
   - id: nunc-tool-result-cleanup.integration
     name: 可恢复的全入口清理产品与实际观察接线
     status: pending
