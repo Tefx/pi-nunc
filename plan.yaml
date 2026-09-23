@@ -4912,15 +4912,23 @@ phases:
       \   argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
       \ PI_TELEMETRY=0, /opt/homebrew/bin/node, scripts/check.mjs, all]\n    exit_code:\
       \ 0\n    evidence_policy: reuse_if_applicable_to_final_integrated_candidate\n\
-      \  - id: cleanup-live-runner-entrypoint\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \  - id: cleanup-live-zero-effect-preflight\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
       \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, /opt/homebrew/bin/node,\
-      \ scripts/verify-live.mjs]\n    exit_code: 0\n```\n上述 live 命令是现有入口，清理情景/对照参数由\
-      \ integration 在既有 runner 中提供并在 docs/LIVE.md 文档化后才可执行；不声称当前 runner 已支持新场景。可使用\
-      \ integration 验证的等价现有比较入口，不新造执行框架。stdin 由本次授权的 target/limits/scenarios 与必要非秘密\
-      \ overrides 形成，不复用历史 selection 或嵌入凭据；PI_OFFLINE 仅禁 catalog/startup 联网，不能作为无模型效果保证。先执行对应现有\
-      \ --preflight，无调用检查通过后仍须满足执行授权。绑定 Node/npm、Pi 与 lock/实际加载产物，源码与实际提交/请求之间要有真实宿主证据。\n\
-      完整离线结果优先复用 integration 提供的最终候选证据；只对影响配置、来源、请求/持久化或运行边界的变更补受影响检查。真实比较必须有可观察任务结果和逐要求依据，成本/usage\
-      \ 来源可区分且未知不写零。未具备模型/数据/额度授权仅阻止对应外部动作和最终接受，不撤销已交付离线能力；有授权也不得省略未证明的必要行为。"
+      \ scripts/verify-live.mjs, --preflight]\n    exit_code: 0\n    evidence_policy:\
+      \ reuse_if_applicable_to_final_integrated_candidate_and_authorized_selection\n\
+      ```\n真实比较使用上述 runner 去掉 --preflight 的既有入口，清理情景/对照参数由 integration 在既有 runner\
+      \ 中提供并在 docs/LIVE.md 文档化。可使用 integration 验证的等价现有比较入口，不新造执行框架。stdin 由本次授权的 target/limits/scenarios\
+      \ 与必要非秘密 overrides 形成，不复用历史 selection 或嵌入凭据；PI_OFFLINE 仅禁 catalog/startup 联网，不能作为无模型效果保证。执行真实比较前须有适用的零效果\
+      \ preflight 成功证据及执行授权；已有适用证据无需为本合同澄清重跑。绑定 Node/npm、Pi 与 lock/实际加载产物，源码与实际提交/请求之间要有真实宿主证据。\n\
+      \n真实运行的 exit code、原始 status/reason 和报告必须如实保留。scripts/verify-live.mjs 把 OBSERVED\
+      \ 映射为 0，其他报告分类映射为 2；该汇总分类不是最终接受判断。不得把非零执行记为成功退出，也不得将任意 exit 2 视为通过。Orchestrator\
+      \ 须据既有报告、实际请求/会话/产物、usage 与效果核对，区分执行失败、必要观察缺失、汇总判据误报和已经完整观察到的无编辑结果。ERROR/REJECTED/STOPPED、未完成的必要比较、缺失必要事实、未核对调用/保存效果或实质质量缺陷均阻止接受。若汇总判据有假阴性，只能用绑定同一候选和实际调用的直接结构化记录补足其具体事实，保留原始负面报告并解释差异；不能只用报告自述\
+      \ PROVEN 或受控响应覆盖真实模型观察缺口。\n\n按 TOOL-RESULT-CLEANUP §4、§9.7，必须完成获准原模型在真实 M 更新位置的\
+      \ on/off 对照，证明功能/候选机会实际可用，记录实际续做质量、遗漏、恢复次数、input/cache usage、总成本或明确 unknown\
+      \ 及端到端等待。模型在有机会时未选择编辑，可作为无编辑的实测结果；不强求正向编辑、真实恢复调用次数大于零或节省获胜，不仅为无减量而重试。不发生清理时不得声称已证明真实清理后的质量、恢复效果或费用收益，这些正向效果须明确未观察。条件性清理、原文恢复、持久化、UI\
+      \ 与前缀机制仍需适用的真实宿主/受控原生证据，受控语义响应不能充作模型保真证据；真实任务质量仍据实际行动和产物判断。\n\n完整离线结果优先复用生产者提供的最终候选证据；只对影响配置、来源、请求/持久化或运行边界的变更补受影响检查。真实比较必须有可观察任务结果和逐要求依据，成本/usage\
+      \ 来源可区分且未知不写零。未具备模型/数据/额度授权仅阻止对应外部动作和最终接受，不撤销已交付离线能力；有授权也不得省略未证明的必要行为。本澄清不授予新调用、补跑或预期答案引导权限，不替代\
+      \ Orchestrator 对本步全部原有要求的唯一最终整合判断。"
     refs:
     - docs/TOOL-RESULT-CLEANUP.md
     - docs/DESIGN.md
