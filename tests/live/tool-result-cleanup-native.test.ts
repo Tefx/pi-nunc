@@ -2,13 +2,45 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore, normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { clampThinkingLevel } from "@earendil-works/pi-ai/compat";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { RunInput } from "../../src/live/contract.js";
 import { runSegment } from "../../src/live/worker.js";
-import { readLedger, ledgerSummary } from "../../src/live/budget.js";
+import { boundedProvider, BudgetLedger, readLedger, ledgerSummary } from "../../src/live/budget.js";
 import { repository } from "./fixtures.js";
+
+test("native Luna m5 provider wrapper sends low effort for both main and maintenance", { timeout: 30000 }, async () => {
+  const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
+  const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
+  const native = runtime.getModel("openai-codex", "gpt-6-luna");
+  assert(native && native.api === "openai-codex-responses" && native.maxTokens === 128000);
+  const f = await new StockFixture().setup({ api: "openai-codex-responses", timeoutMs: 25000 });
+  const model = { ...native, baseUrl: f.endpoint };
+  f.modelId = model.id;
+  f.response = () => "Controlled host response.";
+  const kinds: string[] = [];
+  const ledger = new BudgetLedger(join(f.dir, "calls.jsonl"), { maxCalls: 2, maxTotalTokens: null, maxOutputTokens: model.maxTokens, maxCostUsd: null, maxDurationMs: 25000 }, Date.now() + 25000, new AbortController().signal);
+  try {
+    const provider = boundedProvider(openaiCodexProvider(), [model], ledger, {
+      classify: simple => simple ? "main" : "maintenance", onContext: (_model, _context, kind) => kinds.push(kind),
+      effectiveThinking: "low", maintenanceThinking: "low", requireThinkingLevel: "low",
+    });
+    const context = (text: string) => normalizeContext({ messages: [{ role: "user", content: [{ type: "text", text }], timestamp: 0 }] });
+    const main = await provider.streamSimple(model, context("Controlled main"), { apiKey: f.oauth.access, reasoning: "low", maxTokens: 1024 }).result();
+    const maintenance = await provider.stream(model, context("Controlled maintenance"), { apiKey: f.oauth.access, maxTokens: 1024 }).result();
+    assert.equal(main.stopReason, "stop"); assert.equal(maintenance.stopReason, "stop");
+    assert.deepEqual(kinds, ["main", "maintenance"]);
+    assert.equal(f.requests.length, 2);
+    for (const request of f.requests) {
+      assert.equal(request.payload.model, "gpt-6-luna");
+      assert.equal(request.payload.reasoning?.effort, "low");
+      assert.equal(Object.hasOwn(request.payload, "max_output_tokens"), false);
+    }
+    assert.deepEqual(ledgerSummary(readLedger(ledger.path)).unreconciledCallIds, []);
+  } finally { await f.close(); }
+});
 
 test("m5 stock host proves an initial no-eligible save and later lawful cleanup, with off-arm original projection", { timeout: 180000 }, async t => {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
