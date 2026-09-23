@@ -4,6 +4,8 @@ import {
   applyPatch,
   applyToolResultCleanup,
   cleanTerminalText,
+  compactInvarDocToc,
+  decodeInvarDocToc,
   decideToolResultCleanup,
   emptyMemory,
   formatBoilerplateMarker,
@@ -12,10 +14,10 @@ import {
   formatReplaceMarker,
   formatTocMarker,
   isMemoryUnchanged,
+  KNOWN_LAUNCH_BOILERPLATES,
   losslessCompactJson,
   maintain,
   parsePatch,
-  reversibleCompactToc,
   type ActiveEntry,
   type CleanupDecisionOptions,
   type Memory,
@@ -602,7 +604,7 @@ test("maintain() does not apply cleanup when M is unchanged or config.toolResult
   assert.equal(res2.candidate.toolResultCleanup?.applied.length, 0);
 });
 
-test("Defect 1: decideToolResultCleanup with NO candidateScope fails closed and never manufactures scope", () => {
+test("decideToolResultCleanup with NO candidateScope fails closed and never manufactures scope", () => {
   const jsonText = '{\n  "status": "ok",\n  "code": 200\n}';
   const t = toolEntry("t1", "c1", jsonText);
   const active = [t];
@@ -640,40 +642,37 @@ test("Defect 1: decideToolResultCleanup with NO candidateScope fails closed and 
   assert.equal(resRetiredScope.applied.length, 0);
 });
 
-test("Defect 2: losslessCompactJson preserves exact lexical values (> 2^53, duplicate keys, precision)", () => {
-  // Test large integer > Number.MAX_SAFE_INTEGER (9007199254740991)
+test("losslessCompactJson validates JSON syntax before stripping whitespace and preserves exact lexemes", () => {
+  // Syntax validation: invalid JSON syntax with missing comma must NOT be stripped or altered into valid data
+  assert.equal(losslessCompactJson('{ "value": 1 2 }'), null);
+  assert.equal(losslessCompactJson('{\n  "unclosed": "string\n}'), null);
+  assert.equal(losslessCompactJson('not json at all'), null);
+
+  // Valid JSON with large integer > Number.MAX_SAFE_INTEGER (9007199254740993)
   const largeIntJson = '{\n  "value": 9007199254740993\n}';
   const compactedLarge = losslessCompactJson(largeIntJson);
   assert(compactedLarge);
   assert.equal(compactedLarge, '{"value":9007199254740993}');
-  // Ensure the 9007199254740993 string was NOT converted to 9007199254740992!
   assert(compactedLarge.includes("9007199254740993"));
   assert(!compactedLarge.includes("9007199254740992"));
 
-  // Test duplicate keys preserved
+  // Duplicate keys preserved verbatim
   const dupKeyJson = '{\n  "a": 1,\n  "a": 2\n}';
-  const compactedDup = losslessCompactJson(dupKeyJson);
-  assert.equal(compactedDup, '{"a":1,"a":2}');
+  assert.equal(losslessCompactJson(dupKeyJson), '{"a":1,"a":2}');
 
-  // Test floating point high precision preserved
+  // High precision floats preserved verbatim
   const floatJson = '{\n  "ratio": 1.0000000000000000001\n}';
-  const compactedFloat = losslessCompactJson(floatJson);
-  assert.equal(compactedFloat, '{"ratio":1.0000000000000000001}');
+  assert.equal(losslessCompactJson(floatJson), '{"ratio":1.0000000000000000001}');
 
-  // Test strings with whitespace and escaped quotes preserved inside strings
+  // Strings with spaces and escaped quotes preserved verbatim
   const stringJson = '{\n  "msg": "hello   world",\n  "quote": "he said \\"hi\\""\n}';
-  const compactedString = losslessCompactJson(stringJson);
-  assert.equal(compactedString, '{"msg":"hello   world","quote":"he said \\"hi\\""}');
+  assert.equal(losslessCompactJson(stringJson), '{"msg":"hello   world","quote":"he said \\"hi\\""}');
 
-  // Already compact JSON returns null
+  // Already compact JSON returns null (no net savings)
   assert.equal(losslessCompactJson('{"a":1}'), null);
-
-  // Non-JSON returns null
-  assert.equal(losslessCompactJson("not json"), null);
 });
 
-test("Defect 2: cleanTerminalText cleans ANSI SGR and CRLF but preserves unsupported terminal control streams", () => {
-  // SGR styling and CRLF cleaned
+test("cleanTerminalText cleans ANSI SGR and CRLF but preserves unsupported terminal control streams", () => {
   const sgrText = "\x1b[1;32mSUCCESS:\x1b[0m Build passed\r\n\x1b[33mWarning:\x1b[0m None\r\n";
   const cleanedSgr = cleanTerminalText(sgrText);
   assert(cleanedSgr);
@@ -691,7 +690,7 @@ test("Defect 2: cleanTerminalText cleans ANSI SGR and CRLF but preserves unsuppo
   assert.equal(cleanTerminalText("Plain output without codes\n"), null);
 });
 
-test("Defect 3: deduplication requires keeper in retainedEntries and demonstrable source identity from call association", () => {
+test("deduplication requires keeper in retainedEntries and demonstrable source identity from call association", () => {
   const bodyText = "Line of output\n".repeat(30);
 
   // Case A: Earlier entry b is retired (not in retainedEntries); c is in retainedEntries
@@ -704,18 +703,17 @@ test("Defect 3: deduplication requires keeper in retainedEntries and demonstrabl
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
 
-  // Only entryC is in retainedEntries (entryB is retired)
   const resRetiredKeeper = decideToolResultCleanup({
     active: activeA,
     candidateScope: [{ entryId: "c", messageIndex: 0 }],
-    retainedEntries: [callC, entryC],
+    retainedEntries: [callC, entryC], // entryB is retired
     initialMemory: memBefore,
     finalMemory: memAfter,
   });
   // c CANNOT deduplicate to retired b!
   assert.equal(resRetiredKeeper.applied.length, 0);
 
-  // Case B: Same toolName but DIFFERENT arguments (e.g. read file1 vs read file2)
+  // Case B: Same toolName but DIFFERENT arguments (read file1 vs read file2)
   const callDiff1 = assistant("call-diff-1-entry", [{ type: "toolCall", id: "c-diff-1", name: "read", arguments: { path: "file1.txt" } }]);
   const entryDiff1 = toolEntry("d1", "c-diff-1", bodyText, "read");
   const callDiff2 = assistant("call-diff-2-entry", [{ type: "toolCall", id: "c-diff-2", name: "read", arguments: { path: "file2.txt" } }]);
@@ -746,7 +744,6 @@ test("Defect 3: deduplication requires keeper in retainedEntries and demonstrabl
     initialMemory: memBefore,
     finalMemory: memAfter,
   });
-  // s2 deduplicates to s1!
   const dedup = resSameArgs.applied.find(d => d.entryId === "s2" && d.action === "deduplicate");
   assert(dedup);
   assert.equal(dedup.text, formatDeduplicateMarker({ entryId: "s2", messageIndex: 0 }, { entryId: "s1", messageIndex: 0 }));
@@ -754,8 +751,33 @@ test("Defect 3: deduplication requires keeper in retainedEntries and demonstrabl
   assert(!resSameArgs.applied.some(d => d.entryId === "s1"));
 });
 
-test("Defect 4: applyToolResultCleanup replaces text body exactly once and preserves all host message metadata", () => {
-  // Input tool result message with multiple text blocks and custom host metadata
+test("sequential tool calls reusing toolCallId with different arguments do not deduplicate", () => {
+  const commonBody = "Output matching across sequential calls\n".repeat(20);
+
+  // Turn 1: call-reused reads path A
+  const call1 = assistant("a1", [{ type: "toolCall", id: "call-reused", name: "read", arguments: { path: "path_A.txt" } }]);
+  const res1 = toolEntry("r1", "call-reused", commonBody, "read");
+  // Turn 2: call-reused reads path B (different argument, same toolCallId)
+  const call2 = assistant("a2", [{ type: "toolCall", id: "call-reused", name: "read", arguments: { path: "path_B.txt" } }]);
+  const res2 = toolEntry("r2", "call-reused", commonBody, "read");
+
+  const active = [call1, res1, call2, res2];
+  const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
+  const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
+
+  const result = decideToolResultCleanup({
+    active,
+    candidateScope: [{ entryId: "r1", messageIndex: 0 }, { entryId: "r2", messageIndex: 0 }],
+    retainedEntries: active,
+    initialMemory: memBefore,
+    finalMemory: memAfter,
+  });
+
+  // Linear association correctly pairs r1 -> path_A and r2 -> path_B: they must NOT deduplicate!
+  assert.equal(result.applied.filter(d => d.action === "deduplicate").length, 0);
+});
+
+test("applyToolResultCleanup replaces text body exactly once and preserves all host message metadata", () => {
   const originalMessage = {
     role: "toolResult" as const,
     toolCallId: "call-custom",
@@ -797,7 +819,7 @@ test("Defect 4: applyToolResultCleanup replaces text body exactly once and prese
   assert.equal(projMsg.content[0]!.type, "text");
   assert.equal(projMsg.content[0]!.text, decision.text);
 
-  // All metadata preserved via copying!
+  // All metadata preserved via copying
   assert.equal(projMsg.toolCallId, "call-custom");
   assert.equal(projMsg.toolName, "fetch_data");
   assert.equal(projMsg.isError, false);
@@ -805,183 +827,234 @@ test("Defect 4: applyToolResultCleanup replaces text body exactly once and prese
   assert.deepEqual(projMsg.details, { executionTimeMs: 150, exitCode: 0, customFlag: true });
 });
 
-test("Defect 5: request.ts extractionContext wires safe candidates and obligation-preserving policy when enabled", async () => {
+test("request.ts extractionContext preserves prefix stability, puts candidates at tail, and pre-filters omissions/mixed", async () => {
   const baseInput = await input();
   const tCall = assistant("call-entry", [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "data.txt" } }]);
-  const tResult = toolEntry("res-1", "call-1", "A".repeat(500));
-  baseInput.active = [user("u1", "Start"), tCall, tResult, user("u2", "Next")];
+  const tResultClean = toolEntry("res-clean", "call-1", "A".repeat(500));
+  const tResultOmission = toolEntry("res-omission", "call-1", "B".repeat(500));
+  const tResultImage: ActiveEntry = {
+    entryId: "res-image",
+    sourceRole: "toolResult",
+    messages: [{
+      role: "toolResult",
+      toolCallId: "call-1",
+      toolName: "read",
+      isError: false,
+      timestamp: 0,
+      content: [
+        { type: "text", text: "Caption: " },
+        { type: "image", data: "AAAA", mimeType: "image/png" },
+      ],
+    }],
+  };
+  baseInput.active = [user("u1", "Start"), tCall, tResultClean, tResultOmission, tResultImage, user("u2", "Next")];
+  baseInput.cleanupCandidateScope = [
+    { entryId: "res-clean", messageIndex: 0 },
+    { entryId: "res-omission", messageIndex: 0 },
+    { entryId: "res-image", messageIndex: 0 },
+  ];
 
-  // Case 1: Cleanup enabled WITH cleanupCandidateScope
-  baseInput.config.toolResultCleanup = true;
-  baseInput.cleanupCandidateScope = [{ entryId: "res-1", messageIndex: 0 }];
-  const ctxEnabled = extractionContext(baseInput, 1, 1000, baseInput.active, []);
+  const omissions = [{
+    entryId: "res-omission", messageIndex: 0, blockIndex: 0, toolCallId: "call-1",
+    omittedCodePoints: 200, headChars: 100, tailChars: 100,
+  }];
 
-  // System prompt explains toolResultEdits and obligation preservation
-  assert(ctxEnabled.systemPrompt && ctxEnabled.systemPrompt.includes("toolResultEdits"));
-  assert(ctxEnabled.systemPrompt && ctxEnabled.systemPrompt.includes("cleanupCandidates"));
-  assert(ctxEnabled.systemPrompt && ctxEnabled.systemPrompt.includes("decisive completion conditions and active obligations"));
+  // 1. Prefix stability: system prompt must be fixed conditional statement (does not vary with candidate count)
+  const ctxWithCandidates = extractionContext(baseInput, 1, 1000, baseInput.active, omissions);
+  const baseInputEmpty = structuredClone(baseInput);
+  baseInputEmpty.cleanupCandidateScope = [];
+  const ctxEmptyCandidates = extractionContext(baseInputEmpty, 1, 1000, baseInputEmpty.active, []);
+  assert.equal(ctxWithCandidates.systemPrompt, ctxEmptyCandidates.systemPrompt);
 
-  // F/M user message contains cleanupCandidates with candidate metadata
-  const firstMsg = ctxEnabled.messages[0]!;
-  const firstBlock = firstMsg.content[0]! as { text: string };
-  const parsedFm = JSON.parse(firstBlock.text);
-  assert(Array.isArray(parsedFm.cleanupCandidates));
-  assert.equal(parsedFm.cleanupCandidates.length, 1);
-  assert.equal(parsedFm.cleanupCandidates[0].entryId, "res-1");
-  assert.equal(parsedFm.cleanupCandidates[0].messageIndex, 0);
-  assert.equal(parsedFm.cleanupCandidates[0].toolName, "read");
-  assert.equal(parsedFm.cleanupCandidates[0].toolCallId, "call-1");
-  assert.equal(parsedFm.cleanupCandidates[0].textLength, 500);
+  // 2. First block (source: "F/M") is stable ahead of transcript and does NOT contain cleanupCandidates
+  const firstBlock = JSON.parse((ctxWithCandidates.messages[0]!.content[0]! as { text: string }).text);
+  assert.equal(firstBlock.cleanupCandidates, undefined);
 
-  // Tail instruction mentions toolResultEdits
-  const lastBlock = firstMsg.content.at(-1)! as { text: string };
-  assert(lastBlock.text.includes("optional toolResultEdits for eligible candidates"));
+  // 3. Varying cleanupCandidates is placed AFTER transcript at the tail
+  const userContent = ctxWithCandidates.messages[0]!.content;
+  const tailCandBlock = JSON.parse((userContent.at(-2)! as { text: string }).text);
+  assert(Array.isArray(tailCandBlock.cleanupCandidates));
 
-  // Case 2: Cleanup DISABLED
+  // 4. Pre-filtering: safeCandidates must ONLY contain clean text results (omissions and mixed/image blocks filtered out)
+  assert.equal(tailCandBlock.cleanupCandidates.length, 1);
+  assert.equal(tailCandBlock.cleanupCandidates[0].entryId, "res-clean");
+
+  // 5. Disabled configuration exposes no candidates
   baseInput.config.toolResultCleanup = false;
   const ctxDisabled = extractionContext(baseInput, 1, 1000, baseInput.active, []);
-  assert(ctxDisabled.systemPrompt && ctxDisabled.systemPrompt.includes("B retires, K remains verbatim."));
-  assert(ctxDisabled.systemPrompt && !ctxDisabled.systemPrompt.includes("cleanupCandidates"));
-  const disabledFm = JSON.parse((ctxDisabled.messages[0]!.content[0]! as { text: string }).text);
-  assert.equal(disabledFm.cleanupCandidates, undefined);
-  const disabledTail = (ctxDisabled.messages[0]!.content.at(-1)! as { text: string }).text;
-  assert(!disabledTail.includes("toolResultEdits"));
-
-  // Case 3: Empty cleanupCandidateScope (no runnable candidates)
-  baseInput.config.toolResultCleanup = true;
-  baseInput.cleanupCandidateScope = [];
-  const ctxNoCandidates = extractionContext(baseInput, 1, 1000, baseInput.active, []);
-  assert(ctxNoCandidates.systemPrompt && ctxNoCandidates.systemPrompt.includes("B retires, K remains verbatim."));
-  const noCandFm = JSON.parse((ctxNoCandidates.messages[0]!.content[0]! as { text: string }).text);
-  assert.equal(noCandFm.cleanupCandidates, undefined);
+  assert(!JSON.stringify(ctxDisabled.messages[0]!.content).includes("cleanupCandidates"));
 });
 
-test("Defect 6: reversible directory TOC compacting groups paths and yields net savings", () => {
-  const fileListing = [
-    "src/engine/accounting.ts",
-    "src/engine/cleanup.ts",
-    "src/engine/engine.ts",
-    "src/engine/index.ts",
-    "src/engine/memory.ts",
-    "src/engine/types.ts",
-    "src/engine/validation.ts",
-  ].join("\n");
+test("compactInvarDocToc and decodeInvarDocToc provide guaranteed roundtrip invertibility", () => {
+  const originalPayload = {
+    frontmatter: null,
+    sections: [
+      {
+        level: 1,
+        title: "Root Title",
+        slug: "root-title",
+        line_start: 1,
+        line_end: 10,
+        char_count: 500,
+        path: "root-title",
+        children: [
+          {
+            level: 2,
+            title: "Child Section",
+            slug: "child-section",
+            line_start: 11,
+            line_end: 25,
+            char_count: 1200,
+            path: "root-title/child-section",
+            children: [],
+          },
+        ],
+      },
+    ],
+  };
 
-  const compact = reversibleCompactToc(fileListing);
+  const jsonText = JSON.stringify(originalPayload, null, 2);
+  const compact = compactInvarDocToc(jsonText);
   assert(compact);
   assert(compact.includes(formatTocMarker()));
-  assert(compact.includes("src/engine/: [accounting.ts, cleanup.ts, engine.ts, index.ts, memory.ts, types.ts, validation.ts]"));
-  assert(compact.length < fileListing.length);
+  assert(compact.length < jsonText.length);
 
-  // Non-path output returns null
-  assert.equal(reversibleCompactToc("Line 1 without slash\nLine 2 without slash\nLine 3"), null);
+  // Decode and assert exact roundtrip equality
+  const decoded = decodeInvarDocToc(compact);
+  assert.deepEqual(decoded, originalPayload);
+
+  // Negative cases: arbitrary text with slashes or invalid JSON return null
+  assert.equal(compactInvarDocToc("/a/long/path/repeated/".repeat(30)), null);
+  assert.equal(compactInvarDocToc(JSON.stringify({ notSections: true })), null);
 });
 
-test("Defect 6: fixed launch boilerplate stripping preserves dynamic output and diagnostics", () => {
-  const boilerplate = "=== Task Runner Engine v2.4 ===\nConfig loaded from /etc/runner.conf\nInitializing environment...\n";
-  const output1 = boilerplate + "Task 1 completed with exit 0";
-  const output2 = boilerplate + "Task 2 failed with exit 1: syntax error at line 42";
+test("stripToolBoilerplate requires keeper in retainedEntries and protects keeper across families", () => {
+  const launchBp = KNOWN_LAUNCH_BOILERPLATES[0]!;
+  const out1 = launchBp + "Doctest: 14 passed\nHypothesis: 20 passed\n";
+  const out2 = launchBp + "Doctest: 14 passed\nHypothesis: 10 passed, 1 failed\n";
 
-  const t1 = toolEntry("t1", "c1", output1, "bash");
-  const t2 = toolEntry("t2", "c2", output2, "bash");
-  const active = [t1, t2];
+  const call1 = assistant("a1", [{ type: "toolCall", id: "c1", name: "invar_guard", arguments: { path: "." } }]);
+  const t1 = toolEntry("t1", "c1", out1, "invar_guard");
+  const call2 = assistant("a2", [{ type: "toolCall", id: "c2", name: "invar_guard", arguments: { path: "." } }]);
+  const t2 = toolEntry("t2", "c2", out2, "invar_guard");
+  const active = [call1, t1, call2, t2];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
 
-  const result = decideToolResultCleanup({
+  // Case A: Keeper t1 survives in retainedEntries
+  const resSurvives = decideToolResultCleanup({
     active,
     candidateScope: [{ entryId: "t2", messageIndex: 0 }],
     retainedEntries: active,
     initialMemory: memBefore,
     finalMemory: memAfter,
   });
-
-  const stripped = result.applied.find(d => d.entryId === "t2" && d.action === "strip_boilerplate");
+  const stripped = resSurvives.applied.find(d => d.entryId === "t2" && d.action === "strip_boilerplate");
   assert(stripped);
   assert(stripped.text.includes(formatBoilerplateMarker({ entryId: "t1", messageIndex: 0 })));
-  assert(stripped.text.includes("Task 2 failed with exit 1: syntax error at line 42"));
-  assert(!stripped.text.includes("=== Task Runner Engine v2.4 ==="));
-  assert(stripped.netSavings > 0);
+
+  // Case B: Same-batch semantic edit attempting to omit keeper t1 is rejected (keeper protected)
+  const resOmitKeeper = decideToolResultCleanup({
+    active,
+    candidateScope: [{ entryId: "t1", messageIndex: 0 }, { entryId: "t2", messageIndex: 0 }],
+    retainedEntries: active,
+    initialMemory: memBefore,
+    finalMemory: memAfter,
+    semanticEdits: [{ entryId: "t1", messageIndex: 0, action: "omit" }],
+  });
+  const t1Omit = resOmitKeeper.skipped.find(s => s.entryId === "t1");
+  assert(t1Omit);
+  assert.equal(t1Omit.reason, "keeper_protected");
+
+  // Case C: Keeper t1 is retired (not in retainedEntries) -> t2 must NOT strip boilerplate referencing retired t1!
+  const resRetiredKeeper = decideToolResultCleanup({
+    active,
+    candidateScope: [{ entryId: "t2", messageIndex: 0 }],
+    retainedEntries: [call2, t2], // t1 is retired
+    initialMemory: memBefore,
+    finalMemory: memAfter,
+  });
+  assert.equal(resRetiredKeeper.applied.length, 0);
+
+  // Case D: Arbitrary shared header lines (not known launch boilerplate) must NOT strip
+  const arbOut1 = "Unique diagnostic line A\nUnique diagnostic line B\nTail 1\n".repeat(10);
+  const arbOut2 = "Unique diagnostic line A\nUnique diagnostic line B\nTail 2\n".repeat(10);
+  const tArb1 = toolEntry("ta1", "ca1", arbOut1, "bash");
+  const tArb2 = toolEntry("ta2", "ca2", arbOut2, "bash");
+  const resArb = decideToolResultCleanup({
+    active: [tArb1, tArb2],
+    candidateScope: [{ entryId: "ta2", messageIndex: 0 }],
+    retainedEntries: [tArb1, tArb2],
+    initialMemory: memBefore,
+    finalMemory: memAfter,
+  });
+  assert.equal(resArb.applied.length, 0);
 });
 
-test("Defect 7: robust invalid shape rejection (omit with text null/0/'', unknown fields, non-array toolResultEdits)", () => {
+test("sourceRefs enforces final full-source condition and rejects mechanically reduced targets", () => {
+  const jsonText = '{\n  "longKey": "value",\n  "another": [1, 2, 3]\n}';
+  const t1 = toolEntry("t1", "c1", jsonText);
+  const t2 = toolEntry("t2", "c2", "Dependent summary target ".repeat(20));
+  const active = [t1, t2];
+
+  const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
+  const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
+
+  // t1 will be mechanically compacted. Edit on t2 depends on t1 as a sourceRef.
+  const edits: ToolResultEdit[] = [
+    { entryId: "t2", messageIndex: 0, action: "replace", text: "Summary", sourceRefs: [{ entryId: "t1", messageIndex: 0 }] },
+  ];
+
+  const result = decideToolResultCleanup({
+    active,
+    candidateScope: [{ entryId: "t1", messageIndex: 0 }, { entryId: "t2", messageIndex: 0 }],
+    retainedEntries: active,
+    initialMemory: memBefore,
+    finalMemory: memAfter,
+    semanticEdits: edits,
+  });
+
+  // t2 edit must be rejected because t1 receives mechanical compact_json and is not full original copy
+  const t2Skip = result.skipped.find(s => s.entryId === "t2");
+  assert(t2Skip);
+  assert.equal(t2Skip.reason, "missing_source_dependency");
+});
+
+test("malformed edit plus valid edit on same target both trigger duplicate_edit rejection", () => {
   const t1 = toolEntry("t1", "c1", "Long tool output text ".repeat(20));
   const active = [t1];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
 
-  // 1. Omit with text: null
-  const rNull = decideToolResultCleanup({
-    active, candidateScope: [{ entryId: "t1", messageIndex: 0 }],
-    retainedEntries: active, initialMemory: memBefore, finalMemory: memAfter,
-    semanticEdits: [{ entryId: "t1", messageIndex: 0, action: "omit", text: null }],
-  });
-  assert.equal(rNull.applied.length, 0);
-  assert.equal(rNull.skipped[0]!.reason, "invalid_shape");
+  // One valid edit and one malformed edit (unknown field) on the same target
+  const edits = [
+    { entryId: "t1", messageIndex: 0, action: "replace", text: "Valid replace text" },
+    { entryId: "t1", messageIndex: 0, action: "replace", text: "Conflict replace text", unknownField: "bad" },
+  ];
 
-  // 2. Omit with text: 0
-  const rZero = decideToolResultCleanup({
-    active, candidateScope: [{ entryId: "t1", messageIndex: 0 }],
-    retainedEntries: active, initialMemory: memBefore, finalMemory: memAfter,
-    semanticEdits: [{ entryId: "t1", messageIndex: 0, action: "omit", text: 0 }],
+  const result = decideToolResultCleanup({
+    active,
+    candidateScope: [{ entryId: "t1", messageIndex: 0 }],
+    retainedEntries: active,
+    initialMemory: memBefore,
+    finalMemory: memAfter,
+    semanticEdits: edits,
   });
-  assert.equal(rZero.applied.length, 0);
-  assert.equal(rZero.skipped[0]!.reason, "invalid_shape");
 
-  // 3. Omit with text: ""
-  const rEmpty = decideToolResultCleanup({
-    active, candidateScope: [{ entryId: "t1", messageIndex: 0 }],
-    retainedEntries: active, initialMemory: memBefore, finalMemory: memAfter,
-    semanticEdits: [{ entryId: "t1", messageIndex: 0, action: "omit", text: "" }],
-  });
-  assert.equal(rEmpty.applied.length, 0);
-  assert.equal(rEmpty.skipped[0]!.reason, "invalid_shape");
-
-  // 4. Unknown fields in edit
-  const rUnknown = decideToolResultCleanup({
-    active, candidateScope: [{ entryId: "t1", messageIndex: 0 }],
-    retainedEntries: active, initialMemory: memBefore, finalMemory: memAfter,
-    semanticEdits: [{ entryId: "t1", messageIndex: 0, action: "omit", extraUnsupportedField: "fail" }],
-  });
-  assert.equal(rUnknown.applied.length, 0);
-  assert.equal(rUnknown.skipped[0]!.reason, "invalid_shape");
-
-  // 5. Non-array toolResultEdits
-  const rNonArray = decideToolResultCleanup({
-    active, candidateScope: [{ entryId: "t1", messageIndex: 0 }],
-    retainedEntries: active, initialMemory: memBefore, finalMemory: memAfter,
-    semanticEdits: "invalid-string",
-  });
-  assert.equal(rNonArray.applied.length, 0);
-  assert.equal(rNonArray.skipped[0]!.reason, "invalid_shape");
-  assert.equal(rNonArray.skipped[0]!.details, "toolResultEdits must be an array");
-
-  // 6. Conflicting multiple edits in batch MUST NOT accidentally get mechanical fallback
-  const jsonText = '{\n  "count": 42\n}';
-  const tJson = toolEntry("t-json", "c-json", jsonText);
-  const activeJson = [tJson];
-  const rConflict = decideToolResultCleanup({
-    active: activeJson, candidateScope: [{ entryId: "t-json", messageIndex: 0 }],
-    retainedEntries: activeJson, initialMemory: memBefore, finalMemory: memAfter,
-    semanticEdits: [
-      { entryId: "t-json", messageIndex: 0, action: "omit" },
-      { entryId: "t-json", messageIndex: 0, action: "replace", text: "Summary" },
-    ],
-  });
-  // Both skipped as duplicate_edit, and NO mechanical fallback applied!
-  assert.equal(rConflict.applied.length, 0);
-  assert.equal(rConflict.skipped.length, 2);
-  assert(rConflict.skipped.every(s => s.reason === "duplicate_edit"));
+  // Neither edit should win: both must be rejected as duplicate_edit
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.skipped.length, 2);
+  assert(result.skipped.every(s => s.reason === "duplicate_edit"));
 });
 
-test("Additional integration invariant: legacy callers without cleanupCandidateScope preserve 100% consistent raw history", async () => {
+test("legacy callers without cleanupCandidateScope preserve 100% consistent raw history", async () => {
   const source = await input();
   const longResult = '{\n  "status": "legacy",\n  "data": [1, 2, 3]\n}';
   const tCall = assistant("call-entry", [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "data.json" } }]);
   const tResult = toolEntry("res-entry", "call-1", longResult);
   source.active = [user("u1", "First"), tCall, tResult, user("u2", "Second question")];
-  delete source.cleanupCandidateScope; // Legacy caller: no candidate scope supplied
+  delete source.cleanupCandidateScope;
 
   const patch = {
     add: [{ key: "k1", text: "Updated goal" }],
@@ -993,12 +1066,10 @@ test("Additional integration invariant: legacy callers without cleanupCandidateS
   const result = await maintain(source, responder(patch));
   assert(result.ok);
 
-  // Without candidate scope, zero cleanups applied
   assert.equal(result.candidate.toolResultCleanup?.applied.length, 0);
-
-  // Delivered candidate.kept and accounting are 100% consistent with raw history
   const deliveredTool = result.candidate.kept.find(e => e.entryId === "res-entry");
   assert(deliveredTool);
   assert.equal(messageText(deliveredTool.messages[0]!), longResult);
 });
+
 

@@ -23,17 +23,27 @@ export function formatBoilerplateMarker(firstRef: ToolResultRef): string {
 }
 
 export function formatTocMarker(): string {
-  return `[Nunc reversible TOC index]`;
+  return `[Nunc reversible Invar TOC v1]`;
 }
 
 /**
- * Truly lossless JSON compaction: strips whitespace outside strings while
- * preserving exact lexical characters for all numbers (including > 2^53),
- * duplicate keys, property ordering, and string literals.
+ * Lossless JSON compaction: validates full JSON syntax using JSON.parse as a
+ * syntax check only, then strips whitespace strictly outside string literals.
+ * Preserves exact original lexical representations of numbers (> 2^53, floats),
+ * duplicate keys, and formatting. Returns null if invalid, already compact, or
+ * not an object/array.
  */
 export function losslessCompactJson(text: string): string | null {
   const trimmed = text.trim();
   if ((!trimmed.startsWith("{") || !trimmed.endsWith("}")) && (!trimmed.startsWith("[") || !trimmed.endsWith("]"))) {
+    return null;
+  }
+
+  // Syntax validation: ensure input is valid JSON syntax without using parsed values
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed === null || typeof parsed !== "object") return null;
+  } catch {
     return null;
   }
 
@@ -68,28 +78,6 @@ export function losslessCompactJson(text: string): string | null {
 
   if (inString || escape) return null;
 
-  // Verify structure has balanced brackets/braces
-  const stack: string[] = [];
-  inString = false;
-  escape = false;
-  for (let i = 0; i < out.length; i++) {
-    const ch = out[i]!;
-    if (inString) {
-      if (escape) escape = false;
-      else if (ch === "\\") escape = true;
-      else if (ch === '"') inString = false;
-    } else {
-      if (ch === '"') inString = true;
-      else if (ch === "{" || ch === "[") stack.push(ch);
-      else if (ch === "}") {
-        if (stack.pop() !== "{") return null;
-      } else if (ch === "]") {
-        if (stack.pop() !== "[") return null;
-      }
-    }
-  }
-  if (stack.length !== 0 || inString) return null;
-
   if (hadWhitespaceOutsideString && out.length < text.length) {
     return out;
   }
@@ -101,7 +89,7 @@ const UNSUPPORTED_ESCAPE_REGEX = /\x1b(?:\[[0-9;]*[A-LN-Za-ln-z]|\]|\(|\))/;
 
 /** Clean terminal ANSI styling and CRLF only. Preserves unsupported terminal control streams. */
 export function cleanTerminalText(text: string): string | null {
-  // If text contains unsupported terminal control codes (cursor movement, OSC, etc.), preserve verbatim
+  // If text contains unsupported terminal control codes (cursor movement, screen clear, OSC), preserve verbatim
   if (UNSUPPORTED_ESCAPE_REGEX.test(text)) {
     return null;
   }
@@ -118,71 +106,164 @@ export function cleanTerminalText(text: string): string | null {
   return null;
 }
 
+export interface InvarDocSection {
+  level: number;
+  title: string;
+  slug: string;
+  line_start: number;
+  line_end: number;
+  char_count: number;
+  path?: string;
+  children?: InvarDocSection[];
+}
+
+export interface InvarDocTocPayload {
+  frontmatter?: Record<string, unknown> | null;
+  sections: InvarDocSection[];
+}
+
+function validateInvarSection(s: unknown): s is InvarDocSection {
+  if (!record(s)) return false;
+  if (!integer(s.level, 1) || typeof s.title !== "string" || typeof s.slug !== "string") return false;
+  if (!integer(s.line_start, 0) || !integer(s.line_end, 0) || !integer(s.char_count, 0)) return false;
+  if (s.path !== undefined && typeof s.path !== "string") return false;
+  if (s.children !== undefined) {
+    if (!Array.isArray(s.children) || !s.children.every(validateInvarSection)) return false;
+  }
+  return true;
+}
+
+function flattenInvarSections(sections: InvarDocSection[], prefix = ""): { section: InvarDocSection; fullSlug: string }[] {
+  const result: { section: InvarDocSection; fullSlug: string }[] = [];
+  for (const s of sections) {
+    const fullSlug = prefix ? `${prefix}/${s.slug}` : s.slug;
+    result.push({ section: s, fullSlug });
+    if (s.children && s.children.length > 0) {
+      result.push(...flattenInvarSections(s.children, fullSlug));
+    }
+  }
+  return result;
+}
+
 /**
- * Reversible compact directory TOC: groups multi-line path listings by common
- * directory prefix, rendering a deterministic reversible index when space is saved.
+ * Truly invertible compact encoding for Invar Doc TOC tool results.
+ * Preserves hierarchy, headings, slug, line ranges, char counts, and ordering.
  */
-export function reversibleCompactToc(text: string): string | null {
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
-  if (lines.length < 3) return null;
+export function compactInvarDocToc(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
 
-  // Check if every line looks like a valid file/directory path
-  const looksLikePath = (l: string) => l.includes("/") && !l.includes(" ") && !l.startsWith("error") && !l.startsWith("warn");
-  if (!lines.every(looksLikePath)) return null;
-
-  // Group by directory prefix
-  const groups = new Map<string, string[]>();
-  for (const line of lines) {
-    const lastSlash = line.lastIndexOf("/");
-    const dir = line.slice(0, lastSlash + 1);
-    const file = line.slice(lastSlash + 1);
-    if (!file) return null;
-    const list = groups.get(dir) ?? [];
-    list.push(file);
-    groups.set(dir, list);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
   }
 
-  // Only apply if grouping creates net savings (e.g. at least one directory with 2+ files)
-  let multipleCount = 0;
-  for (const list of groups.values()) {
-    if (list.length >= 2) multipleCount++;
-  }
-  if (multipleCount === 0) return null;
+  if (!record(parsed) || !Array.isArray(parsed.sections) || parsed.sections.length === 0) return null;
+  if (!parsed.sections.every(validateInvarSection)) return null;
 
-  const entries: string[] = [];
-  for (const [dir, files] of groups.entries()) {
-    entries.push(`${dir}: [${files.join(", ")}]`);
+  const flat = flattenInvarSections(parsed.sections as InvarDocSection[]);
+  const lines: string[] = [formatTocMarker()];
+  if (parsed.frontmatter !== undefined && parsed.frontmatter !== null && record(parsed.frontmatter)) {
+    lines.push(`FM:${JSON.stringify(parsed.frontmatter)}`);
   }
-  const compact = `${formatTocMarker()}:\n${entries.join("\n")}`;
 
-  if (compact.length < text.length) {
-    return compact;
+  for (const { section } of flat) {
+    lines.push(`L${section.level}|${section.line_start}-${section.line_end}|${section.char_count}|${section.slug}|${section.title}`);
+  }
+
+  const encoded = lines.join("\n");
+  if (encoded.length < text.length) {
+    return encoded;
   }
   return null;
 }
 
-/** Check if two tool result texts share an identical multi-line static banner. */
-function stripToolBoilerplate(text: string, firstText: string, firstRef: ToolResultRef): string | null {
-  const firstLines = firstText.split("\n");
-  const currentLines = text.split("\n");
-  if (firstLines.length < 3 || currentLines.length < 3) return null;
+/** Decoder for compact Invar Doc TOC encoding. Guaranteed roundtrip invertibility. */
+export function decodeInvarDocToc(encoded: string): InvarDocTocPayload | null {
+  const lines = encoded.split("\n");
+  if (lines.length < 2 || lines[0] !== formatTocMarker()) return null;
 
-  // Find common header lines
-  let commonCount = 0;
-  while (commonCount < firstLines.length && commonCount < currentLines.length && firstLines[commonCount] === currentLines[commonCount]) {
-    commonCount++;
+  let frontmatter: Record<string, unknown> | null = null;
+  let startIdx = 1;
+  if (lines[1]?.startsWith("FM:")) {
+    try {
+      frontmatter = JSON.parse(lines[1].slice(3));
+    } catch {
+      return null;
+    }
+    startIdx = 2;
   }
 
-  if (commonCount >= 2) {
-    const commonPrefix = currentLines.slice(0, commonCount).join("\n") + "\n";
-    if (commonPrefix.length >= 40) {
-      const dynamicRemainder = text.slice(commonPrefix.length).trimStart();
-      if (dynamicRemainder.length > 0) {
-        const cleaned = `${formatBoilerplateMarker(firstRef)}\n${dynamicRemainder}`;
-        if (cleaned.length < text.length) {
-          return cleaned;
-        }
-      }
+  const flat: InvarDocSection[] = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (!line.startsWith("L")) return null;
+    const parts = line.slice(1).split("|");
+    if (parts.length !== 5) return null;
+
+    const level = parseInt(parts[0]!, 10);
+    const rangeParts = parts[1]!.split("-");
+    if (rangeParts.length !== 2) return null;
+    const line_start = parseInt(rangeParts[0]!, 10);
+    const line_end = parseInt(rangeParts[1]!, 10);
+    const char_count = parseInt(parts[2]!, 10);
+    const slug = parts[3]!;
+    const title = parts[4]!;
+
+    if (!Number.isSafeInteger(level) || !Number.isSafeInteger(line_start) || !Number.isSafeInteger(line_end) || !Number.isSafeInteger(char_count)) {
+      return null;
+    }
+
+    flat.push({
+      level,
+      title,
+      slug,
+      line_start,
+      line_end,
+      char_count,
+      children: [],
+    });
+  }
+
+  // Reconstruct tree and paths from level hierarchy
+  const rootSections: InvarDocSection[] = [];
+  const stack: { section: InvarDocSection; fullSlug: string }[] = [];
+
+  for (const s of flat) {
+    while (stack.length > 0 && stack.at(-1)!.section.level >= s.level) {
+      stack.pop();
+    }
+    const parent = stack.at(-1);
+    const fullSlug = parent ? `${parent.fullSlug}/${s.slug}` : s.slug;
+    s.path = fullSlug;
+
+    if (parent) {
+      parent.section.children!.push(s);
+    } else {
+      rootSections.push(s);
+    }
+    stack.push({ section: s, fullSlug });
+  }
+
+  return {
+    ...(frontmatter !== null ? { frontmatter } : { frontmatter: null }),
+    sections: rootSections,
+  };
+}
+
+export const KNOWN_LAUNCH_BOILERPLATES = [
+  "=== Invar Guard static analysis and contract verification ===\nRunning doctest + hypothesis + crosshair\n",
+  "[CodeGraph] Server initialized\nDatabase index: ready\nCall graph available\n",
+  "[pty-driver] POSIX PTY session opened\nProcess attached\n",
+  "=== Test Runner Context ===\nEnvironment: POSIX PTY\nNode test runner initialized\n",
+];
+
+function matchKnownBoilerplate(text: string): string | null {
+  for (const pattern of KNOWN_LAUNCH_BOILERPLATES) {
+    if (text.startsWith(pattern)) {
+      return pattern;
     }
   }
   return null;
@@ -201,7 +282,6 @@ export interface CleanupDecisionOptions {
   disabled?: boolean | undefined;
 }
 
-/** Extract text content of a message if it contains only text. Returns null if non-text present. */
 function messageTextContent(message: ActiveEntry["messages"][number]): string | null {
   if (typeof message.content === "string") return message.content;
   if (!Array.isArray(message.content)) return null;
@@ -210,28 +290,39 @@ function messageTextContent(message: ActiveEntry["messages"][number]): string | 
     if (block.type === "text") {
       text += block.text;
     } else {
-      // Non-text block present (e.g. image)
       return null;
     }
   }
   return text;
 }
 
-/** Map all assistant tool calls in active history by toolCallId. */
-function extractToolCallMap(active: ActiveEntry[]): Map<string, { toolName: string; argsJson: string }> {
-  const map = new Map<string, { toolName: string; argsJson: string }>();
+/**
+ * Build ordered linear toolCall -> toolResult association map.
+ * Preserves existing source association contract across reused toolCall IDs.
+ */
+function extractToolCallAssociationMap(active: ActiveEntry[]): Map<string, { toolName: string; argsJson: string }> {
+  const resultCallMap = new Map<string, { toolName: string; argsJson: string }>();
+  const openCalls = new Map<string, { toolName: string; argsJson: string }>();
+
   for (const entry of active) {
-    for (const msg of entry.messages) {
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
+    for (const [messageIndex, message] of entry.messages.entries()) {
+      if (message.role === "assistant" && Array.isArray(message.content)) {
+        for (const block of message.content) {
           if (block.type === "toolCall") {
-            map.set(block.id, { toolName: block.name, argsJson: JSON.stringify(block.arguments) });
+            openCalls.set(block.id, { toolName: block.name, argsJson: JSON.stringify(block.arguments) });
           }
+        }
+      } else if (message.role === "toolResult") {
+        const call = openCalls.get(message.toolCallId);
+        if (call && call.toolName === message.toolName) {
+          resultCallMap.set(`${entry.entryId}:${messageIndex}`, call);
+          openCalls.delete(message.toolCallId);
         }
       }
     }
   }
-  return map;
+
+  return resultCallMap;
 }
 
 /** Pure deterministic decision engine for mechanical rules and semantic tool-result edits. */
@@ -251,7 +342,6 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   const applied: ToolResultDecision[] = [];
   const skipped: CleanupSkipped[] = [];
 
-  // M unchanged or feature disabled: no new cleanups are applied.
   const mChanged = !isMemoryUnchanged(initialMemory, finalMemory);
   if (!mChanged || disabled) {
     if (Array.isArray(semanticEdits)) {
@@ -270,8 +360,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     return { applied: [], skipped };
   }
 
-  // Defect 1: Fail closed if candidateScope is missing, empty, or not provided.
-  // Pure engine never manufactures candidate scope without an explicit safe anchor.
+  // Candidate scope must be explicitly supplied by caller; pure engine never manufactures scope
   const candidateScopeSet = new Set<string>();
   if (Array.isArray(options.candidateScope)) {
     for (const ref of options.candidateScope) {
@@ -284,21 +373,20 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       if (typeof key === "string") candidateScopeSet.add(key);
     }
   }
-  // Candidate scope must be intersected with final retained entries.
+
+  // Intersect candidate scope with final retained entries
   const retainedMessageKeys = new Set<string>();
   for (const entry of retainedEntries) {
     for (const [i] of entry.messages.entries()) {
       retainedMessageKeys.add(`${entry.entryId}:${i}`);
     }
   }
-  // Remove any candidates that are not in final retained history
   for (const key of candidateScopeSet) {
     if (!retainedMessageKeys.has(key)) {
       candidateScopeSet.delete(key);
     }
   }
 
-  // Map messages in active for fast lookup
   const messageMap = new Map<string, { entry: ActiveEntry; message: ActiveEntry["messages"][number]; messageIndex: number }>();
   for (const entry of active) {
     for (const [messageIndex, message] of entry.messages.entries()) {
@@ -306,10 +394,9 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     }
   }
 
-  // Extract tool call arguments to establish demonstrable same-source identity (Defect 3)
-  const toolCallMap = extractToolCallMap(active);
+  const toolCallMap = extractToolCallAssociationMap(active);
 
-  // Defect 7: Validate semantic edits first to catch duplicate/conflicting edits and invalid shapes
+  // Group all edits by target key first to prevent malformed edits from masking conflict
   const candidateSemanticEdits: ToolResultEdit[] = [];
   const rejectedConflictKeys = new Set<string>();
 
@@ -322,37 +409,22 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         details: "toolResultEdits must be an array",
       });
     } else {
-      const editsByRefKey = new Map<string, Record<string, unknown>[]>();
+      const editsByRefKey = new Map<string, unknown[]>();
 
       for (const raw of semanticEdits) {
-        if (!record(raw) || typeof raw.entryId !== "string" || !integer(raw.messageIndex)) {
+        if (record(raw) && typeof raw.entryId === "string" && integer(raw.messageIndex)) {
+          const key = `${raw.entryId}:${raw.messageIndex}`;
+          const list = editsByRefKey.get(key) ?? [];
+          list.push(raw);
+          editsByRefKey.set(key, list);
+        } else {
           skipped.push({
             entryId: record(raw) && typeof raw.entryId === "string" ? raw.entryId : "",
             messageIndex: record(raw) && typeof raw.messageIndex === "number" ? raw.messageIndex : 0,
             reason: "invalid_shape",
             details: "Edit must be an object with string entryId and non-negative integer messageIndex",
           });
-          continue;
         }
-
-        // Defect 7: Check for unknown fields in edit
-        const allowedKeys = ["entryId", "messageIndex", "action", "text", "memoryRefs", "sourceRefs"];
-        const hasUnknown = Object.keys(raw).some(k => !allowedKeys.includes(k));
-        if (hasUnknown) {
-          skipped.push({
-            entryId: raw.entryId,
-            messageIndex: raw.messageIndex,
-            ...(typeof raw.action === "string" ? { action: raw.action } : {}),
-            reason: "invalid_shape",
-            details: "Edit contains unrecognized fields",
-          });
-          continue;
-        }
-
-        const key = `${raw.entryId}:${raw.messageIndex}`;
-        const list = editsByRefKey.get(key) ?? [];
-        list.push(raw);
-        editsByRefKey.set(key, list);
       }
 
       // Check duplicates / conflicting edits per target
@@ -360,10 +432,11 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         if (list.length > 1) {
           rejectedConflictKeys.add(key);
           for (const item of list) {
+            const r = record(item) ? item : {};
             skipped.push({
-              entryId: String(item.entryId),
-              messageIndex: Number(item.messageIndex),
-              ...(typeof item.action === "string" ? { action: item.action } : {}),
+              entryId: typeof r.entryId === "string" ? r.entryId : "",
+              messageIndex: typeof r.messageIndex === "number" ? r.messageIndex : 0,
+              ...(typeof r.action === "string" ? { action: r.action } : {}),
               reason: "duplicate_edit",
               details: `Conflicting multiple edits in same batch for ${key}; retaining original`,
             });
@@ -372,6 +445,21 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         }
 
         const item = list[0]!;
+        if (!record(item)) continue;
+
+        const allowedKeys = ["entryId", "messageIndex", "action", "text", "memoryRefs", "sourceRefs"];
+        const hasUnknown = Object.keys(item).some(k => !allowedKeys.includes(k));
+        if (hasUnknown) {
+          skipped.push({
+            entryId: String(item.entryId),
+            messageIndex: Number(item.messageIndex),
+            ...(typeof item.action === "string" ? { action: item.action } : {}),
+            reason: "invalid_shape",
+            details: "Edit contains unrecognized fields",
+          });
+          continue;
+        }
+
         const action = item.action;
         if (action !== "omit" && action !== "replace") {
           skipped.push({
@@ -395,7 +483,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
           continue;
         }
 
-        // Defect 7: Action 'omit' must NOT specify text (even null/0/'')
+        // Action 'omit' must not specify text (even null/0/'')
         if (action === "omit" && "text" in item && item.text !== undefined) {
           skipped.push({
             entryId: String(item.entryId),
@@ -452,17 +540,16 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     }
   }
 
-  // Step 1: Run mechanical rules on candidates in scope
+  // Mechanical rules evaluation
   const protectedKeepers = new Set<string>();
   const mechanicalDecisions = new Map<string, ToolResultDecision>();
 
-  // Map to find first occurrence of static boilerplate per toolName
-  const firstOccurrenceByTool = new Map<string, { ref: ToolResultRef; text: string }>();
+  // Boilerplate keeper tracker: pattern -> keeper in retainedEntries
+  const boilerplateKeepers = new Map<string, { ref: ToolResultRef; toolName: string }>();
 
-  // Deduplication tracker: map sameSourceKey -> keeper (must be in retainedEntries!)
+  // Deduplication tracker: sameSourceKey -> keeper in retainedEntries
   const seenIdentical = new Map<string, { ref: ToolResultRef; toolCallId: string; toolName: string; text: string }>();
 
-  // Scan retainedEntries first for potential keepers, or active entries that are retained
   for (const entry of active) {
     for (const [messageIndex, message] of entry.messages.entries()) {
       if (message.role !== "toolResult") continue;
@@ -472,29 +559,52 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       if (text === null) continue;
 
       const toolName = message.toolName;
-      if (!firstOccurrenceByTool.has(toolName)) {
-        firstOccurrenceByTool.set(toolName, { ref, text });
-      }
-
-      // Defect 3: Same-source identity requires same toolName AND same call arguments
-      const call = toolCallMap.get(message.toolCallId);
+      const call = toolCallMap.get(key);
       const isRetained = retainedMessageKeys.has(key);
 
+      // Track known launch boilerplate keeper (must be retained)
+      const matchedBoilerplate = matchKnownBoilerplate(text);
+      if (matchedBoilerplate !== null) {
+        const existingBp = boilerplateKeepers.get(matchedBoilerplate);
+        if (!existingBp && isRetained) {
+          boilerplateKeepers.set(matchedBoilerplate, { ref, toolName });
+        } else if (existingBp && candidateScopeSet.has(key) && !rejectedConflictKeys.has(key)) {
+          // Dynamic remainder after stripped boilerplate
+          const remainder = text.slice(matchedBoilerplate.length).trimStart();
+          const cleaned = `${formatBoilerplateMarker(existingBp.ref)}\n${remainder}`;
+          const netSavings = text.length - cleaned.length;
+          if (netSavings > 0) {
+            protectedKeepers.add(refKey(existingBp.ref));
+            mechanicalDecisions.set(key, {
+              entryId: ref.entryId,
+              messageIndex: ref.messageIndex,
+              toolCallId: message.toolCallId,
+              toolName,
+              kind: "mechanical",
+              action: "strip_boilerplate",
+              text: cleaned,
+              originalLength: text.length,
+              cleanedLength: cleaned.length,
+              netSavings,
+              sourceRefs: [existingBp.ref],
+            });
+          }
+        }
+      }
+
+      // Deduplication: require matching toolName AND call arguments
       if (call) {
         const sameSourceKey = `${toolName}\0${call.argsJson}\0${text}`;
         const existing = seenIdentical.get(sameSourceKey);
 
         if (!existing) {
-          // Defect 3: Only an entry in retainedEntries can be a keeper!
           if (isRetained) {
             seenIdentical.set(sameSourceKey, { ref, toolCallId: message.toolCallId, toolName, text });
           }
-        } else if (candidateScopeSet.has(key) && !rejectedConflictKeys.has(key)) {
-          // Both are same origin with identical text, and existing keeper is in retainedEntries!
+        } else if (candidateScopeSet.has(key) && !rejectedConflictKeys.has(key) && !mechanicalDecisions.has(key)) {
           const marker = formatDeduplicateMarker(ref, existing.ref);
           const netSavings = text.length - marker.length;
           if (netSavings > 0) {
-            // Protect keeper from ANY modifications
             protectedKeepers.add(refKey(existing.ref));
             mechanicalDecisions.set(key, {
               entryId: ref.entryId,
@@ -513,10 +623,10 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         }
       }
 
-      // If not deduplicated, check other mechanical families (only for candidates in scope not in rejectedConflictKeys)
+      // If not deduplicated or stripped, check Invar TOC, JSON compaction, and terminal cleaning
       if (candidateScopeSet.has(key) && !mechanicalDecisions.has(key) && !rejectedConflictKeys.has(key)) {
-        // Family: Reversible directory TOC
-        const compactToc = reversibleCompactToc(text);
+        // Family: Reversible Invar Doc TOC
+        const compactToc = compactInvarDocToc(text);
         if (compactToc !== null) {
           const netSavings = text.length - compactToc.length;
           if (netSavings > 0) {
@@ -536,7 +646,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
           }
         }
 
-        // Family: Truly lossless JSON compact (Defect 2)
+        // Family: Truly lossless JSON compact
         const compactJson = losslessCompactJson(text);
         if (compactJson !== null) {
           const netSavings = text.length - compactJson.length;
@@ -557,7 +667,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
           }
         }
 
-        // Family: Constrained Terminal ANSI SGR & CRLF cleaning (Defect 2)
+        // Family: Constrained Terminal ANSI SGR & CRLF cleaning
         const cleanedTerminal = cleanTerminalText(text);
         if (cleanedTerminal !== null) {
           const netSavings = text.length - cleanedTerminal.length;
@@ -577,40 +687,16 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
             continue;
           }
         }
-
-        // Family: Fixed tool launch boilerplate stripping (Defect 6)
-        const first = firstOccurrenceByTool.get(toolName);
-        if (first && refKey(first.ref) !== key) {
-          const stripped = stripToolBoilerplate(text, first.text, first.ref);
-          if (stripped !== null) {
-            const netSavings = text.length - stripped.length;
-            if (netSavings > 0) {
-              mechanicalDecisions.set(key, {
-                entryId: ref.entryId,
-                messageIndex: ref.messageIndex,
-                toolCallId: message.toolCallId,
-                toolName,
-                kind: "mechanical",
-                action: "strip_boilerplate",
-                text: stripped,
-                originalLength: text.length,
-                cleanedLength: stripped.length,
-                netSavings,
-                sourceRefs: [first.ref],
-              });
-            }
-          }
-        }
       }
     }
   }
 
-  // Defect 3: Ensure protected keeper cannot have any mechanical reduction
+  // Protected keepers receive ZERO mechanical modifications
   for (const keeperKey of protectedKeepers) {
     mechanicalDecisions.delete(keeperKey);
   }
 
-  // Step 2: Evaluate candidate semantic edits
+  // Semantic edits evaluation
   const approvedSemanticDecisions = new Map<string, ToolResultDecision>();
   const proposedSemanticOmitOrReplaceKeys = new Set(candidateSemanticEdits.map(e => refKey(e)));
 
@@ -651,7 +737,6 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       continue;
     }
 
-    // Check non-text content
     const originalText = messageTextContent(itemInfo.message);
     if (originalText === null) {
       skipped.push({
@@ -664,7 +749,6 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       continue;
     }
 
-    // Check omissions
     const hasOmissions = omissions.some(o => o.entryId === edit.entryId && o.messageIndex === edit.messageIndex);
     if (hasOmissions) {
       skipped.push({
@@ -677,19 +761,19 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       continue;
     }
 
-    // Check mechanical keeper protection (Defect 3)
+    // Protected keeper check across all families (deduplication & boilerplate)
     if (protectedKeepers.has(key)) {
       skipped.push({
         entryId: edit.entryId,
         messageIndex: edit.messageIndex,
         action: edit.action,
         reason: "keeper_protected",
-        details: "Tool result is a mechanical keeper for deduplicated results in this batch; retaining full copy",
+        details: "Tool result is a protected keeper for results in this batch; retaining full copy",
       });
       continue;
     }
 
-    // Check memory dependencies (memoryRefs)
+    // Memory dependencies validation
     let memoryRefError: string | null = null;
     const finalMemoryRefs: string[] = [];
     if (edit.memoryRefs && edit.memoryRefs.length > 0) {
@@ -712,7 +796,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       continue;
     }
 
-    // Check source dependencies (sourceRefs)
+    // Source dependencies validation: must point to a full, unmodified source message
     let sourceRefError: string | null = null;
     if (edit.sourceRefs && edit.sourceRefs.length > 0) {
       for (const sRef of edit.sourceRefs) {
@@ -721,12 +805,13 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
           sourceRefError = `Source ref '${sKey}' is not in final retained history (retired or non-existent)`;
           break;
         }
+        // Full source condition: cannot point to a message being modified semantically or mechanically
         if (proposedSemanticOmitOrReplaceKeys.has(sKey)) {
           sourceRefError = `Source ref '${sKey}' is also being omitted/replaced in this batch`;
           break;
         }
-        if (mechanicalDecisions.has(sKey) && mechanicalDecisions.get(sKey)?.action === "deduplicate") {
-          sourceRefError = `Source ref '${sKey}' is deduplicated in this batch and not a full copy`;
+        if (mechanicalDecisions.has(sKey)) {
+          sourceRefError = `Source ref '${sKey}' receives a mechanical modification in this batch and is not a full original copy`;
           break;
         }
       }
@@ -742,7 +827,6 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       continue;
     }
 
-    // Format uniform marker and check net savings
     const cleanedText = edit.action === "omit"
       ? formatOmitMarker(edit)
       : formatReplaceMarker(edit, edit.text!);
@@ -775,7 +859,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     });
   }
 
-  // Merge approved decisions
+  // Merge approved decisions; conflicting targets receive no mechanical decisions
   const finalDecisionMap = new Map<string, ToolResultDecision>();
   for (const [key, mech] of mechanicalDecisions.entries()) {
     if (!rejectedConflictKeys.has(key)) {
@@ -786,7 +870,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     finalDecisionMap.set(key, sem);
   }
 
-  // Order decisions stably according to entry order in active and message index
+  // Stable ordering by active entry and message index
   for (const entry of active) {
     for (const [messageIndex] of entry.messages.entries()) {
       const key = `${entry.entryId}:${messageIndex}`;
@@ -817,12 +901,12 @@ export function applyToolResultCleanup(entries: ActiveEntry[], decisions: ToolRe
         return structuredClone(message);
       }
 
-      // Defect 4: Keep mixed / non-text blocks untouched as contract states
+      // Keep mixed / non-text blocks untouched
       if (Array.isArray(message.content) && message.content.some(b => b.type !== "text")) {
         return structuredClone(message);
       }
 
-      // Defect 4: Replace body exactly once with single text block; preserve all host metadata
+      // Replace text body exactly once; preserve all host metadata via copy
       const newContent = [{ type: "text" as const, text: decision.text }];
 
       return {

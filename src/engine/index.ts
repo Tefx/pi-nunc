@@ -13,8 +13,12 @@ export {
   formatTocMarker,
   losslessCompactJson,
   cleanTerminalText,
-  reversibleCompactToc,
+  compactInvarDocToc,
+  decodeInvarDocToc,
+  KNOWN_LAUNCH_BOILERPLATES,
   type CleanupDecisionOptions,
+  type InvarDocSection,
+  type InvarDocTocPayload,
 } from "./cleanup.js";
 export { mainContext, memoryPlan, memoryTokens, messageTokens, requestTokens, observeUsage } from "./accounting.js";
 export { legalCuts, EngineError, validateConfig, validateMemory } from "./validation.js";
