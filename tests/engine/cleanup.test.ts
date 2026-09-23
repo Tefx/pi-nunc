@@ -1139,5 +1139,3 @@ test("legacy callers without cleanupCandidateScope preserve 100% consistent raw 
   assert(deliveredTool);
   assert.equal(messageText(deliveredTool.messages[0]!), longResult);
 });
-
-
