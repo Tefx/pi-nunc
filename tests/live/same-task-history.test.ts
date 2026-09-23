@@ -422,7 +422,8 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
   f.response = (row: any, source: any) => {
     assert.equal(row.payload.model, model.id);
     assert.equal(row.payload.reasoning?.effort ?? row.payload.reasoning_effort, "low");
-    if (!source && row.payload.messages.some((m: any) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)).includes("<conversation>"))) {
+    if (!source && row.payload.messages.some((m: any) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)).includes("<conversation>") ||
+      (["system", "developer"].includes(m.role) && typeof m.content === "string" && m.content.startsWith("You are a context summarization assistant.")))) {
       return "## Goal\nContinue the local metrics task.\n## Progress\nControlled native compaction.\n## Next Steps\nConsult ordinary task sources if needed.";
     }
     if (source) {

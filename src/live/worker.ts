@@ -226,6 +226,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         }
       },
       onObservation: (type, data) => {
+        if (type === "diagnostic") report.actions.push({ turn, event: { type, ...data } });
         if (type === "stopped") boundaryFailure ??= data.message;
         if (boundary && type === "lifecycle") {
           if (data.stopped) boundaryFailure ??= data.stopped;

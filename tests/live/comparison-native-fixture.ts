@@ -18,7 +18,8 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
     const messages = row.payload.messages ?? row.payload.input ?? [];
     const nonMemory = messages.filter((m: any) => !text(m).includes("Nunc working memory"));
     const last = nonMemory.at(-1);
-    const serialized = messages.some((m: any) => text(m).includes("<conversation>"));
+    const serialized = messages.some((m: any) => text(m).includes("<conversation>") ||
+      (["system", "developer"].includes(m.role) && text(m).startsWith("You are a context summarization assistant.")));
     if ((serialized || source) && options.failMaintenance) return { status: 503, message: "Controlled maintenance failure" };
     if (serialized && current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
     if (serialized) return "## Goal\nContinue the authorized local task.\n\n## Progress\nThe preceding ordinary turns completed. Preserve the remaining work and original restrictions.\n\n## Next Steps\nContinue only when the ordinary user turn authorizes it.\n\n## Critical Context\nThe task files remain available through the ordinary file tools. This controlled summary exercises the stock serializer and carries no quality claim.";

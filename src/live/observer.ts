@@ -130,6 +130,7 @@ export default function observer(pi: ExtensionAPI): void {
     if (result?.ok === true && object(result.candidate) && typeof result.candidate.firstKeptEntryId === "string") state.identityResultCut = result.candidate.firstKeptEntryId;
   });
   pi.events.on("nunc:admission", event => log("admission", event));
+  pi.events.on("nunc:diagnostic", event => log("diagnostic", event));
   pi.events.on("nunc:live-provider-wrap", event => log("lifecycle", event));
   pi.on("before_provider_request", event => {
     const payload = event.payload;
@@ -188,7 +189,8 @@ export default function observer(pi: ExtensionAPI): void {
     state.compacting = false;
     delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
     if (binding.boundary) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
-    log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry });
+    log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry,
+      errorMessage: event.errorMessage, fromExtension: event.fromExtension });
   });
   pi.on("message_end", event => {
     if (event.message.role !== "assistant") return;

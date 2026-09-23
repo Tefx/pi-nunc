@@ -72,7 +72,8 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
   f.response = (row: any, source: any) => {
     assert.equal(row.payload.model, model.id);
     assert.equal(row.payload.reasoning?.effort ?? row.payload.reasoning_effort, "low", "actual native serialized effort");
-    if (!source && row.payload.messages.some((m: any) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)).includes("<conversation>"))) return "## Goal\nContinue the local task.\n## Progress\nControlled native compaction.\n## Next Steps\nConsult ordinary task sources if needed.";
+    if (!source && row.payload.messages.some((m: any) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)).includes("<conversation>") ||
+      (["system", "developer"].includes(m.role) && typeof m.content === "string" && m.content.startsWith("You are a context summarization assistant.")))) return "## Goal\nContinue the local task.\n## Progress\nControlled native compaction.\n## Next Steps\nConsult ordinary task sources if needed.";
     if (source) {
       maintenance++;
       return JSON.stringify({ add: [{ key: "generated", text: `Controlled generated note ${maintenance}` }], remove: source.M.map((s: any) => s.id), priority: ["generated"], required: ["generated"] });
@@ -153,7 +154,8 @@ test("task-file actual blocked command receives truthful diagnostic, recovers wi
   ];
   let step = 0, maintenance = 0;
   f.response = (row: any, source: any) => {
-    if (!source && row.payload.messages.some((m: any) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)).includes("<conversation>"))) return "## Goal\nContinue the local task.\n## Progress\nControlled native compaction.\n## Next Steps\nConsult ordinary task sources if needed.";
+    if (!source && row.payload.messages.some((m: any) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)).includes("<conversation>") ||
+      (["system", "developer"].includes(m.role) && typeof m.content === "string" && m.content.startsWith("You are a context summarization assistant.")))) return "## Goal\nContinue the local task.\n## Progress\nControlled native compaction.\n## Next Steps\nConsult ordinary task sources if needed.";
     if (source) {
       maintenance++;
       return JSON.stringify({ add: [{ key: "generated", text: `Controlled generated note ${maintenance}` }], remove: source.M.map((s: any) => s.id), priority: ["generated"], required: ["generated"] });
