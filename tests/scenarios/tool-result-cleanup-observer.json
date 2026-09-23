@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "inputs": "inputs.json",
+  "inputs": "tool-result-cleanup-inputs.json",
   "visibility": "runner-and-observer-only",
   "cases": [
     {

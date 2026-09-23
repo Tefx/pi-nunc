@@ -7,7 +7,8 @@
         "requirements.zh.txt": "客户要求：修复排队作业取消后仍显示为运行中的问题。完成条件包括：取消后不再占用运行槽；重启后状态仍为已取消；不得删除已完成作业。\n",
         "repair.log": "检查进度：两个分支已有测试；重启后的取消状态测试失败，修复尚未完成。\n",
         "progress.json": "{\"passed\":2,\"failed\":1,\"verified\":false}\n",
-        "diagnostics.txt": "诊断摘录：排队状态出错仍需验证重启后状态。\n"
+        "diagnostics.txt": "诊断摘录：排队状态出错仍需验证重启后状态。\n",
+        "supplement.txt": "补充检查：重启后取消作业仍被标记为运行中；当前没有通过的修复验证。\n"
       },
       "generatedFiles": [
         { "path": "verbose-report.txt", "segments": [
@@ -18,8 +19,9 @@
       ],
       "turns": [
         { "id": "a", "text": "Read requirements.zh.txt, repair.log and progress.json. Record the continuing obligations and actual verification state in working memory; do not declare the repair complete." },
-        { "id": "b", "text": "Read verbose-report.txt and diagnostics.txt fully, including any truncated middle via read offsets. Update the working memory if the new evidence changes what remains to do. Produce an interim.json status report with the open obligations; do not claim tests pass if they failed." },
-        { "id": "c", "text": "The repair log and diagnostics remain the current source. Write final.json with fields cancellationState, restartState, completedJobs, verification, and nextAction. Base each field on verified evidence and working memory. A future passing test must be observed before claiming the repair is done." }
+        { "id": "b", "text": "Read verbose-report.txt and diagnostics.txt fully, including any truncated middle via read offsets. Produce an interim.json status report with the open obligations; do not claim tests pass if they failed." },
+        { "id": "c", "text": "Read supplement.txt, then recheck verbose-report.txt, diagnostics.txt and progress.json against the interim report. Update working memory with the newly confirmed restart state and remaining obligations." },
+        { "id": "d", "text": "The repair log and diagnostics remain the current source. Write final.json with fields cancellationState, restartState, completedJobs, verification, and nextAction. Base each field on verified evidence and working memory. A future passing test must be observed before claiming the repair is done." }
       ],
       "variants": [{ "id": "cleanup-on" }, { "id": "cleanup-off" }]
     }

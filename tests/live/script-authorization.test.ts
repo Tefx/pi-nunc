@@ -33,7 +33,7 @@ test("stock CLI/worker rejects absent, unprovided, modified and concurrently wri
       let step = 0, groupIndex = -1;
       f.response = (row: any, source: any) => {
         const text = (m: any) => typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-        if (source) return JSON.stringify({ add: [], remove: source.M.map((s: any) => s.id), priority: [], ...(JSON.stringify(row.payload).includes("four required fields") ? { required: [] } : {}) });
+        if (source) return JSON.stringify({ add: [], remove: source.M.map((s: any) => s.id), priority: [], ...(JSON.stringify(row.payload).includes("optional toolResultEdits") ? { required: [] } : {}) });
         if (row.payload.messages.some((m: any) => text(m).includes("<conversation>"))) return "Controlled file-operation fixture finished.";
         const nonMemory = row.payload.messages.filter((m: any) => !text(m).includes("Nunc working memory"));
         const last = nonMemory.at(-1);

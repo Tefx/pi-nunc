@@ -8,7 +8,7 @@ import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, type CallRecord, type CallEnd } from "../../src/live/budget.js";
 import { selectedModels } from "../../src/live/contract.js";
-import { fixture } from "./fixtures.js";
+import { fixture, repository } from "./fixtures.js";
 const context: TranscriptContext = normalizeContext({ systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] });
 
 test("real OpenAI adapter enforces serialized cap and stops on HTTP failure without retry or subsequent calls", async () => {
@@ -508,9 +508,11 @@ test("prior append-only receipts are compatible and never modified across invoca
     const hashAfter = createHash("sha256").update(contentAfter).digest("hex");
     assert.equal(hashBefore, hashAfter, "prior ledger was never rewritten or modified");
 
-    // Real behavior-batch-01 calls.jsonl compatibility check
-    const realBatch01 = "/Users/tefx/Projects/pi-nunc/.vectl/worktrees/nunc-task-retention.observation-support/.scratch/behavior-batch-01/nunc-live-retention-01/calls.jsonl";
-    const realRecords = readLedger(realBatch01);
+    // Original behavior-batch-01 reserve/terminal receipts, copied without
+    // transformation from the retained canonical run ledger into a portable fixture.
+    // Provenance: .scratch/task-retention-evidence/retained-live/behavior-batch-01/
+    // nunc-live-retention-01/calls.jsonl in the original pi-nunc checkout.
+    const realRecords = readLedger(join(repository, "tests/live/fixtures/behavior-batch-01-calls.jsonl"));
     assert.equal(realRecords.length, 2);
     assert(realRecords[0] && realRecords[0].kind === "reserve");
     assert(realRecords[1] && realRecords[1].kind === "terminal");

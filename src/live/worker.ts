@@ -679,16 +679,39 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
 
     }
     if (selection.id === "m5") {
-      const entries = sm.buildContextEntries();
-      const selected = project(entries);
-      const results = entries.filter(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError);
-      const changedM = sm.getBranch().some(e => e.type === "custom" && e.customType === "nunc.memory" || e.type === "compaction" && object(e.details) && Object.hasOwn(e.details, "nunc"));
-      const on = selection.variant === "cleanup-on";
-      const projectedRequests = (report.requests ?? []).filter(r => r.kind === "main" && selected.cleanup.some(d => JSON.stringify(r.context.messages).includes(d.text)));
-      const qualified = results.length >= 2 && changedM && (on ? selected.cleanup.length > 0 && projectedRequests.length > 0 : selected.cleanup.length === 0);
-      report.prerequisites.push({ check: on ? "cleanup-on: M update, two real tool results, committed decision and provider projection" : "cleanup-off: M update and two real tool results without a saved decision",
-        status: qualified ? "PROVEN" : "UNPROVEN", observed: { toolResults: results.length, memoryUpdated: changedM, savedDecisions: selected.cleanup.length, projectedMainRequests: projectedRequests.length,
-          mainRequests: (report.requests ?? []).filter(r => r.kind === "main").length } });
+      const entries = sm.buildContextEntries(), branch = sm.getBranch();
+      const selected = project(entries), on = selection.variant === "cleanup-on";
+      const completed = (report.actions as Array<{ turn: string; event: any }>).filter(row => row.event?.type === "turn_complete");
+      const first = completed.find(row => row.turn === "a")?.event;
+      const updated = completed.find(row => row.turn === "c")?.event;
+      const oldSlots = first?.memory?.slots, newSlots = updated?.memory?.slots;
+      const oldSent = Array.isArray(oldSlots) && oldSlots.length > 0 && (report.requests ?? []).some(r =>
+        r.kind === "main" && r.turn === "b" && oldSlots.every((slot: { text: string }) => JSON.stringify(r.context.messages).includes(slot.text)));
+      const memoryChanged = Array.isArray(newSlots) && newSlots.length > 0 && !isDeepStrictEqual(oldSlots, newSlots);
+      const aMemoryIndex = branch.findIndex(e => e.type === "custom" && e.customType === "nunc.memory" && first?.activeEntryIds?.includes(e.id));
+      const cMemoryIndex = branch.findIndex((e, i) => i > aMemoryIndex && e.type === "custom" && e.customType === "nunc.memory" && updated?.activeEntryIds?.includes(e.id) && !first?.activeEntryIds?.includes(e.id));
+      const between = aMemoryIndex >= 0 && cMemoryIndex > aMemoryIndex ? branch.slice(aMemoryIndex + 1, cMemoryIndex) : [];
+      const toolCalls = new Map<string, string>();
+      for (const entry of between) if (entry.type === "message" && entry.message.role === "assistant") {
+        for (const block of entry.message.content) if (block.type === "toolCall" && !block.name.startsWith("nunc_")) toolCalls.set(block.id, entry.id);
+      }
+      const groups = new Set<string>();
+      const resultKeys = new Set<string>();
+      for (const entry of between) if (entry.type === "message" && entry.message.role === "toolResult" && !entry.message.isError && toolCalls.has(entry.message.toolCallId)) {
+        groups.add(toolCalls.get(entry.message.toolCallId)!);
+        resultKeys.add(`${entry.id}:0`);
+      }
+      // The initial M save has no previously sent M or post-anchor completed groups.
+      // A negative result there is the actual no-eligible-source case, not cleanup-off.
+      const noEligible = aMemoryIndex >= 0 && first?.activeEntryIds?.includes(branch[aMemoryIndex]!.id) &&
+        project(branch.slice(0, aMemoryIndex + 1).filter(e => e.type === "message" || e.type === "custom" || e.type === "compaction")).cleanup.length === 0;
+      const committed = selected.cleanup.filter(d => resultKeys.has(`${d.entryId}:${d.messageIndex}`));
+      const projected = (report.requests ?? []).filter(r => r.kind === "main" && r.turn === "d" &&
+        committed.some(d => JSON.stringify(r.context.messages).includes(d.text)));
+      const qualified = oldSent && memoryChanged && groups.size >= 2 && noEligible &&
+        (on ? committed.length > 0 && projected.length > 0 : selected.cleanup.length === 0);
+      report.prerequisites.push({ check: on ? "cleanup-on: no-eligible initial save, sent M, completed groups, lawful committed source and provider projection" : "cleanup-off: no-eligible initial save, sent M and completed groups without a saved decision",
+        status: qualified ? "PROVEN" : "UNPROVEN", observed: { noEligible, oldSent, memoryChanged, completedGroups: groups.size, savedDecisions: selected.cleanup.length, committedSources: committed.length, projectedMainRequests: projected.length } });
     }
     if (selection.id === "m4") {
       const requests = report.requests ?? [];

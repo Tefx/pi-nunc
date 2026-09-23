@@ -47,7 +47,7 @@ test("m5 cleanup-on/off select the same original task and independent observer w
   for (const variant of ["cleanup-on", "cleanup-off"] as const) {
     const selection = { ...input.scenarios[0]!, id: "m5" as const, variant };
     const { input: scenario, observer } = await loadScenario(repository, selection);
-    assert.equal(scenario.turns.length, 3);
+    assert.equal(scenario.turns.length, 4);
     assert.equal(observer.artifactChecks[0]?.operator, "semantic");
     assert.deepEqual(scenario.files, (await loadScenario(repository, { ...selection, variant: variant === "cleanup-on" ? "cleanup-off" : "cleanup-on" })).input.files);
     assert.equal(parseInput({ ...input, scenarios: [selection] }).scenarios[0]?.variant, variant);

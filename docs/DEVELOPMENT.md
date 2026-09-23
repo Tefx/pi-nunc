@@ -39,16 +39,14 @@ Real TUI tests require POSIX PTYs and `/usr/bin/python3` with its standard libra
 `all` is not complete after only the candidate `npm ci` / `npm run build`. Live comparison tests load `.scratch/baseline-70dacad` as the `current` group. Prepare that tree first.
 
 ## Comparison baseline for all
-
-Tracked tests hardcode `$PWD/.scratch/baseline-70dacad` (`tests/live/comparison.test.ts`, `tests/live/comparison-native.test.ts`, `tests/live/comparison-native-fixture.ts`, `tests/live/optional-quotas.test.ts`). `src/live/contract.ts` preflight then requires:
+Tracked comparison tests load `$PWD/.scratch/baseline-70dacad` as the historical `current` group (`tests/live/comparison.test.ts`, `tests/live/comparison-native.test.ts`, `tests/live/optional-quotas.test.ts`). `src/live/contract.ts` preflight requires:
 
 - `git rev-parse HEAD` starts with `70dacad` (product baseline `70dacad1f065a70b29f565b5bfcf02d31cec2bdc`)
 - `git status --porcelain` clean for `src`, `policies`, `package.json`, `package-lock.json`, and `tsconfig.json`
-- compiled `dist/src/index.js`
-- that tree’s lock pins `@earendil-works/pi-coding-agent` **0.85.1**, with matching `node_modules`
-- build parity against that baseline’s tracked source
+- compiled `dist/src/index.js` built against the baseline's tracked source
+- that tree’s lock pins `@earendil-works/pi-coding-agent` **0.85.1**, with matching isolated `node_modules`
 
-The candidate checkout remains the `native` and `candidate` repositories; it must already have Pi 0.85.1 installed. `.scratch/` is gitignored. Create an isolated detached worktree so this checkout’s branch does not move:
+The candidate checkout remains the `native` and `candidate` repositories and has its own Pi **0.86.1** dependencies. Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
 
 ```sh
 git rev-parse --verify 70dacad1f065a70b29f565b5bfcf02d31cec2bdc
@@ -62,7 +60,20 @@ git worktree add --detach .scratch/baseline-70dacad 70dacad1f065a70b29f565b5bfcf
 )
 ```
 
-If `.scratch/baseline-70dacad` already exists, reuse it when `HEAD` and the clean/build checks still hold. Do not point `current` at this candidate checkout: preflight rejects a baseline whose HEAD is not `70dacad…`. `engine` checks do not load this tree; `all` does. Missing baseline fails comparison preflight with `TARGET` / `BUILD` rather than skipping those tests.
+Reuse an existing baseline if its HEAD, clean tracked source, version and build still satisfy preflight. Do not point `current` at the candidate: preflight rejects another HEAD. `engine` checks do not load the baseline; `all` does. Missing baseline fails comparison preflight with `TARGET` / `BUILD` instead of skipping tests. The earlier baseline's maintenance response has three required fields; the candidate's required-item response adds `required`. The controlled comparison fixture follows each target's actual response contract.
+
+The portable `tests/live/fixtures/behavior-batch-01-calls.jsonl` retains the two original records from `.scratch/task-retention-evidence/retained-live/behavior-batch-01/nunc-live-retention-01/calls.jsonl` in the original pi-nunc checkout. `tests/live/budget.test.ts` checks their historical read/summary compatibility without depending on a previously removed observation-support worktree or creating another live run. Retain the original source ledger separately; this test fixture does not represent a current call.
+
+### Scoped-task pre-change fixture
+
+`tests/live/task-retention-native.test.ts` also loads `.scratch/prechange` for its `current` arm, distinct from the 0.85.1 comparison baseline. Prepare it at `refs/nunc/task-retention-pre-change` (`1d4fc4a210b64f71871ab3f5c10093215a25990c`), whose lock pins Pi 0.86.1:
+
+```sh
+git worktree add --detach .scratch/prechange refs/nunc/task-retention-pre-change
+(cd .scratch/prechange && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+```
+
+Reuse a clean, built checkout at that ref when present. Keep both historical dependency trees isolated from the candidate and each other; neither baseline is a deployable runtime.
 
 ## Default inheritance and test isolation
 
@@ -112,6 +123,12 @@ For the same public-runner workload with an actual read-only Larva input after b
 ```
 
 This adds actual Larva/manual-switch composition with the explicit task-local `compactionOwner: "nunc"` selection. The runner selects `{enabled:false}` through Larva's public compaction-config environment seam only in those children. The test checks the effective child setting, actual v1 prompt resolution, one Nunc extraction per rollover, and candidate/persisted summary, cut and memory equality. Default enabled dual-compaction hooks remain unsupported; the original failure evidence is retained. The separate `dist/tests/pi/larva.integration.js` command remains required for active-persona borrow/restoration, native serialization and recovery. Neither command invokes a real model. See [LIVE.md](LIVE.md#stable-memory-observation-procedure) for downstream real-model qualifications and artifact retention.
+## Tool-result cleanup runner evidence
+
+`tests/live/tool-result-cleanup-native.test.ts` runs both m5 arms through the stock Pi extension, HTTP serializer, native `read`/`write` and `nunc_memory_read`/`nunc_memory_patch` tools, native session and provider projection. Its controlled responses cause an initial M save with no previously sent M (the no-eligible negative), send that M on the next task turn, complete separate source tool groups, update M after new evidence, and observe a committed duplicate-source decision only in the enabled arm. It leaves the semantic artifact check `UNPROVEN`: scripted responses cannot prove model judgment or actual savings.
+
+For a separately authorized real-model comparison, use `tests/scenarios/tool-result-cleanup-{inputs,observer}.json`, select both `m5/cleanup-on` and `m5/cleanup-off` in isolated state roots with the same task inputs/model/settings/limits, and first run `scripts/verify-live.mjs --preflight` with the bounded selection on stdin. Preflight validates target, model, limits and fixture without dispatching a model; then run without `--preflight` only within the approved call/cost limits. Retain both returned reports, native ledgers and original sessions, compare actual M updates, committed eligibility, omitted obligations, source rereads, request input/cache usage, total charged cost and elapsed time. An `OBSERVED` controlled result or shorter projected payload alone does not establish real-model effectiveness. If real-model turns do not create the eligible grouping and M transitions, record `UNPROVEN` instead of treating off-arm absence as a no-eligible negative.
+
 ## Manual IME / visual overlay check
 
 PTY CJK bytes do not prove IME candidate-window placement. Preparation is tracked and offline:

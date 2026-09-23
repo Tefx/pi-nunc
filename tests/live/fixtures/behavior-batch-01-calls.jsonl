@@ -1,0 +1,2 @@
+{"kind":"reserve","id":1,"model":"openrouter/openai/gpt-5.6-luna","inputEstimate":1915,"outputCeiling":128000,"reservedTokens":1178000,"reservedCostUsd":0.4161,"catalogReservationUsd":0.4161,"at":1790057092126,"caseKey":"g4-task-file"}
+{"kind":"terminal","id":1,"at":1790057097155,"latencyMs":5029,"stopReason":"toolUse","usage":{"input":3,"cacheRead":0,"cacheWrite":1215,"contextInput":1218,"output":37,"reasoning":8,"totalTokens":1255,"cost":0.00034875},"caseKey":"g4-task-file"}

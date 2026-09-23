@@ -23,15 +23,18 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
     if (serialized && current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
     if (serialized) return "## Goal\nContinue the authorized local task.\n\n## Progress\nThe preceding ordinary turns completed. Preserve the remaining work and original restrictions.\n\n## Next Steps\nContinue only when the ordinary user turn authorizes it.\n\n## Critical Context\nThe task files remain available through the ordinary file tools. This controlled summary exercises the stock serializer and carries no quality claim.";
     if (source) {
+      // The isolated historical checkout has the earlier three-field response contract.
+      // Keep required-item assertions on candidate requests without sending that field
+      // to an older engine which correctly rejects unknown response keys.
+      const supportsRequired = JSON.stringify(row.payload).includes("optional toolResultEdits");
       if (options.sameMemory && Array.isArray(source.M) && source.M.length) {
-        return JSON.stringify({ add: [], remove: [], priority: source.M.map((s: any) => s.id), required: [] });
+        return JSON.stringify({ add: [], remove: [], priority: source.M.map((s: any) => s.id), ...(supportsRequired ? { required: [] } : {}) });
       }
       if (current?.scenario === "e4" && options.invalidCapacity) return "Incomplete capacity response";
       if (current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
-      const required = JSON.stringify(row.payload).includes("four required fields");
       const add = current?.scenario === "e4" ? [{ key: "req", text: "n".repeat(options.tooLarge ? 1000 : 120) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "note", text: "Controlled protocol note." }];
       const priority = current?.scenario === "e4" ? ["opt", "extra", "req"] : ["note"];
-      return JSON.stringify({ add, remove: source.M.map((s: any) => s.id), priority, required: required ? [add[0]!.key] : [] });
+      return JSON.stringify({ add, remove: source.M.map((s: any) => s.id), priority, ...(supportsRequired ? { required: [add[0]!.key] } : {}) });
     }
     if (last?.role === "user") { const selected = turns.find((t: any) => t.text === text(last)); if (selected) { current = selected; step = 0; } }
     const key = `${current?.scenario}:${current?.id}`, n = step++;
