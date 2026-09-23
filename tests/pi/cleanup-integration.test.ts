@@ -4,7 +4,7 @@ import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earen
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { memorySurface } from "../../src/pi/index.js";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { answer, assistant, tool, user } from "../engine/fixtures.js";
 import { parseNuncSettings, resolveMemoryTools, resolveToolResultCleanup } from "../../src/pi/config.js";
 import { eligibleCleanupScope, project, originalResults, effectiveActive } from "../../src/pi/projection.js";
@@ -68,6 +68,70 @@ test("disabling cleanup restores raw capacity accounting and refuses an oversize
   assert.equal(f.calls.length, sentBefore, "oversized restored body must not reach the provider");
   assert(admission.some(row => typeof row === "object" && row !== null && (row as { outcome?: string }).outcome === "reject"));
   assert.equal(project(manager.buildContextEntries()).cleanup.length, 1, "capacity rejection preserves persisted decision");
+});
+
+test("hosted patch tool skips malformed optional cleanup while committing legal M, and accepts a valid edit", async t => {
+  let ctx: ExtensionContext | undefined, api: ExtensionAPI | undefined;
+  const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } },
+    extras: [{ name: "capture-public-cleanup-patch", factory(pi) {
+      api = pi;
+      pi.on("session_start", (_event, current) => { ctx = current; });
+    } }] });
+  t.after(() => f.close());
+  assert(ctx && api);
+  const manager = f.runtime.session.sessionManager;
+  const definition = (f.runtime.session as any).getToolDefinition("nunc_memory_patch");
+  assert.match(definition.parameters.properties.toolResultEdits.description, /Optional array of eligible result edits/);
+  const sendPatch = async (id: string, args: Record<string, unknown>) => {
+    let sent = 0;
+    f.respond(() => sent++ === 0
+      ? fauxAssistantMessage(fauxToolCall("nunc_memory_patch", args as Parameters<typeof fauxToolCall>[1], { id }), { stopReason: "toolUse" })
+      : fauxAssistantMessage("Controlled continuation after public tool result."));
+    await f.runtime.session.prompt(`Apply ${id} through the hosted agent`);
+    const result = manager.getBranch().find(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === id);
+    assert(result?.type === "message" && result.message.role === "toolResult", `Host must dispatch ${id}`);
+    assert.equal(result.message.isError, false, JSON.stringify(result.message));
+    const block = result.message.content.find(b => b.type === "text");
+    assert(block?.type === "text");
+    return JSON.parse(block.text);
+  };
+  const bad: unknown[] = [
+    [{ entryId: "missing", messageIndex: 0, action: "invalid" }],
+    [{ entryId: "missing", messageIndex: -1, action: "omit" }],
+    [{ entryId: 42, messageIndex: 0, action: "omit" }],
+    { entryId: "missing", messageIndex: 0, action: "omit" },
+  ];
+  for (const [index, edits] of bad.entries()) {
+    const revision = memorySurface(api)!.read(ctx).revision;
+    const result = await sendPatch(`invalid-cleanup-${index}`, { expectedRevision: revision,
+      add: [{ key: `note-${index}`, text: `Keep independently useful task note ${index}.` }], toolResultEdits: edits });
+    assert.equal(result.ok, true);
+    assert.equal(result.toolResultCleanup.applied.length, 0);
+    assert.equal(result.toolResultCleanup.skipped[0]?.reason, "invalid_shape");
+    assert.equal(memorySurface(api)!.read(ctx).memory.slots.length, index + 1);
+  }
+
+  f.respond(() => fauxAssistantMessage("Existing memory sent before cleanup."));
+  await f.runtime.session.prompt("Establish the later cleanup anchor");
+  const sourceBody = "Verified local diagnostic with relevant context. ".repeat(40);
+  for (const id of ["eligible-source", "newest-source"]) {
+    manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path: id } }] });
+    manager.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", isError: false,
+      content: [{ type: "text", text: sourceBody }], timestamp: 2 });
+  }
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  const read = (f.runtime.session as any).getToolDefinition("nunc_memory_read");
+  const scope = JSON.parse((await read.execute("read-candidates", {}, undefined, undefined, ctx)).content[0].text);
+  assert.equal(scope.cleanupCandidates.length, 1);
+  const valid = await sendPatch("valid-cleanup", { expectedRevision: scope.revision,
+    add: [{ key: "verified", text: "Diagnostic consumed; original remains recoverable." }],
+    toolResultEdits: [{ entryId: scope.cleanupCandidates[0].entryId, messageIndex: 0,
+      action: "replace", text: "Diagnostic consumed; see retained original." }] });
+  assert.equal(valid.ok, true);
+  assert.equal(valid.toolResultCleanup.applied.length, 1);
+  assert.equal(memorySurface(api)!.read(ctx).memory.slots.length, bad.length + 1);
+  assert.equal(project(manager.buildContextEntries()).cleanup.length, 1);
 });
 
 test("stock loader, native session append, public read/patch, active projection and restart keep originals", async t => {

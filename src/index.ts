@@ -175,11 +175,10 @@ export default function nunc(pi: ExtensionAPI): void {
             Type.String({ description: "ID of existing slot to remove" }),
             { description: "Slot IDs to remove from current working memory; historical session entries remain. Remove obsolete or superseded notes only after preserving their still-valid parts elsewhere. Finished or cancelled task information may retire when it no longer affects other work. Deleting a note does not cancel a requirement; the tool does not detect semantic loss." }
           )),
-          toolResultEdits: Type.Optional(Type.Array(Type.Object({
-            entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }), action: Type.Union([Type.Literal("omit"), Type.Literal("replace")]),
-            text: Type.Optional(Type.String()), memoryRefs: Type.Optional(Type.Array(Type.String())),
-            sourceRefs: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
-          }), { description: "Optional cleanup of eligible results from nunc_memory_read in this same patch. Invalid edits are skipped locally; source and memory references must survive." })),
+          // The host validates tool arguments before execute. Keep the optional
+          // cleanup payload unconstrained there so malformed cleanup never blocks
+          // a valid M patch; decideToolResultCleanup validates each item locally.
+          toolResultEdits: Type.Optional(Type.Unknown({ description: "Optional array of eligible result edits from nunc_memory_read. Each item: {entryId: string, messageIndex: non-negative integer, action: 'omit' | 'replace', text?: string, memoryRefs?: string[], sourceRefs?: {entryId: string, messageIndex: non-negative integer}[]}. 'replace' requires non-empty text; 'omit' forbids text. Invalid edits are skipped locally without blocking a valid memory patch; source and memory references must survive." })),
         }),
         execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
           const patchParams = (params ?? {}) as Parameters<typeof memory.patch>[1];
