@@ -11,7 +11,8 @@ import { messageTokens } from "../../src/engine/accounting.js";
 
 test("unconfigured native images reach the host provider and new images are charged after a usage receipt", async t => {
   const { f, observations } = await receiptsFixture(t);
-  const image = { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" };
+  // Stock Pi 0.87.1 validates and resizes image bytes before provider delivery.
+  const image = { type: "image" as const, data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", mimeType: "image/png" };
   await f.runtime.session.prompt("First image", { images: [image] });
   assert.equal(f.calls.length, 1);
   assert(f.calls[0]!.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === "image" && block.data === image.data)));

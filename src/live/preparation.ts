@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { estimateTokens, findCutPoint, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { buildSessionProjection, estimateTokens, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, Context } from "@earendil-works/pi-ai";
 import { requireValue, RunnerError, type RunConfig } from "./contract.js";
 import type { Control } from "./scenarios.js";
@@ -10,11 +10,41 @@ export interface PreparedBoundary {
   firstKeptEntryId: string;
   triggerCallId?: string;
   config: RunConfig;
-  native: { keepRecentTokens: number; cut: ReturnType<typeof findCutPoint>; contextTokens: number | null; trigger: number; contextTokensSource: "public turn_end getContextUsage().tokens" | "not a threshold observation" };
+  native: { keepRecentTokens: number; cut: NonNullable<ReturnType<typeof projectedNativeCut>>; contextTokens: number | null; trigger: number; contextTokensSource: "public turn_end getContextUsage().tokens" | "not a threshold observation" };
   calibration?: ReturnType<typeof calibrateRetention>;
   matching?: { referenceSnapshot: string; requestedMemoryLimit: number | null; requestedOutputCap: number | null; limitations: string[] };
 }
 export interface MatchReference { snapshotId: string; mTokens: number | null; outputCaps: Array<number | null> }
+
+/** Observe Pi 0.87's public canonical projection when selecting a native cut.
+ * Pi's older exported findCutPoint operates on raw entries and disagrees with
+ * native compaction once a saved summary precedes the retained tail.
+ */
+export function projectedNativeCut(branch: SessionEntry[], keepRecentTokens: number) {
+  const entries = buildSessionProjection(branch).entries;
+  const previous = entries.findIndex((entry) => entry.sourceEntry.type === "compaction" && entry.messages.length > 0);
+  const start = previous < 0 ? 0 : previous + 1;
+  const cutPoints = entries.flatMap((entry, i) => i >= start && entry.sourceEntry.type !== "compaction" &&
+    entry.messages.some(message => ["user", "assistant", "bashExecution", "custom", "branchSummary", "compactionSummary"].includes(message.role)) ? [i] : []);
+  if (!cutPoints.length) return;
+  let cutIndex = cutPoints[0]!;
+  let accumulated = 0;
+  for (let i = entries.length - 1; i >= start; i--) {
+    accumulated += entries[i]!.messages.reduce((sum, message) => sum + estimateTokens(message), 0);
+    if (accumulated >= keepRecentTokens) {
+      cutIndex = cutPoints.find(candidate => candidate >= i) ?? cutPoints.at(-1)!;
+      break;
+    }
+  }
+  while (cutIndex > start && entries[cutIndex - 1]!.sourceEntry.type !== "compaction" && entries[cutIndex - 1]!.messages.length === 0) cutIndex--;
+  const beginsTurn = (index: number) => entries[index]!.messages.some(message => ["user", "bashExecution", "custom", "branchSummary", "compactionSummary"].includes(message.role));
+  let turnStart = -1;
+  if (!beginsTurn(cutIndex)) for (let i = cutIndex; i >= start; i--) if (beginsTurn(i)) { turnStart = i; break; }
+  const rawIndex = (index: number) => index < 0 ? -1 : branch.findIndex(entry => entry.id === entries[index]!.sourceEntry.id);
+  const firstKeptEntryIndex = rawIndex(cutIndex);
+  if (firstKeptEntryIndex < 0) return;
+  return { firstKeptEntryIndex, turnStartIndex: rawIndex(turnStart), isSplitTurn: turnStart >= 0 };
+}
 
 /** Pure selection on actual persisted entries. Pi reselects the boundary after public reload. */
 export async function prepareBoundary(input: {
@@ -57,22 +87,28 @@ export async function prepareBoundary(input: {
     requireValue(h > 0, "PREPARATION", "Native context cannot cross a positive threshold");
     config.compaction = { ...config.compaction, enabled: true, reserveTokens: model.contextWindow - h };
   }
-  let chosen: { keep: number; cut: ReturnType<typeof findCutPoint> } | undefined;
+  let chosen: { keep: number; cut: NonNullable<ReturnType<typeof projectedNativeCut>> } | undefined;
+  const projected = buildSessionProjection(branch).entries;
+  const projectedIndex = new Map(projected.map((entry, index) => [entry.sourceEntry.id, index]));
   for (let i = start; i < branch.length; i++) {
     if (toolIndex !== undefined && i !== toolIndex) continue;
-    const keep = branch.slice(i).reduce((sum, e) => sum + sessionEntryToContextMessages(e).reduce((s, m) => s + estimateTokens(m), 0), 0);
+    const index = projectedIndex.get(branch[i]!.id);
+    if (index === undefined) continue;
+    const keep = projected.slice(index).reduce((sum, entry) => sum + entry.messages.reduce((s, message) => s + estimateTokens(message), 0), 0);
     if (keep <= 0 || keep >= model.contextWindow - config.compaction.reserveTokens) continue;
-    const cut = findCutPoint(branch, start, branch.length, keep);
+    const cut = projectedNativeCut(branch, keep);
+    if (!cut || cut.firstKeptEntryIndex !== i) continue;
     if (toolIndex !== undefined && cut.firstKeptEntryIndex !== toolIndex) continue;
     if (cut.firstKeptEntryIndex <= start) continue;
     if (branch.slice(cut.firstKeptEntryIndex).some(e => retired.has(e.id)) || branch.slice(0, cut.firstKeptEntryIndex).some(e => retained.has(e.id))) continue;
     chosen = { keep, cut }; break;
   }
   if (!chosen && toolIndex !== undefined) {
-    const keep = branch.slice(toolIndex).reduce((sum, e) => sum + sessionEntryToContextMessages(e).reduce((s, m) => s + estimateTokens(m), 0), 0);
-    const cut = findCutPoint(branch, start, branch.length, keep);
+    const index = projectedIndex.get(branch[toolIndex]!.id);
+    const keep = index === undefined ? 0 : projected.slice(index).reduce((sum, entry) => sum + entry.messages.reduce((s, message) => s + estimateTokens(message), 0), 0);
+    const cut = projectedNativeCut(branch, keep);
     const h = model.contextWindow - config.compaction.reserveTokens;
-    if (cut.firstKeptEntryIndex === toolIndex && cut.firstKeptEntryIndex > start &&
+    if (cut?.firstKeptEntryIndex === toolIndex && cut.firstKeptEntryIndex > start &&
         !branch.slice(cut.firstKeptEntryIndex).some(e => retired.has(e.id)) &&
         !branch.slice(0, cut.firstKeptEntryIndex).some(e => retained.has(e.id)) &&
         keep >= h) {

@@ -223,9 +223,12 @@ test("leading sections and tools are preserved in provider-bound request and aff
   // Independently derived expected token contributions:
   const promptTokens = textTokens(getSystemMessageText(normalSys));
   const toolTokens = textTokens(JSON.stringify(normalSys.toolsAdded));
-  const userMsgTokens = messageTokens(fNormal.calls[0]!.messages[1]!);
-  const expectedRequestTokens = 64 + promptTokens + toolTokens + userMsgTokens;
-  const actualTokens = requestTokens({ messages: fNormal.calls[0]!.messages });
+  const delivered = fNormal.calls[0]!.messages;
+  assert.equal(delivered[0]?.role, "system", "Pi's host system state remains ahead of the extension section");
+  assert.deepEqual(delivered[1], normalSys, "native section and tool declarations are unchanged");
+  const userMsgTokens = messageTokens(delivered[2]!);
+  const expectedRequestTokens = 64 + messageTokens(delivered[0]!) + promptTokens + toolTokens + userMsgTokens;
+  const actualTokens = requestTokens({ messages: delivered });
   assert.equal(actualTokens, expectedRequestTokens, "requestTokens must match independently derived expected tokens");
 
   // 3. Mixed legacy + system normalization:

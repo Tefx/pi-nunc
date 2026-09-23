@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { resolve, relative } from "node:path";
-import { buildContextEntries, convertToLlm, findCutPoint, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { buildContextEntries, convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { projectedNativeCut } from "./preparation.js";
 import type { Control, Turn } from "./scenarios.js";
 import type { RolloverObservation } from "./comparison-observation.js";
 
@@ -54,8 +55,8 @@ export function logicalPlacement(row: RolloverObservation, cwd: string) {
   if (snap && row.prepared) {
     const previous = row.branch.findLast(e => e.type === "compaction");
     const start = previous?.type === "compaction" ? row.branch.findIndex(e => e.id === previous.firstKeptEntryId) : 0;
-    const native = findCutPoint(row.branch, Math.max(0, start), row.branch.length, row.preparation.settings.keepRecentTokens);
-    if (snap.firstKeptEntryId !== row.prepared.firstKeptEntryId || row.branch[native.firstKeptEntryIndex]?.id !== row.preparation.firstKeptEntryId || native.firstKeptEntryIndex <= start) issues.push("Snapshot disagrees with its own public legal prepared cut");
+    const native = projectedNativeCut(row.branch, row.preparation.settings.keepRecentTokens);
+    if (snap.firstKeptEntryId !== row.prepared.firstKeptEntryId || row.branch[native?.firstKeptEntryIndex ?? -1]?.id !== row.preparation.firstKeptEntryId || !native || native.firstKeptEntryIndex <= start) issues.push("Snapshot disagrees with its own public legal prepared cut");
   }
   if (contract) {
     for (const turn of contract.turns) if (!turnEntries[turn.id]?.length || !isDeepStrictEqual(turnEntries[turn.id], contract.turnEntries[turn.id])) issues.push(`Missing request or incomplete named turn ${turn.id}`);

@@ -69,6 +69,8 @@ try {
   }
   const job = { input, scenarioIndex: 0, deadline: Date.now() + (timeout ? 5000 : full || late || capacity ? 70000 : 45000), resume: false };
   const report = await runSegment(job, overrides);
+  const expectedStatus = which === 'outside' || timeout || cancelLate || raceLate || capacity ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED';
+  if (report.status !== expectedStatus) await writeFile(join(f.dir, 'report-failure.json'), JSON.stringify(report));
   assert.equal(report.status, which === 'outside' || timeout || cancelLate || raceLate || capacity ? 'UNPROVEN' : id === 'c3' ? 'PAUSED' : 'OBSERVED', JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic, prerequisites: report.prerequisites, commands: report.commands, preparationFailure: report.preparationFailure }));
   if (timeout) {
     assert.equal(f.requests.length, 1); assert(f.requests[0].closed);
