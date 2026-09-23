@@ -139,6 +139,48 @@ test("context tab shows F/R/M and jumps M to slots without writing", async t => 
   assert(memory().read(ctx()).memory.slots.length >= 1);
 });
 
+test("asynchronous cleanup save preserves the edit on cancellation and commits once on retry", async t => {
+  const { memory, context, ctx, f } = await prepared(t);
+  const original = memory().read(ctx()).memory.slots[0]!;
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let attempts = 0;
+  let cancelled = false;
+  const overlay = new NuncOverlay({
+    ctx: ctx(), memory: memory(), context: context(), tui: mockTui(), theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() { overlay.dispose(); },
+    prepareSave: async (_context, _proposal, signal) => {
+      attempts++;
+      if (attempts === 1) {
+        started.resolve();
+        await release.promise;
+        cancelled = signal.aborted;
+        return { stale: true };
+      }
+      return {};
+    },
+  });
+  overlay.handleInput("\r");
+  overlay.handleInput(" NATIVE_UI_EDIT");
+  assert.match(overlay.draftText() ?? "", /NATIVE_UI_EDIT/, "draft before save");
+  overlay.handleInput("\r");
+  await started.promise;
+  assert.match(visible(overlay.render(90)), /Saving/);
+  overlay.handleInput("\x1b");
+  release.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cancelled, true);
+  assert.equal(overlay.layerName, "edit");
+  assert.match(overlay.draftText() ?? "", /NATIVE_UI_EDIT/);
+  assert.equal(memory().read(ctx()).memory.slots[0]?.text, original.text);
+  overlay.handleInput("\r");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(attempts, 2);
+  assert.equal(overlay.layerName, "browse");
+  assert.match(memory().read(ctx()).memory.slots[0]?.text ?? "", /NATIVE_UI_EDIT/);
+  assert.match(await readFile(f.runtime.session.sessionFile!, "utf8"), /NATIVE_UI_EDIT/);
+});
+
 test("native compact during edit conflicts on original revision and keeps draft", async t => {
   const { overlay, memory, ctx, f } = await prepared(t);
   const before = memory().read(ctx());

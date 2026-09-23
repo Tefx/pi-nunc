@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "inputs": "inputs.json",
+  "visibility": "runner-and-observer-only",
+  "cases": [
+    {
+      "id": "m5",
+      "covers": ["tool-result cleanup comparison at a working-memory update"],
+      "controls": [],
+      "setupChecks": ["The Chinese cancellation requirements, incomplete restart test, and long report are read before the working-memory update; the same turns and model are used in isolated on/off arms."],
+      "artifactChecks": [
+        { "path": "final.json", "pointer": "", "operator": "semantic", "criterion": "Report whether cancellation, restart, and preservation of completed jobs are correctly distinguished; do not claim verification passed when the source reports a failed restart test. Explain any unsupported assertion or omitted continuing obligation." }
+      ],
+      "actionChecks": ["Review actual provider payloads and session edits for an M update and candidate visibility. Compare on/off attempts, task completion, omitted obligations, targeted source rereads, input/cache usage, total model cost and end-to-end time using the recorded call ledger. A shortened payload alone does not establish quality or savings."],
+      "variants": [{ "id": "cleanup-on" }, { "id": "cleanup-off" }]
+    }
+  ]
+}

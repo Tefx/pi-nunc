@@ -113,7 +113,8 @@ export class NativeHost {
     const memoryToolsOverride = o.input.overrides?.find(ov => ov.requirement === "memory-tools-off" || ov.requirement === "memory-tools-on" || ov.memoryTools !== undefined);
     const memoryToolsExplicitOff = memoryToolsOverride?.requirement === "memory-tools-off" || memoryToolsOverride?.memoryTools === false;
     const memoryToolsEnabled = (o.selection.id.startsWith("g") || o.selection.id.startsWith("m")) && !memoryToolsExplicitOff;
-    const taskSettings = { ...o.input.effective?.settings, nunc: { memoryTools: memoryToolsEnabled && o.group !== "native" }, compaction: o.selection.config.compaction, retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0 } }, transport: "sse", packages: [], extensions: [], skills: [], prompts: [], themes: [], enableSkillCommands: false };
+    const taskSettings = { ...o.input.effective?.settings, nunc: { memoryTools: memoryToolsEnabled && o.group !== "native",
+      ...(o.selection.id === "m5" ? { toolResultCleanup: o.selection.variant === "cleanup-on" } : {}) }, compaction: o.selection.config.compaction, retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0 } }, transport: "sse", packages: [], extensions: [], skills: [], prompts: [], themes: [], enableSkillCommands: false };
     if (o.controlledModels) await writeFile(join(host, "settings.json"), JSON.stringify(taskSettings), { mode: 0o600 });
     else if (!o.sessionFile) {
       // Only this newly created task's narrow nonsecret settings overlay. Native

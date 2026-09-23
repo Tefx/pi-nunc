@@ -678,6 +678,18 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       // requalify it against final memory or unrelated main contexts/responses.
 
     }
+    if (selection.id === "m5") {
+      const entries = sm.buildContextEntries();
+      const selected = project(entries);
+      const results = entries.filter(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError);
+      const changedM = sm.getBranch().some(e => e.type === "custom" && e.customType === "nunc.memory" || e.type === "compaction" && object(e.details) && Object.hasOwn(e.details, "nunc"));
+      const on = selection.variant === "cleanup-on";
+      const projectedRequests = (report.requests ?? []).filter(r => r.kind === "main" && selected.cleanup.some(d => JSON.stringify(r.context.messages).includes(d.text)));
+      const qualified = results.length >= 2 && changedM && (on ? selected.cleanup.length > 0 && projectedRequests.length > 0 : selected.cleanup.length === 0);
+      report.prerequisites.push({ check: on ? "cleanup-on: M update, two real tool results, committed decision and provider projection" : "cleanup-off: M update and two real tool results without a saved decision",
+        status: qualified ? "PROVEN" : "UNPROVEN", observed: { toolResults: results.length, memoryUpdated: changedM, savedDecisions: selected.cleanup.length, projectedMainRequests: projectedRequests.length,
+          mainRequests: (report.requests ?? []).filter(r => r.kind === "main").length } });
+    }
     if (selection.id === "m4") {
       const requests = report.requests ?? [];
       const terminals = readLedger(join(input.target.stateRoot, "calls.jsonl")).filter((r): r is CallEnd => r.kind === "terminal");

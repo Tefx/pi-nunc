@@ -69,7 +69,7 @@ export interface Limits {
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
-export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "task-file" | "same-task-history" | "active-edit" | "scoped-tasks" | "source-loss" | "source-unavailable" | "commit-conflict" | "commit-unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
+export interface Selection { id: "c1" | "c2" | "c3" | "c4" | "c5" | "e1" | "e2" | "e3" | "e4" | "g1" | "g2" | "g3" | "g4" | "g5" | "g6" | "g7" | "g8" | "m1" | "m2" | "m3" | "m4" | "m5"; variant?: "full" | "capacity" | "late-d" | "fits-required" | "required-too-large" | "archive-closeout" | "conflict" | "unconfirmed" | "moving" | "fixed" | "keep-0.67" | "keep-0.5" | "cleanup-on" | "cleanup-off" | "task-file" | "same-task-history" | "active-edit" | "scoped-tasks" | "source-loss" | "source-unavailable" | "commit-conflict" | "commit-unconfirmed"; config: RunConfig; assets?: ScenarioAssets }
 export type ComparisonMode = "defaults" | "matched";
 export type ComparisonGroup = "native" | "current" | "candidate";
 export interface ComparisonTarget { repository: string; ref?: string }
@@ -224,7 +224,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
   const ids = new Set<string>();
   for (const selection of value.scenarios) {
     keys(selection, ["id", "variant", "config", "assets"], "scenario");
-    requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "m1", "m2", "m3", "m4"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
+    requireValue(["c1", "c2", "c3", "c4", "c5", "e1", "e2", "e3", "e4", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "m1", "m2", "m3", "m4", "m5"].includes(String(selection.id)), "SCENARIO", "Unknown scenario");
     if (selection.id === "c4") {
       requireValue(["full", "capacity"].includes(String(selection.variant)), "SCENARIO", "c4 requires full/capacity");
     } else if (selection.id === "c1") {
@@ -245,6 +245,8 @@ export function parseInput(value: unknown, execution = false): RunInput {
       requireValue(["moving", "fixed"].includes(String(selection.variant)), "SCENARIO", "m1 requires moving/fixed");
     } else if (selection.id === "m4") {
       requireValue(["keep-0.67", "keep-0.5"].includes(String(selection.variant)), "SCENARIO", "m4 requires keep-0.67/keep-0.5");
+    } else if (selection.id === "m5") {
+      requireValue(["cleanup-on", "cleanup-off"].includes(String(selection.variant)), "SCENARIO", "m5 requires cleanup-on/cleanup-off");
     } else {
       requireValue(selection.variant === undefined, "SCENARIO", `${selection.id} has no variant`);
     }
@@ -281,6 +283,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
       value.comparison.targets[group] = { repository: resolve(t.repository), ...(t.ref === undefined ? {} : { ref: t.ref }) };
     }
   }
+  if (value.scenarios.some(s => s.id === "m5")) requireValue(value.comparison === undefined, "SCENARIO", "m5 compares isolated cleanup-on/off selections; legacy baseline targets do not implement this switch");
   if (value.observations !== undefined) requireValue(Array.isArray(value.observations) && value.observations.length > 0 && new Set(value.observations).size === value.observations.length && value.observations.every(m => ["stock_rpc", "stock_tui", "continuation"].includes(String(m))) && (!value.observations.includes("continuation") || value.observations.length === 1), "OBSERVATION", "Select stock_rpc/stock_tui together, or continuation alone; controlled and live budgets use separate runs");
   // The supervisor generates execution binding internally; callers need no receipt ceremony.
   // All fields and nested boundary values were validated above; no external values are used before this point.

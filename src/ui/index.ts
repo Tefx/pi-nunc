@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ContextSurface } from "../pi/context.js";
 import type { MemoryFreeze, MemoryView } from "../pi/manual.js";
+import type { Memory } from "../engine/index.js";
 import { NuncOverlay } from "./overlay.js";
 import { compactFooter, DIAGNOSTIC_LIMIT, type DiagnosticNote } from "./status.js";
 
@@ -12,6 +13,7 @@ export function createNuncUi(options: {
   memory: MemoryFreeze;
   context: ContextSurface;
   supported: (ctx: ExtensionContext) => void;
+  prepareSave?: (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal) => Promise<{ edits?: unknown; warning?: string; stale?: boolean }>;
 }): NuncUi {
   return new NuncUi(options);
 }
@@ -28,6 +30,7 @@ export class NuncUi {
     memory: MemoryFreeze;
     context: ContextSurface;
     supported: (ctx: ExtensionContext) => void;
+    prepareSave?: (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal) => Promise<{ edits?: unknown; warning?: string; stale?: boolean }>;
   }) {}
 
   recentDiagnostics(): DiagnosticNote[] { return this.diagnostics.slice(); }
@@ -99,6 +102,7 @@ export class NuncUi {
           tui, theme, keybindings, ctx,
           memory: this.options.memory,
           context: this.options.context,
+          ...(this.options.prepareSave ? { prepareSave: this.options.prepareSave } : {}),
           diagnostics: () => ({ notes: this.diagnostics.slice(), ...(this.warning ? { warning: this.warning } : {}) }),
           done: () => done(null),
           onFailure: message => { try { this.noteDiagnostic("warning", message); } catch { /* Diagnostic only. */ } this.refresh(ctx); },

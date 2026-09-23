@@ -38,11 +38,23 @@ try {
     usage: { input: 8, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
   });
   sm.appendCompaction(renderMemory(memory.slots), userId, 1200, { nunc: memory }, true);
+  let firstResult, mainResponses = 0;
+  f.response = (_row, source) => source ? JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id), required: [],
+    toolResultEdits: [{ entryId: firstResult, messageIndex: 0, action: 'replace', text: 'Repeated fixture detail is no longer needed.' }] })
+    : (++mainResponses === 2 || mainResponses === 3 ? { tool: { name: 'fixture_cleanup_result', input: {} } } : 'Controlled ordinary response.');
   const sessionFile = sm.getSessionFile();
   assert(sessionFile);
-  const p = f.start("tui", sessionFile);
+  const p = f.start("tui", sessionFile, { allowTools: true });
   await f.wait(() => f.log.some(e => e.type === "start" && e.data.mode === "tui"), "tui start");
   await delay(400);
+  await p.send('Establish the current native M before editing.');
+  await f.wait(() => f.log.some(e => e.type === 'settled'), 'initial native M request');
+  await p.send('/fixture-seed-cleanup');
+  await f.wait(() => f.log.some(e => e.type === 'cleanup_tool_enabled'), 'native cleanup tool');
+  await p.send('Run the controlled cleanup fixture tool twice.');
+  await f.wait(() => f.log.filter(e => e.type === 'snapshot' && e.data.phase === 'settled').length >= 2, 'two native tool results');
+  firstResult = f.log.filter(e => e.type === 'snapshot' && e.data.phase === 'settled').at(-1).data.entries.find(e => e.type === 'message' && e.message?.role === 'toolResult')?.id;
+  assert(firstResult, 'native tool result is persisted');
   assert.match(strip(p.stdout), /🧠/);
   p.keys("PRE_OVERLAY_DRAFT");
   await delay(250);
@@ -86,6 +98,9 @@ try {
   const saved = await readFile(savedFile, "utf8");
   assert.match(saved, /nunc\.memory/);
   assert.match(saved, /Edited via native TUI/);
+  assert.match(saved, /"toolResultCleanup":\[\{"entryId"/, 'native TUI save persists cleanup with M');
+  assert(f.requests.some(r => r.kind === 'maintenance'), 'native TUI cleanup used model transport');
+  assert.match(saved, /SAFE_REPEATED_TOOL_DETAIL/, 'original tool result remains in native session');
   p.keys("\x04");
   await delay(150);
   assert.match(strip(p.stdout), /Delete /);
@@ -118,6 +133,7 @@ try {
   f.hold("main");
   await p.send("In-flight while overlay opens");
   await f.wait(() => f.requests.some(r => r.kind === "main" && !r.closed), "inflight main");
+  assert.match(JSON.stringify(f.requests.filter(r => r.kind === 'main').at(-1).payload), /Nunc summary/, 'native provider request carries UI cleanup projection');
   const open = f.requests.filter(r => r.kind === "main" && !r.closed).length;
   await p.send("/nunc");
   await f.wait(() => /\[Slots\]/.test(strip(p.stdout)), "overlay during inflight");
@@ -125,8 +141,9 @@ try {
   await delay(200);
   assert.equal(f.requests.filter(r => r.kind === "main" && !r.closed).length, open, "closing overlay does not abort inflight");
   assert.equal(f.log.filter(e => e.type === "compact").length, 0);
+  const settledBeforeRelease = f.log.filter(e => e.type === 'settled').length;
   f.release("main");
-  await f.wait(() => f.log.some(e => e.type === "settled"), "inflight settled");
+  await f.wait(() => f.log.filter(e => e.type === 'settled').length > settledBeforeRelease, "inflight settled");
   const detailsAt = diagnostics(f).length;
   await p.send("/nunc details");
   await f.wait(() => diagnostics(f).length === detailsAt + 1, "details event");
@@ -243,6 +260,7 @@ try {
     footer: Boolean(strip(p.stdout).match(/🧠/)),
     overlay: true,
     savedManual: true,
+    nativeCleanupSave: true,
     editorKept: /KEEP_DRAFT/.test(snap.editor),
     preExistingDraft: true,
     overlayDidNotWriteEditor: true,

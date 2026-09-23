@@ -21,11 +21,12 @@ import {
 import type { ContextSurface, ContextView } from "../pi/context.js";
 import { unknownBudget } from "../pi/context.js";
 import type { MemorySurface, MemoryView } from "../pi/manual.js";
+import type { Memory } from "../engine/index.js";
 import { buildContextNodes, CONTEXT_ROOT_IDS, type CtxNode } from "./context-tree.js";
 import { UNLOAD_LIMIT, firstLine, thousands, type DiagnosticNote } from "./status.js";
 
 export type OverlayTab = "slots" | "context";
-type Layer = "browse" | "edit" | "confirm-delete" | "confirm-discard";
+type Layer = "browse" | "edit" | "confirm-delete" | "confirm-discard" | "saving";
 
 export interface OverlayHost {
   tui: TUI;
@@ -38,6 +39,7 @@ export interface OverlayHost {
   done: () => void;
   onFailure?: (message: string) => void;
   onSuccess?: () => void;
+  prepareSave?: (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal) => Promise<{ edits?: unknown; warning?: string; stale?: boolean }>;
 }
 
 const ANSI_RESET = "\x1b[0m";
@@ -95,6 +97,8 @@ export class NuncOverlay implements Focusable {
   private previewViewport = 1;
   private error: string | undefined;
   private closed = false;
+  private saving: AbortController | undefined;
+  private savingFrom: "edit" | "browse" = "edit";
   private _focused = true;
   private listHeight = 4;
   private nodes = new Map<string, CtxNode>();
@@ -156,6 +160,7 @@ export class NuncOverlay implements Focusable {
   }
 
   dispose(): void {
+    this.saving?.abort();
     this.closed = true;
     this.search.focused = false;
     if (this.editor) this.editor.focused = false;
@@ -171,7 +176,16 @@ export class NuncOverlay implements Focusable {
 
   handleInput(data: string): void {
     if (this.closed) return;
-    if (this.layer === "confirm-delete") return this.handleConfirm(data, () => this.deleteSelected());
+    if (this.layer === "saving") {
+      if (this.hit(data, "tui.select.cancel")) {
+        this.saving?.abort();
+        this.layer = this.savingFrom;
+        this.error = "Save cancelled; no memory or cleanup was committed";
+        this.host.tui.requestRender();
+      }
+      return;
+    }
+    if (this.layer === "confirm-delete") return this.handleConfirm(data, () => { void this.deleteSelected(); });
     if (this.layer === "confirm-discard") return this.handleConfirm(data, () => this.leaveEdit(true));
     if (this.layer === "edit") return this.handleEdit(data);
     this.handleBrowse(data);
@@ -192,7 +206,7 @@ export class NuncOverlay implements Focusable {
     const title = this.host.theme.fg("accent", this.host.theme.bold("Nunc"));
     const topTitle = truncateToWidth(`─ ${title} `, boxWidth - 2);
     const topMiddle = `${topTitle}${"─".repeat(Math.max(0, boxWidth - 2 - visibleWidth(topTitle)))}`;
-    const inner = this.layer === "edit" ? this.renderEditor(contentWidth, innerBudget)
+    const inner = this.layer === "edit" || this.layer === "saving" && this.savingFrom === "edit" ? this.renderEditor(contentWidth, innerBudget)
       : this.layer === "confirm-delete" || this.layer === "confirm-discard" ? this.fit(this.renderConfirm(contentWidth), innerBudget)
       : this.renderBrowse(contentWidth, innerBudget);
     const lines = [
@@ -351,7 +365,7 @@ export class NuncOverlay implements Focusable {
     };
     editor.setText(slot.text);
     editor.focused = this._focused;
-    editor.onSubmit = text => this.save(slotId, text);
+    editor.onSubmit = text => { void this.save(slotId, text); };
     this.editor = editor;
     this.host.tui.requestRender();
   }
@@ -382,13 +396,44 @@ export class NuncOverlay implements Focusable {
       this.fail("Maintenance has not finished native commit; draft was not saved.", untrimmed);
       return;
     }
-    const result = this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed);
+    if (!this.host.prepareSave) {
+      this.finishSave(this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed), slotId, untrimmed);
+      return;
+    }
+    void this.savePrepared(slotId, untrimmed, basis);
+  }
+
+  private async savePrepared(slotId: string, untrimmed: string, basis: { revision: string; slotId: string; original: string }): Promise<void> {
+    const controller = new AbortController();
+    this.saving = controller;
+    this.savingFrom = "edit";
+    this.layer = "saving";
+    // Pi's Editor clears its buffer on submit; retain the draft across an async
+    // cleanup failure, Escape, model cancellation, or a concurrent state change.
+    this.editor?.setText(untrimmed);
+    this.host.tui.requestRender();
+    const proposal: Memory = { ...this.memoryView.memory, slots: this.memoryView.memory.slots.map(slot =>
+      slot.id === slotId ? { ...slot, text: untrimmed } : slot) };
+    let prepared: { edits?: unknown; warning?: string; stale?: boolean } = {};
+    try { if (untrimmed !== basis.original) prepared = await this.host.prepareSave?.(this.host.ctx, proposal, controller.signal) ?? {}; }
+    catch (error) { prepared = { warning: `Cleanup failed: ${error instanceof Error ? error.message : String(error)}` }; }
+    if (this.closed || controller.signal.aborted || this.saving !== controller) return;
+    this.saving = undefined;
+    this.layer = "edit";
+    if (prepared.stale) { this.fail("Session/model/configuration changed while saving; draft was not committed", untrimmed); return; }
+    const result = this.host.memory.patch(this.host.ctx, { expectedRevision: basis.revision, update: [{ id: slotId, text: untrimmed }],
+      ...(prepared.edits === undefined ? {} : { toolResultEdits: prepared.edits }),
+      ...(prepared.warning ? { suppressCleanup: true } : {}) }, controller.signal);
+    this.finishSave(result, slotId, untrimmed, prepared.warning);
+  }
+
+  private finishSave(result: ReturnType<MemorySurface["replace"]> | ReturnType<MemorySurface["patch"]>, slotId: string, untrimmed: string, warning?: string): void {
     if (!result.ok) {
       this.fail(result.message, untrimmed);
       return;
     }
     this.preferredSlot = slotId;
-    this.error = undefined;
+    this.error = warning;
     this.editBasis = undefined;
     this.editor = undefined;
     this.layer = "browse";
@@ -428,7 +473,35 @@ export class NuncOverlay implements Focusable {
     const slots = this.memoryView.memory.slots;
     const index = slots.findIndex(slot => slot.id === id);
     const neighbor = slots[index + 1]?.id ?? slots[index - 1]?.id;
-    const result = this.host.memory.delete(this.host.ctx, this.memoryView.revision, id);
+    if (!this.host.prepareSave) {
+      this.finishDelete(this.host.memory.delete(this.host.ctx, this.memoryView.revision, id), neighbor);
+      return;
+    }
+    void this.deletePrepared(id, neighbor);
+  }
+
+  private async deletePrepared(id: string, neighbor: string | undefined): Promise<void> {
+    const slots = this.memoryView.memory.slots;
+    const controller = new AbortController();
+    this.saving = controller;
+    this.savingFrom = "browse";
+    this.layer = "saving";
+    this.host.tui.requestRender();
+    const proposal: Memory = { ...this.memoryView.memory, slots: slots.filter(slot => slot.id !== id) };
+    let prepared: { edits?: unknown; warning?: string; stale?: boolean } = {};
+    try { prepared = await this.host.prepareSave?.(this.host.ctx, proposal, controller.signal) ?? {}; }
+    catch (error) { prepared = { warning: `Cleanup failed: ${error instanceof Error ? error.message : String(error)}` }; }
+    if (this.closed || controller.signal.aborted || this.saving !== controller) return;
+    this.saving = undefined;
+    this.layer = "browse";
+    if (prepared.stale) { this.fail("Session/model/configuration changed while saving; delete was not committed"); return; }
+    const result = this.host.memory.patch(this.host.ctx, { expectedRevision: this.memoryView.revision, remove: [id],
+      ...(prepared.edits === undefined ? {} : { toolResultEdits: prepared.edits }),
+      ...(prepared.warning ? { suppressCleanup: true } : {}) }, controller.signal);
+    this.finishDelete(result, neighbor, prepared.warning);
+  }
+
+  private finishDelete(result: ReturnType<MemorySurface["delete"]> | ReturnType<MemorySurface["patch"]>, neighbor: string | undefined, warning?: string): void {
     if (!result.ok) {
       this.error = result.message;
       this.host.onFailure?.(result.message);
@@ -438,7 +511,7 @@ export class NuncOverlay implements Focusable {
       return;
     }
     this.preferredSlot = neighbor;
-    this.error = undefined;
+    this.error = warning;
     this.layer = "browse";
     this.search.focused = this._focused;
     this.memoryView = { ...this.memoryView, revision: result.revision, memory: result.memory };
@@ -549,7 +622,8 @@ export class NuncOverlay implements Focusable {
 
   private renderEditor(contentWidth: number, innerBudget: number): string[] {
     const theme = this.host.theme;
-    const hint = theme.fg("dim", `${this.keyLabel("tui.input.submit")} save · ${this.keyLabel("tui.select.cancel")} cancel · ${this.keyLabel("tui.input.newLine")} newline`);
+    const hint = theme.fg("dim", this.layer === "saving" ? `Saving… · ${this.keyLabel("tui.select.cancel")} cancel entire save` :
+      `${this.keyLabel("tui.input.submit")} save · ${this.keyLabel("tui.select.cancel")} cancel · ${this.keyLabel("tui.input.newLine")} newline`);
     const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error), contentWidth).slice(0, 1) : [];
     const noticeAllowed = innerBudget - 1 - error.length >= 7;
     const notice = noticeAllowed ? wrapTextWithAnsi(theme.fg("muted", UNLOAD_LIMIT), contentWidth).slice(0, 1) : [];
@@ -598,7 +672,7 @@ export class NuncOverlay implements Focusable {
     const theme = this.host.theme;
     const slots = this.tab === "slots" ? theme.fg("accent", theme.bold("[Slots]")) : theme.fg("muted", " Slots ");
     const context = this.tab === "context" ? theme.fg("accent", theme.bold("[Context]")) : theme.fg("muted", " Context ");
-    return `${slots}   ${context}`;
+    return `${slots}   ${context}${this.layer === "saving" ? "   Saving… (Esc cancels)" : ""}`;
   }
 
   private readyLine(): string {
@@ -612,6 +686,9 @@ export class NuncOverlay implements Focusable {
     const warning = this.host.diagnostics?.().warning;
     const flags = [
       view.status.occupied ? "maintenance" : undefined,
+      this.layer === "saving" ? "saving…" : undefined,
+      view.cleanup ? `cleanup ${view.cleanup.enabled ? "on" : "off"} · ${view.cleanup.saved} saved / ${view.cleanup.applied} applied` : undefined,
+      view.cleanup?.unavailable.length ? `${view.cleanup.unavailable.length} cleanup sources unavailable` : undefined,
       view.status.unconfirmed ? "save unconfirmed" : undefined,
       this.editBasis && view.revision !== this.editBasis.revision ? "revision changed" : undefined,
       warning ? `warning ${firstLine(warning, 80)}` : undefined,

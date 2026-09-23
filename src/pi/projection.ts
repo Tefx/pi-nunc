@@ -1,15 +1,45 @@
 import { isDeepStrictEqual } from "node:util";
+import { createHash } from "node:crypto";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { ActiveEntry, Memory } from "../engine/index.js";
-import { emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
+import type { ActiveEntry, Memory, ToolResultDecision, ToolResultRef } from "../engine/index.js";
+import { applyToolResultCleanup, emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
 import { isSystemMessage } from "../engine/accounting.js";
-import { EngineError, record, validateMemory } from "../engine/validation.js";
+import { EngineError, integer, record, validateMemory } from "../engine/validation.js";
 
 /** Private CustomEntry type. Replaceable encoding; not a public SDK. */
 export const MANUAL_MEMORY_TYPE = "nunc.memory";
 
 export function isManualMemoryEntry(entry: SessionEntry): entry is Extract<SessionEntry, { type: "custom" }> {
   return entry.type === "custom" && entry.customType === MANUAL_MEMORY_TYPE;
+}
+
+type StoredDecision = ToolResultDecision & { sourceDigest: string };
+const sourceDigest = (text: string) => createHash("sha256").update(JSON.stringify(text)).digest("hex");
+const sourceText = (active: readonly ActiveEntry[], ref: ToolResultRef): string | undefined => {
+  const message = active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
+  return message?.role === "toolResult" && Array.isArray(message.content) && message.content.every(block => block.type === "text")
+    ? message.content.map(block => block.text).join("") : undefined;
+};
+export function sealDecisions(active: readonly ActiveEntry[], decisions: readonly ToolResultDecision[]): StoredDecision[] {
+  return decisions.map(decision => {
+    const text = sourceText(active, decision);
+    if (text === undefined || text.length !== decision.originalLength) throw new EngineError("INPUT", "Cleanup source changed before native save");
+    return { ...decision, sourceDigest: sourceDigest(text) };
+  });
+}
+function readDecisions(data: unknown): { valid: StoredDecision[]; invalid: string[] } {
+  if (!record(data) || !Array.isArray(data.toolResultCleanup)) return { valid: [], invalid: [] };
+  const valid: StoredDecision[] = [], invalid: string[] = [];
+  for (const value of data.toolResultCleanup) {
+    if (record(value) && typeof value.entryId === "string" && integer(value.messageIndex) &&
+        typeof value.toolCallId === "string" && typeof value.toolName === "string" && typeof value.text === "string" &&
+        (value.kind === "semantic" || value.kind === "mechanical") &&
+        integer(value.originalLength) && integer(value.cleanedLength) && value.cleanedLength === value.text.length &&
+        integer(value.netSavings, 1) && value.netSavings === value.originalLength - value.cleanedLength &&
+        typeof value.sourceDigest === "string" && /^[a-f0-9]{64}$/.test(value.sourceDigest)) valid.push(value as unknown as StoredDecision);
+    else invalid.push(record(value) && typeof value.entryId === "string" && integer(value.messageIndex) ? `${value.entryId}:${value.messageIndex}` : "invalid saved cleanup decision");
+  }
+  return { valid, invalid };
 }
 
 export function decodeManualMemory(data: unknown): Memory {
@@ -90,12 +120,19 @@ export function revisionApplies(revision: string, sessionId: string, leafId: str
 }
 
 /** Input MUST be buildContextEntries() for the selected leaf, never getEntries(). */
-export function project(entries: readonly SessionEntry[]): { memory: Memory; active: ActiveEntry[]; latestId?: string } {
+export function project(entries: readonly SessionEntry[]): { memory: Memory; active: ActiveEntry[]; cleanup: ToolResultDecision[]; unavailable: string[]; latestId?: string } {
   const latest = entries.find(e => e.type === "compaction");
   let memory = emptyMemory();
-  if (latest?.type === "compaction") memory = checkpointMemory(latest);
+  let saved = readDecisions(undefined);
+  if (latest?.type === "compaction") {
+    memory = checkpointMemory(latest);
+    saved = readDecisions(latest.details);
+  }
   for (const entry of entriesAfterLatestCheckpoint(entries, latest?.id)) {
-    if (isManualMemoryEntry(entry)) memory = decodeManualMemory(entry.data);
+    if (isManualMemoryEntry(entry)) {
+      memory = decodeManualMemory(entry.data);
+      saved = readDecisions(entry.data);
+    }
   }
   const active: ActiveEntry[] = [];
   for (const entry of entries) {
@@ -113,7 +150,71 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
     }
     active.push({ entryId: entry.id, sourceRole: sourceRole as ActiveEntry["sourceRole"], messages: structuredClone(messages) });
   }
-  return { memory, active, ...(latest ? { latestId: latest.id } : {}) };
+  const byId = new Map(active.map(entry => [entry.entryId, entry]));
+  const unavailable: string[] = [...saved.invalid];
+  const valid: ToolResultDecision[] = [];
+  for (const decision of saved.valid) {
+    const source = byId.get(decision.entryId)?.messages[decision.messageIndex];
+    const text = sourceText(active, decision);
+    if (source?.role !== "toolResult" || source.toolCallId !== decision.toolCallId || source.toolName !== decision.toolName ||
+        text?.length !== decision.originalLength || text === undefined || sourceDigest(text) !== decision.sourceDigest) {
+      unavailable.push(`${decision.entryId}:${decision.messageIndex}`);
+    } else valid.push(decision);
+  }
+  const validIds = new Set(valid.map(d => `${d.entryId}:${d.messageIndex}`));
+  const cleanup = valid.filter(d => !d.sourceRefs?.some(ref =>
+    !byId.get(ref.entryId)?.messages[ref.messageIndex] || validIds.has(`${ref.entryId}:${ref.messageIndex}`)));
+  for (const d of valid) if (!cleanup.includes(d)) unavailable.push(`${d.entryId}:${d.messageIndex}`);
+  return { memory, active, cleanup, unavailable, ...(latest ? { latestId: latest.id } : {}) };
+}
+
+export function effectiveActive(projected: ReturnType<typeof project>, enabled: boolean): ActiveEntry[] {
+  return enabled ? applyToolResultCleanup(projected.active, projected.cleanup) : structuredClone(projected.active);
+}
+
+export function eligibleCleanupScope(active: ActiveEntry[], prefixEntryIds: readonly string[], saved: readonly ToolResultDecision[]): ToolResultRef[] {
+  if (!prefixEntryIds.length || active.length <= prefixEntryIds.length ||
+      !prefixEntryIds.every((id, index) => active[index]?.entryId === id)) return [];
+  const groups: { index: number; business: boolean; pending: Set<string>; results: ToolResultRef[] }[] = [];
+  const open = new Map<string, { group: typeof groups[number]; name: string }>();
+  for (const [index, entry] of active.entries()) {
+    for (const [messageIndex, message] of entry.messages.entries()) {
+      if (message.role === "assistant" && Array.isArray(message.content)) {
+        const calls = message.content.filter(b => b.type === "toolCall");
+        if (calls.length) {
+          const group = { index, business: calls.some(c => !c.name.startsWith("nunc_memory_")), pending: new Set(calls.map(c => c.id)), results: [] as ToolResultRef[] };
+          groups.push(group);
+          for (const call of calls) {
+            if (open.has(call.id)) return []; // ambiguous pending association
+            open.set(call.id, { group, name: call.name });
+          }
+        }
+      } else if (message.role === "toolResult") {
+        const call = open.get(message.toolCallId);
+        if (!call || call.name !== message.toolName) return [];
+        call.group.results.push({ entryId: entry.entryId, messageIndex });
+        call.group.pending.delete(message.toolCallId);
+        open.delete(message.toolCallId);
+      }
+    }
+  }
+  const newestBusiness = groups.findLast(group => group.business && group.pending.size === 0);
+  const savedKeys = new Set(saved.map(d => `${d.entryId}:${d.messageIndex}`));
+  const allowed = new Set(groups.filter(group => group.business && group.pending.size === 0 && group !== newestBusiness)
+    .flatMap(group => group.results).map(ref => `${ref.entryId}:${ref.messageIndex}`));
+  return active.slice(prefixEntryIds.length).flatMap(entry => entry.messages.flatMap((message, messageIndex) => {
+    const key = `${entry.entryId}:${messageIndex}`;
+    return message.role === "toolResult" && allowed.has(key) && !savedKeys.has(key) ? [{ entryId: entry.entryId, messageIndex }] : [];
+  }));
+}
+
+export function originalResults(projected: ReturnType<typeof project>, refs: ToolResultRef[]): { ref: ToolResultRef; text?: string; error?: string; toolName?: string; isError?: boolean }[] {
+  return refs.map(ref => {
+    const message = projected.active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
+    if (message?.role !== "toolResult") return { ref, error: "Original unavailable on selected path" };
+    if (!Array.isArray(message.content) || !message.content.every(b => b.type === "text")) return { ref, error: "Original contains non-text blocks" };
+    return { ref, text: message.content.map(b => b.text).join(""), toolName: message.toolName, isError: message.isError };
+  });
 }
 
 // Provenance stays process-local and cannot be copied with message text/fields.
@@ -142,6 +243,8 @@ export type MemorySession = {
   sessionId: string;
   latestId?: string | undefined;
   entries?: readonly SessionEntry[];
+  decisions?: readonly ToolResultDecision[];
+  enabled?: boolean;
 };
 
 /** Observer/test baseline only. Production never sets this; missing/other values stay stable. */
@@ -259,16 +362,53 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
     if (carriers.has(message)) continue;
     stripped.push(message);
   }
-  if (memory.slots.length === 0) {
-    if (session) anchors.delete(session.sessionId);
-    return stripped;
-  }
   const content = renderMemory(memory.slots);
   const units = session?.entries ? sourceUnits(session.entries) : [];
+  const decisions = new Map((session?.decisions ?? []).map(d => [`${d.entryId}:${d.messageIndex}`, d]));
+  // Pi can carry a previous context-hook projection into the next turn. Match
+  // either immutable native units or our *exact* earlier replacement and first
+  // restore only that known replacement. A foreign or ambiguous rewrite remains
+  // unmapped; disabling cleanup then really restores current active originals.
+  const ownUnits = units.map(unit => ({ entryId: unit.entryId, messages: unit.messages.map((message, i) => {
+    const d = decisions.get(`${unit.entryId}:${i}`);
+    return d && message.role === "toolResult" && message.toolCallId === d.toolCallId && message.toolName === d.toolName &&
+      Array.isArray(message.content) && message.content.every(b => b.type === "text") && message.content.map(b => b.text).join("").length === d.originalLength
+      ? { ...structuredClone(message), content: [{ type: "text" as const, text: d.text }] } : message;
+  }) }));
+  const patched = [...stripped];
+  const rawMapped = mappedBoundaries(stripped, units);
+  for (const owned of mappedBoundaries(stripped, ownUnits)) {
+    const index = units.findIndex(unit => unit.entryId === owned.unit.entryId);
+    if (index < 0 || rawMapped.some(item => item.unit === units[index])) continue;
+    const raw = units[index]!;
+    const start = owned.end - raw.messages.length;
+    raw.messages.forEach((message, offset) => { patched[start + offset] = structuredClone(message) as T; });
+  }
+  // Match immutable native source units before changing any tool body. A foreign
+  // hook rewrite or ambiguous repeated unit cannot establish provenance.
+  const nativeMapped = mappedBoundaries(patched, units);
+  const effectiveUnits = units.map(unit => {
+    const found = nativeMapped.find(item => item.unit === unit);
+    const start = found ? found.end - unit.messages.length : -1;
+    return { entryId: unit.entryId, messages: unit.messages.map((message, messageIndex) => {
+      const decision = session?.enabled === false ? undefined : decisions.get(`${unit.entryId}:${messageIndex}`);
+      if (start < 0 || !decision || message.role !== "toolResult" ||
+          message.toolCallId !== decision.toolCallId || message.toolName !== decision.toolName ||
+          !Array.isArray(message.content) || !message.content.every(b => b.type === "text") ||
+          message.content.map(b => b.text).join("").length !== decision.originalLength) return message;
+      const replaced = { ...structuredClone(message), content: [{ type: "text" as const, text: decision.text }] };
+      patched[start + messageIndex] = replaced as unknown as T;
+      return replaced;
+    }) };
+  });
+  if (memory.slots.length === 0) {
+    if (session) anchors.delete(session.sessionId);
+    return patched;
+  }
   const existing = session && !observerMoving() ? anchors.get(session.sessionId) : undefined;
-  const mapped = mappedBoundaries(stripped, units);
-  const reuse = existing?.content === content ? reusableIndex(stripped, existing, mapped) : undefined;
-  const index = reuse ?? legalTail(stripped);
+  const mapped = mappedBoundaries(patched, effectiveUnits);
+  const reuse = existing?.content === content ? reusableIndex(patched, existing, mapped) : undefined;
+  const index = reuse ?? legalTail(patched);
   const carrier = {
     role: "user",
     content: [{ type: "text", text: content }],
@@ -286,7 +426,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
       ...(last ? { boundary: { entryId: last.unit.entryId, messages: last.unit.messages.map(snapshot) } } : {}),
     });
   }
-  return [...stripped.slice(0, index), carrier, ...stripped.slice(index)];
+  return [...patched.slice(0, index), carrier, ...patched.slice(index)];
 }
 
 /** Visible real history may overlap earlier checkpoints. Summary normalization

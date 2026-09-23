@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "id": "m5",
+      "files": {
+        "requirements.zh.txt": "客户要求：修复排队作业取消后仍显示为运行中的问题。完成条件包括：取消后不再占用运行槽；重启后状态仍为已取消；不得删除已完成作业。\n",
+        "repair.log": "检查进度：两个分支已有测试；重启后的取消状态测试失败，修复尚未完成。\n",
+        "progress.json": "{\"passed\":2,\"failed\":1,\"verified\":false}\n",
+        "diagnostics.txt": "诊断摘录：排队状态出错仍需验证重启后状态。\n"
+      },
+      "generatedFiles": [
+        { "path": "verbose-report.txt", "segments": [
+          { "repeat": 150, "text": "repeated diagnostic prefix: queue worker poll reached normal checkpoint; the queue report includes redundant logging.\n" },
+          { "repeat": 1, "text": "Decisive exception: restart test still fails; cancelled job is reloaded as running.\n" },
+          { "repeat": 150, "text": "repeated diagnostic suffix: queue worker poll reached normal checkpoint; the queue report includes redundant logging.\n" }
+        ] }
+      ],
+      "turns": [
+        { "id": "a", "text": "Read requirements.zh.txt, repair.log and progress.json. Record the continuing obligations and actual verification state in working memory; do not declare the repair complete." },
+        { "id": "b", "text": "Read verbose-report.txt and diagnostics.txt fully, including any truncated middle via read offsets. Update the working memory if the new evidence changes what remains to do. Produce an interim.json status report with the open obligations; do not claim tests pass if they failed." },
+        { "id": "c", "text": "The repair log and diagnostics remain the current source. Write final.json with fields cancellationState, restartState, completedJobs, verification, and nextAction. Base each field on verified evidence and working memory. A future passing test must be observed before claiming the repair is done." }
+      ],
+      "variants": [{ "id": "cleanup-on" }, { "id": "cleanup-off" }]
+    }
+  ]
+}

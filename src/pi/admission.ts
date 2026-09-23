@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-wo
 import type { Complete, EngineConfig, Memory, ActiveEntry } from "../engine/index.js";
 import { admissionEstimate, inputLimit, isSystemMessage, mainAdmissionLimit, memoryTokens, messageTokens, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
 import { renderMemory } from "../engine/memory.js";
-import { isNuncCarrier } from "./projection.js";
+import { isNuncCarrier, peekMemoryAnchor } from "./projection.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
@@ -31,6 +31,7 @@ interface MainReceipt {
   response: unknown;
 }
 interface MainSnapshot {
+  cleanupAnchor?: { sessionId: string; memory: Memory; prefixEntryIds: string[] };
   model: Model<Api>;
   systemPrompt: string | undefined;
   tools: unknown;
@@ -139,6 +140,11 @@ export class Admission {
   private cancelledRun = false;
   private generation = 0;
   private receipts: MainReceipt[] = [];
+  private lastSentMemory: { sessionId: string; memory: Memory; prefixEntryIds: string[] } | undefined;
+  cleanupAnchor(sessionId: string, memory: Memory): string[] | undefined {
+    const anchor = this.lastSentMemory;
+    return anchor?.sessionId === sessionId && isDeepStrictEqual(anchor.memory.slots, memory.slots) ? [...anchor.prefixEntryIds] : undefined;
+  }
   private activeProjections = new WeakMap<object, BoundProjection>();
   bindProjection(binding: RequestProjectionBinding): void {
     const identities = new Set(binding.identityMessages ?? binding.messages);
@@ -159,7 +165,7 @@ export class Admission {
       }
     }
   }
-  invalidateUsage(): void { this.receipts = []; this.generation++; this.activeProjections = new WeakMap(); }
+  invalidateUsage(): void { this.receipts = []; this.lastSentMemory = undefined; this.generation++; this.activeProjections = new WeakMap(); }
   private takeProjection(ctx: ExtensionContext, model: Model<Api>, context: Context | TranscriptContext, options: SimpleStreamOptions | undefined): BoundProjection | undefined {
     // Unknown/maintenance calls must never consume a prepared main projection.
     if (!ctx.signal || options?.signal !== ctx.signal || options.sessionId !== ctx.sessionManager.getSessionId()) return;
@@ -391,6 +397,7 @@ export class Admission {
     void stream.result().then(message => {
       if (snapshot.generation !== this.generation || !snapshot.payloadBound) return;
       if (!this.assistantUsageUsable(message, snapshot.model)) return;
+      if (snapshot.cleanupAnchor) this.lastSentMemory = snapshot.cleanupAnchor;
       this.remember({
         model: snapshot.model,
         systemPrompt: snapshot.systemPrompt,
@@ -637,6 +644,12 @@ export class Admission {
             hasM: selected.hasM,
             generation: this.generation,
             payloadBound: true,
+            ...(binding && deliveredMemoryIndex !== undefined && binding.memory.slots.length > 0 ? (() => {
+              const anchor = peekMemoryAnchor(ctx.sessionManager.getSessionId());
+              return anchor?.content === renderMemory(binding.memory.slots) && anchor.prefixEntryIds.length
+                ? { cleanupAnchor: { sessionId: ctx.sessionManager.getSessionId(), memory: structuredClone(binding.memory), prefixEntryIds: anchor.prefixEntryIds } }
+                : {};
+            })() : {}),
           };
         }
       }

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";
 import { checkArtifact, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
 import { fixture, repository } from "./fixtures.js";
+import { parseInput } from "../../src/live/contract.js";
 
 test("every tracked input/observer variant loads separately; only task fixture files are seeded", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
@@ -41,6 +42,19 @@ test("every tracked input/observer variant loads separately; only task fixture f
     assert(sizes.capacity! > sizes.full!);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
+test("m5 cleanup-on/off select the same original task and independent observer without a legacy baseline", async () => {
+  const input = await fixture();
+  for (const variant of ["cleanup-on", "cleanup-off"] as const) {
+    const selection = { ...input.scenarios[0]!, id: "m5" as const, variant };
+    const { input: scenario, observer } = await loadScenario(repository, selection);
+    assert.equal(scenario.turns.length, 3);
+    assert.equal(observer.artifactChecks[0]?.operator, "semantic");
+    assert.deepEqual(scenario.files, (await loadScenario(repository, { ...selection, variant: variant === "cleanup-on" ? "cleanup-off" : "cleanup-on" })).input.files);
+    assert.equal(parseInput({ ...input, scenarios: [selection] }).scenarios[0]?.variant, variant);
+  }
+  assert.throws(() => parseInput({ ...input, scenarios: [{ ...input.scenarios[0], id: "m5", variant: "cleanup-on" }], comparison: { modes: ["defaults"], targets: {} } }));
+});
+
 test("c4/full rejects a fixture that fits in one native read or exposes the exception in the first chunk", async () => {
   const source = JSON.parse(await readFile(join(repository, "tests/scenarios/inputs.json"), "utf8"));
   const observer = JSON.parse(await readFile(join(repository, "tests/scenarios/observer.json"), "utf8"));

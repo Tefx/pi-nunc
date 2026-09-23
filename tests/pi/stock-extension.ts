@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
 import { applyLastUserTextAppend } from "../../src/pi/payload.js";
@@ -79,6 +80,12 @@ export default function (pi: ExtensionAPI): void {
   } });
   pi.registerCommand("fixture-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("fixture-tree", { handler: async (args, ctx) => { await ctx.navigateTree(args, { summarize: false }); snapshot(ctx); } });
+  pi.registerCommand("fixture-seed-cleanup", { handler: async () => {
+    pi.registerTool({ name: "fixture_cleanup_result", label: "Fixture cleanup result", description: "Controlled, repeatable native tool-result source", parameters: Type.Object({}),
+      async execute() { return { content: [{ type: "text", text: "SAFE_REPEATED_TOOL_DETAIL ".repeat(100) }], details: {} }; } });
+    pi.setActiveTools(["fixture_cleanup_result"]);
+    log("cleanup_tool_enabled", { active: pi.getActiveTools(), all: pi.getAllTools().map(t => t.name) });
+  } });
   pi.registerCommand("fixture-inspect", { handler: async (_args, ctx) => snapshot(ctx) });
   pi.registerShortcut("f6", { handler: ctx => snapshot(ctx), description: "Read-only fixture editor observation" });
   pi.registerCommand("fixture-quit", { handler: async (_args, ctx) => ctx.shutdown() });

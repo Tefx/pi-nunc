@@ -126,12 +126,12 @@ export class StockFixture {
       this.changes.on('change', check); check();
     });
   }
-  start(mode = 'rpc', sessionFile) {
+  start(mode = 'rpc', sessionFile, { allowTools = false } = {}) {
     const host = join(root, 'node_modules/@earendil-works/pi-coding-agent');
     const manifest = JSON.parse(readFileSync(join(host, 'package.json'), 'utf8'));
     assert.equal(manifest.version, '0.86.1');
     const cli = join(host, manifest.bin.pi);
-    const args = [cli, ...(mode === 'rpc' ? ['--mode', 'rpc'] : []), '--no-approve', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-tools', '-e', join(root, 'dist/src/index.js'), '-e', join(root, 'dist/tests/pi/stock-extension.js'), '--nunc-config', this.configFile, '--provider', this.provider, '--model', this.modelId, '--thinking', 'off', '--system-prompt', 'Perform the current task.', '--session-dir', join(this.state, 'sessions'), ...(sessionFile ? ['--session', sessionFile] : [])];
+    const args = [cli, ...(mode === 'rpc' ? ['--mode', 'rpc'] : []), '--no-approve', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', ...(!allowTools ? ['--no-tools'] : []), '-e', join(root, 'dist/src/index.js'), '-e', join(root, 'dist/tests/pi/stock-extension.js'), '--nunc-config', this.configFile, '--provider', this.provider, '--model', this.modelId, '--thinking', 'off', '--system-prompt', 'Perform the current task.', '--session-dir', join(this.state, 'sessions'), ...(sessionFile ? ['--session', sessionFile] : [])];
     const command = mode === 'tui' ? ['/usr/bin/python3', join(root, 'scripts/pty-driver.py'), process.execPath, ...args] : [process.execPath, ...args];
     const child = spawn(command[0], command.slice(1), { cwd: join(this.state, 'work'), env: this.env, stdio: ['pipe', 'pipe', 'pipe'] });
     const p = { child, mode, events: [], stdout: '', stderr: '', serial: 0, exit: undefined };

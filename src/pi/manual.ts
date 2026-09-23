@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, Memory, Slot } from "../engine/index.js";
-import { memoryPlan, memoryTokens } from "../engine/index.js";
+import type { FixedContext, Memory, Slot, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
+import { decideToolResultCleanup, memoryPlan, memoryTokens } from "../engine/index.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
 import { engineConfig, readConfig, type HostCompactionSettings } from "./config.js";
-import { MANUAL_MEMORY_TYPE, memoryRevision, project, revisionApplies } from "./projection.js";
+import { MANUAL_MEMORY_TYPE, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions } from "./projection.js";
 
 export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed" | "cancelled";
 
@@ -16,6 +16,7 @@ export interface MemoryBudgetView {
   overLimit: boolean;
 }
 export interface MemoryView {
+  cleanup?: { enabled: boolean; saved: number; applied: number; unavailable: string[] };
   revision: string;
   memory: Memory;
   status: { occupied: boolean; unconfirmed: boolean };
@@ -31,10 +32,13 @@ export interface MemoryPatchParams {
   add?: Array<{ key: string; text: string }>;
   update?: Array<{ id: string; text: string }>;
   remove?: string[];
+  toolResultEdits?: unknown;
+  /** UI failure path: save legal M without unconfirmed cleanup. */
+  suppressCleanup?: boolean;
 }
 
 export type MemoryPatchResult =
-  | { ok: true; revision: string; added: Record<string, string>; budget: { usedTokens: number; limitTokens: number | null }; memory: Memory }
+  | { ok: true; revision: string; added: Record<string, string>; budget: { usedTokens: number; limitTokens: number | null }; memory: Memory; cleanup?: ToolResultCleanupResult }
   | { ok: false; code: ManualSaveCode; message: string; view: MemoryView };
 
 export interface MemorySurface {
@@ -53,6 +57,7 @@ export function createMemorySurface(options: {
   pi: ExtensionAPI;
   fixed: (ctx: ExtensionContext) => FixedContext;
   settings: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
+  cleanup?: (ctx: ExtensionContext, memory: Memory, active: ReturnType<typeof project>["active"], saved: ToolResultDecision[]) => { enabled: boolean; scope: ToolResultRef[] };
   onCommitted: () => void;
 }): MemoryFreeze {
   const state = { occupied: false, ignoreFailed: 0 };
@@ -60,7 +65,9 @@ export function createMemorySurface(options: {
     const entries = ctx.sessionManager.buildContextEntries();
     const projected = project(entries);
     const budget = measureBudget(ctx, options, projected.memory.slots);
+    const enabled = options.cleanup?.(ctx, projected.memory, projected.active, projected.cleanup).enabled ?? false;
     return {
+      cleanup: { enabled, saved: projected.cleanup.length, applied: enabled ? projected.cleanup.length : 0, unavailable: projected.unavailable },
       revision: memoryRevision(ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), entries),
       memory: projected.memory,
       status: { occupied: state.occupied, unconfirmed: sessionUnconfirmed(ctx.sessionManager) },
@@ -88,8 +95,8 @@ export function createMemorySurface(options: {
       if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
       if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
       const current = viewOf(ctx);
-      if (!record(params) || !keys(params, ["expectedRevision", "add", "update", "remove"])) {
-        return fail("invalid", "Invalid patch parameters: must be object containing only allowed fields (expectedRevision, add, update, remove)", current);
+      if (!record(params) || !keys(params, ["expectedRevision", "add", "update", "remove", "toolResultEdits", "suppressCleanup"])) {
+        return fail("invalid", "Invalid patch parameters: unexpected field", current);
       }
       if (typeof params.expectedRevision !== "string") {
         return fail("invalid", "Expected expectedRevision string in patch parameters", current);
@@ -226,9 +233,25 @@ export function createMemorySurface(options: {
       // Cancellation check before commit
       if (signal?.aborted) return fail("cancelled", "Memory patch cancelled before commit", current);
 
+      const before = project(ctx.sessionManager.buildContextEntries());
+      const opportunity = options.cleanup?.(ctx, before.memory, before.active, before.cleanup) ?? { enabled: false, scope: [] };
+      const selected = opportunity.enabled && params.suppressCleanup !== true ? decideToolResultCleanup({
+        active: effectiveActive(before, true), retainedEntries: effectiveActive(before, true),
+        candidateScope: opportunity.scope, initialMemory: current.memory, finalMemory: nextMemory,
+        keyToSlotMap: new Map(Object.entries(addedMap)),
+        retainedKeys: new Set([...nextMemory.slots.map(s => s.id), ...addList.map(item => item.key)]),
+        semanticEdits: params.toolResultEdits,
+      }) : { applied: [], skipped: [] };
+      const already = new Set(before.cleanup.map(d => `${d.entryId}:${d.messageIndex}`));
+      const cleanup: ToolResultCleanupResult = {
+        applied: selected.applied.filter(d => !already.has(`${d.entryId}:${d.messageIndex}`) &&
+          !d.sourceRefs?.some(ref => already.has(`${ref.entryId}:${ref.messageIndex}`))),
+        skipped: selected.skipped,
+      };
+      const nextDecisions = [...before.cleanup, ...cleanup.applied];
       const leaf = ctx.sessionManager.getLeafId();
       try {
-        options.pi.appendEntry(MANUAL_MEMORY_TYPE, { nunc: nextMemory });
+        options.pi.appendEntry(MANUAL_MEMORY_TYPE, { nunc: nextMemory, toolResultCleanup: sealDecisions(before.active, nextDecisions) });
       } catch (error) {
         const advanced = ctx.sessionManager.getLeafId();
         if (advanced && advanced !== leaf) markUnconfirmed(ctx.sessionManager, advanced);
@@ -243,6 +266,7 @@ export function createMemorySurface(options: {
         memory: saved.memory,
         added: addedMap,
         budget: { usedTokens: saved.budget.tokens, limitTokens: saved.budget.limit },
+        cleanup,
       };
     },
     replace(ctx, revision, slotId, text) {

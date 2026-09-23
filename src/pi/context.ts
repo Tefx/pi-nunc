@@ -7,7 +7,7 @@ import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
 import type { MemorySurface } from "./manual.js";
 import type { PayloadObservation } from "./payload.js";
-import { currentMemoryIndex, isNuncCarrier, project } from "./projection.js";
+import { currentMemoryIndex, effectiveActive, isNuncCarrier, project } from "./projection.js";
 
 export interface TokenCount { tokens: number | null; unknown: boolean }
 export interface ContextBlock {
@@ -202,8 +202,9 @@ export function createContextSurface(options: {
           budget = unknownBudget(memory.budget.tokens, true);
         }
       }
-      const memoryIndex = currentMemoryIndex(sessionId, memory.memory, projected.active);
-      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, projected.active, imageTokens, extraInputTokens, memoryIndex);
+      const active = effectiveActive(projected, memory.cleanup?.enabled ?? false);
+      const memoryIndex = currentMemoryIndex(sessionId, memory.memory, active);
+      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex);
       const current: CurrentContext = {
         scope: "current",
         sessionId,

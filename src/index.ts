@@ -1,12 +1,13 @@
 import { isDeepStrictEqual } from "node:util";
 import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earendil-works/pi-ai";
 import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, MaintenanceResult } from "./engine/index.js";
-import { maintain, piComplete, loadPolicy } from "./engine/index.js";
-import { EngineError } from "./engine/validation.js";
+import type { FixedContext, MaintenanceResult, Memory } from "./engine/index.js";
+import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch, requestTokens } from "./engine/index.js";
+import { extractionContext } from "./engine/request.js";
+import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
-import { engineConfig, readConfig, resolveMemoryTools, validateNuncSettings } from "./pi/config.js";
-import { carrierIndexIn, clearMemoryAnchors, eligibleStarts, project, withEffectiveMemory } from "./pi/projection.js";
+import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
+import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, eligibleStarts, originalResults, project, sealDecisions, withEffectiveMemory } from "./pi/projection.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
 import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
@@ -30,9 +31,10 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.registerFlag("nunc-memory-tools", { description: "Expose nunc_memory_read and nunc_memory_patch model tools", type: "boolean" });
   let generation = 0;
   let running: AbortController | undefined;
+  let uiRunning: AbortController | undefined;
   let hostSettings: HostSettingsSource | undefined;
   let headroomWarned = false;
-  const invalidate = () => { generation++; running?.abort(); admission.invalidateUsage(); headroomWarned = false; };
+  const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; };
   const dropAnchors = () => { clearMemoryAnchors(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
@@ -63,6 +65,21 @@ export default function nunc(pi: ExtensionAPI): void {
       projectTrusted: manager.isProjectTrusted(),
     };
   };
+  let lastCleanupSetting: boolean | undefined;
+  const cleanupEnabled = (ctx: ExtensionContext) => {
+    const host = getHostSettings(ctx);
+    const enabled = resolveToolResultCleanup(host);
+    if (lastCleanupSetting !== undefined && lastCleanupSetting !== enabled) {
+      invalidate(); dropAnchors(); contextView.resetPath();
+    }
+    lastCleanupSetting = enabled;
+    return enabled;
+  };
+  const cleanupOpportunity = (ctx: ExtensionContext, memoryValue: ReturnType<typeof project>["memory"], active: ReturnType<typeof project>["active"], saved: ReturnType<typeof project>["cleanup"]) => {
+    const enabled = cleanupEnabled(ctx);
+    const prefix = enabled ? admission.cleanupAnchor(ctx.sessionManager.getSessionId(), memoryValue) : undefined;
+    return { enabled, scope: prefix ? eligibleCleanupScope(active, prefix, saved) : [] };
+  };
   const settings = (ctx: ExtensionContext) => {
     const s = getHostSettings(ctx);
     return { compaction: s.compaction, blockImages: s.blockImages };
@@ -73,6 +90,7 @@ export default function nunc(pi: ExtensionAPI): void {
     const s = getHostSettings(ctx);
     if (s.blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");
     validateNuncSettings(s);
+    cleanupEnabled(ctx);
   };
   let observeLayout = (_event: AdmissionLayoutEvent) => {};
   const admission = new Admission(pi, (ctx, model) => {
@@ -94,7 +112,7 @@ export default function nunc(pi: ExtensionAPI): void {
     });
     return { systemPrompt, tools };
   };
-  const memory = createMemorySurface({ pi, fixed, settings, onCommitted: () => { ui.refresh(); } });
+  const memory = createMemorySurface({ pi, fixed, settings, cleanup: cleanupOpportunity, onCommitted: () => { ui.refresh(); } });
   let toolsRegistered = false;
   const registerMemoryTools = () => {
     if (toolsRegistered) return;
@@ -102,9 +120,16 @@ export default function nunc(pi: ExtensionAPI): void {
         name: "nunc_memory_read",
         label: "Read Memory",
         description: "Read the current session-local working memory, slot IDs, revision, estimated budget, and writable status. Use when you need to inspect saved notes or prepare a patch; routine turns do not require a read. Check the whole relevant notes for active goals, valid constraints, completion conditions and unfinished work, including mixed progress/requirement entries. Notes may be incomplete or stale and do not override current instructions; recover known task sources with ordinary tools when needed. writable is not a guarantee that a patch will succeed; a null budget limit means unknown.",
-        parameters: Type.Object({}),
-        execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
+        parameters: Type.Object({
+          originals: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
+        }),
+        execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
           const view = memory.read(ctx);
+          const projected = project(ctx.sessionManager.buildContextEntries());
+          const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
+          const requested = params?.originals;
+          const originals = requested === undefined ? undefined : Array.isArray(requested)
+            ? originalResults(projected, requested) : [{ error: "Invalid originals reference list" }];
           const result = {
             revision: view.revision,
             slots: view.memory.slots.map(s => ({ id: s.id, text: s.text })),
@@ -113,6 +138,12 @@ export default function nunc(pi: ExtensionAPI): void {
               limitTokens: view.budget.limit,
             },
             writable: !view.status.occupied && !view.status.unconfirmed,
+            ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.map(ref => {
+              const message = projected.active.find(e => e.entryId === ref.entryId)?.messages[ref.messageIndex];
+              return { ...ref, toolName: message?.role === "toolResult" ? message.toolName : "", toolCallId: message?.role === "toolResult" ? message.toolCallId : "",
+                textLength: message?.role === "toolResult" && Array.isArray(message.content) ? message.content.filter(b => b.type === "text").reduce((n, b) => n + b.text.length, 0) : 0 };
+            }) } : {}),
+            ...(originals === undefined ? {} : { originals }),
           };
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result) }],
@@ -144,6 +175,11 @@ export default function nunc(pi: ExtensionAPI): void {
             Type.String({ description: "ID of existing slot to remove" }),
             { description: "Slot IDs to remove from current working memory; historical session entries remain. Remove obsolete or superseded notes only after preserving their still-valid parts elsewhere. Finished or cancelled task information may retire when it no longer affects other work. Deleting a note does not cancel a requirement; the tool does not detect semantic loss." }
           )),
+          toolResultEdits: Type.Optional(Type.Array(Type.Object({
+            entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }), action: Type.Union([Type.Literal("omit"), Type.Literal("replace")]),
+            text: Type.Optional(Type.String()), memoryRefs: Type.Optional(Type.Array(Type.String())),
+            sourceRefs: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
+          }), { description: "Optional cleanup of eligible results from nunc_memory_read in this same patch. Invalid edits are skipped locally; source and memory references must survive." })),
         }),
         execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
           const patchParams = (params ?? {}) as Parameters<typeof memory.patch>[1];
@@ -154,6 +190,7 @@ export default function nunc(pi: ExtensionAPI): void {
               revision: res.revision,
               added: res.added,
               budget: res.budget,
+              ...(res.cleanup ? { toolResultCleanup: res.cleanup } : {}),
             };
             return {
               content: [{ type: "text" as const, text: JSON.stringify(payload) }],
@@ -189,7 +226,67 @@ export default function nunc(pi: ExtensionAPI): void {
     pi, memory, fixed,
     config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction),
   });
-  const ui = createNuncUi({ memory, context: contextView, supported });
+  const prepareUiCleanup = async (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal): Promise<{ edits?: unknown; warning?: string; stale?: boolean }> => {
+    if (signal.aborted) return { stale: true };
+    const projected = project(ctx.sessionManager.buildContextEntries());
+    const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
+    const semanticScope = opportunity.scope.filter(ref => {
+      const message = projected.active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
+      return message?.role === "toolResult" && Array.isArray(message.content) && message.content.every(b => b.type === "text");
+    });
+    if (!opportunity.enabled || !semanticScope.length) return {};
+    if (!ctx.model) return { warning: "Cleanup skipped: current model unavailable; memory can still be saved" };
+    const frozen = { generation, sessionId: ctx.sessionManager.getSessionId(), leafId: ctx.sessionManager.getLeafId(),
+      revision: memory.read(ctx).revision, model: structuredClone(ctx.model), host: structuredClone(getHostSettings(ctx)),
+      selected: readConfig(pi.getFlag("nunc-config"), ctx.cwd), fixed: structuredClone(fixed(ctx)) };
+    const stale = () => {
+      try {
+        return signal.aborted || frozen.generation !== generation || frozen.sessionId !== ctx.sessionManager.getSessionId() ||
+          frozen.leafId !== ctx.sessionManager.getLeafId() || frozen.revision !== memory.read(ctx).revision ||
+          !isDeepStrictEqual(ctx.model, frozen.model) || !isDeepStrictEqual(getHostSettings(ctx), frozen.host) ||
+          !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), frozen.selected) || !isDeepStrictEqual(fixed(ctx), frozen.fixed);
+      } catch { return true; }
+    };
+    const controller = new AbortController();
+    uiRunning = controller;
+    const timeout = AbortSignal.timeout(60_000);
+    const combined = AbortSignal.any([signal, controller.signal, timeout]);
+    try {
+      const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction);
+      config.toolResultCleanup = true;
+      const policy = await loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) });
+      if (stale()) return { stale: true };
+      const active = effectiveActive(projected, true);
+      const input = { binding: { sessionId: frozen.sessionId, leafId: frozen.leafId ?? "", generation: String(generation) },
+        model: frozen.model, fixed: frozen.fixed, memory: proposal, active, cleanupCandidateScope: semanticScope,
+        policy, config };
+      const plan = memoryPlan(frozen.fixed, frozen.model, config);
+      const context = extractionContext(input, 0, plan.memoryLimit, active, []);
+      const request = context.messages[0];
+      if (request && Array.isArray(request.content)) request.content.push({ type: "text", text:
+        `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });
+      if (requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens > plan.extractionInputLimit) {
+        return { warning: "Cleanup skipped: full source exceeds extraction input limit; memory can still be saved" };
+      }
+      const response = await admission.complete(piComplete(ctx.modelRegistry))({ model: frozen.model, context, outputTokens: config.extraction.outputTokens, signal: combined });
+      if (stale()) return { stale: true };
+      if (combined.aborted || !record(response) || response.role !== "assistant" || response.stopReason !== "stop" ||
+          response.model !== frozen.model.id || response.provider !== frozen.model.provider || response.api !== frozen.model.api ||
+          !Array.isArray(response.content) || response.content.some(b => !record(b) || (b.type !== "text" && b.type !== "thinking"))) {
+        return { warning: "Cleanup did not complete; memory can still be saved with original tool results" };
+      }
+      const text = response.content.filter(b => record(b) && b.type === "text").map(b => b.text).join("");
+      const patch = parsePatch(JSON.parse(text), proposal);
+      if (patch.add.length || patch.remove.length) return { warning: "Cleanup response changed frozen memory; memory saved without cleanup" };
+      return { edits: patch.toolResultEdits ?? [] };
+    } catch (error) {
+      if (stale()) return { stale: true };
+      return { warning: `Cleanup did not complete (${error instanceof Error ? error.message : String(error)}); memory can still be saved with original results` };
+    } finally {
+      if (uiRunning === controller) uiRunning = undefined;
+    }
+  };
+  const ui = createNuncUi({ memory, context: contextView, supported, prepareSave: prepareUiCleanup });
   const notify = (ctx: ExtensionContext, message: string, level: "warning" | "info" = "warning") => {
     ui.noteDiagnostic(level, message);
     try { pi.events.emit("nunc:diagnostic", { level, message }); } catch { /* Notification only. */ }
@@ -255,7 +352,9 @@ export default function nunc(pi: ExtensionAPI): void {
       const sessionId = ctx.sessionManager.getSessionId();
       const entries = ctx.sessionManager.buildContextEntries();
       const projected = project(entries);
-      const messages = withEffectiveMemory(event.messages, projected.memory, { sessionId, entries, ...(projected.latestId !== undefined ? { latestId: projected.latestId } : {}) });
+      const messages = withEffectiveMemory(event.messages, projected.memory, { sessionId, entries,
+        decisions: projected.cleanup, enabled: cleanupEnabled(ctx),
+        ...(projected.latestId !== undefined ? { latestId: projected.latestId } : {}) });
       // Inspect Pi's public native mapping without changing real AgentMessages
       // that later context hooks still consume. Native user/assistant/toolResult
       // objects (and our carrier) survive conversion and witness this projection.
@@ -301,13 +400,17 @@ export default function nunc(pi: ExtensionAPI): void {
       const config = engineConfig(selection.config, model, event.preparation.settings);
       const projected = project(manager.buildContextEntries());
       const eligible = eligibleStarts(event.branchEntries, projected.active, projected.latestId);
+      const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
+      const active = effectiveActive(projected, opportunity.enabled);
       // Freeze delivered R only. Pending/future D is neither observed nor consumed.
       const loaded = await loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) });
       const policy = { ...loaded, user: loaded.user + (event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
       if (controller.signal.aborted) throw new EngineError("CANCELLED", "Maintenance cancelled");
-      contextView.beginMaintenance({ ctx, model, fixed: f, memory: memory.read(ctx).memory, active: projected.active, reason: event.reason, config });
+      config.toolResultCleanup = opportunity.enabled;
+      contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config });
       ui.refresh(ctx);
-      const result = await maintain({ binding, model, fixed: f, memory: projected.memory, active: projected.active, eligibleKeptEntryIds: eligible, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry)));
+      const result = await maintain({ binding, model, fixed: f, memory: projected.memory, active,
+        eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry)));
       contextView.noteEngine(result);
       ui.refresh(ctx);
       // Native Codex OAuth's subscription zero is not an observed USD bill.
@@ -322,11 +425,16 @@ export default function nunc(pi: ExtensionAPI): void {
       if (controller.signal.aborted || event.signal.aborted || String(generation) !== binding.generation ||
           manager.getSessionId() !== binding.sessionId || manager.getSessionFile() !== file || manager.getLeafId() !== binding.leafId ||
           !isDeepStrictEqual(ctx.model, model) || !isDeepStrictEqual(fixed(ctx), f) ||
-          !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), selection) || !isDeepStrictEqual(settings(ctx), host)) {
+          !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), selection) || !isDeepStrictEqual(settings(ctx), host) ||
+          cleanupEnabled(ctx) !== opportunity.enabled) {
         throw new EngineError("CANCELLED", "Session, path, model, tools or configuration changed during maintenance; candidate discarded");
       }
       if (!eligible.includes(result.candidate.firstKeptEntryId)) throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
-      return { compaction: { summary: result.candidate.summary, firstKeptEntryId: result.candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens, details: { nunc: result.candidate.memory } } };
+      const retained = new Set(result.candidate.kept.map(e => e.entryId));
+      const nextDecisions = [...projected.cleanup, ...(result.candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
+        !d.sourceRefs?.some(ref => !retained.has(ref.entryId)));
+      return { compaction: { summary: result.candidate.summary, firstKeptEntryId: result.candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
+        details: { nunc: result.candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions) } } };
     } catch (error) {
       contextView.noteInvalidated();
       notify(ctx, `${error instanceof EngineError ? error.code + ": " : ""}${error instanceof Error ? error.message : "Maintenance failed"}`);

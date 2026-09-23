@@ -83,6 +83,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
 
 export interface NuncSettings {
   memoryTools?: boolean;
+  toolResultCleanup?: boolean;
 }
 
 export function parseNuncSettings(value: unknown, label: string = "settings.json: nunc"): NuncSettings {
@@ -92,12 +93,16 @@ export function parseNuncSettings(value: unknown, label: string = "settings.json
   }
   const obj = value as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
-    if (key !== "memoryTools") throw new EngineError("CONFIG", `Unknown ${label}.${key}`);
+    if (key !== "memoryTools" && key !== "toolResultCleanup") throw new EngineError("CONFIG", `Unknown ${label}.${key}`);
   }
   if (obj.memoryTools !== undefined && typeof obj.memoryTools !== "boolean") {
     throw new EngineError("CONFIG", `Invalid ${label}.memoryTools: expected boolean, got ${typeof obj.memoryTools}`);
   }
-  return obj.memoryTools !== undefined ? { memoryTools: obj.memoryTools as boolean } : {};
+  if (obj.toolResultCleanup !== undefined && typeof obj.toolResultCleanup !== "boolean") {
+    throw new EngineError("CONFIG", `Invalid ${label}.toolResultCleanup: expected boolean, got ${typeof obj.toolResultCleanup}`);
+  }
+  return { ...(obj.memoryTools === undefined ? {} : { memoryTools: obj.memoryTools as boolean }),
+    ...(obj.toolResultCleanup === undefined ? {} : { toolResultCleanup: obj.toolResultCleanup as boolean }) };
 }
 
 export function validateNuncSettings(settings: {
@@ -111,6 +116,22 @@ export function validateNuncSettings(settings: {
   if (settings.globalNunc !== undefined) {
     parseNuncSettings(settings.globalNunc, "global settings.json: nunc");
   }
+}
+
+export function resolveToolResultCleanup(options: {
+  projectNunc?: unknown;
+  globalNunc?: unknown;
+  projectTrusted?: boolean;
+}): boolean {
+  if (options.projectTrusted !== false && options.projectNunc !== undefined) {
+    const project = parseNuncSettings(options.projectNunc, "project settings.json: nunc");
+    if (project.toolResultCleanup !== undefined) return project.toolResultCleanup;
+  }
+  if (options.globalNunc !== undefined) {
+    const global = parseNuncSettings(options.globalNunc, "global settings.json: nunc");
+    if (global.toolResultCleanup !== undefined) return global.toolResultCleanup;
+  }
+  return true;
 }
 
 export function resolveMemoryTools(options: {
