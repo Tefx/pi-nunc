@@ -167,6 +167,25 @@ test("memoryRefs are mapped to final slot IDs and budget-dropped slots skip only
   assert.equal(result.skipped[0]!.reason, "missing_memory_dependency");
 });
 
+test("final M budget selection revokes only edits depending on dropped additions", () => {
+  const before = emptyMemory();
+  const patch = { add: [{ key: "kept", text: "Important note" }, { key: "dropped", text: "Optional note" }],
+    remove: [], priority: ["kept", "dropped"], required: ["kept"],
+    toolResultEdits: [
+      { entryId: "a", messageIndex: 0, action: "omit", memoryRefs: ["kept"] },
+      { entryId: "b", messageIndex: 0, action: "omit", memoryRefs: ["dropped"] },
+    ] };
+  const selected = applyPatch(before, patch, 1, slots => slots.length);
+  assert.deepEqual(selected.memory.slots.map(s => s.text), ["Important note"]);
+  const entries = [toolEntry("a", "ca", "A".repeat(400)), toolEntry("b", "cb", "B".repeat(400))];
+  const result = decideToolResultCleanup({ active: entries, retainedEntries: entries,
+    candidateScope: [{ entryId: "a", messageIndex: 0 }, { entryId: "b", messageIndex: 0 }],
+    initialMemory: before, finalMemory: selected.memory, keyToSlotMap: selected.keyToSlotMap,
+    retainedKeys: selected.retainedKeys, semanticEdits: selected.patch.toolResultEdits });
+  assert.deepEqual(result.applied.map(d => [d.entryId, d.memoryRefs]), [["a", ["s1"]]]);
+  assert.deepEqual(result.skipped.map(s => [s.entryId, s.reason]), [["b", "missing_memory_dependency"]]);
+});
+
 test("sourceRefs must point to fully retained non-omitted messages", () => {
   const t1 = toolEntry("t1", "c1", "Z".repeat(300));
   const t2 = toolEntry("t2", "c2", "W".repeat(300));
@@ -386,6 +405,8 @@ test("invalid edit shapes are locally rejected without blocking legal M", () => 
     { entryId: "t1", messageIndex: 0, action: "unknown_action" },
     { entryId: "t1", messageIndex: 0, action: "replace", text: "" },
     { entryId: "t1", messageIndex: 0, action: "omit", text: "Illegal text for omit" },
+    { entryId: "t1", messageIndex: 0, action: "omit", text: undefined },
+    { entryId: "t1", messageIndex: 0, action: "replace", text: "Summary", sourceRefs: [{ entryId: "t1", messageIndex: 0, extra: "unexpected" }] },
     { entryId: "t1", messageIndex: -1, action: "omit" },
     { entryId: 123, messageIndex: 0, action: "omit" },
     { entryId: "t1", messageIndex: 0, action: "replace", text: "Valid text", memoryRefs: [123] },
@@ -681,6 +702,8 @@ test("cleanTerminalText cleans ANSI SGR and CRLF but preserves unsupported termi
   // Unsupported terminal escape sequences (cursor movement, clear screen) must be preserved verbatim (returns null)
   const cursorStream = "Updating...\x1b[2J\x1b[1;1HRow 1\x1b[2;1HRow 2";
   assert.equal(cleanTerminalText(cursorStream), null);
+  assert.equal(cleanTerminalText("\x1b[32mDone\x1b[?25l\r\n"), null);
+  assert.equal(cleanTerminalText("\x1b[32mDone\x1bX\r\n"), null);
 
   // OSC escape codes (window title setting) preserved verbatim
   const oscStream = "\x1b]0;Current Process\x07Running command...";
@@ -825,6 +848,10 @@ test("applyToolResultCleanup replaces text body exactly once and preserves all h
   assert.equal(projMsg.isError, false);
   assert.equal(projMsg.timestamp, 123456789);
   assert.deepEqual(projMsg.details, { executionTimeMs: 150, exitCode: 0, customFlag: true });
+
+  const differentCall = structuredClone(entry);
+  (differentCall.messages[0] as typeof originalMessage).toolCallId = "another-call";
+  assert.deepEqual(applyToolResultCleanup([differentCall], [decision]), [differentCall]);
 });
 
 test("request.ts extractionContext preserves prefix stability, puts candidates at tail, and pre-filters omissions/mixed", async () => {
@@ -928,15 +955,37 @@ test("compactInvarDocToc and decodeInvarDocToc provide guaranteed roundtrip inve
   assert.equal(compactInvarDocToc(JSON.stringify({ notSections: true })), null);
 });
 
+test("TOC representation preserves unusual titles, explicit paths, optional fields and metadata or declines unsupported input", () => {
+  const canonical = {
+    frontmatter: { description: "quoted | \n metadata", version: 3 },
+    sections: [{ level: 1, title: "A | B\nheading", slug: "x", line_start: 1, line_end: 30, char_count: 900,
+      path: "different/location", children: [
+        { level: 2, title: "Child", slug: "other", line_start: 2, line_end: 4, char_count: 9 },
+      ] },
+      { level: 1, title: "No path", slug: "y", line_start: 31, line_end: 32, char_count: 2, children: [] }],
+  };
+  const encoded = compactInvarDocToc(JSON.stringify(canonical, null, 4));
+  assert(encoded);
+  assert.deepEqual(decodeInvarDocToc(encoded), canonical);
+  assert.equal(decodeInvarDocToc(`${formatTocMarker()}\n[1,null,[[0,1,2]]]`), null);
+  assert.equal(compactInvarDocToc(JSON.stringify({ sections: [{ ...canonical.sections[0], unknown: "must survive" }] }, null, 4)), null);
+  assert.equal(compactInvarDocToc(JSON.stringify({ sections: canonical.sections, unknown: "must survive" }, null, 4)), null);
+  assert.equal(compactInvarDocToc('{"sections":[{"level":1,"level":2,"title":"x","slug":"x","line_start":1,"line_end":2,"char_count":3}]}'), null);
+  assert.equal(compactInvarDocToc('{"sections":[{"level":1,"title":"x","slug":"x","line_start":1,"line_end":2,"char_count":3}],"frontmatter":{"precision":1.0000000000000000001}}'), null);
+  assert.equal(compactInvarDocToc(JSON.stringify({ frontmatter: { counter: 9007199254740993 }, sections: canonical.sections }, null, 4)), null);
+  assert.equal(compactInvarDocToc(JSON.stringify({ sections: canonical.sections, frontmatter: null }, null, 4)), null);
+});
+
 test("stripToolBoilerplate requires keeper in retainedEntries and protects keeper across families", () => {
   const launchBp = KNOWN_LAUNCH_BOILERPLATES[0]!;
-  const out1 = launchBp + "Doctest: 14 passed\nHypothesis: 20 passed\n";
-  const out2 = launchBp + "Doctest: 14 passed\nHypothesis: 10 passed, 1 failed\n";
+  const out1 = launchBp + "Larva subagent session:\npersona_id: engineer\ntask_id: /tmp/first.jsonl\nreuse: pass this exact task_id to larva_subagent";
+  const dynamicSuffix = "\nLarva subagent session:\npersona_id: senior-engineer\ntask_id: /tmp/second.jsonl\nreuse: pass this exact task_id to larva_subagent";
+  const out2 = launchBp + dynamicSuffix;
 
-  const call1 = assistant("a1", [{ type: "toolCall", id: "c1", name: "invar_guard", arguments: { path: "." } }]);
-  const t1 = toolEntry("t1", "c1", out1, "invar_guard");
-  const call2 = assistant("a2", [{ type: "toolCall", id: "c2", name: "invar_guard", arguments: { path: "." } }]);
-  const t2 = toolEntry("t2", "c2", out2, "invar_guard");
+  const call1 = assistant("a1", [{ type: "toolCall", id: "c1", name: "larva_subagent", arguments: { task: "first" } }]);
+  const t1 = toolEntry("t1", "c1", out1, "larva_subagent");
+  const call2 = assistant("a2", [{ type: "toolCall", id: "c2", name: "larva_subagent", arguments: { task: "second" } }]);
+  const t2 = toolEntry("t2", "c2", out2, "larva_subagent");
   const active = [call1, t1, call2, t2];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -953,6 +1002,7 @@ test("stripToolBoilerplate requires keeper in retainedEntries and protects keepe
   const stripped = resSurvives.applied.find(d => d.entryId === "t2" && d.action === "strip_boilerplate");
   assert(stripped);
   assert(stripped.text.includes(formatBoilerplateMarker({ entryId: "t1", messageIndex: 0 })));
+  assert(stripped.text.endsWith(dynamicSuffix));
 
   // Case B: Same-batch semantic edit attempting to omit keeper t1 is rejected (keeper protected)
   const resOmitKeeper = decideToolResultCleanup({
@@ -977,7 +1027,13 @@ test("stripToolBoilerplate requires keeper in retainedEntries and protects keepe
   });
   assert.equal(resRetiredKeeper.applied.length, 0);
 
-  // Case D: Arbitrary shared header lines (not known launch boilerplate) must NOT strip
+  // Case D: a different tool cannot borrow this keeper
+  const other = toolEntry("other", "different", out2, "other_tool");
+  const crossTool = decideToolResultCleanup({ active: [call1, t1, other], retainedEntries: [call1, t1, other],
+    candidateScope: [{ entryId: "other", messageIndex: 0 }], initialMemory: memBefore, finalMemory: memAfter });
+  assert.equal(crossTool.applied.length, 0);
+
+  // Case E: Arbitrary shared header lines (not known launch boilerplate) must NOT strip
   const arbOut1 = "Unique diagnostic line A\nUnique diagnostic line B\nTail 1\n".repeat(10);
   const arbOut2 = "Unique diagnostic line A\nUnique diagnostic line B\nTail 2\n".repeat(10);
   const tArb1 = toolEntry("ta1", "ca1", arbOut1, "bash");

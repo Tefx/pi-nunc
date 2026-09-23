@@ -1,4 +1,4 @@
-import type { ActiveEntry, CleanupAction, CleanupSkipped, CleanupSkippedReason, Memory, Omission, SourceRef, ToolResultDecision, ToolResultEdit, ToolResultCleanupResult, ToolResultRef } from "./types.js";
+import type { ActiveEntry, CleanupSkipped, Memory, Omission, SourceRef, ToolResultDecision, ToolResultEdit, ToolResultCleanupResult, ToolResultRef } from "./types.js";
 import { isMemoryUnchanged } from "./memory.js";
 import { integer, nonempty, record } from "./validation.js";
 
@@ -23,7 +23,7 @@ export function formatBoilerplateMarker(firstRef: ToolResultRef): string {
 }
 
 export function formatTocMarker(): string {
-  return `[Nunc reversible Invar TOC v1]`;
+  return `[Nunc reversible Invar TOC v2]`;
 }
 
 /**
@@ -90,7 +90,7 @@ const UNSUPPORTED_ESCAPE_REGEX = /\x1b(?:\[[0-9;]*[A-LN-Za-ln-z]|\]|\(|\))/;
 /** Clean terminal ANSI styling and CRLF only. Preserves unsupported terminal control streams. */
 export function cleanTerminalText(text: string): string | null {
   // If text contains unsupported terminal control codes (cursor movement, screen clear, OSC), preserve verbatim
-  if (UNSUPPORTED_ESCAPE_REGEX.test(text)) {
+  if (UNSUPPORTED_ESCAPE_REGEX.test(text) || text.replace(SGR_ONLY_REGEX, "").includes("\x1b")) {
     return null;
   }
   const hasSgr = SGR_ONLY_REGEX.test(text);
@@ -122,142 +122,89 @@ export interface InvarDocTocPayload {
   sections: InvarDocSection[];
 }
 
+// Only this bounded TOC shape has a compact reversible representation. Unknown
+// section fields or unsafe numeric metadata leave the original untouched.
+function losslessJsonValue(value: unknown): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isSafeInteger(value) && !Object.is(value, -0);
+  if (Array.isArray(value)) return value.every(losslessJsonValue);
+  return record(value) && Object.values(value).every(losslessJsonValue);
+}
+
 function validateInvarSection(s: unknown): s is InvarDocSection {
-  if (!record(s)) return false;
+  if (!record(s) || Object.keys(s).some(k => !["level", "title", "slug", "line_start", "line_end", "char_count", "path", "children"].includes(k))) return false;
   if (!integer(s.level, 1) || typeof s.title !== "string" || typeof s.slug !== "string") return false;
   if (!integer(s.line_start, 0) || !integer(s.line_end, 0) || !integer(s.char_count, 0)) return false;
-  if (s.path !== undefined && typeof s.path !== "string") return false;
-  if (s.children !== undefined) {
-    if (!Array.isArray(s.children) || !s.children.every(validateInvarSection)) return false;
-  }
+  if ([s.level, s.line_start, s.line_end, s.char_count].some(n => !Number.isSafeInteger(n) || Object.is(n, -0))) return false;
+  if ("path" in s && typeof s.path !== "string") return false;
+  if ("children" in s && (!Array.isArray(s.children) || !s.children.every(validateInvarSection))) return false;
   return true;
 }
 
-function flattenInvarSections(sections: InvarDocSection[], prefix = ""): { section: InvarDocSection; fullSlug: string }[] {
-  const result: { section: InvarDocSection; fullSlug: string }[] = [];
-  for (const s of sections) {
-    const fullSlug = prefix ? `${prefix}/${s.slug}` : s.slug;
-    result.push({ section: s, fullSlug });
-    if (s.children && s.children.length > 0) {
-      result.push(...flattenInvarSections(s.children, fullSlug));
-    }
-  }
-  return result;
+// Flags distinguish absent path/children from present empty values. JSON escaping
+// handles arbitrary titles, slugs, delimiters and newlines without a custom grammar.
+function encodeSection(s: InvarDocSection): unknown[] {
+  const flags = ("path" in s ? 1 : 0) | ("children" in s ? 2 : 0);
+  return [flags, s.level, s.title, s.slug, s.line_start, s.line_end, s.char_count,
+    ...("path" in s ? [s.path] : []), ...("children" in s ? [s.children!.map(encodeSection)] : [])];
 }
 
-/**
- * Truly invertible compact encoding for Invar Doc TOC tool results.
- * Preserves hierarchy, headings, slug, line ranges, char counts, and ordering.
- */
+function decodeSection(value: unknown): InvarDocSection | null {
+  if (!Array.isArray(value) || !integer(value[0], 0) || value[0] > 3 || value.length !== 7 + (value[0] & 1 ? 1 : 0) + (value[0] & 2 ? 1 : 0)) return null;
+  const [flags, level, title, slug, line_start, line_end, char_count] = value;
+  const section: InvarDocSection = { level, title, slug, line_start, line_end, char_count };
+  let next = 7;
+  if (flags & 1) section.path = value[next++];
+  if (flags & 2) {
+    const children = value[next];
+    if (!Array.isArray(children)) return null;
+    const decoded = children.map(decodeSection);
+    if (decoded.some(child => child === null)) return null;
+    section.children = decoded as InvarDocSection[];
+  }
+  return validateInvarSection(section) ? section : null;
+}
+
+/** Compact only recognized TOCs; preserve every supported field and its presence. */
 export function compactInvarDocToc(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
-
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-
-  if (!record(parsed) || !Array.isArray(parsed.sections) || parsed.sections.length === 0) return null;
-  if (!parsed.sections.every(validateInvarSection)) return null;
-
-  const flat = flattenInvarSections(parsed.sections as InvarDocSection[]);
-  const lines: string[] = [formatTocMarker()];
-  if (parsed.frontmatter !== undefined && parsed.frontmatter !== null && record(parsed.frontmatter)) {
-    lines.push(`FM:${JSON.stringify(parsed.frontmatter)}`);
-  }
-
-  for (const { section } of flat) {
-    lines.push(`L${section.level}|${section.line_start}-${section.line_end}|${section.char_count}|${section.slug}|${section.title}`);
-  }
-
-  const encoded = lines.join("\n");
-  if (encoded.length < text.length) {
-    return encoded;
-  }
-  return null;
+  try { parsed = JSON.parse(text); } catch { return null; }
+  // Reject duplicate properties and numerically/lexically altered values rather
+  // than silently collapsing them through JSON.parse/stringify.
+  if (JSON.stringify(parsed) !== (losslessCompactJson(text) ?? text.trim())) return null;
+  if (!record(parsed) || Object.keys(parsed).some(k => k !== "sections" && k !== "frontmatter") ||
+    !Array.isArray(parsed.sections) || parsed.sections.length === 0 || !parsed.sections.every(validateInvarSection) ||
+    ("frontmatter" in parsed && parsed.frontmatter !== null && !record(parsed.frontmatter)) ||
+    ("frontmatter" in parsed && !losslessJsonValue(parsed.frontmatter))) return null;
+  const payload = ["frontmatter" in parsed ? 1 : 0, ...("frontmatter" in parsed ? [parsed.frontmatter] : []),
+    parsed.sections.map(encodeSection)];
+  const encoded = `${formatTocMarker()}\n${JSON.stringify(payload)}`;
+  // JSON object member order can matter to consumers even though JSON.parse
+  // ignores it; only accept the shape reconstructed in precisely that order.
+  const restored = decodeInvarDocToc(encoded);
+  return restored && JSON.stringify(restored) === JSON.stringify(parsed) && encoded.length < text.length ? encoded : null;
 }
 
-/** Decoder for compact Invar Doc TOC encoding. Guaranteed roundtrip invertibility. */
+/** Reconstruct the exact supported JSON value tree, including optional-field presence. */
 export function decodeInvarDocToc(encoded: string): InvarDocTocPayload | null {
-  const lines = encoded.split("\n");
-  if (lines.length < 2 || lines[0] !== formatTocMarker()) return null;
-
-  let frontmatter: Record<string, unknown> | null = null;
-  let startIdx = 1;
-  if (lines[1]?.startsWith("FM:")) {
-    try {
-      frontmatter = JSON.parse(lines[1].slice(3));
-    } catch {
-      return null;
-    }
-    startIdx = 2;
-  }
-
-  const flat: InvarDocSection[] = [];
-  for (let i = startIdx; i < lines.length; i++) {
-    const line = lines[i]!;
-    if (!line.startsWith("L")) return null;
-    const parts = line.slice(1).split("|");
-    if (parts.length !== 5) return null;
-
-    const level = parseInt(parts[0]!, 10);
-    const rangeParts = parts[1]!.split("-");
-    if (rangeParts.length !== 2) return null;
-    const line_start = parseInt(rangeParts[0]!, 10);
-    const line_end = parseInt(rangeParts[1]!, 10);
-    const char_count = parseInt(parts[2]!, 10);
-    const slug = parts[3]!;
-    const title = parts[4]!;
-
-    if (!Number.isSafeInteger(level) || !Number.isSafeInteger(line_start) || !Number.isSafeInteger(line_end) || !Number.isSafeInteger(char_count)) {
-      return null;
-    }
-
-    flat.push({
-      level,
-      title,
-      slug,
-      line_start,
-      line_end,
-      char_count,
-      children: [],
-    });
-  }
-
-  // Reconstruct tree and paths from level hierarchy
-  const rootSections: InvarDocSection[] = [];
-  const stack: { section: InvarDocSection; fullSlug: string }[] = [];
-
-  for (const s of flat) {
-    while (stack.length > 0 && stack.at(-1)!.section.level >= s.level) {
-      stack.pop();
-    }
-    const parent = stack.at(-1);
-    const fullSlug = parent ? `${parent.fullSlug}/${s.slug}` : s.slug;
-    s.path = fullSlug;
-
-    if (parent) {
-      parent.section.children!.push(s);
-    } else {
-      rootSections.push(s);
-    }
-    stack.push({ section: s, fullSlug });
-  }
-
-  return {
-    ...(frontmatter !== null ? { frontmatter } : { frontmatter: null }),
-    sections: rootSections,
-  };
+  if (!encoded.startsWith(`${formatTocMarker()}\n`)) return null;
+  let payload: unknown;
+  try { payload = JSON.parse(encoded.slice(formatTocMarker().length + 1)); } catch { return null; }
+  if (!Array.isArray(payload) || (payload[0] !== 0 && payload[0] !== 1) || payload.length !== (payload[0] === 1 ? 3 : 2)) return null;
+  const sections = payload.at(-1);
+  if (!Array.isArray(sections) || sections.length === 0) return null;
+  const decoded = sections.map(decodeSection);
+  if (decoded.some(s => s === null)) return null;
+  const frontmatter = payload[0] === 1 ? payload[1] : undefined;
+  if (payload[0] === 1 && frontmatter !== null && !record(frontmatter)) return null;
+  if (payload[0] === 1 && !losslessJsonValue(frontmatter)) return null;
+  return { ...(payload[0] === 1 ? { frontmatter: frontmatter as Record<string, unknown> | null } : {}), sections: decoded as InvarDocSection[] };
 }
 
+// Exact observed Larva acceptance prefix, ending before the dynamic session
+// suffix. The prefix is only stripped when a complete copy remains visible.
 export const KNOWN_LAUNCH_BOILERPLATES = [
-  "=== Invar Guard static analysis and contract verification ===\nRunning doctest + hypothesis + crosshair\n",
-  "[CodeGraph] Server initialized\nDatabase index: ready\nCall graph available\n",
-  "[pty-driver] POSIX PTY session opened\nProcess attached\n",
-  "=== Test Runner Context ===\nEnvironment: POSIX PTY\nNode test runner initialized\n",
+  "Larva subagent accepted. Do not treat this accepted result as task evidence; a Larva subagent result callback is still pending. Do not use shell sleep polling. For automation that depends on the child result, use larva_subagent_wait, larva_subagent_select, or larva_subagent_events with exact task_id handles. Use bounded larva_subagent_wait checkpoints followed by larva_subagent_status or larva_subagent_events inspection; these observer reads never extend the child no-progress deadline. For known long-silent work, set a larger no_progress_timeout_ms before spawn because this version has no live extension mechanism. For conversational Pi continuation, yield for the larva-subagent-result push callback.\n---\n",
 ];
 
 function matchKnownBoilerplate(text: string): string | null {
@@ -412,7 +359,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       const editsByRefKey = new Map<string, unknown[]>();
 
       for (const raw of semanticEdits) {
-        if (record(raw) && typeof raw.entryId === "string" && integer(raw.messageIndex)) {
+        if (record(raw) && nonempty(raw.entryId) && integer(raw.messageIndex)) {
           const key = `${raw.entryId}:${raw.messageIndex}`;
           const list = editsByRefKey.get(key) ?? [];
           list.push(raw);
@@ -483,8 +430,8 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
           continue;
         }
 
-        // Action 'omit' must not specify text (even null/0/'')
-        if (action === "omit" && "text" in item && item.text !== undefined) {
+        // Action 'omit' must not carry a text field at all.
+        if (action === "omit" && "text" in item) {
           skipped.push({
             entryId: String(item.entryId),
             messageIndex: Number(item.messageIndex),
@@ -514,7 +461,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         if ("sourceRefs" in item && item.sourceRefs !== undefined) {
           if (
             !Array.isArray(item.sourceRefs) ||
-            !item.sourceRefs.every(ref => record(ref) && typeof ref.entryId === "string" && integer(ref.messageIndex))
+            !item.sourceRefs.every(ref => record(ref) && Object.keys(ref).every(k => k === "entryId" || k === "messageIndex") && nonempty(ref.entryId) && integer(ref.messageIndex))
           ) {
             skipped.push({
               entryId: String(item.entryId),
@@ -545,7 +492,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   const mechanicalDecisions = new Map<string, ToolResultDecision>();
 
   // Boilerplate keeper tracker: pattern -> keeper in retainedEntries
-  const boilerplateKeepers = new Map<string, { ref: ToolResultRef; toolName: string }>();
+  const boilerplateKeepers = new Map<string, ToolResultRef>();
 
   // Deduplication tracker: sameSourceKey -> keeper in retainedEntries
   const seenIdentical = new Map<string, { ref: ToolResultRef; toolCallId: string; toolName: string; text: string }>();
@@ -565,16 +512,17 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       // Track known launch boilerplate keeper (must be retained)
       const matchedBoilerplate = matchKnownBoilerplate(text);
       if (matchedBoilerplate !== null) {
-        const existingBp = boilerplateKeepers.get(matchedBoilerplate);
+        const family = `${toolName}\0${matchedBoilerplate}`;
+        const existingBp = boilerplateKeepers.get(family);
         if (!existingBp && isRetained) {
-          boilerplateKeepers.set(matchedBoilerplate, { ref, toolName });
+          boilerplateKeepers.set(family, ref);
         } else if (existingBp && candidateScopeSet.has(key) && !rejectedConflictKeys.has(key)) {
-          // Dynamic remainder after stripped boilerplate
-          const remainder = text.slice(matchedBoilerplate.length).trimStart();
-          const cleaned = `${formatBoilerplateMarker(existingBp.ref)}\n${remainder}`;
+          // Preserve the dynamic suffix byte for byte, including leading whitespace.
+          const remainder = text.slice(matchedBoilerplate.length);
+          const cleaned = `${formatBoilerplateMarker(existingBp)}\n${remainder}`;
           const netSavings = text.length - cleaned.length;
           if (netSavings > 0) {
-            protectedKeepers.add(refKey(existingBp.ref));
+            protectedKeepers.add(refKey(existingBp));
             mechanicalDecisions.set(key, {
               entryId: ref.entryId,
               messageIndex: ref.messageIndex,
@@ -586,7 +534,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
               originalLength: text.length,
               cleanedLength: cleaned.length,
               netSavings,
-              sourceRefs: [existingBp.ref],
+              sourceRefs: [existingBp],
             });
           }
         }
@@ -897,7 +845,8 @@ export function applyToolResultCleanup(entries: ActiveEntry[], decisions: ToolRe
   for (const entry of entries) {
     const newMessages = entry.messages.map((message, messageIndex) => {
       const decision = decisionMap.get(`${entry.entryId}:${messageIndex}`);
-      if (!decision || message.role !== "toolResult") {
+      if (!decision || message.role !== "toolResult" ||
+        decision.toolCallId !== message.toolCallId || decision.toolName !== message.toolName) {
         return structuredClone(message);
       }
 
