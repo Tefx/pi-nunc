@@ -4782,7 +4782,7 @@ phases:
       canonical.
   - id: nunc-tool-result-cleanup.integration
     name: 可恢复的全入口清理产品与实际观察接线
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       examples/**\", \"README.md\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
@@ -4852,6 +4852,36 @@ phases:
     agent: senior-engineer
     claimed_by: senior-engineer
     claimed_at: '2026-09-23T13:06:54.312668Z'
+    done_at: '2026-09-23T16:07:57.848950+00:00'
+    evidence: 'Accepted exact cd8a12f403b37e7bd4a9acad27f65c5228803ed0, retained refs/vectl/retained/nunc-tool-result-cleanup.integration/cd8a12f;
+      rebase onto integration_basis bd94b3f6500723ccbf18b09725456dee737cdba1 was unchanged.
+      Parent reconciled terminal writer/no descendants/clean candidate; inspected
+      core index/manual/projection/UI full791-line diff, admission/config/context
+      and m5 runtime checks/native scenario, last public-schema correction/native
+      hosted dispatch regression; diff--check and unchanged managedPlan/checker/lock
+      verified. HEAD compare+ancestor checked and exactFF confirmed before completion.
+      Product default-true settings/trust/disable-restore, samecommit M+cleanup and
+      raw recovery, frozen sent-M suffix source grouping, effective views/accounting,
+      maintenance/patch/UI failure/cancel pathways delivered. Known public-schema
+      bug parent reproduced through actual hosted prompt: malformed optional edit
+      blocked validM. Fixed schema delegates optional payload to local validation;
+      native regression verifies malformed action/index/item/nonarray save validM,
+      valid edits work, missing requiredMkey still rejects. Verification union: full
+      pinnedNode26.7 all at03b1c6d ran666/666 across78files,zero fail/cancel/skip/todo;
+      subsequent production change solely optionalpublicschema, affected Pi+m5 inventory302/302
+      incl stockhost on/off and nativepatch; final testassertion5/5. Not sum overlapping
+      counts; new nativecase adds1 to inventory. All-666 and affected-302 logs canonically
+      copied .scratch/tool-result-cleanup-evidence/integration/. Source/receipts/historybaseline
+      prerequisites repaired without dropping assertions; original2-record ledger
+      made tracked portable fixture; m5 ordered actualsentM→completedgroups→newM→projection
+      positive and initialnoeligible negative tested using realstockhost, no realmodelquality
+      claim. TUI native save/cancel/projection/usage observations retained worker
+      .scratch stock reports. No paidcalls/install/push. Implementation checkout temporarily
+      held for next behavior consumer''s isolated current-candidate execution and
+      raw native evidence; release after behavior acceptance or explicit stop, no
+      indefinite genericdebug retention. Real-model effectiveness/cache/cost §9.7
+      still unverified pending provider/model/thinking/data/runtime/budget authorization;
+      completion here does not accept wholephase.'
   - id: nunc-tool-result-cleanup.behavior
     name: 真实 M 更新对照证据与最终整合接受
     status: pending
