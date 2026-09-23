@@ -4782,7 +4782,7 @@ phases:
       canonical.
   - id: nunc-tool-result-cleanup.integration
     name: 可恢复的全入口清理产品与实际观察接线
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       examples/**\", \"README.md\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
@@ -4850,6 +4850,8 @@ phases:
     depends_on:
     - nunc-tool-result-cleanup.rules
     agent: senior-engineer
+    claimed_by: senior-engineer
+    claimed_at: '2026-09-23T13:06:54.312668Z'
   - id: nunc-tool-result-cleanup.behavior
     name: 真实 M 更新对照证据与最终整合接受
     status: pending
