@@ -4719,7 +4719,7 @@ phases:
   steps:
   - id: nunc-tool-result-cleanup.rules
     name: 完整来源到安全清理决定的引擎合同
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"tests/engine/**\", \"policies/**\",\
       \ \"docs/ENGINE.md\", \"docs/POLICY.md\", \"docs/TOOL-RESULT-CLEANUP.md\"]\n\
@@ -4757,6 +4757,29 @@ phases:
     agent: senior-engineer
     claimed_by: senior-engineer
     claimed_at: '2026-09-23T12:50:45.518352Z'
+    done_at: '2026-09-23T13:06:37.504224+00:00'
+    evidence: Integrated reviewed exact49927ef981e3c30e58f4fec457322edfb5426983 fast-forward
+      from integration_basis0c65507eedc22a329efd6e24edff3a2df11103e6 after retainedref/rebase-up-to-date/diff-check/ancestor+HEAD
+      compare. Managed Plan/checker/lock untouched in candidate. Initial node-typescript-engineer
+      contributions retained; Planner reassigned unfinished rules to senior-engineer
+      after parent reproduced repeated data-preservation defects. Senior completed
+      corrections in same retained tree. Parent inspected full correction diffs and
+      decisive original engine/request/source/metadata/dependency paths, reproduced
+      prior invalidJSON/retiredkeeper/multiblock and actual Invar-format failures;
+      fixes have behavioral regression coverage. Final pinned Node26.7.0 engine command
+      exited0:125tests across9files,125pass,0fail/cancelled/skipped/todo incl final-budget
+      dependency selection, malformed edits, scope absent/no-op/disabled, exact lexical
+      JSON, reversible actual Invar values/unknown metadata, observed Larva suffix/keeper,
+      scoped callID pairing, fixed prompt+tail candidates, metadata preserving single-body
+      projection. Canonical raw log .scratch/tool-result-cleanup-evidence/rules/engine-check.log
+      copied from worker; final49927ef only removes two trailing blank lines from
+      tested0c68f5f, inspected diff permits reuse. Scope only engine/tests-engine/policies/allowed
+      docs. Original candidates retained refs/vectl/retained/nunc-tool-result-cleanup.rules;
+      all workers terminal, no scoped descendants/live external effects. Rules delivers
+      pure engine, not Pi integration or real-model effectiveness. Implementation
+      tree/deps temporarily retained solely to clone existing locked dependencies
+      for immediately ready integration, then eligible deletion; source/log remain
+      canonical.
   - id: nunc-tool-result-cleanup.integration
     name: 可恢复的全入口清理产品与实际观察接线
     status: pending
