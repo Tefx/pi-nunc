@@ -89,27 +89,37 @@ Choose the largest feasible suffix at or below the retention target; when no com
 
 The side-effect-free cleanup rules engine in `src/engine/cleanup.ts` produces deterministic cleanup decisions (`ToolResultDecision[]`) and records skipped opportunities (`CleanupSkipped[]`) covering [TOOL-RESULT-CLEANUP.md §3–§6](TOOL-RESULT-CLEANUP.md):
 
-- **Pure evaluation**: Does not perform disk I/O, read/write session files, manage native commits, or spawn background schedulers. It consumes frozen active history, caller-supplied candidate scope, final retained entries, initial/final Memory states, and optional model-supplied semantic edits.
+- **Pure evaluation & fail-closed scope**: Does not perform disk I/O, read/write session files, manage native commits, or spawn background schedulers. Pure engine never manufactures candidate scope without an explicit safe anchor from the caller (`cleanupCandidateScope`). Missing, empty, or unsupplied candidate scope fails closed with zero applied cleanups. Supplied candidate scope is strictly intersected with final retained entries (`retainedEntries`); any candidate reference outside final retained history is rejected.
 - **Mechanical rules**:
-  - *Identical content deduplication*: Detects duplicate tool results sharing the same `toolName` and identical text. The first occurrence is preserved as a protected keeper; subsequent occurrences are replaced with `[Nunc: identical tool result deduplicated; identical to entry E message M]`.
-  - *Terminal cleanup*: Strips ANSI escape sequences and normalizes `\r\n` carriage returns while preserving command outputs and error diagnostics.
-  - *Lossless JSON compact*: Compactly formats multi-line JSON objects and arrays via lossless stringification when character savings exceed zero.
+  - *Identical content deduplication*: Detects duplicate tool results sharing the same `toolName`, identical call arguments from the associated toolCall, and identical text. The keeper must be present in `retainedEntries`; deduplicating to a retired entry is rejected. The keeper is preserved as a protected keeper with zero mechanical or semantic modifications; subsequent identical occurrences in candidate scope are replaced with `[Nunc: identical tool result deduplicated; identical to entry E message M]`.
+  - *Terminal cleanup*: Constrained to known ANSI SGR styling sequences (`\x1b[[0-9;]*m`) and CRLF normalization (`\r\n` -> `\n`). Unsupported terminal control streams (cursor positioning, screen clearing, OSC escapes) are preserved verbatim as unknown streams.
+  - *Lossless JSON compact*: Truly lossless lexical scanner stripping whitespace strictly outside strings. Preserves exact representation of all numbers (including integers > 2^53), duplicate keys, property order, and precision with zero parsing or serialization loss.
+  - *Reversible directory TOC*: Groups multi-line path listings by common directory prefix into a deterministic reversible index (`[Nunc reversible TOC index]:\n<dir>: [<file>, ...]`) when character savings exceed zero.
+  - *Launch boilerplate stripping*: Strips repeated static launch preambles across multiple invocations of the same tool while preserving all dynamic outputs, exit codes, handles, and diagnostics.
   - *Unknown formats & non-text*: Unknown formats, partial outputs, error flags, arguments, tool associations, and image blocks are preserved intact.
 - **Semantic cleanup edits**:
-  - `action: "omit"`: Replaced by code-uniform marker `[Nunc: tool result omitted; original recoverable from entry E message M]`.
-  - `action: "replace"`: Replaced by code-uniform marker `[Nunc summary; original recoverable from entry E message M]:\n<text>`.
+  - `action: "omit"`: Replaced by code-uniform marker `[Nunc: tool result omitted; original recoverable from entry E message M]`. Must not specify text (even null, 0, or empty string are rejected as `invalid_shape`).
+  - `action: "replace"`: Replaced by code-uniform marker `[Nunc summary; original recoverable from entry E message M]:\n<text>`. Requires non-empty string text.
+  - *Shape & field validation*: Edits with unrecognized fields or non-array `toolResultEdits` are recorded in `skipped` with `invalid_shape` and locally rejected without blocking legal M updates.
   - *Keeper protection*: A semantic edit cannot omit or replace a mechanical keeper for deduplicated results in the same batch; the semantic edit is skipped with `keeper_protected`.
-  - *Dependency validation*: Evaluates dependencies after final M budget selection. `memoryRefs` must survive into final M (mapped from candidate keys to assigned slot IDs `sN`); dropped items skip only dependent edits (`missing_memory_dependency`). `sourceRefs` must point to messages retained in the final request and not omitted/replaced in the same batch (`missing_source_dependency`).
-  - *Batch conflict*: Duplicate or conflicting edits targeting the same tool result in a batch are both skipped (`duplicate_edit`).
+  - *Dependency validation*: Evaluates dependencies after final M budget selection. `memoryRefs` must survive into final M (mapped from candidate keys to assigned slot IDs `sN`); dropped items skip only dependent edits (`missing_memory_dependency`). `sourceRefs` must point to messages retained in the final request and not omitted/replaced/deduplicated in the same batch (`missing_source_dependency`).
+  - *Batch conflict*: Duplicate or conflicting edits targeting the same tool result in a batch are both skipped (`duplicate_edit`); conflicting targets receive no mechanical fallback and remain 100% original.
   - *Incomplete source protection*: Tool results with prompt omissions cannot be semantically cleaned (`has_omissions`).
   - *Net savings requirement*: The formatted replacement text must be strictly shorter than the original tool result text (`no_net_savings`).
 - **M-unchanged & feature-disabled semantics**:
   - When M is unchanged (`isMemoryUnchanged(initial, final)`), no new cleanups are applied; proposed edits are recorded with `m_unchanged`.
   - When `config.toolResultCleanup === false`, the feature is disabled and candidate kept entries remain verbatim original.
+- **Request transcript wiring & prompt exposure**:
+  - In `extractionContext`, safe cleanup candidates in K are exposed in `source: "F/M"` (`cleanupCandidates` array) when cleanup is enabled. The system prompt and tail instruction provide explicit guidance on proposing `toolResultEdits` while preserving unfulfilled obligations, decisive completion conditions, and diagnostic facts. When disabled or when candidate scope is empty, runnable cleanup is not advertised.
+- **Integration invariants & caller responsibility**:
+  - `candidate.kept` always returns the detached original, unmutated active entries so storage details can preserve raw records.
+  - When `cleanupCandidateScope` is supplied, `mainAfterTokens` measures `effectiveKept` (projected entries via `applyToolResultCleanup`), and the caller/adapter (`src/pi/projection.ts`) is responsible for applying `candidate.toolResultCleanup` decisions to the active projection so actual serialized requests match accounting.
+  - For legacy callers without `cleanupCandidateScope`, the engine fails closed with zero applied decisions, keeping accounting and delivered candidate 100% consistent with raw history.
 - **Pure exports**:
   - `decideToolResultCleanup(options)`: Computes applied and skipped cleanup results.
-  - `applyToolResultCleanup(entries, decisions)`: Detaches and projects entries with cleanups applied without mutating original history.
-  - `formatOmitMarker(ref)`, `formatReplaceMarker(ref, text)`, `formatDeduplicateMarker(target, keeper)`: Standard uniform reduction markers with recovery references.
+  - `applyToolResultCleanup(entries, decisions)`: Detaches and projects entries with cleanups applied, replacing the body exactly once per message, preserving all host message metadata via copying, and leaving mixed/non-text blocks untouched.
+  - `formatOmitMarker(ref)`, `formatReplaceMarker(ref, text)`, `formatDeduplicateMarker(target, keeper)`, `formatBoilerplateMarker(firstRef)`, `formatTocMarker()`: Standard uniform reduction markers with recovery references.
+  - `losslessCompactJson(text)`, `cleanTerminalText(text)`, `reversibleCompactToc(text)`: Pure mechanical transformers.
 
 ## Configuration and capacity
 

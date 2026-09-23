@@ -18,25 +18,172 @@ export function formatDeduplicateMarker(target: ToolResultRef, keeper: ToolResul
   return `[Nunc: identical tool result deduplicated; identical to entry ${keeper.entryId} message ${keeper.messageIndex}]`;
 }
 
-const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\([a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
-
-function cleanTerminalText(text: string): string {
-  const noAnsi = text.replace(ANSI_REGEX, "");
-  return noAnsi.replace(/\r\n?/g, "\n");
+export function formatBoilerplateMarker(firstRef: ToolResultRef): string {
+  return `[Nunc: repeated tool boilerplate stripped; see entry ${firstRef.entryId} message ${firstRef.messageIndex}]`;
 }
 
-function tryCompactJson(text: string): string | null {
+export function formatTocMarker(): string {
+  return `[Nunc reversible TOC index]`;
+}
+
+/**
+ * Truly lossless JSON compaction: strips whitespace outside strings while
+ * preserving exact lexical characters for all numbers (including > 2^53),
+ * duplicate keys, property ordering, and string literals.
+ */
+export function losslessCompactJson(text: string): string | null {
   const trimmed = text.trim();
   if ((!trimmed.startsWith("{") || !trimmed.endsWith("}")) && (!trimmed.startsWith("[") || !trimmed.endsWith("]"))) {
     return null;
   }
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed === null || typeof parsed !== "object") return null;
-    const compact = JSON.stringify(parsed);
-    if (compact.length < text.length) return compact;
-  } catch {
-    // Unknown format or invalid JSON; preserve original
+
+  let inString = false;
+  let escape = false;
+  let out = "";
+  let hadWhitespaceOutsideString = false;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i]!;
+
+    if (inString) {
+      out += ch;
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+        out += ch;
+      } else if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+        hadWhitespaceOutsideString = true;
+      } else {
+        out += ch;
+      }
+    }
+  }
+
+  if (inString || escape) return null;
+
+  // Verify structure has balanced brackets/braces
+  const stack: string[] = [];
+  inString = false;
+  escape = false;
+  for (let i = 0; i < out.length; i++) {
+    const ch = out[i]!;
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === "\\") escape = true;
+      else if (ch === '"') inString = false;
+    } else {
+      if (ch === '"') inString = true;
+      else if (ch === "{" || ch === "[") stack.push(ch);
+      else if (ch === "}") {
+        if (stack.pop() !== "{") return null;
+      } else if (ch === "]") {
+        if (stack.pop() !== "[") return null;
+      }
+    }
+  }
+  if (stack.length !== 0 || inString) return null;
+
+  if (hadWhitespaceOutsideString && out.length < text.length) {
+    return out;
+  }
+  return null;
+}
+
+const SGR_ONLY_REGEX = /\x1b\[[0-9;]*m/g;
+const UNSUPPORTED_ESCAPE_REGEX = /\x1b(?:\[[0-9;]*[A-LN-Za-ln-z]|\]|\(|\))/;
+
+/** Clean terminal ANSI styling and CRLF only. Preserves unsupported terminal control streams. */
+export function cleanTerminalText(text: string): string | null {
+  // If text contains unsupported terminal control codes (cursor movement, OSC, etc.), preserve verbatim
+  if (UNSUPPORTED_ESCAPE_REGEX.test(text)) {
+    return null;
+  }
+  const hasSgr = SGR_ONLY_REGEX.test(text);
+  const hasCrlf = text.includes("\r\n");
+  if (!hasSgr && !hasCrlf) {
+    return null;
+  }
+
+  const cleaned = text.replace(SGR_ONLY_REGEX, "").replace(/\r\n/g, "\n");
+  if (cleaned !== text && cleaned.length < text.length) {
+    return cleaned;
+  }
+  return null;
+}
+
+/**
+ * Reversible compact directory TOC: groups multi-line path listings by common
+ * directory prefix, rendering a deterministic reversible index when space is saved.
+ */
+export function reversibleCompactToc(text: string): string | null {
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length < 3) return null;
+
+  // Check if every line looks like a valid file/directory path
+  const looksLikePath = (l: string) => l.includes("/") && !l.includes(" ") && !l.startsWith("error") && !l.startsWith("warn");
+  if (!lines.every(looksLikePath)) return null;
+
+  // Group by directory prefix
+  const groups = new Map<string, string[]>();
+  for (const line of lines) {
+    const lastSlash = line.lastIndexOf("/");
+    const dir = line.slice(0, lastSlash + 1);
+    const file = line.slice(lastSlash + 1);
+    if (!file) return null;
+    const list = groups.get(dir) ?? [];
+    list.push(file);
+    groups.set(dir, list);
+  }
+
+  // Only apply if grouping creates net savings (e.g. at least one directory with 2+ files)
+  let multipleCount = 0;
+  for (const list of groups.values()) {
+    if (list.length >= 2) multipleCount++;
+  }
+  if (multipleCount === 0) return null;
+
+  const entries: string[] = [];
+  for (const [dir, files] of groups.entries()) {
+    entries.push(`${dir}: [${files.join(", ")}]`);
+  }
+  const compact = `${formatTocMarker()}:\n${entries.join("\n")}`;
+
+  if (compact.length < text.length) {
+    return compact;
+  }
+  return null;
+}
+
+/** Check if two tool result texts share an identical multi-line static banner. */
+function stripToolBoilerplate(text: string, firstText: string, firstRef: ToolResultRef): string | null {
+  const firstLines = firstText.split("\n");
+  const currentLines = text.split("\n");
+  if (firstLines.length < 3 || currentLines.length < 3) return null;
+
+  // Find common header lines
+  let commonCount = 0;
+  while (commonCount < firstLines.length && commonCount < currentLines.length && firstLines[commonCount] === currentLines[commonCount]) {
+    commonCount++;
+  }
+
+  if (commonCount >= 2) {
+    const commonPrefix = currentLines.slice(0, commonCount).join("\n") + "\n";
+    if (commonPrefix.length >= 40) {
+      const dynamicRemainder = text.slice(commonPrefix.length).trimStart();
+      if (dynamicRemainder.length > 0) {
+        const cleaned = `${formatBoilerplateMarker(firstRef)}\n${dynamicRemainder}`;
+        if (cleaned.length < text.length) {
+          return cleaned;
+        }
+      }
+    }
   }
   return null;
 }
@@ -70,6 +217,23 @@ function messageTextContent(message: ActiveEntry["messages"][number]): string | 
   return text;
 }
 
+/** Map all assistant tool calls in active history by toolCallId. */
+function extractToolCallMap(active: ActiveEntry[]): Map<string, { toolName: string; argsJson: string }> {
+  const map = new Map<string, { toolName: string; argsJson: string }>();
+  for (const entry of active) {
+    for (const msg of entry.messages) {
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === "toolCall") {
+            map.set(block.id, { toolName: block.name, argsJson: JSON.stringify(block.arguments) });
+          }
+        }
+      }
+    }
+  }
+  return map;
+}
+
 /** Pure deterministic decision engine for mechanical rules and semantic tool-result edits. */
 export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolResultCleanupResult {
   const {
@@ -96,7 +260,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
           skipped.push({
             entryId: edit.entryId,
             messageIndex: edit.messageIndex,
-            action: typeof edit.action === "string" ? edit.action : undefined,
+            ...(typeof edit.action === "string" ? { action: edit.action } : {}),
             reason: disabled ? "not_in_candidate_scope" : "m_unchanged",
             details: disabled ? "Tool result cleanup feature disabled" : "Memory M did not change in this transaction",
           });
@@ -106,27 +270,31 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     return { applied: [], skipped };
   }
 
-  // Resolve candidate scope as a Set<string> ("entryId:messageIndex")
+  // Defect 1: Fail closed if candidateScope is missing, empty, or not provided.
+  // Pure engine never manufactures candidate scope without an explicit safe anchor.
   const candidateScopeSet = new Set<string>();
-  if (options.candidateScope instanceof Set) {
-    for (const key of options.candidateScope) candidateScopeSet.add(key);
-  } else if (Array.isArray(options.candidateScope)) {
+  if (Array.isArray(options.candidateScope)) {
     for (const ref of options.candidateScope) {
       if (record(ref) && typeof ref.entryId === "string" && integer(ref.messageIndex)) {
         candidateScopeSet.add(refKey(ref));
       }
     }
-  } else {
-    // Default candidate scope: completed toolResult messages in retainedEntries
-    // excluding the latest business tool group.
-    const toolEntries = retainedEntries.filter(e => e.sourceRole === "toolResult");
-    const eligibleEntries = toolEntries.length > 1 ? toolEntries.slice(0, -1) : toolEntries;
-    for (const entry of eligibleEntries) {
-      for (const [idx, msg] of entry.messages.entries()) {
-        if (msg.role === "toolResult") {
-          candidateScopeSet.add(`${entry.entryId}:${idx}`);
-        }
-      }
+  } else if (options.candidateScope instanceof Set) {
+    for (const key of options.candidateScope) {
+      if (typeof key === "string") candidateScopeSet.add(key);
+    }
+  }
+  // Candidate scope must be intersected with final retained entries.
+  const retainedMessageKeys = new Set<string>();
+  for (const entry of retainedEntries) {
+    for (const [i] of entry.messages.entries()) {
+      retainedMessageKeys.add(`${entry.entryId}:${i}`);
+    }
+  }
+  // Remove any candidates that are not in final retained history
+  for (const key of candidateScopeSet) {
+    if (!retainedMessageKeys.has(key)) {
+      candidateScopeSet.delete(key);
     }
   }
 
@@ -138,14 +306,149 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     }
   }
 
-  // Retained messages set for sourceRefs verification
-  const retainedMessageKeys = new Set<string>();
-  for (const entry of retainedEntries) {
-    for (let i = 0; i < entry.messages.entries.length; i++) {
-      retainedMessageKeys.add(`${entry.entryId}:${i}`);
-    }
-    for (const [i] of entry.messages.entries()) {
-      retainedMessageKeys.add(`${entry.entryId}:${i}`);
+  // Extract tool call arguments to establish demonstrable same-source identity (Defect 3)
+  const toolCallMap = extractToolCallMap(active);
+
+  // Defect 7: Validate semantic edits first to catch duplicate/conflicting edits and invalid shapes
+  const candidateSemanticEdits: ToolResultEdit[] = [];
+  const rejectedConflictKeys = new Set<string>();
+
+  if (semanticEdits !== undefined) {
+    if (!Array.isArray(semanticEdits)) {
+      skipped.push({
+        entryId: "",
+        messageIndex: 0,
+        reason: "invalid_shape",
+        details: "toolResultEdits must be an array",
+      });
+    } else {
+      const editsByRefKey = new Map<string, Record<string, unknown>[]>();
+
+      for (const raw of semanticEdits) {
+        if (!record(raw) || typeof raw.entryId !== "string" || !integer(raw.messageIndex)) {
+          skipped.push({
+            entryId: record(raw) && typeof raw.entryId === "string" ? raw.entryId : "",
+            messageIndex: record(raw) && typeof raw.messageIndex === "number" ? raw.messageIndex : 0,
+            reason: "invalid_shape",
+            details: "Edit must be an object with string entryId and non-negative integer messageIndex",
+          });
+          continue;
+        }
+
+        // Defect 7: Check for unknown fields in edit
+        const allowedKeys = ["entryId", "messageIndex", "action", "text", "memoryRefs", "sourceRefs"];
+        const hasUnknown = Object.keys(raw).some(k => !allowedKeys.includes(k));
+        if (hasUnknown) {
+          skipped.push({
+            entryId: raw.entryId,
+            messageIndex: raw.messageIndex,
+            ...(typeof raw.action === "string" ? { action: raw.action } : {}),
+            reason: "invalid_shape",
+            details: "Edit contains unrecognized fields",
+          });
+          continue;
+        }
+
+        const key = `${raw.entryId}:${raw.messageIndex}`;
+        const list = editsByRefKey.get(key) ?? [];
+        list.push(raw);
+        editsByRefKey.set(key, list);
+      }
+
+      // Check duplicates / conflicting edits per target
+      for (const [key, list] of editsByRefKey.entries()) {
+        if (list.length > 1) {
+          rejectedConflictKeys.add(key);
+          for (const item of list) {
+            skipped.push({
+              entryId: String(item.entryId),
+              messageIndex: Number(item.messageIndex),
+              ...(typeof item.action === "string" ? { action: item.action } : {}),
+              reason: "duplicate_edit",
+              details: `Conflicting multiple edits in same batch for ${key}; retaining original`,
+            });
+          }
+          continue;
+        }
+
+        const item = list[0]!;
+        const action = item.action;
+        if (action !== "omit" && action !== "replace") {
+          skipped.push({
+            entryId: String(item.entryId),
+            messageIndex: Number(item.messageIndex),
+            ...(typeof action === "string" ? { action: action } : {}),
+            reason: "invalid_shape",
+            details: `Invalid action '${String(action)}'; must be 'omit' or 'replace'`,
+          });
+          continue;
+        }
+
+        if (action === "replace" && !nonempty(item.text)) {
+          skipped.push({
+            entryId: String(item.entryId),
+            messageIndex: Number(item.messageIndex),
+            action: "replace",
+            reason: "invalid_shape",
+            details: "Action 'replace' requires non-empty string text",
+          });
+          continue;
+        }
+
+        // Defect 7: Action 'omit' must NOT specify text (even null/0/'')
+        if (action === "omit" && "text" in item && item.text !== undefined) {
+          skipped.push({
+            entryId: String(item.entryId),
+            messageIndex: Number(item.messageIndex),
+            action: "omit",
+            reason: "invalid_shape",
+            details: "Action 'omit' must not specify text",
+          });
+          continue;
+        }
+
+        let memoryRefs: string[] | undefined = undefined;
+        if ("memoryRefs" in item && item.memoryRefs !== undefined) {
+          if (!Array.isArray(item.memoryRefs) || !item.memoryRefs.every(ref => typeof ref === "string" && ref.trim().length > 0)) {
+            skipped.push({
+              entryId: String(item.entryId),
+              messageIndex: Number(item.messageIndex),
+              action: action as "omit" | "replace",
+              reason: "invalid_shape",
+              details: "memoryRefs must be an array of non-empty strings",
+            });
+            continue;
+          }
+          memoryRefs = item.memoryRefs as string[];
+        }
+
+        let sourceRefs: SourceRef[] | undefined = undefined;
+        if ("sourceRefs" in item && item.sourceRefs !== undefined) {
+          if (
+            !Array.isArray(item.sourceRefs) ||
+            !item.sourceRefs.every(ref => record(ref) && typeof ref.entryId === "string" && integer(ref.messageIndex))
+          ) {
+            skipped.push({
+              entryId: String(item.entryId),
+              messageIndex: Number(item.messageIndex),
+              action: action as "omit" | "replace",
+              reason: "invalid_shape",
+              details: "sourceRefs must be an array of { entryId, messageIndex } objects",
+            });
+            continue;
+          }
+          sourceRefs = item.sourceRefs as SourceRef[];
+        }
+
+        candidateSemanticEdits.push({
+          entryId: String(item.entryId),
+          messageIndex: Number(item.messageIndex),
+          action: action as "omit" | "replace",
+          ...(action === "replace" ? { text: String(item.text) } : {}),
+          ...(memoryRefs !== undefined ? { memoryRefs } : {}),
+          ...(sourceRefs !== undefined ? { sourceRefs } : {}),
+        });
+      }
     }
   }
 
@@ -153,30 +456,45 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   const protectedKeepers = new Set<string>();
   const mechanicalDecisions = new Map<string, ToolResultDecision>();
 
-  // Deduplication tracker: map toolName:text -> keeper
+  // Map to find first occurrence of static boilerplate per toolName
+  const firstOccurrenceByTool = new Map<string, { ref: ToolResultRef; text: string }>();
+
+  // Deduplication tracker: map sameSourceKey -> keeper (must be in retainedEntries!)
   const seenIdentical = new Map<string, { ref: ToolResultRef; toolCallId: string; toolName: string; text: string }>();
 
+  // Scan retainedEntries first for potential keepers, or active entries that are retained
   for (const entry of active) {
     for (const [messageIndex, message] of entry.messages.entries()) {
       if (message.role !== "toolResult") continue;
       const ref: ToolResultRef = { entryId: entry.entryId, messageIndex };
       const key = refKey(ref);
       const text = messageTextContent(message);
-      if (text === null) continue; // Skip non-text or mixed blocks
+      if (text === null) continue;
 
       const toolName = message.toolName;
-      const idKey = `${toolName}\0${text}`;
+      if (!firstOccurrenceByTool.has(toolName)) {
+        firstOccurrenceByTool.set(toolName, { ref, text });
+      }
 
-      const existing = seenIdentical.get(idKey);
-      if (!existing) {
-        seenIdentical.set(idKey, { ref, toolCallId: message.toolCallId, toolName, text });
-      } else {
-        // We found an identical earlier occurrence!
-        if (candidateScopeSet.has(key)) {
+      // Defect 3: Same-source identity requires same toolName AND same call arguments
+      const call = toolCallMap.get(message.toolCallId);
+      const isRetained = retainedMessageKeys.has(key);
+
+      if (call) {
+        const sameSourceKey = `${toolName}\0${call.argsJson}\0${text}`;
+        const existing = seenIdentical.get(sameSourceKey);
+
+        if (!existing) {
+          // Defect 3: Only an entry in retainedEntries can be a keeper!
+          if (isRetained) {
+            seenIdentical.set(sameSourceKey, { ref, toolCallId: message.toolCallId, toolName, text });
+          }
+        } else if (candidateScopeSet.has(key) && !rejectedConflictKeys.has(key)) {
+          // Both are same origin with identical text, and existing keeper is in retainedEntries!
           const marker = formatDeduplicateMarker(ref, existing.ref);
           const netSavings = text.length - marker.length;
           if (netSavings > 0) {
-            // Protect keeper from semantic edits in this batch
+            // Protect keeper from ANY modifications
             protectedKeepers.add(refKey(existing.ref));
             mechanicalDecisions.set(key, {
               entryId: ref.entryId,
@@ -195,26 +513,12 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         }
       }
 
-      // If not deduplicated, check JSON compaction and terminal cleaning
-      if (candidateScopeSet.has(key) && !mechanicalDecisions.has(key)) {
-        // Try terminal ANSI clean first
-        let currentText = text;
-        const cleanedTerminal = cleanTerminalText(currentText);
-        let action: CleanupAction | null = null;
-        if (cleanedTerminal !== currentText && cleanedTerminal.length < currentText.length) {
-          currentText = cleanedTerminal;
-          action = "clean_terminal";
-        }
-
-        // Try JSON compaction
-        const compactJson = tryCompactJson(currentText);
-        if (compactJson !== null && compactJson.length < currentText.length) {
-          currentText = compactJson;
-          action = "compact_json";
-        }
-
-        if (action !== null) {
-          const netSavings = text.length - currentText.length;
+      // If not deduplicated, check other mechanical families (only for candidates in scope not in rejectedConflictKeys)
+      if (candidateScopeSet.has(key) && !mechanicalDecisions.has(key) && !rejectedConflictKeys.has(key)) {
+        // Family: Reversible directory TOC
+        const compactToc = reversibleCompactToc(text);
+        if (compactToc !== null) {
+          const netSavings = text.length - compactToc.length;
           if (netSavings > 0) {
             mechanicalDecisions.set(key, {
               entryId: ref.entryId,
@@ -222,137 +526,91 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
               toolCallId: message.toolCallId,
               toolName,
               kind: "mechanical",
-              action,
-              text: currentText,
+              action: "compact_toc",
+              text: compactToc,
               originalLength: text.length,
-              cleanedLength: currentText.length,
+              cleanedLength: compactToc.length,
               netSavings,
             });
+            continue;
+          }
+        }
+
+        // Family: Truly lossless JSON compact (Defect 2)
+        const compactJson = losslessCompactJson(text);
+        if (compactJson !== null) {
+          const netSavings = text.length - compactJson.length;
+          if (netSavings > 0) {
+            mechanicalDecisions.set(key, {
+              entryId: ref.entryId,
+              messageIndex: ref.messageIndex,
+              toolCallId: message.toolCallId,
+              toolName,
+              kind: "mechanical",
+              action: "compact_json",
+              text: compactJson,
+              originalLength: text.length,
+              cleanedLength: compactJson.length,
+              netSavings,
+            });
+            continue;
+          }
+        }
+
+        // Family: Constrained Terminal ANSI SGR & CRLF cleaning (Defect 2)
+        const cleanedTerminal = cleanTerminalText(text);
+        if (cleanedTerminal !== null) {
+          const netSavings = text.length - cleanedTerminal.length;
+          if (netSavings > 0) {
+            mechanicalDecisions.set(key, {
+              entryId: ref.entryId,
+              messageIndex: ref.messageIndex,
+              toolCallId: message.toolCallId,
+              toolName,
+              kind: "mechanical",
+              action: "clean_terminal",
+              text: cleanedTerminal,
+              originalLength: text.length,
+              cleanedLength: cleanedTerminal.length,
+              netSavings,
+            });
+            continue;
+          }
+        }
+
+        // Family: Fixed tool launch boilerplate stripping (Defect 6)
+        const first = firstOccurrenceByTool.get(toolName);
+        if (first && refKey(first.ref) !== key) {
+          const stripped = stripToolBoilerplate(text, first.text, first.ref);
+          if (stripped !== null) {
+            const netSavings = text.length - stripped.length;
+            if (netSavings > 0) {
+              mechanicalDecisions.set(key, {
+                entryId: ref.entryId,
+                messageIndex: ref.messageIndex,
+                toolCallId: message.toolCallId,
+                toolName,
+                kind: "mechanical",
+                action: "strip_boilerplate",
+                text: stripped,
+                originalLength: text.length,
+                cleanedLength: stripped.length,
+                netSavings,
+                sourceRefs: [first.ref],
+              });
+            }
           }
         }
       }
     }
   }
 
-  // Step 2: Validate semantic edits
-  const candidateSemanticEdits: ToolResultEdit[] = [];
-  if (Array.isArray(semanticEdits)) {
-    const rawEdits = semanticEdits;
-    const editsByRefKey = new Map<string, unknown[]>();
-
-    for (const raw of rawEdits) {
-      if (!record(raw) || typeof raw.entryId !== "string" || !integer(raw.messageIndex)) {
-        skipped.push({
-          entryId: typeof raw === "object" && raw !== null && "entryId" in raw && typeof raw.entryId === "string" ? raw.entryId : "",
-          messageIndex: typeof raw === "object" && raw !== null && "messageIndex" in raw && typeof raw.messageIndex === "number" ? raw.messageIndex : 0,
-          reason: "invalid_shape",
-          details: "Edit must be an object with string entryId and non-negative integer messageIndex",
-        });
-        continue;
-      }
-
-      const key = `${raw.entryId}:${raw.messageIndex}`;
-      const list = editsByRefKey.get(key) ?? [];
-      list.push(raw);
-      editsByRefKey.set(key, list);
-    }
-
-    // Detect duplicate / batch conflict edits
-    for (const [key, list] of editsByRefKey.entries()) {
-      if (list.length > 1) {
-        for (const item of list) {
-          const r = item as Record<string, unknown>;
-          skipped.push({
-            entryId: String(r.entryId),
-            messageIndex: Number(r.messageIndex),
-            action: typeof r.action === "string" ? r.action : undefined,
-            reason: "duplicate_edit",
-            details: `Conflicting multiple edits in same batch for ${key}; retaining original`,
-          });
-        }
-        continue;
-      }
-
-      const item = list[0] as Record<string, unknown>;
-      const action = item.action;
-      if (action !== "omit" && action !== "replace") {
-        skipped.push({
-          entryId: String(item.entryId),
-          messageIndex: Number(item.messageIndex),
-          action: typeof action === "string" ? action : undefined,
-          reason: "invalid_shape",
-          details: `Invalid action '${String(action)}'; must be 'omit' or 'replace'`,
-        });
-        continue;
-      }
-
-      if (action === "replace" && !nonempty(item.text)) {
-        skipped.push({
-          entryId: String(item.entryId),
-          messageIndex: Number(item.messageIndex),
-          action: "replace",
-          reason: "invalid_shape",
-          details: "Action 'replace' requires non-empty text",
-        });
-        continue;
-      }
-
-      if (action === "omit" && item.text !== undefined && nonempty(item.text)) {
-        skipped.push({
-          entryId: String(item.entryId),
-          messageIndex: Number(item.messageIndex),
-          action: "omit",
-          reason: "invalid_shape",
-          details: "Action 'omit' must not carry replacement text",
-        });
-        continue;
-      }
-
-      let memoryRefs: string[] | undefined = undefined;
-      if (item.memoryRefs !== undefined) {
-        if (!Array.isArray(item.memoryRefs) || !item.memoryRefs.every(ref => typeof ref === "string" && ref.trim().length > 0)) {
-          skipped.push({
-            entryId: String(item.entryId),
-            messageIndex: Number(item.messageIndex),
-            action: action as "omit" | "replace",
-            reason: "invalid_shape",
-            details: "memoryRefs must be an array of non-empty strings",
-          });
-          continue;
-        }
-        memoryRefs = item.memoryRefs as string[];
-      }
-
-      let sourceRefs: SourceRef[] | undefined = undefined;
-      if (item.sourceRefs !== undefined) {
-        if (
-          !Array.isArray(item.sourceRefs) ||
-          !item.sourceRefs.every(ref => record(ref) && typeof ref.entryId === "string" && integer(ref.messageIndex))
-        ) {
-          skipped.push({
-            entryId: String(item.entryId),
-            messageIndex: Number(item.messageIndex),
-            action: action as "omit" | "replace",
-            reason: "invalid_shape",
-            details: "sourceRefs must be an array of { entryId, messageIndex } objects",
-          });
-          continue;
-        }
-        sourceRefs = item.sourceRefs as SourceRef[];
-      }
-
-      candidateSemanticEdits.push({
-        entryId: String(item.entryId),
-        messageIndex: Number(item.messageIndex),
-        action: action as "omit" | "replace",
-        text: action === "replace" ? String(item.text) : undefined,
-        memoryRefs,
-        sourceRefs,
-      });
-    }
+  // Defect 3: Ensure protected keeper cannot have any mechanical reduction
+  for (const keeperKey of protectedKeepers) {
+    mechanicalDecisions.delete(keeperKey);
   }
 
-  // Step 3: Evaluate each candidate semantic edit against dependencies, scope, keepers, omissions, and savings
+  // Step 2: Evaluate candidate semantic edits
   const approvedSemanticDecisions = new Map<string, ToolResultDecision>();
   const proposedSemanticOmitOrReplaceKeys = new Set(candidateSemanticEdits.map(e => refKey(e)));
 
@@ -419,7 +677,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       continue;
     }
 
-    // Check mechanical keeper protection
+    // Check mechanical keeper protection (Defect 3)
     if (protectedKeepers.has(key)) {
       skipped.push({
         entryId: edit.entryId,
@@ -463,7 +721,6 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
           sourceRefError = `Source ref '${sKey}' is not in final retained history (retired or non-existent)`;
           break;
         }
-        // Source ref must point to a fully retained message (not omitted/replaced/deduplicated in this batch)
         if (proposedSemanticOmitOrReplaceKeys.has(sKey)) {
           sourceRefError = `Source ref '${sKey}' is also being omitted/replaced in this batch`;
           break;
@@ -518,11 +775,12 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
     });
   }
 
-  // Step 4: Merge approved mechanical and semantic decisions
-  // Semantic decisions override mechanical JSON/terminal cleanups for the same key.
+  // Merge approved decisions
   const finalDecisionMap = new Map<string, ToolResultDecision>();
   for (const [key, mech] of mechanicalDecisions.entries()) {
-    finalDecisionMap.set(key, mech);
+    if (!rejectedConflictKeys.has(key)) {
+      finalDecisionMap.set(key, mech);
+    }
   }
   for (const [key, sem] of approvedSemanticDecisions.entries()) {
     finalDecisionMap.set(key, sem);
@@ -555,27 +813,26 @@ export function applyToolResultCleanup(entries: ActiveEntry[], decisions: ToolRe
   for (const entry of entries) {
     const newMessages = entry.messages.map((message, messageIndex) => {
       const decision = decisionMap.get(`${entry.entryId}:${messageIndex}`);
-      if (!decision || message.role !== "toolResult") return structuredClone(message);
+      if (!decision || message.role !== "toolResult") {
+        return structuredClone(message);
+      }
 
-      // Keep role, toolCallId, toolName, isError, timestamp; replace text block
-      const newContent = typeof message.content === "string"
-        ? [{ type: "text" as const, text: decision.text }]
-        : message.content.map(block => (block.type === "text" ? { type: "text" as const, text: decision.text } : structuredClone(block)));
+      // Defect 4: Keep mixed / non-text blocks untouched as contract states
+      if (Array.isArray(message.content) && message.content.some(b => b.type !== "text")) {
+        return structuredClone(message);
+      }
 
-      const updated: ActiveEntry["messages"][number] = {
-        role: "toolResult",
-        toolCallId: message.toolCallId,
-        toolName: message.toolName,
-        isError: message.isError,
-        timestamp: message.timestamp,
+      // Defect 4: Replace body exactly once with single text block; preserve all host metadata
+      const newContent = [{ type: "text" as const, text: decision.text }];
+
+      return {
+        ...structuredClone(message),
         content: newContent,
       };
-      return updated;
     });
 
     result.push({
-      entryId: entry.entryId,
-      sourceRole: entry.sourceRole,
+      ...structuredClone(entry),
       messages: newMessages,
     });
   }

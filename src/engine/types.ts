@@ -128,7 +128,7 @@ export interface ToolResultEdit {
   sourceRefs?: SourceRef[] | undefined;
 }
 
-export type CleanupAction = "omit" | "replace" | "deduplicate" | "compact_json" | "clean_terminal" | "strip_boilerplate";
+export type CleanupAction = "omit" | "replace" | "deduplicate" | "compact_json" | "clean_terminal" | "strip_boilerplate" | "compact_toc";
 
 export interface ToolResultDecision {
   entryId: string;
