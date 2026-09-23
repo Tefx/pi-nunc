@@ -4884,7 +4884,7 @@ phases:
       completion here does not accept wholephase.'
   - id: nunc-tool-result-cleanup.behavior
     name: 真实 M 更新对照证据与最终整合接受
-    status: claimed
+    status: pending
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"package.json\", \"package-lock.json\", \"dist/**\"]\n  blocked_paths:\
@@ -4937,5 +4937,3 @@ phases:
     depends_on:
     - nunc-tool-result-cleanup.integration
     agent: integration-verifier
-    claimed_by: integration-verifier
-    claimed_at: '2026-09-23T16:13:46.015755Z'
