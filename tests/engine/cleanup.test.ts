@@ -973,7 +973,19 @@ test("TOC representation preserves unusual titles, explicit paths, optional fiel
   assert.equal(compactInvarDocToc('{"sections":[{"level":1,"level":2,"title":"x","slug":"x","line_start":1,"line_end":2,"char_count":3}]}'), null);
   assert.equal(compactInvarDocToc('{"sections":[{"level":1,"title":"x","slug":"x","line_start":1,"line_end":2,"char_count":3}],"frontmatter":{"precision":1.0000000000000000001}}'), null);
   assert.equal(compactInvarDocToc(JSON.stringify({ frontmatter: { counter: 9007199254740993 }, sections: canonical.sections }, null, 4)), null);
-  assert.equal(compactInvarDocToc(JSON.stringify({ sections: canonical.sections, frontmatter: null }, null, 4)), null);
+  const reverseRoot = { sections: canonical.sections, frontmatter: null };
+  const reverseEncoded = compactInvarDocToc(JSON.stringify(reverseRoot, null, 4));
+  assert(reverseEncoded);
+  assert.deepEqual(decodeInvarDocToc(reverseEncoded), reverseRoot);
+});
+
+test("observed Invar TOC field order compacts without changing JSON values", () => {
+  const observed = { sections: [{ title: "完整来源与正常路径", slug: "5-1", level: 3,
+    line_start: 179, line_end: 196, char_count: 935, path: "nunc/5/5-1", children: [] }], frontmatter: null };
+  const encoded = compactInvarDocToc(JSON.stringify(observed, null, 2));
+  assert(encoded, "actual sections-first/title-first Invar output must be recognized");
+  assert(encoded.length < JSON.stringify(observed, null, 2).length);
+  assert.deepEqual(decodeInvarDocToc(encoded), observed);
 });
 
 test("stripToolBoilerplate requires keeper in retainedEntries and protects keeper across families", () => {

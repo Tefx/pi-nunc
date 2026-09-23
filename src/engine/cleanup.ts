@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { ActiveEntry, CleanupSkipped, Memory, Omission, SourceRef, ToolResultDecision, ToolResultEdit, ToolResultCleanupResult, ToolResultRef } from "./types.js";
 import { isMemoryUnchanged } from "./memory.js";
 import { integer, nonempty, record } from "./validation.js";
@@ -179,10 +180,10 @@ export function compactInvarDocToc(text: string): string | null {
   const payload = ["frontmatter" in parsed ? 1 : 0, ...("frontmatter" in parsed ? [parsed.frontmatter] : []),
     parsed.sections.map(encodeSection)];
   const encoded = `${formatTocMarker()}\n${JSON.stringify(payload)}`;
-  // JSON object member order can matter to consumers even though JSON.parse
-  // ignores it; only accept the shape reconstructed in precisely that order.
+  // JSON object member order is immaterial; compare every parsed value and
+  // array position while rejecting dropped or synthesized optional fields.
   const restored = decodeInvarDocToc(encoded);
-  return restored && JSON.stringify(restored) === JSON.stringify(parsed) && encoded.length < text.length ? encoded : null;
+  return restored && isDeepStrictEqual(restored, parsed) && encoded.length < text.length ? encoded : null;
 }
 
 /** Reconstruct the exact supported JSON value tree, including optional-field presence. */
