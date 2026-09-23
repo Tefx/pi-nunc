@@ -4939,7 +4939,7 @@ phases:
     agent: integration-verifier
   - id: nunc-tool-result-cleanup.native-compatibility
     name: 精确授权模型的原生宿主兼容交付
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       examples/**\", \"README.md\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
@@ -4999,3 +4999,26 @@ phases:
     agent: senior-engineer
     claimed_by: senior-engineer
     claimed_at: '2026-09-23T16:45:29.553404Z'
+    done_at: '2026-09-23T18:26:55.646345+00:00'
+    evidence: Accepted+FF exact df18db603698dd36e800b96668e5cd2f9083686a from unchanged
+      integration_basis5cc06b2b822a245938d26e5800bac97429e18b98; retained refs/vectl/retained/nunc-tool-result-cleanup.native-compatibility/df18db6,
+      no-op rebase, ancestry/HEADcompare and finalHEADverified. Terminalsenior, cleancheckout/no
+      descendants; no realmodelcalls or protectedconfig/auth effects. Parent inspected
+      full532line production/scripts/native-model tests plus remainingtests and all
+      docs/manifest/lock diff; no managedPlan/checkerchanges, diff--checkpassed. Pi
+      peers/dev/lock now0.87.1, exactsupportedhost preserved, canonical nativeprojection
+      cutobserver corrects0.87 change, nativeCodex actualpayload correspondence supports
+      matchingM/call/result withunknownformatsunproven. Observerbindsselectedlow for
+      m5 main+maintenance, unsupportedthinking clamprejected; nativecontrolledtests
+      verify actualwiremodelgpt6/low/output serialization/usage association, originalnegative/source/persistence/cancellationchecks
+      retained. Exactopenai-codex/gpt-6-luna low preflight on/off both exit0, receiptcallsMade0,
+      stateRootabsent, context272000/nativeoutput128000, optionalcumulativecall/token/costcapsnull.
+      Fresh final all Node26.7.0/npm11.19.0/Pi0.87.1 passed669/669 across78files,0fail/cancel/skip/todo.
+      Parentread final inventorysummary; canonical full log .scratch/tool-result-cleanup-evidence/native-compatibility/all-669.log,
+      originalworker .scratch/native-check-all-df18db6.log. Earlier668 and2focused
+      not summed or substituted. Historicalbaselines stayedisolated0.85/0.86; no globalinstallation/modelreplacement.
+      Worktree temporarily held for immediately following behavior's isolated actualruntime
+      andcurrentnativeproof; releaseafterbehavioracceptance/effectsreconciliation;
+      oldintegrationtreeassesscleanup oncecurrentconsumerholds migrated. No claim
+      ofrealquality/costbenefit. Same behavior proceeds undercurrentuserauthorizationexactgpt6low,no
+      financial/cumulcalltokencap.
