@@ -4754,7 +4754,7 @@ phases:
     - src/engine/accounting.ts
     - tests/engine/memory.test.ts
     - tests/engine/lifecycle.test.ts
-    agent: node-typescript-engineer
+    agent: senior-engineer
   - id: nunc-tool-result-cleanup.integration
     name: 可恢复的全入口清理产品与实际观察接线
     status: pending
@@ -4824,7 +4824,7 @@ phases:
     - tests/pi/settings-memory-tools.test.ts
     depends_on:
     - nunc-tool-result-cleanup.rules
-    agent: node-typescript-engineer
+    agent: senior-engineer
   - id: nunc-tool-result-cleanup.behavior
     name: 真实 M 更新对照证据与最终整合接受
     status: pending
