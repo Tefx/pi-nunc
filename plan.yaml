@@ -4710,7 +4710,7 @@ phases:
       and allbehaviorrequirements remainunproven untilrealobservations.
 - id: nunc-tool-result-cleanup
   name: M 更新时的完整原模型工具结果清理
-  status: in_progress
+  status: done
   gate: Orchestrator 在 nunc-tool-result-cleanup.behavior 的完成程序中作唯一最终整合接受：包含本 phase
     的 rules、integration、native-compatibility、behavior 全部结果及仍适用的已完成 Nunc 基线，逐项满足 TOOL-RESULT-CLEANUP
     §1–§9，完整适用离线库存绑定最终候选，真实 M 更新对照和必要宿主观察覆盖质量/遗漏/恢复、实际输入/cache usage、总成本和等待时间。任何必要要求未证明、阻断缺陷或未核对效果均阻止接受；不要求预设减费百分比，也不将未知账单当零。无额外发布、安装或历史任务重放。
@@ -4884,7 +4884,7 @@ phases:
       completion here does not accept wholephase.'
   - id: nunc-tool-result-cleanup.behavior
     name: 真实 M 更新对照证据与最终整合接受
-    status: claimed
+    status: done
     description: "step_type: verification\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \"package.json\", \"package-lock.json\", \"dist/**\"]\n  blocked_paths:\
@@ -4947,6 +4947,53 @@ phases:
     agent: integration-verifier
     claimed_by: integration-verifier
     claimed_at: '2026-09-23T18:51:44.078543Z'
+    done_at: '2026-09-23T18:52:56.425136+00:00'
+    evidence: 'Orchestrator final integrated acceptance of TOOL-RESULT-CLEANUP §§1–9
+      at git:df18db603698dd36e800b96668e5cd2f9083686a. Current main differs only in
+      managedPlan; product/read-onlyworktree unchanged. Current verifier.report.v2
+      validates valid:true,binding_checked:true,POSITIVE_EVIDENCE; eight requirements
+      PROVEN from actual real observation plus applicable conditional native-host
+      proof. Parent independently inspected current Plan/restored verification, authoritative
+      §§4/9, actual turn-b call4 Context+Codex wire containing the two prior-M slots,
+      both final.json artifacts, model/options/usage/effect state, and already-reviewed
+      full implementation/native diffs and current669 inventory. No report self-PASS
+      substituted for facts. Functional/config/origin/optionalvalidation/prefix/atomiccommit/publictools/UIcancel/failure/recovery/defaultoff/re-enable
+      contracts covered by accepted rules/integration and fresh0.87.1 actualloader/CLI/RPC/TUI/JSONL
+      669/669,78files,0failcancel/skiptodo; no repeated checks in this completion.
+
+      Real original-model m5 on/off used exactopenai-codex/gpt-6-luna low on samecandidate/syntheticChinese
+      task. On19 calls,off14,all33terminal/no unreconciled oractive runner. On7eligiblecandidates
+      andchangedM but modelchoseNOtoolResultEdits, saveddecisions0; off0. This is
+      the observed no-edit outcome allowed by §4/§9, not a demonstrated cleanup benefit.
+      Both actualfinal.json preserve cancelled-job slot-release obligation, failed
+      restart persistence, mustpreservecompletedjobs,2passed/1failed/verifiedfalse
+      andfutureverificationrequired. Recoverycount0both. On65915ms,input65823/cacheRead214016/output1663/total281502;
+      off56450ms,input38843/cacheRead80384/output1824/total121051. Costunknownboth.
+      Different rereads(7vs2verbose) confound usage; NO claim thatcleanupcausedcostdifference,
+      improvedcache, semanticcleanedquality orpost-cleanuprealrecovery.
+
+      Raw on runner remains UNPROVEN/exit2; offOBSERVED/exit0. OnoldSent JSON-escaping
+      false-negative independently resolved by structuralactualContext/wire, not a
+      source fix or overwrittenrawreport. Conditional clean/recovery/restart/prefix
+      mechanisms proved by realstock controllednative evidence, not falsely relabeled
+      paid-modelpositive. Original initialinconclusive report preserved; revisedreportwithdraws
+      unsupported mandatorypositiveedit/live-recovery demand. Planner637858b corrected
+      ONLYpendingverification to separate preflight0 and actualrunclassification/directevidence,
+      reject executionerrors/missingnecessaryfacts/unreconciledeffects, preserve rawnonzero;
+      no productrequirement orDONEhistoryweakening, no freshcalls orcoachedanswers.
+
+      Evidence canonical .scratch/tool-result-cleanup-evidence/behavior/{binding.json,verifier-report.json,verifier-report-initial-real.json,live-m5-on-result.json,live-m5-off-result.json,live-m5-*-preflight.json},
+      native-compatibility/all-669.log andcontrolled-m5-on.json. Storage migration
+      for future audit of this actual observation: old native-compatibility worktree
+      .scratch/nunc-live-behavior-m5-{on,off}-df18 roots map to .scratch/tool-result-cleanup-evidence/behavior/retained-live/nunc-live-behavior-m5-{on,off}-df18;
+      retained originalowner/callledger/executionstart, actualsessionJSONL andfinal/interim
+      artifacts withsame relativepaths. Former .scratch/stock/run-U1on3d/m5-openai-codex-responses-cleanup-on-report.json
+      maps to native-compatibility/controlled-m5-on.json. Reports'' original paths
+      are historicalprovenance, not directoryconsumers; originals retainedwithoutrewrite.
+      Uniqueactualobservations cannotbereconstructed, retainedforfinalacceptanceaudit;
+      disposableenvironments/builds/baselines noweligiblecleanup. No dailyinstall/deploy/push.
+      Investigation found avoidable786s secondfull run causedworkerdefault+parentmisreading
+      despiteexistingreusepolicy; behaviorcorrected withoutnewpersona rules/evaluator/gates.'
   - id: nunc-tool-result-cleanup.native-compatibility
     name: 精确授权模型的原生宿主兼容交付
     status: done
