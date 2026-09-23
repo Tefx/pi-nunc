@@ -4712,8 +4712,8 @@ phases:
   name: M 更新时的完整原模型工具结果清理
   status: in_progress
   gate: Orchestrator 在 nunc-tool-result-cleanup.behavior 的完成程序中作唯一最终整合接受：包含本 phase
-    的 rules、integration、behavior 全部结果及仍适用的已完成 Nunc 基线，逐项满足 TOOL-RESULT-CLEANUP §1–§9，完整适用离线库存绑定最终候选，真实
-    M 更新对照和必要宿主观察覆盖质量/遗漏/恢复、实际输入/cache usage、总成本和等待时间。任何必要要求未证明、阻断缺陷或未核对效果均阻止接受；不要求预设减费百分比，也不将未知账单当零。无额外发布、安装或历史任务重放。
+    的 rules、integration、native-compatibility、behavior 全部结果及仍适用的已完成 Nunc 基线，逐项满足 TOOL-RESULT-CLEANUP
+    §1–§9，完整适用离线库存绑定最终候选，真实 M 更新对照和必要宿主观察覆盖质量/遗漏/恢复、实际输入/cache usage、总成本和等待时间。任何必要要求未证明、阻断缺陷或未核对效果均阻止接受；不要求预设减费百分比，也不将未知账单当零。无额外发布、安装或历史任务重放。
   depends_on:
   - nunc-task-retention
   steps:
@@ -4935,5 +4935,65 @@ phases:
     - src/pi/projection.ts
     - src/pi/manual.ts
     depends_on:
-    - nunc-tool-result-cleanup.integration
+    - nunc-tool-result-cleanup.native-compatibility
     agent: integration-verifier
+  - id: nunc-tool-result-cleanup.native-compatibility
+    name: 精确授权模型的原生宿主兼容交付
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      examples/**\", \"README.md\", \"package.json\", \"package-lock.json\", \"tsconfig.json\"\
+      , \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".git/**\", \".vectl/**\", \".pi/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\nDeliver: 在已交付完整清理功能上补齐现有 runner 与原生宿主兼容能力，使同一 behavior 消费者能用用户明确选择的 openai-codex/gpt-6-luna、low\
+      \ thinking 和原生输出限额完成合成 m5 on/off 比较。不得替换为 5.6 或其他模型，不伪造/复制模型身份、容量、费用或序列化元数据。保留默认开启、可配置关闭及\
+      \ TOOL-RESULT-CLEANUP 全部要求。本步交付代码、相关文档和可复现离线证明，不宣称真实模型质量或项目接受。\n\n先核对现有公开 ModelRuntime、runner\
+      \ resolution、原生请求序列化与宿主接口，选最小受支持的项目内兼容路径。当前锁定 Pi 0.86.1 的模型解析缺口与已观察 Pi 0.87.1\
+      \ 原生元数据之间需一致处理；如果需要升级，允许在本仓库任务 worktree 内将相关 Pi 依赖/peer、lock、版本文档及受影响源码测试一致更新到兼容\
+      \ 0.87.1 的状态。不得以硬编码模型表、从另一模型猜参数、注入测试 shim 或重写 accounting 绕过缺口；元数据解析成功不证明账号可调用。\n\
+      \nBoundary: 可 Git 回退的本仓库兼容事务和隔离受控宿主测试。无真实模型调用、账号探测、全局 Pi 安装/设置修改、路由变更、日常 session\
+      \ 修改或凭据复制；认证仍由原生 owner 持有。实现者负责完整兼容修复和集成候选，behavior 仍由 integration-verifier\
+      \ 观察，Orchestrator 保持唯一最终接受。senior-engineer 负责模型身份/选项、真实序列化和计量来源、前缀来源身份与持久恢复跨宿主版本的联合不变量；这里需要保留这些共同成立的合同，不能仅以目录中出现模型\
+      \ ID 作为完成证明。\n\nAdmit: 已完成 rules/integration 的产品和仍适用证明；只读 behavior 的缺失观察表明原生模型解析能力不足，未证明产品语义失败或账号不可用。沿用现有\
+      \ runner/检查入口，先确认当前接口约束，不新增评估框架、schema 或 readiness 产物。后继 behavior 的本次比较已获授权：精确上述\
+      \ provider/model/thinking、合成 m5 数据，无财务上限及累计调用/token 上限，使用原生输出限额；该授权不授予本实现者真实调用，也不取消既有取消、状态核对和\
+      \ unknown 费用披露。缺失的运行前提由 controller 按原合同提供，不以旧历史额度替代当前授权。\n\nRecovery: 在本未完成\
+      \ writable 步骤内修复相容源码/依赖/测试/文档问题，保留已完成历史、已有候选和有效证据。失败/不确定提交先核对，禁止为通过检查降低前缀、来源、保真、恢复或模型选项约束。实质产品含义或受保护目标/凭据边界变化才报告具体决策。完成后同一\
+      \ behavior 在最终候选继续原有全部观察和最终整合接受，复用有效旧观察，仅重做失效部分；不得新增接受链。"
+    verification: "```yaml\nchecks:\n  - id: native-compatible-offline-inventory\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, node, scripts/check.mjs, all]\n    exit_code: 0\n    evidence_policy:\
+      \ fresh_full_if_native_dependencies_change_otherwise_affected_checks_and_applicable_inventory\n\
+      \  - id: exact-model-zero-effect-preflight\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/verify-live.mjs,\
+      \ --preflight]\n    exit_code: 0\n    selection:\n      provider: openai-codex\n\
+      \      model: gpt-6-luna\n      thinking: low\n      scenarios: [m5/cleanup-on,\
+      \ m5/cleanup-off]\n```\n按 docs/DEVELOPMENT.md 用 .node-version 的 Node 26.7.0、npm\
+      \ 11.19.0 和锁定完整 devDependencies 重现；node PATH 必须选声明版本，兼容现有 checker 的显式 npm CLI，不升级全局工具。必要\
+      \ locked ci 与检查分开，禁 lifecycle scripts，准备跟踪文档要求的比较 fixtures/POSIX PTY。preflight\
+      \ stdin 使用现有公开选择接口和 controller 提供的隔离目标；无财务/累计调用/token cap，原生输出上限；不得把上述 selection\
+      \ 说明当新输入 schema。必须以公开原生元数据解析精确模型和 low，保持零模型请求、零认证读写/刷新、零 session 创建，不用 mock\
+      \ 元数据证明支持。\n必要受控回归覆盖实际 loader/RPC 请求模型与 thinking/output、原生序列化保留完整调用/结果及前缀、实际请求与\
+      \ usage/accounting 来源关联、清理同提交/持久恢复和取消；不得 mock 正在证明的原生 seam。若更新 Pi/native build\
+      \ 依赖，最终兼容候选须 fresh all 全库存及实际构建/加载证明；否则提供受影响 fresh 检查并说明旧全库存各相关观察仍适用。既有 controlled\
+      \ PASS 不替代 behavior 的真实对照，原生新格式未支持自动判定时保留足够真实序列化证据供原消费者判断，不能伪报通过。交付明确最终候选、支持版本、执行方法、有效旧证据与失效部分及剩余真实观察。"
+    refs:
+    - docs/TOOL-RESULT-CLEANUP.md
+    - docs/DEVELOPMENT.md
+    - docs/LIVE.md
+    - docs/STABLE-MEMORY.md
+    - package.json
+    - package-lock.json
+    - src/live/defaults.ts
+    - src/live/runner.ts
+    - src/live/contract.ts
+    - src/pi/projection.ts
+    - src/pi/manual.ts
+    - scripts/check.mjs
+    - scripts/verify-live.mjs
+    - tests/live/defaults.test.ts
+    - tests/live/native-startup-model.test.ts
+    - tests/live/tool-result-cleanup-native.test.ts
+    depends_on:
+    - nunc-tool-result-cleanup.integration
+    agent: senior-engineer
