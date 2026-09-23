@@ -61,13 +61,21 @@ Inspected public docs: Pi README, `docs/extensions.md`, `docs/compaction.md`, `d
 
 The selected request is a short maintenance system prompt plus an explicit semantic transcript. F/M appear once in a labeled source record. Each B/K record has a nunc-transcript-v2 JSON header containing role, source ID, status/tool associations, and textLengths. Numeric content/text/thinking references index visibly labeled `[Nunc text N]` raw bodies below the header. UTF-16 lengths support mechanical readers; the model can use the labels directly. Tool arguments remain JSON; native images follow their record with indexed associations. Raw text is never re-escaped or scanned for extra source records. Opaque/redacted replay data, signatures, usage, cost, timestamps and provider/model bookkeeping are excluded. Public readable thinking, text, tool arguments/names/IDs/status and native images remain evidence. Returned K and saved history remain original native messages. readSourceRecords() is the shared mechanical reader for observation consumers. Active business tools are source definitions under F; extraction Context.tools stays empty. No prefix/cache reuse guarantee follows.
 
-Current response: exactly one JSON object with required `add`, `remove`, `priority`, `required` arrays, with no outer fences or extra prose. Example:
+Current response: exactly one JSON object with required `add`, `remove`, `priority`, `required` arrays, and optional `toolResultEdits` array, with no outer fences or extra prose. Example:
 
 ```json
-{"add":[{"key":"replacement","text":"The corrected conditional conclusion."}],"remove":["s1"],"priority":["replacement","s2"],"required":["replacement"]}
+{
+  "add": [{"key": "replacement", "text": "The corrected conditional conclusion."}],
+  "remove": ["s1"],
+  "priority": ["replacement", "s2"],
+  "required": ["replacement"],
+  "toolResultEdits": [
+    {"entryId": "t1", "messageIndex": 0, "action": "replace", "text": "Built package successfully in 1.2s", "memoryRefs": ["replacement"]}
+  ]
+}
 ```
 
-`remove` references existing IDs explicitly. Addition keys are unique and cannot collide with any old ID, including removed IDs. `priority` must contain **every** surviving ID and addition key exactly once. `required` is a unique subset of `priority` identifying active task focus and necessary continuation items. Invalid structure, duplicate/unknown references, missing `required` array, or references to deleted IDs fail the whole transaction with explicit `RESPONSE`. Empty memory and empty arrays are legitimate.
+`remove` references existing IDs explicitly. Addition keys are unique and cannot collide with any old ID, including removed IDs. `priority` must contain **every** surviving ID and addition key exactly once. `required` is a unique subset of `priority` identifying active task focus and necessary continuation items. `toolResultEdits` is optional; omitting it indicates no semantic cleanup is requested. Invalid structure, duplicate/unknown references, missing `required` array, or references to deleted IDs fail the whole transaction with explicit `RESPONSE`. Empty memory and empty arrays are legitimate. Invalid semantic edits in `toolResultEdits` are locally skipped with diagnostic reasons and do not fail an otherwise valid M update.
 
 Every declared required slot must be retained jointly. If the required subset cannot fit within the memory limit or leaves insufficient growth space, maintenance fails with explicit `CAPACITY`; no candidate is returned, and saved M and K remain unchanged. Optional items use remaining budget in priority order without skipping required items or disturbing natural order (surviving old slots keep their relative order and exact text; additions append in response order). Priority never reorders ordinary memory. Explicit removals stay removed even if a replacement/merge loses the budget contest. No partial bodies, fixed category schema, weighting system or routine rewrite pass is introduced.
 
@@ -76,6 +84,32 @@ This implementation enforces the required-item protection contract in [EXTRACTIO
 B and K are nonempty contiguous prefix/suffix partitions at visible entry boundaries. All tool calls must have exactly one subsequent result with matching name/ID, and no boundary may separate a call from any of its results. Multiple calls and interleaved records are handled. Unknown/duplicate/orphan/unresolved calls fail explicitly. Long turns can split at later assistant entries once their preceding tool unit is complete.
 
 Choose the largest feasible suffix at or below the retention target; when no complete unit falls below the target, choose the smallest feasible suffix above it. Final feasibility reserves the entire configured memory allowance and growth room. An indivisible recent message/tool unit can therefore cause an explicit capacity limitation.
+
+## Tool result cleanup contract (rules engine)
+
+The side-effect-free cleanup rules engine in `src/engine/cleanup.ts` produces deterministic cleanup decisions (`ToolResultDecision[]`) and records skipped opportunities (`CleanupSkipped[]`) covering [TOOL-RESULT-CLEANUP.md §3–§6](TOOL-RESULT-CLEANUP.md):
+
+- **Pure evaluation**: Does not perform disk I/O, read/write session files, manage native commits, or spawn background schedulers. It consumes frozen active history, caller-supplied candidate scope, final retained entries, initial/final Memory states, and optional model-supplied semantic edits.
+- **Mechanical rules**:
+  - *Identical content deduplication*: Detects duplicate tool results sharing the same `toolName` and identical text. The first occurrence is preserved as a protected keeper; subsequent occurrences are replaced with `[Nunc: identical tool result deduplicated; identical to entry E message M]`.
+  - *Terminal cleanup*: Strips ANSI escape sequences and normalizes `\r\n` carriage returns while preserving command outputs and error diagnostics.
+  - *Lossless JSON compact*: Compactly formats multi-line JSON objects and arrays via lossless stringification when character savings exceed zero.
+  - *Unknown formats & non-text*: Unknown formats, partial outputs, error flags, arguments, tool associations, and image blocks are preserved intact.
+- **Semantic cleanup edits**:
+  - `action: "omit"`: Replaced by code-uniform marker `[Nunc: tool result omitted; original recoverable from entry E message M]`.
+  - `action: "replace"`: Replaced by code-uniform marker `[Nunc summary; original recoverable from entry E message M]:\n<text>`.
+  - *Keeper protection*: A semantic edit cannot omit or replace a mechanical keeper for deduplicated results in the same batch; the semantic edit is skipped with `keeper_protected`.
+  - *Dependency validation*: Evaluates dependencies after final M budget selection. `memoryRefs` must survive into final M (mapped from candidate keys to assigned slot IDs `sN`); dropped items skip only dependent edits (`missing_memory_dependency`). `sourceRefs` must point to messages retained in the final request and not omitted/replaced in the same batch (`missing_source_dependency`).
+  - *Batch conflict*: Duplicate or conflicting edits targeting the same tool result in a batch are both skipped (`duplicate_edit`).
+  - *Incomplete source protection*: Tool results with prompt omissions cannot be semantically cleaned (`has_omissions`).
+  - *Net savings requirement*: The formatted replacement text must be strictly shorter than the original tool result text (`no_net_savings`).
+- **M-unchanged & feature-disabled semantics**:
+  - When M is unchanged (`isMemoryUnchanged(initial, final)`), no new cleanups are applied; proposed edits are recorded with `m_unchanged`.
+  - When `config.toolResultCleanup === false`, the feature is disabled and candidate kept entries remain verbatim original.
+- **Pure exports**:
+  - `decideToolResultCleanup(options)`: Computes applied and skipped cleanup results.
+  - `applyToolResultCleanup(entries, decisions)`: Detaches and projects entries with cleanups applied without mutating original history.
+  - `formatOmitMarker(ref)`, `formatReplaceMarker(ref, text)`, `formatDeduplicateMarker(target, keeper)`: Standard uniform reduction markers with recovery references.
 
 ## Configuration and capacity
 

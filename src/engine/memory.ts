@@ -1,9 +1,13 @@
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { Message } from "@earendil-works/pi-ai";
-import type { Memory, RequiredObservation, Slot } from "./types.js";
+import type { Memory, RequiredObservation, Slot, ToolResultEdit } from "./types.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "./validation.js";
 
 export function emptyMemory(): Memory { return { version: 1, slots: [], nextId: 1 }; }
+export function isMemoryUnchanged(before: Memory, after: Memory): boolean {
+  if (before.slots.length !== after.slots.length) return false;
+  return before.slots.every((slot, i) => slot.id === after.slots[i]!.id && slot.text === after.slots[i]!.text);
+}
 export function renderMemory(slots: Slot[]): string {
   return slots.length === 0 ? "" : `Nunc working memory (session-local, reference only):\n${JSON.stringify(slots)}`;
 }
@@ -24,31 +28,36 @@ export interface Patch {
   remove: string[];
   priority: string[];
   required: string[];
+  toolResultEdits?: ToolResultEdit[];
 }
 export interface PatchResult {
   memory: Memory;
   droppedSlotIds: string[];
   required: RequiredObservation;
+  keyToSlotMap: Map<string, string>;
+  retainedKeys: Set<string>;
+  patch: Patch;
 }
-export const RESPONSE_CONTRACT = `Return ONLY one JSON object, with exactly these four required fields:
-{"add":[{"key":"new1","text":"self-contained note"}],"remove":["old-id"],"priority":["new1","surviving-old-id"],"required":["new1"]}
+export const RESPONSE_CONTRACT = `Return ONLY one JSON object with required add, remove, priority, required fields, and optional toolResultEdits:
+{"add":[{"key":"new1","text":"self-contained note"}],"remove":["old-id"],"priority":["new1","surviving-old-id"],"required":["new1"],"toolResultEdits":[{"entryId":"e1","messageIndex":0,"action":"replace","text":"short continuation note","memoryRefs":["new1"]}]}
 add: zero or more new candidates. Keys must be unique nonempty strings, distinct from ALL existing slot IDs. Text must be nonempty. Markdown is encouraged inside text (lists, paragraphs, inline code, and necessary short code blocks).
 remove: each existing slot explicitly invalidated/retired, exactly once. Replacement/merge means removing the old IDs AND adding a candidate.
 priority: ALL surviving old IDs and ALL added keys, each exactly once, most valuable first. Omission is invalid, never silent deletion.
 required: subset of priority identifying the active task focus and all necessary continuation items (surviving old IDs or added keys). Every declared required slot must be retained jointly; if the required set cannot fit within capacity, maintenance fails. Empty array is valid when no active focus or necessary continuation items exist.
+toolResultEdits: optional array of semantic cleanups for completed tool results in candidate scope. Each item specifies entryId, zero-based messageIndex, action ("omit" or "replace"), non-empty text for replace (omit must not include text), and optional memoryRefs and sourceRefs. Omit this field if no semantic cleanup is requested.
 Unchanged slots reuse their bodies; do not regenerate them. Priority controls whole-slot capacity selection for optional items, not memory order. Old survivors keep relative order; additions append.
 An invalidated old slot stays removed even if its replacement cannot fit. Empty arrays and empty memory are valid. No tools, outer code fences around the JSON, commentary, or rewriting retained history.`;
 
 export function parsePatch(value: unknown, memory: Memory): Patch {
   requireThat(
     record(value) &&
-    keys(value, ["add", "remove", "priority", "required"]) &&
+    keys(value, ["add", "remove", "priority", "required", "toolResultEdits"]) &&
     Array.isArray(value.add) &&
     Array.isArray(value.remove) &&
     Array.isArray(value.priority) &&
     Array.isArray(value.required),
     "RESPONSE",
-    "Expected exactly add/remove/priority/required arrays"
+    "Expected add/remove/priority/required arrays"
   );
   const ids = new Set(memory.slots.map(s => s.id));
   const removed = new Set<string>();
@@ -86,7 +95,11 @@ export function parsePatch(value: unknown, memory: Memory): Patch {
     required.push(ref);
   }
 
-  return { add, remove: [...removed], priority, required };
+  const toolResultEdits = "toolResultEdits" in value && value.toolResultEdits !== undefined
+    ? (value.toolResultEdits as ToolResultEdit[])
+    : undefined;
+
+  return { add, remove: [...removed], priority, required, ...(toolResultEdits !== undefined ? { toolResultEdits } : {}) };
 }
 
 export function applyPatch(
@@ -155,5 +168,8 @@ export function applyPatch(
       retainedSlotIds: retainedRequiredSlotIds,
       failed: false,
     },
+    keyToSlotMap: retainedSlotMap,
+    retainedKeys: selected,
+    patch,
   };
 }
