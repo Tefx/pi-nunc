@@ -132,6 +132,23 @@ test("hosted patch tool skips malformed optional cleanup while committing legal 
   assert.equal(valid.toolResultCleanup.applied.length, 1);
   assert.equal(memorySurface(api)!.read(ctx).memory.slots.length, bad.length + 1);
   assert.equal(project(manager.buildContextEntries()).cleanup.length, 1);
+
+  const savedView = memorySurface(api)!.read(ctx);
+  const savedMemory = structuredClone(savedView.memory);
+  let dispatched = false;
+  f.respond(() => {
+    if (dispatched) return fauxAssistantMessage("Invalid M parameters were rejected by the host.");
+    dispatched = true;
+    return fauxAssistantMessage(fauxToolCall("nunc_memory_patch", {
+      expectedRevision: savedView.revision,
+      add: [{ text: "Missing required addition key" }],
+    }, { id: "invalid-memory-shape" }), { stopReason: "toolUse" });
+  });
+  await f.runtime.session.prompt("Required M-field host validation probe");
+  const rejected = manager.getBranch().find(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === "invalid-memory-shape");
+  assert(rejected?.type === "message" && rejected.message.role === "toolResult");
+  assert.equal(rejected.message.isError, true, `required M item remains host-validated: ${JSON.stringify(rejected.message)}`);
+  assert.deepEqual(memorySurface(api)!.read(ctx).memory, savedMemory);
 });
 
 test("stock loader, native session append, public read/patch, active projection and restart keep originals", async t => {
