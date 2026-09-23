@@ -4710,7 +4710,7 @@ phases:
       and allbehaviorrequirements remainunproven untilrealobservations.
 - id: nunc-tool-result-cleanup
   name: M 更新时的完整原模型工具结果清理
-  status: pending
+  status: in_progress
   gate: Orchestrator 在 nunc-tool-result-cleanup.behavior 的完成程序中作唯一最终整合接受：包含本 phase
     的 rules、integration、behavior 全部结果及仍适用的已完成 Nunc 基线，逐项满足 TOOL-RESULT-CLEANUP §1–§9，完整适用离线库存绑定最终候选，真实
     M 更新对照和必要宿主观察覆盖质量/遗漏/恢复、实际输入/cache usage、总成本和等待时间。任何必要要求未证明、阻断缺陷或未核对效果均阻止接受；不要求预设减费百分比，也不将未知账单当零。无额外发布、安装或历史任务重放。
@@ -4719,7 +4719,7 @@ phases:
   steps:
   - id: nunc-tool-result-cleanup.rules
     name: 完整来源到安全清理决定的引擎合同
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"tests/engine/**\", \"policies/**\",\
       \ \"docs/ENGINE.md\", \"docs/POLICY.md\", \"docs/TOOL-RESULT-CLEANUP.md\"]\n\
@@ -4755,6 +4755,8 @@ phases:
     - tests/engine/memory.test.ts
     - tests/engine/lifecycle.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-09-23T11:17:40.541826Z'
   - id: nunc-tool-result-cleanup.integration
     name: 可恢复的全入口清理产品与实际观察接线
     status: pending
