@@ -167,3 +167,4 @@ See also [bounded observations](docs/LIVE.md).
 - [Slots/Context UI](docs/UI.md)
 - [Active memory, CRUD model tools, and usage receipts](docs/ACTIVE-MEMORY.md)
 - [Working-memory guidance refinements and behavioral validation](docs/MEMORY-GUIDANCE.md)
+- [Tool-result cleanup on memory changes — accepted design, implementation pending](docs/TOOL-RESULT-CLEANUP.md)
