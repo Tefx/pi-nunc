@@ -251,6 +251,8 @@ export default function nunc(pi: ExtensionAPI): void {
     uiRunning = controller;
     const timeout = AbortSignal.timeout(60_000);
     const combined = AbortSignal.any([signal, controller.signal, timeout]);
+    let callStartedAt: number | undefined;
+    let observedResponse = false;
     try {
       const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction);
       config.toolResultCleanup = true;
@@ -268,7 +270,12 @@ export default function nunc(pi: ExtensionAPI): void {
       if (requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens > plan.extractionInputLimit) {
         return { warning: "Cleanup skipped: full source exceeds extraction input limit; memory can still be saved" };
       }
+      callStartedAt = Date.now();
       const response = await admission.complete(piComplete(ctx.modelRegistry))({ model: frozen.model, context, outputTokens: config.extraction.outputTokens, signal: combined });
+      observedResponse = true;
+      try { pi.events.emit("nunc:ui-cleanup-usage", { status: "response", model: { provider: frozen.model.provider, id: frozen.model.id },
+        elapsedMs: Date.now() - callStartedAt, stopReason: record(response) ? response.stopReason : null,
+        usage: record(response) ? response.usage : null }); } catch { /* Observation only. */ }
       if (stale()) return { stale: true };
       if (combined.aborted || !record(response) || response.role !== "assistant" || response.stopReason !== "stop" ||
           response.model !== frozen.model.id || response.provider !== frozen.model.provider || response.api !== frozen.model.api ||
@@ -280,6 +287,10 @@ export default function nunc(pi: ExtensionAPI): void {
       if (patch.add.length || patch.remove.length) return { warning: "Cleanup response changed frozen memory; memory saved without cleanup" };
       return { edits: patch.toolResultEdits ?? [] };
     } catch (error) {
+      if (callStartedAt !== undefined && !observedResponse) {
+        try { pi.events.emit("nunc:ui-cleanup-usage", { status: "unknown", model: { provider: frozen.model.provider, id: frozen.model.id },
+          elapsedMs: Date.now() - callStartedAt, usage: null }); } catch { /* Observation only. */ }
+      }
       if (stale()) return { stale: true };
       return { warning: `Cleanup did not complete (${error instanceof Error ? error.message : String(error)}); memory can still be saved with original results` };
     } finally {

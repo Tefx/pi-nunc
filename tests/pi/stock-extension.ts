@@ -12,6 +12,7 @@ export default function (pi: ExtensionAPI): void {
   const snapshot = (ctx: ExtensionContext, phase = "inspect") => log("snapshot", { phase, mode: ctx.mode, editor: ctx.ui.getEditorText(), pending: ctx.hasPendingMessages(), sessionId: ctx.sessionManager.getSessionId(), file: ctx.sessionManager.getSessionFile(), leaf: ctx.sessionManager.getLeafId(), entries: ctx.sessionManager.getBranch() });
   pi.events.on("nunc:admission", data => log("admission", data));
   pi.events.on("nunc:maintenance", data => log("maintenance", data));
+  pi.events.on("nunc:ui-cleanup-usage", data => log("ui_cleanup_usage", data));
   pi.events.on("nunc:diagnostic", data => log("diagnostic", data));
   pi.on("session_start", (event, ctx) => { log("start", { ...event, mode: ctx.mode }); snapshot(ctx, "start"); });
   pi.on("session_compact", event => log("compact", event));

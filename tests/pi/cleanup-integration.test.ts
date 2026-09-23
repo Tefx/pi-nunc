@@ -29,6 +29,47 @@ test("eligibility requires a sent-M source prefix and excludes newest complete, 
   assert.deepEqual(eligibleCleanupScope(active, ["old"], [{ entryId: "r1", messageIndex: 0 } as any]), []);
 });
 
+test("disabling cleanup restores raw capacity accounting and refuses an oversized native request", async t => {
+  let ctx: ExtensionContext | undefined;
+  const admission: unknown[] = [];
+  const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } },
+    extras: [{ name: "capture-cleanup-capacity", factory(pi) {
+      pi.on("session_start", (_event, current) => { ctx = current; });
+      pi.events.on("nunc:admission", event => { admission.push(event); });
+    } }] });
+  t.after(() => f.close());
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  assert(ctx);
+  f.respond(() => fauxAssistantMessage("Baseline M sent"));
+  await f.runtime.session.prompt("Establish capacity anchor");
+  const manager = f.runtime.session.sessionManager;
+  const body = "FILLER_NATIVE_BODY ".repeat(13000);
+  for (const id of ["capacity-1", "capacity-2"]) {
+    manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path: id } }] });
+    manager.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", isError: false,
+      content: [{ type: "text", text: body }], timestamp: 2 });
+  }
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  const readTool = (f.runtime.session as any).getToolDefinition("nunc_memory_read");
+  const patchTool = (f.runtime.session as any).getToolDefinition("nunc_memory_patch");
+  const before = JSON.parse((await readTool.execute("capacity-read", {}, undefined, undefined, ctx)).content[0].text);
+  assert.equal(before.cleanupCandidates.length, 1);
+  const changed = await patchTool.execute("capacity-save", { expectedRevision: before.revision,
+    update: [{ id: before.slots[0].id, text: "Keep capacity accounting anchored." }],
+    toolResultEdits: [{ entryId: before.cleanupCandidates[0].entryId, messageIndex: 0, action: "replace", text: "Retained original is recoverable." }] }, undefined, undefined, ctx);
+  assert.equal(changed.isError, undefined, JSON.stringify(changed));
+  assert.equal(project(manager.buildContextEntries()).cleanup.length, 1);
+  await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ compaction: f.settings.getCompactionSettings(), nunc: { memoryTools: true, toolResultCleanup: false } }));
+  const sentBefore = f.calls.length;
+  f.respond(() => fauxAssistantMessage("Should never be sent"));
+  await f.runtime.session.prompt("Restore originals; reject if too large");
+  assert.equal(f.calls.length, sentBefore, "oversized restored body must not reach the provider");
+  assert(admission.some(row => typeof row === "object" && row !== null && (row as { outcome?: string }).outcome === "reject"));
+  assert.equal(project(manager.buildContextEntries()).cleanup.length, 1, "capacity rejection preserves persisted decision");
+});
+
 test("stock loader, native session append, public read/patch, active projection and restart keep originals", async t => {
   let ctx: ExtensionContext | undefined;
   let api: ExtensionAPI | undefined;

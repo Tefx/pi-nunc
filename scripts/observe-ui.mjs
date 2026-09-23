@@ -87,6 +87,14 @@ try {
   p.keys("\x15");
   p.keys("Edited via native TUI.");
   await delay(100);
+  f.hold('maintenance');
+  p.keys("\r");
+  await f.wait(() => f.requests.some(r => r.kind === 'maintenance' && !r.closed), 'held UI cleanup request');
+  p.keys("\x1b");
+  await f.wait(() => f.requests.some(r => r.kind === 'maintenance' && r.closed), 'cancelled UI cleanup request');
+  f.release('maintenance');
+  assert(!readFileSync(sessionFile, 'utf8').includes('Edited via native TUI.'), 'cancellation did not commit M');
+  assert.match(strip(p.stdout), /Edited via native TUI/, 'draft survived native cancellation');
   p.keys("\r");
   await f.wait(() => {
     const file = f.log.filter(e => e.type === "snapshot").at(-1)?.data?.file ?? sessionFile;
@@ -100,6 +108,8 @@ try {
   assert.match(saved, /Edited via native TUI/);
   assert.match(saved, /"toolResultCleanup":\[\{"entryId"/, 'native TUI save persists cleanup with M');
   assert(f.requests.some(r => r.kind === 'maintenance'), 'native TUI cleanup used model transport');
+  const cleanupUsage = f.log.filter(e => e.type === 'ui_cleanup_usage' && e.data.status === 'response').at(-1)?.data;
+  assert(cleanupUsage?.usage?.input > 0 && cleanupUsage?.usage?.output > 0 && cleanupUsage.elapsedMs >= 0, 'native UI call observed provider usage and duration');
   assert.match(saved, /SAFE_REPEATED_TOOL_DETAIL/, 'original tool result remains in native session');
   p.keys("\x04");
   await delay(150);
@@ -261,6 +271,8 @@ try {
     overlay: true,
     savedManual: true,
     nativeCleanupSave: true,
+    nativeCleanupCancellation: true,
+    nativeCleanupUsage: true,
     editorKept: /KEEP_DRAFT/.test(snap.editor),
     preExistingDraft: true,
     overlayDidNotWriteEditor: true,

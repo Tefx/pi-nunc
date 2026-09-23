@@ -31,7 +31,7 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
       const required = JSON.stringify(row.payload).includes("four required fields");
       const add = current?.scenario === "e4" ? [{ key: "req", text: "n".repeat(options.tooLarge ? 1000 : 120) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "note", text: "Controlled protocol note." }];
       const priority = current?.scenario === "e4" ? ["opt", "extra", "req"] : ["note"];
-      return JSON.stringify({ add, remove: source.M.map((s: any) => s.id), priority, ...(required ? { required: [add[0]!.key] } : {}) });
+      return JSON.stringify({ add, remove: source.M.map((s: any) => s.id), priority, required: required ? [add[0]!.key] : [] });
     }
     if (last?.role === "user") { const selected = turns.find((t: any) => t.text === text(last)); if (selected) { current = selected; step = 0; } }
     const key = `${current?.scenario}:${current?.id}`, n = step++;

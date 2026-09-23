@@ -96,6 +96,7 @@ export interface CurrentContext {
   revision: string;
   occupied: boolean;
   unconfirmed: boolean;
+  cleanup?: { enabled: boolean; saved: number; applied: number; unavailable: string[] };
   contextLayout: { slotCount: number; activeEntries: number; latestCompactionId?: string };
   layout: ContextLayout;
   budget: ContextBudget;
@@ -214,6 +215,7 @@ export function createContextSurface(options: {
         revision: memory.revision,
         occupied: memory.status.occupied,
         unconfirmed: memory.status.unconfirmed,
+        ...(memory.cleanup ? { cleanup: memory.cleanup } : {}),
         contextLayout: memory.contextLayout,
         layout,
         budget,

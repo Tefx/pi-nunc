@@ -150,6 +150,7 @@ export function detailsLines(input: {
   const current = input.view.current;
   const summary = [
     `Memory: ${current.layout.memory?.slots.length ?? current.contextLayout.slotCount} slots`,
+    ...(current.cleanup ? [`Tool-result cleanup: ${current.cleanup.enabled ? "on" : "off"} · ${current.cleanup.saved} saved / ${current.cleanup.applied} applied · ${current.cleanup.unavailable.length} unavailable`] : []),
     `Occupied: ${current.occupied ? "yes" : "no"}`,
     `Unconfirmed: ${current.unconfirmed ? "yes" : "no"}`,
     `Current warning: ${input.currentWarning ? firstLine(input.currentWarning) : "none"}`,
