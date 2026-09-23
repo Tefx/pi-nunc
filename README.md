@@ -2,7 +2,7 @@
 
 **A bounded, rolling present for Pi.**
 
-Nunc is a [Pi](https://pi.dev) **0.85.1** extension for continuing one session inside a finite context. Recent work stays as verbatim history. Information still needed after that window leaves is kept in a small set of working-memory slots. Pi keeps the full JSONL log; Nunc does not search memory, write documents, or carry state across sessions.
+Nunc is a [Pi](https://pi.dev) **0.87.1** extension for continuing one session inside a finite context. Recent work stays as verbatim history. Information still needed after that window leaves is kept in a small set of working-memory slots. Pi keeps the full JSONL log; Nunc does not search memory, write documents, or carry state across sessions.
 
 ```text
 Before compaction: host instructions/tools F | retiring B | retained K | working memory M
@@ -23,7 +23,7 @@ Checked environment:
 | --- | --- |
 | Node | 26.7.0 (`.node-version`) |
 | npm | 11.19.0 |
-| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | 0.85.1 |
+| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | 0.87.1 |
 
 Runtime limits:
 
@@ -32,7 +32,7 @@ Runtime limits:
 - One custom compaction owner. If another compaction extension is also enabled, keep exactly one writer.
 - Nunc uses Pi’s current model, thinking level, authentication, compaction settings, and transport. It does not log in, copy credentials, or select another account.
 
-A different global `pi` binary is unsupported unless it reports exactly `0.85.1`. Nunc checks `VERSION` at session start.
+A different global `pi` binary is unsupported unless it reports exactly `0.87.1`. Nunc checks `VERSION` at session start.
 
 ## Quick start
 
@@ -97,7 +97,7 @@ Implemented defaults (`src/pi/config.ts`):
 | `budget.extraMainInputTokens` | `0` |
 | `budget.extraExtractionInputTokens` | `0` |
 | `budget.inputLimit` | unset |
-| `budget.imageTokens` | unset (uses Pi's per-image heuristic; currently 1200 tokens in Pi 0.86.1) |
+| `budget.imageTokens` | unset (uses Pi's per-image heuristic; currently 1200 tokens in Pi 0.87.1) |
 
 Images work without extra configuration on image-capable models. `budget.imageTokens` optionally overrides the per-image planning estimate; existing explicit values retain priority. Neither the default nor an override guarantees a token upper bound. Main requests, extraction, retained-history planning and the Context panel use the same rule. Compatible request receipts supply actual usage for the historical prefix; new images are estimated. Provider overflow recovery remains Pi-owned, with no extra Nunc retry loop.
 
@@ -143,7 +143,7 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 - Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests inject one current M carrier at a stable legal boundary. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
-- Supported host is stock Pi **0.85.1** with persistent sessions. No minimum-version or all-provider claim.
+- Supported host is stock Pi **0.87.1** with persistent sessions. No minimum-version or all-provider claim.
 - Images need model image input and remain native blocks. Missing `budget.imageTokens` uses Pi's heuristic instead of rejecting the request. Estimates can undercount or overcount; provider capacity failures remain possible. PDF, audio, and unknown blocks fail explicitly.
 - Unload or downgrade without a later native compaction: stock Pi reads the last native summary, not unabsorbed manual edits.
 - `scripts/check.mjs` requires the pinned Node and a hardcoded Homebrew npm CLI path. It also needs a local comparison baseline before `all`. See [local development](docs/DEVELOPMENT.md). Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.

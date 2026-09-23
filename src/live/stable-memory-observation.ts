@@ -24,6 +24,7 @@ function text(value: any): string | undefined {
  */
 export function serializedEvidence(request: RequestObservation): { memory?: boolean; synthetic?: boolean } {
   const payload = request.finalPayload as any;
+  if (request.model.api === "openai-codex-responses") return serializedCodexEvidence(request, payload);
   if (request.model.api !== "openai-completions" || !Array.isArray(payload?.messages)) return {};
   const actual = payload.messages as any[];
   if (actual.some(m => !m || typeof m.role !== "string" || (m.tool_calls !== undefined && !Array.isArray(m.tool_calls)))) return {};
@@ -48,6 +49,54 @@ export function serializedEvidence(request: RequestObservation): { memory?: bool
   const contextUsers = request.context.messages.filter(m => m.role === "user");
   const ordinal = request.context.messages.slice(0, index).filter(m => m.role === "user").length;
   return { ...(synthetic !== undefined ? { synthetic } : {}), memory: users.length === contextUsers.length && text(users[ordinal]?.content) === admission.memoryContent };
+}
+// Native Responses serializes Pi's "call_id|item_id" as a separate call_id and
+// item id. Only safe native call IDs are comparable; unsupported/opaque shapes
+// remain unknown instead of supplying positive serializer evidence.
+function codexCallId(value: unknown): string | undefined {
+  if (typeof value !== "string") return;
+  const parts = value.split("|");
+  if (parts.length > 2 || !parts.every(part => /^[a-zA-Z0-9_-]{1,64}$/.test(part))) return;
+  return parts[0];
+}
+function serializedCodexEvidence(request: RequestObservation, payload: any): { memory?: boolean; synthetic?: boolean } {
+  if (!Array.isArray(payload?.input) || payload.input.some((item: any) => !item || typeof item !== "object")) return {};
+  const actual = payload.input as any[];
+  // Other tool encodings need their own mapping. Ignoring one could fabricate
+  // a complete call/result correspondence.
+  if (actual.some(item => typeof item.type === "string" && /call|tool/i.test(item.type) &&
+    item.type !== "function_call" && item.type !== "function_call_output")) return {};
+  const expectedCalls = request.context.messages.flatMap(message => message.role === "assistant"
+    ? message.content.filter(block => block.type === "toolCall") : []);
+  const expectedResults = request.context.messages.filter(message => message.role === "toolResult");
+  const calls = actual.filter(item => item.type === "function_call");
+  const results = actual.filter(item => item.type === "function_call_output");
+  let synthetic: boolean | undefined;
+  const known = expectedCalls.every(block => codexCallId(block.id) !== undefined) &&
+    expectedResults.every(message => codexCallId(message.toolCallId) !== undefined && text(message.content) !== undefined) &&
+    calls.every(item => typeof item.call_id === "string" && typeof item.name === "string" && typeof item.arguments === "string") &&
+    results.every(item => typeof item.call_id === "string" && typeof item.output === "string");
+  if (known) {
+    const callsMatch = calls.length === expectedCalls.length && calls.every((item, index) => {
+      const expected = expectedCalls[index]!;
+      try { return item.call_id === codexCallId(expected.id) && item.name === expected.name &&
+        isDeepStrictEqual(JSON.parse(item.arguments), expected.arguments); } catch { return false; }
+    });
+    const resultsMatch = results.length === expectedResults.length && results.every((item, index) =>
+      item.call_id === codexCallId(expectedResults[index]!.toolCallId) && item.output === text(expectedResults[index]!.content));
+    synthetic = !(callsMatch && resultsMatch);
+  }
+  const admission = request.admission;
+  if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
+  const users = actual.filter(item => item.role === "user" && (item.type === undefined || item.type === "message"));
+  const contextUsers = request.context.messages.filter(message => message.role === "user");
+  const sameCount = users.length === contextUsers.length;
+  if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}),
+    memory: sameCount && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
+  const index = admission.memoryIndex;
+  const ordinal = index === undefined ? -1 : request.context.messages.slice(0, index).filter(message => message.role === "user").length;
+  return { ...(synthetic !== undefined ? { synthetic } : {}),
+    memory: sameCount && ordinal >= 0 && text(users[ordinal]?.content) === admission.memoryContent };
 }
 export function layoutsFromRequests(requests: readonly RequestObservation[], ledger: readonly LedgerRecord[], keepRecentFraction?: number): LayoutObservation[] {
   const terminals = ledger.filter((row): row is CallEnd => row.kind === "terminal");
@@ -110,9 +159,9 @@ export function scoreStableMemory(input: { id: string; variant?: string; layouts
   const rows = mainLayouts(input.layouts);
   const results: CheckResult[] = [{ check: "unique injected M carrier on main requests", status: uniqueCarriers(rows, input.expectedContent) ? "PROVEN" : "UNPROVEN", observed: { scope: "projection-bound provider Context; explicit empty M allowed", layouts: rows } }];
   const delivered = rows.length > 0 && rows.every(r => r.deliveredMemoryMatches === true);
-  results.push({ check: "final serialized M matches bound content", status: delivered ? "PROVEN" : rows.some(r => r.deliveredMemoryMatches === false) ? "DISPROVEN" : "UNPROVEN", reason: "OpenAI chat-completions user ordinal mapping only; unsupported or missing payloads remain unproven" });
+  results.push({ check: "final serialized M matches bound content", status: delivered ? "PROVEN" : rows.some(r => r.deliveredMemoryMatches === false) ? "DISPROVEN" : "UNPROVEN", reason: "Complete textual OpenAI chat-completions or native Codex Responses payload required; unsupported or missing payloads remain unproven" });
   const synthetic = noSyntheticMissing(rows);
-  results.push({ check: "no serializer-synthesized missing tool results", status: synthetic === true ? "PROVEN" : synthetic === false ? "DISPROVEN" : "UNPROVEN", reason: "Complete per-call final OpenAI chat-completions payload tool calls/results compared to Context; other native formats require independent raw-payload observation" });
+  results.push({ check: "no serializer-synthesized missing tool results", status: synthetic === true ? "PROVEN" : synthetic === false ? "DISPROVEN" : "UNPROVEN", reason: "Complete per-call final chat-completions or native Codex Responses tool calls/results compared to Context; other formats remain unproven" });
   if (input.id === "m1") {
     results.push({ check: input.variant === "fixed" ? "fixed layout keeps M at a stable request index across an unchanged-content epoch" : "moving baseline places M at the request tail", status: (input.variant === "fixed" ? positionStable(rows, input.expectedContent) : movingUsesTail(rows, input.expectedContent)) ? "PROVEN" : "UNPROVEN" });
     const epochs = unchangedContentEpochs(rows);

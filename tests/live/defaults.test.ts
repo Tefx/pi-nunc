@@ -39,6 +39,17 @@ test("public stdin resolves synthetic native defaults and current shell selectio
     assert.notEqual(run(selection).status, 0, "unresolved standalone default never changes accounts silently");
     const overridden = run({ ...selection, overrides: [{ requirement: "native-codex-budget", reason: "Explicitly select the controlled native Codex catalog", model: { provider: "openai-codex", id: "gpt-6-astra" }, thinking: "low" }] });
     assert.equal(overridden.status, 0, overridden.stderr); assert.equal(JSON.parse(overridden.stdout).effective.thinking, "low");
+    const exactM5 = run({ target: input.target, limits: { maxDurationMs: 7200000, maxCostUsd: null },
+      scenarios: [{ id: "m5", variant: "cleanup-on" }, { id: "m5", variant: "cleanup-off" }], observations: ["stock_rpc"],
+      overrides: [{ requirement: "exact-m5-model", reason: "Verify public native metadata without calls or credential lookup",
+        model: { provider: "openai-codex", id: "gpt-6-luna" }, thinking: "low" }] });
+    assert.equal(exactM5.status, 0, exactM5.stderr);
+    const exact = JSON.parse(exactM5.stdout);
+    assert.equal(exact.models[0].provider, "openai-codex"); assert.equal(exact.models[0].id, "gpt-6-luna");
+    assert.equal(exact.models[0].contextWindow, 272000); assert.equal(exact.models[0].maxTokens, 128000);
+    assert.equal(exact.effective.thinking, "low"); assert.equal(exact.limits.maxOutputTokens, 128000);
+    assert.equal(exact.limits.maxCalls, null); assert.equal(exact.limits.maxTotalTokens, null); assert.equal(exact.limits.maxCostUsd, null);
+    assert.equal(exact.receipt.callsMade, 0);
     for (const value of [
       { ...selection, overrides: [{ model: { provider: "openai-codex", id: "gpt-6-astra" } }] },
       { ...selection, overrides: [{ requirement: "test", reason: "fixture", model: { provider: "openai-codex", id: "gpt-6-astra", maxTokens: 4096 } }] },

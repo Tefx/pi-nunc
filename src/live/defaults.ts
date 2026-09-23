@@ -17,7 +17,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   requireValue(Boolean(env.PI_PROVIDER) === Boolean(env.PI_MODEL), "MODEL", "Incomplete invoking runtime selection");
   let provider = env.PI_PROVIDER ?? settings.getDefaultProvider();
   let id = env.PI_MODEL ?? settings.getDefaultModel();
-  let thinking = env.PI_REASONING_LEVEL ?? (provider && id ? settings.getModelThinkingLevel(provider, id) : undefined) ?? settings.getDefaultThinkingLevel() ?? "medium"; // Stock Pi 0.86.1 startup default.
+  let thinking = env.PI_REASONING_LEVEL ?? (provider && id ? settings.getModelThinkingLevel(provider, id) : undefined) ?? settings.getDefaultThinkingLevel() ?? "medium"; // Stock Pi 0.87.1 startup default.
   let second: { provider: string; id: string } | undefined;
   const differences: RunInput["overrides"] = [];
   let config: Record<string, unknown> = { nunc: {}, compaction: settings.getCompactionSettings() };
@@ -70,7 +70,11 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   });
   // Validation above restricts the input to Pi's declared levels. Apply the same
   // public model-capability clamp as stock startup before recording metadata.
-  thinking = clampThinkingLevel(resolvedModels[0]!, thinking as Parameters<typeof clampThinkingLevel>[1]);
+  const clampedThinking = clampThinkingLevel(resolvedModels[0]!, thinking as Parameters<typeof clampThinkingLevel>[1]);
+  if (value.scenarios.some(s => object(s) && s.id === "m5")) {
+    requireValue(clampedThinking === thinking, "MODEL", "Selected m5 thinking level is not supported by the native model");
+  }
+  thinking = clampedThinking;
   const models = resolvedModels.map(model => ({ provider: model.provider, id: model.id, contextWindow: model.contextWindow, maxTokens: model.maxTokens, baseUrl: model.baseUrl }));
   const observations = value.observations ?? ["continuation"];
   requireValue(Array.isArray(observations), "OBSERVATION", "Invalid observations");

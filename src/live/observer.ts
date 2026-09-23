@@ -75,9 +75,9 @@ export default function observer(pi: ExtensionAPI): void {
       ? (maintenanceOverride as any).maintenanceThinking
       : maintenanceOverride?.requirement === "maintenance-thinking"
         ? (binding.input.effective?.thinking ?? "low")
-        : undefined;
+        : binding.selection?.id === "m5" ? binding.input.effective?.thinking : undefined;
     const effectiveThinking = binding.input.effective?.thinking;
-    const requireThinkingLevel = isTaskRetention ? "low" : undefined;
+    const requireThinkingLevel = isTaskRetention ? "low" : binding.selection?.id === "m5" ? effectiveThinking : undefined;
     for (const id of new Set(binding.models.map(m => m.provider))) {
       let base = ctx.modelRegistry.getProvider(id);
       requireValue(base, "MODEL", "Authorized native provider unavailable");

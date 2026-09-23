@@ -129,7 +129,7 @@ export class StockFixture {
   start(mode = 'rpc', sessionFile, { allowTools = false } = {}) {
     const host = join(root, 'node_modules/@earendil-works/pi-coding-agent');
     const manifest = JSON.parse(readFileSync(join(host, 'package.json'), 'utf8'));
-    assert.equal(manifest.version, '0.86.1');
+    assert.equal(manifest.version, '0.87.1');
     const cli = join(host, manifest.bin.pi);
     const args = [cli, ...(mode === 'rpc' ? ['--mode', 'rpc'] : []), '--no-approve', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', ...(!allowTools ? ['--no-tools'] : []), '-e', join(root, 'dist/src/index.js'), '-e', join(root, 'dist/tests/pi/stock-extension.js'), '--nunc-config', this.configFile, '--provider', this.provider, '--model', this.modelId, '--thinking', 'off', '--system-prompt', 'Perform the current task.', '--session-dir', join(this.state, 'sessions'), ...(sessionFile ? ['--session', sessionFile] : [])];
     const command = mode === 'tui' ? ['/usr/bin/python3', join(root, 'scripts/pty-driver.py'), process.execPath, ...args] : [process.execPath, ...args];

@@ -98,7 +98,7 @@ export async function executeComparison(value: unknown, repository: string, scri
       const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
       const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
       const natRepo = resolve(input.comparison.targets.native.repository);
-      let natVersion = "0.86.1";
+      let natVersion = "0.87.1";
       try {
         const natPiManifest = JSON.parse(await readFile(join(natRepo, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
         natVersion = natPiManifest.version ?? natVersion;

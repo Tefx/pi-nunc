@@ -1,8 +1,8 @@
 # Local development
 
-Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **0.85.1**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
+Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **0.87.1**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
 
-`package-lock.json` pins dependencies. Pi packages are exact host peers and development dependencies. Pi 0.85.1 declares its own server dependency; Nunc requires no separate `pi-server` workaround, running server, global import or private core patch.
+`package-lock.json` pins dependencies. Pi packages are exact host peers and development dependencies. Pi 0.87.1 declares its own server dependency; Nunc requires no separate `pi-server` workaround, running server, global import or private core patch.
 
 **Stable memory status:** [Stable memory placement and retention](STABLE-MEMORY.md) is implemented in the adapter: stable anchors, independent CAS/content checks, complete parallel tool boundaries, hook mapping and middle-M admission/UI attribution. The default retention fraction `0.5` remains in `src/pi/config.ts`. Tracked m1–m4 observation support extends `scripts/verify-live.mjs`; an ACK-only probe cannot prove memory-use quality. Future live checks follow the Gemini-first / bounded-Luna / no-Astra rule; this document does not run live tests or enable Nunc in daily settings.
 
@@ -46,7 +46,7 @@ Tracked comparison tests load `$PWD/.scratch/baseline-70dacad` as the historical
 - compiled `dist/src/index.js` built against the baseline's tracked source
 - that tree’s lock pins `@earendil-works/pi-coding-agent` **0.85.1**, with matching isolated `node_modules`
 
-The candidate checkout remains the `native` and `candidate` repositories and has its own Pi **0.86.1** dependencies. Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
+The candidate checkout is the isolated native-compatibility worktree and has its own Pi **0.87.1** dependencies. Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
 
 ```sh
 git rev-parse --verify 70dacad1f065a70b29f565b5bfcf02d31cec2bdc
