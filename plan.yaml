@@ -5081,7 +5081,7 @@ phases:
       financial/cumulcalltokencap.
 - id: nunc-native-grammar
   name: 原生 grammar 支持与独立记忆保存
-  status: in_progress
+  status: done
   gate: Orchestrator 在唯一 implementation 步骤完成程序中作本改造的最终整合接受：最终候选满足完整已接受 grammar/容量/保存/维护合同，完整适用项目离线库存及实际原生序列化、恢复和持久状态证明可用；复用仍适用历史观察，仅重做失效部分。阻断缺陷、失败必要检查或未证明必要要求阻止接受。无付费模型、安装、发布或
     Pi 修改；不增加独立 gate。
   depends_on:
@@ -5089,7 +5089,7 @@ phases:
   steps:
   - id: nunc-native-grammar.integration
     name: 原生声明透传、独立 M 保存与 Pi 0.99.0 完整兼容交付
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       examples/**\", \"policies/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -5149,3 +5149,26 @@ phases:
     agent: senior-engineer
     claimed_by: senior-engineer
     claimed_at: '2026-09-29T18:31:48.371211Z'
+    done_at: '2026-09-29T20:10:26.311134+00:00'
+    evidence: 'Integrated a7e8b0cf1b65d4af66e1991dbe418ab0019744dd by fast-forward
+      from post-claim/integration basis ad52e010cda7b5a6bcfb227527f6d8a2d7a84b66;
+      original candidate retained at refs/retained/nunc-native-grammar/original. Exact
+      planned/actual owner senior-engineer. Parent inspected implementation, final
+      UI/recovery deltas and migration contract: Pi 0.99 native grammar/codemode/dynamic
+      declarations preserved, actual Context admission and receipt/payload guards
+      retained, independent memory.hardMaxTokens(default8192) vs advisory fraction/maxTokens,
+      partial historical F, first-save/no-history maintenance, required facts/atomic/CAS/cancel
+      and bounded native overflow with no prompt/tool replay. README documents migration
+      and readable/non-growing oversized old M. Complete offline inventory at00b3b51:
+      scripts/check.mjs all exit0,676pass/0fail,78files; final changed UI/context/admission
+      paths62pass and recovery27pass, exit0; inspected deltas leave other inventory
+      evidence applicable, no redundant full replay. Canonical execution logs preserved
+      in integration .scratch/native-grammar-accepted/{all-7,ui-final2,recovery-final}.log.
+      Root lock install npm ci --ignore-scripts --no-audit --no-fund and npm run build
+      passed with Node26.7.0/npm11.19.0; local Pi0.99.0 confirmed; root-install.log/root-build.log
+      retained there. Only npm upstream node-domexception deprecation warnings. No
+      global Pi/settings/session changes, paid calls,push or publishing. No live worktree
+      descendants; baseline source clean, disposable baseline dependencies and stock
+      scratch acceptance-only consumers now released for normal cleanup. Controlled
+      services establish mechanics only; no real-model quality/cache/cost claim. No
+      independent gate required by this step; parent owns integrated acceptance.'
