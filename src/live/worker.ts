@@ -127,6 +127,9 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   const scheduledSteers = new Set<string>();
   let checkpoint: Checkpoint | undefined;
   let runConfig = structuredClone(selection.config);
+  // Historical current targets predate the independent saved-M limit. Keep
+  // their original setting grammar while candidate exercises the new cap.
+  if (group === "current" && runConfig.nunc.memory) delete runConfig.nunc.memory.hardMaxTokens;
   let effectiveConfig = runConfig.nunc;
   let prepared: PreparedBoundary | undefined;
   let boundaryRestoreConfig: Selection["config"] | undefined;
