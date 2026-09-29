@@ -5079,3 +5079,71 @@ phases:
       oldintegrationtreeassesscleanup oncecurrentconsumerholds migrated. No claim
       ofrealquality/costbenefit. Same behavior proceeds undercurrentuserauthorizationexactgpt6low,no
       financial/cumulcalltokencap.
+- id: nunc-native-grammar
+  name: 原生 grammar 支持与独立记忆保存
+  status: pending
+  gate: Orchestrator 在唯一 implementation 步骤完成程序中作本改造的最终整合接受：最终候选满足完整已接受 grammar/容量/保存/维护合同，完整适用项目离线库存及实际原生序列化、恢复和持久状态证明可用；复用仍适用历史观察，仅重做失效部分。阻断缺陷、失败必要检查或未证明必要要求阻止接受。无付费模型、安装、发布或
+    Pi 修改；不增加独立 gate。
+  depends_on:
+  - nunc-tool-result-cleanup
+  steps:
+  - id: nunc-native-grammar.integration
+    name: 原生声明透传、独立 M 保存与 Pi 0.99.0 完整兼容交付
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      examples/**\", \"policies/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
+      , \"tsconfig.json\", \".node-version\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".git/**\", \".vectl/**\", \".pi/**\", \".env\", \"\
+      .env.*\", \"**/auth.json\"]\n\nDeliver: 完整实现用户接受的原生 grammar 支持重新设计，连同有判别力的回归、配置迁移说明和用户/开发文档。Pi\
+      \ 拥有 grammar、codemode、动态工具装载和 provider 语义；Nunc 移除 blanket grammar rejection，完整保留实际原生声明与已有准确计量（含\
+      \ grammar），继续保障实际 Context 容量、取消、receipt 和 payload 安全。不剥离/降级 grammar，不禁用新特性。\n\
+      \n将 M 保存与未来组合请求可容纳性解耦：保存验证格式、revision、并发和独立 M 大小硬上限，不要求事先获得未来完整 F 或保证未来 F+M+历史必然可发送。区分硬记忆上限与由\
+      \ context 派生的 advisory 维护目标；明确现有配置键、默认/显式配置的兼容及迁移语义，不静默重新解释。初次 main 前保存、记忆增长保存、无历史手动维护及旧无\
+      \ system-state 历史的手动/自动维护继续工作；不得通过拒绝全部无历史情形绕过缺失信息。\n\n维护保持 tools: []，计量确实发送的完整内容；历史工具信息仅是语义参考，可标为\
+      \ partial/unknown，不能当成未来请求固定开销的权威值。每个 main 请求的实际 Context 才是该请求权威。实际容量失败沿用 Pi\
+      \ 原生 overflow recovery，恢复有界；禁止预热/伪用户请求或在 provider wrapper 内递归启动维护。失败/取消保留已存\
+      \ M、历史和必要任务事实，保持 required 项联合保留与原子提交等既有不变量。Current/history UI 与 last actual\
+      \ request 清楚分开，unknown/advisory 不伪装成精确值。不新增磁盘 registry/cache/history 格式。\n\n\
+      评估并更新本仓库依赖、peer/lock、导入 VERSION 检查、宿主接口及支持声明，使实际 stock Pi 0.99.0 成为经验证支持的目标；当前\
+      \ 0.87.1 pin/文档不能仅删检查而保留未证明支持。旧版本兼容声明只在有证据时保留，不作任意版本支持承诺。配置与支持基线迁移均由本交付负责。\n\
+      \nBoundary: 只修改 pi-nunc 的可 Git 回退仓库事务及任务隔离受控测试状态。无 Pi 源码/全局或日常安装修改、私有 host monkeypatch、真实付费模型调用、凭据/日常\
+      \ session/设置改写、发布或 push。必要受控原生 serializer/loader/RPC 测试属于本步。senior-engineer\
+      \ 负责实际请求来源身份、动态声明与 receipt 失效、无历史状态、CAS/持久恢复及取消/overflow 的联合不变量；拆出单独 grammar\
+      \ 过滤或版本修改会留下互相不成立的容量与保存语义，故为一个集成交付。\n\nAdmit: 用户接受的上述设计替代旧合同中要求 M 保存证明未来完整 F\
+      \ 可容纳的部分；保留不冲突的既有容量/payload/来源保真/任务保留/清理合同及 DONE 历史。历史工具和 ToolInfo 不足以证明未来声明完整。沿用项目已有\
+      \ runner 和受控服务，不新增评估框架。实现者拥有必要检查/fixture 修复和文档；Orchestrator 在本步完成程序中审查源码合同与实际观察，承担此改造最终集成接受，不把\
+      \ worker PASS 当接受。\n\nRecovery: 普通代码、配置、依赖或测试失败在本未完成步骤内修复；保留可恢复候选和必要失败证据，先核对可能开始的写入/子进程。保存/维护失败或取消不得丢\
+      \ M/历史、截掉 required 事实或触发默认 summarizer 替代。宿主确实无法满足已接受合同且修复需越过禁止目标时报告具体证据和缺失决定，不绕过保护或缩减行为。无额外重试节点、paid\
+      \ native calls 或历史任务重放。"
+    verification: "```yaml\nchecks:\n  - id: integrated-offline-inventory\n    argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
+      \ node, scripts/check.mjs, all]\n    exit_code: 0\n    inventory: [\"tests/**/*.test.ts\"\
+      ]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\", \"package.json\"\
+      , \"package-lock.json\"]\n```\n使用 .node-version 的 Node 26.7.0、npm 11.19.0、跟踪\
+      \ lock 的完整 devDependencies，安装与检查分离，禁 dependency lifecycle scripts；按 DEVELOPMENT\
+      \ 准备隔离历史比较基线/POSIX PTY，不把候选依赖混入旧 baseline，不修改全局工具。scripts/check.mjs all 发现全部\
+      \ engine/pi/live 测试并编译执行；只有 exit 0、无失败及完整库存覆盖才支持对应离线结论。支持基线变更会使宿主相关旧观察失效，应提供最终候选适用完整库存，按受影响面重跑；若现有证据不能覆盖变更后的依赖/配置，运行完整\
+      \ all。保留有效未受影响历史观察及其适用性说明，不要求为报告重绑重复无关观察。\n\n必要行为证明：实际原生 serializer 保留 grammar\
+      \ 全声明、codemode/动态 descriptions/隐藏声明和主请求准确计量；仅 grammar 变化也使不兼容 receipt 失效。断言实际\
+      \ Context/native serialization，不能使用会剥掉 constrainedSampling 的 fixture calls.tools\
+      \ 便利视图作为 oracle。初次 main 前 M save、增长 save、硬上限与 advisory 目标分离、格式/revision/并发冲突、默认与显式配置迁移；空历史显式语义与旧无\
+      \ system-state 手动/自动维护，tools:[] 与真实发送内容计量、partial/unknown 的非权威历史工具参考；compaction/restart/branch\
+      \ 后 M/历史和 receipt/UI 来源正确。正常请求 grammar 透传，真实 main/payload overcap 仍受保护并沿 Pi\
+      \ 原生 overflow 路径有界恢复；每次机会不增加维护调用，取消/失败不提交、不丢已存 M/历史/required 任务事实、不重复用户输入或工具效果。验证新宿主实际扩展加载/受控原生传输，保持现有\
+      \ payload 安全负例、receipt 绑定和媒体计量。\n\nOrchestrator 完成程序：绑定最终集成候选，检查上述全部要求、支持/迁移文档和适用完整离线库存，独立判断测试是否穿过被证明的\
+      \ seam 及现有不变量是否保留。可在同一步内取得必要独立观察/源码合同审查，不创建重复 gate；任何必要要求未知或失败均不接受。受控原生证据只证明机制，不能宣称真实模型质量、计费/缓存收益或付费服务兼容；本请求不要求新的付费效果观察。"
+    refs:
+    - src/pi/admission.ts
+    - src/index.ts
+    - src/pi/config.ts
+    - scripts/check.mjs
+    - docs/DEVELOPMENT.md
+    - docs/CAPACITY.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/STABLE-MEMORY.md
+    - docs/TOOL-RESULT-CLEANUP.md
+    - README.md
+    - package.json
+    - package-lock.json
+    agent: senior-engineer
