@@ -150,6 +150,27 @@ test("oversized extraction and indivisible source fail; advisory growth alone do
   }
 });
 
+test("zero advisory from stale historical F and advisory above hard cap preserve required facts up to the final hard limit", async () => {
+  for (const advisory of ["zero", "above-hard"] as const) {
+    const source = await input();
+    source.memory.slots = [];
+    source.config.memory.hardMaxTokens = 300;
+    if (advisory === "zero") source.fixed.systemPrompt = "f".repeat(120000);
+    else source.config.memory.fraction = 0.9;
+    const result = await maintain(source, responder({ add: [{ key: "required", text: "Required continuation" }], remove: [], priority: ["required"], required: ["required"] }));
+    assert(result.ok, result.ok ? "" : result.message);
+    assert.equal(result.candidate.memory.slots[0]?.text, "Required continuation");
+    assert(advisory === "zero" ? result.observations.accounting?.memoryLimit === 0 : result.observations.accounting!.memoryLimit > 300);
+    assert(memoryTokens(result.candidate.memory.slots) <= 300);
+  }
+  const tooLarge = await input();
+  tooLarge.config.memory.fraction = 0.9;
+  tooLarge.config.memory.hardMaxTokens = 100;
+  const denied = await maintain(tooLarge, responder({ add: [{ key: "required", text: "z".repeat(1200) }], remove: [], priority: ["required"], required: ["required"] }));
+  assert(!denied.ok); assert.equal(denied.code, "CAPACITY");
+  assert.equal(denied.observations.required?.failed, true);
+});
+
 test("Pi uncapped Codex/Responses output and Responses' minimum are reflected in preflight", async () => {
   const source = await input(); source.model.api = "openai-codex-responses";
   const planned = await maintain(source, responder()); assert(planned.ok); assert.equal(planned.observations.accounting!.outputCapTokens, null);

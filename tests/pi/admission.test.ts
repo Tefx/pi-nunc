@@ -20,6 +20,53 @@ test("native grammar declaration reaches the main provider with its exact varian
   const last = f.runtime.session.messages.at(-1); assert(last?.role === "assistant"); assert.equal(last.stopReason, "stop", last.errorMessage ?? "");
 });
 
+test("Pi prepareLoadout descriptions and hidden declarations remain authoritative on the actual main Context", async t => {
+  let hidden = true;
+  const tools: ToolDefinition[] = [
+    { name: "constrained", label: "Constrained", description: "original", parameters: Type.Object({ value: Type.String() }),
+      constrainedSampling: { type: "grammar", variants: { openai_lark: "start: /[a-z]+/" } },
+      prepareLoadout: () => ({ descriptions: { constrained: hidden ? "hidden mode" : "visible mode" }, hiddenDeclarations: hidden ? ["aux"] : [] }),
+      execute: async () => ({ content: [{ type: "text", text: "unused" }], details: {} }) },
+    { name: "aux", label: "Auxiliary", description: "only when visible", parameters: Type.Object({}),
+      execute: async () => ({ content: [{ type: "text", text: "unused" }], details: {} }) },
+  ];
+  const f = await fixture({ tools, extras: [{ name: "activate-loadout", factory(pi) {
+    pi.on("before_agent_start", () => { pi.setActiveTools(["constrained", "aux"]); });
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("First loadout");
+  const first = getCurrentTools(f.calls[0]!.messages);
+  assert.deepEqual(first.map(t => t.name), ["constrained"]);
+  assert.equal(first[0]?.description, "hidden mode");
+  assert.deepEqual(first[0]?.constrainedSampling, tools[0]!.constrainedSampling);
+  hidden = false;
+  await f.runtime.session.prompt("Changed loadout");
+  const second = getCurrentTools(f.calls[1]!.messages);
+  assert.deepEqual(second.map(t => t.name).sort(), ["aux", "constrained"]);
+  assert.equal(second.find(t => t.name === "constrained")?.description, "visible mode");
+  assert.deepEqual(second.find(t => t.name === "constrained")?.constrainedSampling, tools[0]!.constrainedSampling);
+});
+
+test("a grammar-only request-local tool delta invalidates the earlier usage receipt", async t => {
+  const observations: AdmissionObservation[] = [];
+  let changed = false;
+  const original = { type: "grammar" as const, variants: { openai_regex: "x+" } };
+  const replacement = { type: "grammar" as const, variants: { openai_regex: "y+" } };
+  const definition: ToolDefinition = { name: "constrained", label: "Constrained", description: "same", parameters: Type.Object({ value: Type.String() }),
+    constrainedSampling: original, execute: async () => ({ content: [{ type: "text", text: "unused" }], details: {} }) };
+  const f = await fixture({ tools: [definition], extras: [{ name: "change-grammar", factory(pi) {
+    pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
+    pi.on("context", event => changed ? { messages: [...event.messages, { role: "system", content: "", toolsAdded: [{ name: definition.name, description: definition.description, parameters: definition.parameters, constrainedSampling: replacement }], timestamp: 2 }] } : undefined);
+  } }] });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("First request");
+  changed = true;
+  await f.runtime.session.prompt("Same name, new grammar");
+  assert.equal(f.faux.state.callCount, 2);
+  assert.deepEqual(getCurrentTools(f.calls[1]!.messages).find(t => t.name === definition.name)?.constrainedSampling, replacement);
+  assert.equal(observations.filter(o => o.kind === "main" && o.outcome === "delegate").at(-1)?.estimator, "pi-heuristic");
+});
+
 test("admission delegates a registered native Azure Responses provider outside the old API list", async t => {
   const admissions: Array<{ outcome?: string; code?: string }> = [];
   const f = await fixture({ extras: [{ name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as { outcome?: string; code?: string })); } }] });
@@ -442,7 +489,11 @@ test("fixed context preserves constrainedSampling metadata and effective system 
   f.respond(memoryPatch);
 
   f.runtime.session.setActiveToolsByName(["constrained_reader"]);
+  assert.equal(contextSurface(api!)!.read(ctx!).current.layout.tools.unknown, true, "unsent loadout is a partial estimate");
   await f.runtime.session.prompt("Prompt to establish active tools");
+  const sent = contextSurface(api!)!.read(ctx!).lastMain?.layout.tools;
+  assert.equal(sent?.unknown, false, "last main reflects the complete actual Context");
+  assert.deepEqual(sent?.definitions[0]?.constrainedSampling, toolWithSampling.constrainedSampling);
   await f.runtime.session.compact();
 
   const view = contextSurface(api!)!.read(ctx!).current.layout;
@@ -451,6 +502,8 @@ test("fixed context preserves constrainedSampling metadata and effective system 
   const declared: Tool = { name: toolWithSampling.name, description: toolWithSampling.description,
     parameters: toolWithSampling.parameters, constrainedSampling: toolWithSampling.constrainedSampling! };
   assert.equal(view.tools.tokens, textTokens(JSON.stringify([declared])), "real fixed accounting includes constrainedSampling");
+  assert.equal(view.tools.definitions[0]?.tokens, textTokens(JSON.stringify(declared)));
+  assert.deepEqual(view.tools.definitions[0]?.constrainedSampling, toolWithSampling.constrainedSampling);
 });
 
 test("explicit empty transcript prompt/tools do not revive host defaults in fixed accounting", async t => {
@@ -471,6 +524,18 @@ test("explicit empty transcript prompt/tools do not revive host defaults in fixe
   assert.equal(current.layout.system.text, "");
   assert.deepEqual(current.layout.tools.names, []);
   assert.equal(f.faux.state.callCount, 0, "inspection sends nothing");
+  f.respond(context => {
+    const fm = context.messages.flatMap(m => typeof m.content === "string" ? [] : m.content.flatMap(b => {
+      if (b.type !== "text") return [];
+      try { return [JSON.parse(b.text) as { source?: string; F?: { systemPrompt: string; tools: Tool[]; toolState?: string } }]; } catch { return []; }
+    })).find(r => r.source === "F/M");
+    assert.equal(fm?.F?.systemPrompt, "");
+    assert.deepEqual(fm?.F?.tools, []);
+    assert.equal(fm?.F?.toolState, undefined, "explicit empty persisted declarations are authoritative");
+    return memoryPatch(context);
+  });
+  await f.runtime.session.compact();
+  assert.equal(f.events[0]?.result.ok, true);
 });
 
 test("resolved system history keeps the delivered memory index and conversation layout exact", async t => {

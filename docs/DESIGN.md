@@ -148,19 +148,20 @@ K 中实际交付的有效纠正可以立即更新旧 M；纠正按来源权限�
 
 ## 4. 窗口、记忆与模型预算
 
-只需区分三个用途：工作触发线 H、记忆上限 M_max、原文保留比例 q。L 由实际保留下来的 M/K 决定，无需再配置一套独立阈值。
+区分工作触发线 H、M 的维护建议目标、独立保存硬上限和原文保留比例 q。L 由实际保留下来的 M/K 决定，不另设主请求的提前拒绝线。
 
 统一按完整请求输入的 token 口径核算：
 
 ```text
 维护候选规划输入上限 = 有效模型窗口 − 规划输出空间 − 估计与新增内容余量
-A = min(H, 维护候选规划输入上限) − F 的估计长度
-M_max = min(memory.fraction × A, 可选 memory.maxTokens)
-K_target = q × (A − M_max)
-L = F + render(M_next) + 实际 K
+A = max(0, min(H, 维护候选规划输入上限) − 历史 F 的估计长度)
+M_advisory = min(memory.fraction × A, 可选 memory.maxTokens)
+K_target = q × max(0, A − M_advisory)
+M_hard = memory.hardMaxTokens（默认 8192）
+render(M_next) <= M_hard；历史 F 计算出的 L 仅供观察
 ```
 
-上述规划用于维护、M/K 与增长空间，不是普通主请求的提前拒绝线；主请求 enforced admission 与规划目标按 [CAPACITY.md](CAPACITY.md) 分离。省略 M 的绝对上限时使用比例。A 必须为正；memory.fraction 在 [0, 1) 内，q 在 (0, 1) 内，绝对上限若提供则为正数。输出预算、thinking、多模态和 provider 的独立输入/输出限制按实际请求语义计算；最大输出能力不等于每次应该预留的输出量。
+上述规划帮助选择合法 K 和指导 M 摘录；M 的必需事实可超过建议目标，只要不超过独立保存硬上限。实际提取输入与主请求分别核算；历史 F 的预计 L/增长空间不提前拒绝已完成的有效候选，见 [CAPACITY.md](CAPACITY.md)。A 允许为零；memory.fraction 在 [0, 1) 内，q 在 (0, 1) 内，可选上限为正数。输出预算、thinking、多模态和 provider 的独立输入/输出限制按实际请求语义计算；最大输出能力不等于每次应该预留的输出量。
 
 主请求保留 Pi 实际 output/thinking 设置。已验证的原生按剩余上下文裁输出路径，以及不发送输出 cap 的 Codex/Responses 路径，以 compaction reserve 与最大输出能力的较小值作为输入规划余量，并覆盖序列化下限。维护默认独立预留 8192（包含 reasoning，且不超过模型能力）；API 支持时发送对应输出 cap，不支持时仅作为规划值。模型能力、规划余量、实际 cap 和费用授权分开。普通请求使用适用的 Pi usage 加新增输入估算，前缀或模型改变后重新估算；维护及候选 M/K 始终重新估算。无硬 tokenizer 上界保证，实际超窗仍交给原生有界恢复。具体接入见 [PI.md](PI.md)。
 
@@ -310,7 +311,7 @@ Nunc 和验证默认继承 Pi 当前有效 model/provider/options/config，包�
 ```
 
 - policyFile 可省略，相对路径基准在实施时明确；推荐相对配置文件目录。
-- memory.maxTokens 可选，限制 M 的绝对容量。
+- memory.maxTokens 可选，仅限制 M 的维护建议目标；memory.hardMaxTokens 独立限制人工/提取最终保存的 M，默认 8192。原有显式保存上限须迁移到 hardMaxTokens。
 - 自动维护启停及 H 使用 Pi 现有配置。cached tokens 计入所有容量检查。
 - extraction.toolResults 的 auto 表示完整优先、容量不足时有界处理；full 禁止工具正文截断。
 - 参数示例可调整；不提供任务类型路由、使用计数、衰减函数、权重 DSL 或跨 session 开关。

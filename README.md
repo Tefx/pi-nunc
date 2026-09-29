@@ -23,7 +23,7 @@ Checked environment:
 | --- | --- |
 | Node | 26.7.0 (`.node-version`) |
 | npm | 11.19.0 |
-| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | 0.87.1 |
+| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | 0.99.0 |
 
 Runtime limits:
 
@@ -32,7 +32,7 @@ Runtime limits:
 - One custom compaction owner. If another compaction extension is also enabled, keep exactly one writer.
 - Nunc uses Pi’s current model, thinking level, authentication, compaction settings, and transport. It does not log in, copy credentials, or select another account.
 
-A different global `pi` binary is unsupported unless it reports exactly `0.87.1`. Nunc checks `VERSION` at session start.
+A different global `pi` binary is unsupported unless it reports exactly `0.99.0`. Nunc checks `VERSION` at session start.
 
 ## Quick start
 
@@ -87,7 +87,8 @@ Implemented defaults (`src/pi/config.ts`):
 | --- | --- |
 | `policyFile` | unset (built-in `policies/default.md` only) |
 | `memory.fraction` | `0.1` (range `[0, 1)`) |
-| `memory.maxTokens` | unset (no absolute cap) |
+| `memory.maxTokens` | unset (no explicit advisory planning ceiling) |
+| `memory.hardMaxTokens` | `8192` (independent saved-M hard cap) |
 | `rolling.keepRecentFraction` | `0.5` (range `(0, 1)`) |
 | `extraction.toolResults` | `"auto"` (`"full"` disables tool-body reduction) |
 | `extraction.headTailChars` | `200` |
@@ -97,7 +98,7 @@ Implemented defaults (`src/pi/config.ts`):
 | `budget.extraMainInputTokens` | `0` |
 | `budget.extraExtractionInputTokens` | `0` |
 | `budget.inputLimit` | unset |
-| `budget.imageTokens` | unset (uses Pi's per-image heuristic; currently 1200 tokens in Pi 0.87.1) |
+| `budget.imageTokens` | unset (uses Pi's per-image heuristic; currently 1200 tokens in Pi 0.99.0) |
 
 Images work without extra configuration on image-capable models. `budget.imageTokens` optionally overrides the per-image planning estimate; existing explicit values retain priority. Neither the default nor an override guarantees a token upper bound. Main requests, extraction, retained-history planning and the Context panel use the same rule. Compatible request receipts supply actual usage for the historical prefix; new images are estimated. Provider overflow recovery remains Pi-owned, with no extra Nunc retry loop.
 
@@ -106,14 +107,14 @@ Optional integers are positive except the `extra*` fields, which may be zero. Ex
 ```json
 {
   "policyFile": "./preferences.md",
-  "memory": { "fraction": 0.1, "maxTokens": 2000 },
+  "memory": { "fraction": 0.1, "maxTokens": 2000, "hardMaxTokens": 8192 },
   "rolling": { "keepRecentFraction": 0.67 },
   "extraction": { "toolResults": "auto", "headTailChars": 200 },
   "budget": { "safetyTokens": 1024, "growthTokens": 1024 }
 }
 ```
 
-The example above explicitly specifies `rolling.keepRecentFraction: 0.67` to illustrate overriding the `0.5` default; explicit overrides remain fully supported.
+The example above explicitly specifies `rolling.keepRecentFraction: 0.67` to illustrate overriding the `0.5` default; explicit overrides remain fully supported. `memory.fraction` and `memory.maxTokens` now set an advisory maintenance target, never the independent save hard cap. To retain a previous explicit `maxTokens: 2000` save limit, also set `hardMaxTokens: 2000`. Existing saved M is not rewritten on upgrade: oversized state stays readable, shrinking/non-growing manual edits remain possible, while growing edits and future extraction candidates exceeding the new hard cap fail until the state is reduced or the configured hard cap is raised. Main admission measures the actual next request after a save.
 
 Pi compaction settings remain Pi’s (`compaction.reserveTokens` default 16384, `keepRecentTokens` default 20000, `enabled` default true). Nunc’s trigger is `H = contextWindow - reserveTokens`. Require a positive reserve and H, and `0 <= keepRecentTokens < H`. Pi uses `keepRecentTokens` for native preparation; Nunc chooses a legal retained suffix from `keepRecentFraction` independently.
 
@@ -127,7 +128,7 @@ Each opportunity makes **at most one** maintenance request on the **current** mo
 
 The model returns one JSON object with `add`, `remove`, `priority`, and `required`:
 
-- `required` is a unique subset of `priority` (surviving slot IDs and addition keys). Every declared required item must fit together inside the memory limit. If it cannot, or growth space after the candidate is insufficient, maintenance fails with `CAPACITY`. Saved M and K stay unchanged. Required is for this maintenance, not a permanent pin.
+- `required` is a unique subset of `priority` (surviving slot IDs and addition keys). Every declared required item must fit together inside `memory.hardMaxTokens`. If it cannot, maintenance fails with `CAPACITY`; the advisory target may be exceeded to preserve required facts. Saved M and K stay unchanged. Required is for this maintenance, not a permanent pin.
 - `priority` lists every survivor and addition exactly once. Optional items use remaining budget in that order. Surviving slots keep their relative order and exact text; additions append. Priority does not reorder ordinary memory.
 
 Code validates references, whole-slot rendered budgets, and the retained-history cut. Policy text cannot keep an item that failed those checks. Empty memory and empty `required` are valid when nothing must continue.
@@ -143,10 +144,10 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 - Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests inject one current M carrier at a stable legal boundary. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
-- Supported host is stock Pi **0.87.1** with persistent sessions. No minimum-version or all-provider claim.
+- Supported host is stock Pi **0.99.0** with persistent sessions. No minimum-version or all-provider claim.
 - Images need model image input and remain native blocks. Missing `budget.imageTokens` uses Pi's heuristic instead of rejecting the request. Estimates can undercount or overcount; provider capacity failures remain possible. PDF, audio, and unknown blocks fail explicitly.
 - Unload or downgrade without a later native compaction: stock Pi reads the last native summary, not unabsorbed manual edits.
-- `scripts/check.mjs` requires the pinned Node and a hardcoded Homebrew npm CLI path. It also needs a local comparison baseline before `all`. See [local development](docs/DEVELOPMENT.md). Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.
+- `scripts/check.mjs` requires the pinned Node and matching npm CLI. It also needs a local comparison baseline before `all`. See [local development](docs/DEVELOPMENT.md). Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.
 - Historical extraction acceptance recorded product `4f1f668` (423 tests / 52 files), UI human confirmation of IME/resize/theme, and disclosed comparison limits. That record is not proof of later source.
 
 Long-term work belongs in code, documents, and other artifacts. Forgetting is how the working context stays finite.

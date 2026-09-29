@@ -208,14 +208,14 @@ function payloadExtra(mode: () => string, second?: (payload: Record<string, unkn
   return extras;
 }
 
-async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }, mode: () => string, second?: (payload: Record<string, unknown>) => unknown, tools?: ToolDefinition[]) {
+async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }, mode: () => string, second?: (payload: Record<string, unknown>) => unknown, tools?: ToolDefinition[], extras: InlineExtension[] = []) {
   let sends = 0;
   const bodies: Record<string, unknown>[] = [];
   const admissions: Array<{ outcome?: string; code?: string; payload?: { mode?: string; categories?: string[] } }> = [];
   const openai = openaiProvider();
   const catalog = openai.getModels().find(m => m.id === "gpt-4.1");
   assert(catalog);
-  const selected = tools ? { ...catalog, compat: { ...catalog.compat, supportsOpenAIGrammarTools: true } } : catalog;
+  const selected = tools || extras.length ? { ...catalog, compat: { ...catalog.compat, supportsOpenAIGrammarTools: true } } : catalog;
   const transport: typeof fetch = async (resource, init) => {
     sends++;
     bodies.push(await new Request(resource, init).json() as Record<string, unknown>);
@@ -234,6 +234,7 @@ async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }
     extras: [
       { name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as typeof admissions[number])); } },
       ...payloadExtra(mode, second),
+      ...extras,
     ],
   });
   t.after(() => f.close());
@@ -258,6 +259,22 @@ test("native grammar declaration is sent as grammar, without replacing it with J
   assert.equal(wireTool?.type, "custom");
   assert.equal(wireTool?.parameters, undefined);
   assert.equal(run.f.runtime.session.messages.at(-1)?.role, "assistant");
+});
+
+test("Pi 0.99 codemode sends its native Lark grammar through Nunc's actual request", async t => {
+  const { createCodemodeExtension } = await import(new URL("../../../node_modules/@earendil-works/pi-coding-agent/dist/extensions/codemode/index.js", import.meta.url).href);
+  const run = await nativeMain(t, () => "observe", undefined, undefined, [
+    { name: "stock-codemode", factory: createCodemodeExtension() },
+    { name: "activate-codemode", factory(pi) { pi.on("before_agent_start", () => { pi.setActiveTools(["codemode"]); }); } },
+  ]);
+  assert.equal(run.sends(), 1);
+  const tool = (run.bodies[0]?.tools as Array<Record<string, unknown>>).find(t => t.name === "codemode");
+  const format = tool?.format as { type?: string; syntax?: string; definition?: string } | undefined;
+  assert.equal(tool?.type, "custom", JSON.stringify(tool));
+  assert.equal(format?.type, "grammar");
+  assert.equal(format?.syntax, "lark");
+  assert(format?.definition && format.definition.length > 100, "actual stock codemode source grammar reaches wire");
+  assert.equal(tool?.parameters, undefined);
 });
 
 test("stock loader noop, identity, in-place and replacement metadata reach controlled HTTP", { timeout: 90000 }, async t => {

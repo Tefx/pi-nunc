@@ -44,6 +44,7 @@ export interface ToolDefinitionView {
   name: string;
   description: string;
   parameters: unknown;
+  constrainedSampling?: unknown;
   tokens: number | null;
   unknown: boolean;
 }
@@ -536,13 +537,16 @@ function unavailableLayout(): ContextLayout {
   };
 }
 
-function toolLayer(tools: readonly { name: string; description?: string; parameters?: unknown }[]): ToolsLayer {
+function toolLayer(tools: readonly { name: string; description?: string; parameters?: unknown; constrainedSampling?: unknown }[]): ToolsLayer {
   const names = tools.map(tool => tool.name);
   const definitions: ToolDefinitionView[] = tools.map(tool => {
     try {
       const parameters = structuredClone(tool.parameters ?? {});
       const description = typeof tool.description === "string" ? tool.description : "";
-      return { name: tool.name, description, parameters, tokens: textTokens(JSON.stringify({ name: tool.name, description, parameters })), unknown: false };
+      const constrainedSampling = tool.constrainedSampling === undefined ? undefined : structuredClone(tool.constrainedSampling);
+      return { name: tool.name, description, parameters,
+        ...(constrainedSampling === undefined ? {} : { constrainedSampling }),
+        tokens: textTokens(JSON.stringify(tool)), unknown: false };
     } catch {
       return { name: tool.name, description: typeof tool.description === "string" ? tool.description : "", parameters: {}, tokens: null, unknown: true };
     }

@@ -115,10 +115,9 @@ compaction、路径/session/model 等生命周期按适用规则清空/失配；
 所有非 output 末端 payload 改写继续失去 Context 绑定；增长、媒体/tool/control/output 的既有校验继续。Larva 解析后发生真实变化仍处理，禁止 bridgeCalled 或尾 M 标记绕过验证。entry wrapper/ALS 必须将布局快照、有效 Context、model/signal/模式正确绑定：内层首次透明委托不得重复注入 M 或准入，独立/重复调用不得继承他人的预算。
 
 ## 6. 预算与共享状态
+M 占用统一按完整 slot ID、内容和真实 carrier 包装估算，空 M 无虚构 carrier 开销。`memory.fraction` 与 `memory.maxTokens` 根据历史 F 计算维护时的建议目标；不再限制人工保存或完整提取候选。两种保存都受独立 `memory.hardMaxTokens` 限制，默认 8192；要保留旧的显式 `maxTokens: N` 人工保存上限，另设 `hardMaxTokens: N`。历史 F 超出 trigger 时建议目标可以为零，仍须保留必要事实到硬上限，不能把该零值作为删除指令。
 
-M 预算仍由现有模型、F、工具和配置计算，新增工具 schema 本身计入 F。以真实新 carrier 统一计算 M 占用，空 M 没有虚构的 carrier 开销；固定上下文与 M 包装不能分别重复计入。人工、模型、Context 展示及候选规划使用同一计量语义，保留 extraction 的独立来源与输出预算。
-
-写入时使用当前可用预算，预算未知不允许增长；不为取得预算发模型或刷新凭据。Larva 只解析 F，不接触 slot/revision/M 迁移。实际主请求仍使用桥接的本次有效 F 作最终发送检查，写入预算或 Current projection 不冒充已构造主请求的完整 wire 上下文。
+旧会话中超出新硬上限的 M 仍可读取或缩减，不自动改写；不增长的人工修改可提交，增长超过硬上限以及无法缩到硬上限内的下一次提取候选失败。无持久系统声明时公开 ToolInfo 缺少 constrainedSampling，Context F 被标为 partial/unknown；人工保存的独立硬上限仍可计算。写入若硬预算本身未知则不允许增长，也不为取得预算发模型或刷新凭据。Larva 只解析 F，不接触 slot/revision/M 迁移。主请求最终依据本次真实有效 `Context` 检查，而非将写入预算或 Current projection 冒充完整 wire 上下文。
 
 ## 7. 自动转换，无旧布局运行模式
 

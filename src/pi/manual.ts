@@ -95,10 +95,10 @@ export function createMemorySurface(options: {
     },
     read: viewOf,
     patch(ctx, params, signal) {
-      if (signal?.aborted) return fail("cancelled", "Memory patch cancelled before commit", viewOf(ctx));
-      if (sessionUnconfirmed(ctx.sessionManager)) return fail("unconfirmed", UNCONFIRMED_MESSAGE, viewOf(ctx));
-      if (state.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", viewOf(ctx));
       const current = viewOf(ctx);
+      if (signal?.aborted) return fail("cancelled", "Memory patch cancelled before commit", current);
+      if (current.status.unconfirmed) return fail("unconfirmed", UNCONFIRMED_MESSAGE, current);
+      if (current.status.occupied) return fail("occupied", "Maintenance has not finished native commit; draft was not saved", current);
       if (!record(params) || !keys(params, ["expectedRevision", "add", "update", "remove", "toolResultEdits", "suppressCleanup"])) {
         return fail("invalid", "Invalid patch parameters: unexpected field", current);
       }

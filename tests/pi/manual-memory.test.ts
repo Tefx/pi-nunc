@@ -37,6 +37,63 @@ async function prepared(t: { after: (fn: () => Promise<void>) => void }, options
   return { f, ...captured };
 }
 
+test("no-system-history manual M saves grow under the independent hard cap and reach native maintenance", async t => {
+  const captured = port();
+  const f = await fixture({ config: { memory: { maxTokens: 40, hardMaxTokens: 1200 } }, extras: captured.extras });
+  t.after(() => f.close());
+  const { surface, ctx } = captured;
+  assert.equal(f.runtime.session.sessionManager.getEntries().some(e => e.type === "message" && e.message.role === "system"), false);
+  const before = surface().read(ctx());
+  assert.equal(before.budget.unknown, false, "saved-M hard cap is known independently of incomplete F");
+  const first = surface().patch(ctx(), { expectedRevision: before.revision, add: [{ key: "first", text: "x".repeat(180) }] });
+  assert.equal(first.ok, true, JSON.stringify(first));
+  if (!first.ok) return;
+  const second = surface().patch(ctx(), { expectedRevision: first.revision, add: [{ key: "second", text: "y".repeat(180) }] });
+  assert.equal(second.ok, true, JSON.stringify(second));
+  assert(second.ok && second.budget.usedTokens > 40);
+  f.seed();
+  f.respond(context => {
+    const source = context.messages.flatMap(m => typeof m.content === "string" ? [] : m.content.flatMap(b => {
+      if (b.type !== "text") return [];
+      try { return [JSON.parse(b.text) as Record<string, unknown>]; } catch { return []; }
+    }));
+    const fm = source.find(r => r.source === "F/M");
+    const existing = fm?.M as { id: string; text: string }[];
+    assert.deepEqual(existing.map(s => s.text), ["x".repeat(180), "y".repeat(180)]);
+    assert.equal((fm?.F as { toolState?: string }).toolState, "partial", "F is marked incomplete, never presented as exact");
+    return fauxAssistantMessage(JSON.stringify({ add: [], remove: [], priority: existing.map(s => s.id), required: [] }));
+  });
+  await f.runtime.session.compact();
+  assert.equal(f.events[0]?.result.ok, true);
+  assert.deepEqual(project(f.runtime.session.sessionManager.buildContextEntries()).memory.slots.map(s => s.text), ["x".repeat(180), "y".repeat(180)]);
+});
+
+test("actual main overcap after a successful independent save terminates through native recovery without duplicating the prompt", async t => {
+  const admissions: AdmissionObservation[] = [];
+  const { f, surface, ctx } = await prepared(t, { enabled: true, config: { memory: { maxTokens: 40, hardMaxTokens: 3000 } } }, admissions);
+  await f.runtime.session.prompt("Settle prior usage before saved-M overflow");
+  const view = surface().read(ctx());
+  const oversized = "m".repeat(2800);
+  const saved = surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, oversized);
+  assert.equal(saved.ok, true, JSON.stringify(saved));
+  assert.equal(project(f.runtime.session.sessionManager.buildContextEntries()).memory.slots[0]?.text, oversized);
+  await writeFile(f.configFile, JSON.stringify({ ...f.config, budget: { inputLimit: 1100 }, memory: { maxTokens: 40, hardMaxTokens: 3000 } }));
+  const beforeCalls = f.faux.state.callCount;
+  const beforeEvents = f.events.length;
+  f.respond(context => memoryPatch(context));
+  await f.runtime.session.prompt("Post-save overcap request");
+  const entries = f.runtime.session.sessionManager.getEntries();
+  assert.equal(entries.filter(e => e.type === "message" && e.message.role === "user" && JSON.stringify(e.message.content).includes("Post-save overcap request")).length, 1);
+  assert(admissions.some(a => a.kind === "main" && a.outcome === "reject" && a.code === "CAPACITY"), "actual constructed main request exceeded its input guard");
+  assert.equal(f.faux.state.callCount - beforeCalls, 0, "local main admission and extraction input reject before provider transport");
+  assert.equal(f.events.length - beforeEvents, 1, "Pi attempts only one overflow recovery for this prompt");
+  const recovery = f.events.at(-1);
+  assert.equal(recovery?.reason, "overflow");
+  assert(recovery && !recovery.result.ok);
+  assert.equal(recovery.result.code, "CAPACITY");
+  assert.equal(project(f.runtime.session.sessionManager.buildContextEntries()).memory.slots[0]?.text, oversized);
+});
+
 test("public appendEntry save is the only M carrier, stays out of R, and survives native reopen", async t => {
   const { f, surface, ctx } = await prepared(t, { publicFactory: true });
   const before = project(f.runtime.session.sessionManager.buildContextEntries());

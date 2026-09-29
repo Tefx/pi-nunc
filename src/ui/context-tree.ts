@@ -176,7 +176,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
     id: `${prefix}:F:tools:${def.name}`,
     label: def.name,
     description: def.unknown ? "unknown" : `${def.tokens ?? "?"} tok`,
-    preview: [def.name, def.description, def.unknown ? "estimate unknown" : `${thousands(def.tokens ?? 0)} tok`, JSON.stringify(def.parameters)].join("\n"),
+    preview: [def.name, def.description, def.unknown ? "estimate unknown" : `${thousands(def.tokens ?? 0)} tok`, JSON.stringify(def.parameters), ...(def.constrainedSampling === undefined ? [] : [`Constrained sampling: ${JSON.stringify(def.constrainedSampling)}`])].join("\n"),
     children: [],
   }));
   const mIds = slotChildren(`${prefix}:M`, slots ?? [], add);
@@ -214,7 +214,7 @@ function frozenChildren(prefix: string, before: LastMaintenanceContext["before"]
   const toolIds = tools.definitions.map(def => add({
     id: `${prefix}:F:tools:${def.name}`,
     label: def.name,
-    preview: [def.name, def.description, JSON.stringify(def.parameters)].join("\n"),
+    preview: [def.name, def.description, JSON.stringify(def.parameters), ...(def.constrainedSampling === undefined ? [] : [`Constrained sampling: ${JSON.stringify(def.constrainedSampling)}`])].join("\n"),
     children: [],
   }));
   return [
