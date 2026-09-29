@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, rename, mkdir, rm, writeFile } from "node:fs/promises";
 import { SessionManager, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { bindHostSettings, MANUAL_MEMORY_TYPE, memorySurface, type MemorySurface } from "pi-nunc/pi";
 import { isManualMemoryEntry, project } from "../../src/pi/projection.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
@@ -70,8 +71,14 @@ test("no-system-history manual M saves grow under the independent hard cap and r
 
 test("actual main overcap after a successful independent save terminates through native recovery without duplicating the prompt", async t => {
   const admissions: AdmissionObservation[] = [];
-  const { f, surface, ctx } = await prepared(t, { enabled: true, config: { memory: { maxTokens: 40, hardMaxTokens: 3000 } } }, admissions);
-  await f.runtime.session.prompt("Settle prior usage before saved-M overflow");
+  let effects = 0;
+  const { f, surface, ctx } = await prepared(t, { enabled: true, config: { memory: { maxTokens: 40, hardMaxTokens: 3000 } },
+    tools: [{ name: "once", label: "Once", description: "Count a single settled effect", parameters: Type.Object({}),
+      execute: async () => { effects++; return { content: [{ type: "text", text: "done" }], details: {} }; } }] }, admissions);
+  let issued = false;
+  f.respond(() => !issued ? (issued = true, fauxAssistantMessage(fauxToolCall("once", {}), { stopReason: "toolUse" })) : fauxAssistantMessage("Prior tool settled"));
+  await f.runtime.session.prompt("Settle prior tool before saved-M overflow");
+  assert.equal(effects, 1);
   const view = surface().read(ctx());
   const oversized = "m".repeat(2800);
   const saved = surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, oversized);
@@ -92,6 +99,7 @@ test("actual main overcap after a successful independent save terminates through
   assert(recovery && !recovery.result.ok);
   assert.equal(recovery.result.code, "CAPACITY");
   assert.equal(project(f.runtime.session.sessionManager.buildContextEntries()).memory.slots[0]?.text, oversized);
+  assert.equal(effects, 1, "native recovery neither replays the prior tool nor executes a new one");
 });
 
 test("public appendEntry save is the only M carrier, stays out of R, and survives native reopen", async t => {
