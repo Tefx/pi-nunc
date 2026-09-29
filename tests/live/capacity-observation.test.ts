@@ -13,14 +13,14 @@ test("capacity predicates distinguish required fit, real competition and an opti
   assert(evaluateCapacityPredicates("required-too-large", patch(50, 15), 40, measure).every(c => c.status === "PROVEN"));
   assert.equal(evaluateCapacityPredicates("required-too-large", patch(50, 45), 40, measure)[1]!.status, "UNPROVEN");
 });
-test("capacity qualification uses the full memory limit and reserves growth once outside it", () => {
+test("capacity qualification binds the saved-M hard limit and observes advisory growth separately", () => {
   const growth = { fixedTokens: 10, memoryLimit: 100, keptTokens: 10, growthReserve: 80, effectiveTrigger: 200 };
   const result = { ok: true, observations: { accounting: growth } } as unknown as MaintenanceResult;
   const patch = { add: [{ key: "r", text: "x".repeat(120) }, { key: "o", text: "o" }], remove: [], priority: ["r", "o"], required: ["r"] };
   const requiredSize = memoryTokens([{ id: "s1", text: patch.add[0]!.text }]);
   assert(requiredSize <= 100 && requiredSize > 100 - growth.growthReserve);
-  const context: Context = { systemPrompt: "Rendered memory limit: 100 estimated tokens", messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }] };
-  const run = (g = growth) => qualifyCapacity("fits-required", { version: 1, slots: [], nextId: 1 }, result, [context], [{ model: "test/model", stopReason: "stop", patch }], "test/model", g);
+  const context: Context = { systemPrompt: "Rendered memory advisory target: 100 estimated tokens; Independent saved-memory hard cap: 100 estimated tokens", messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }] };
+  const run = (g = growth) => qualifyCapacity("fits-required", { version: 1, slots: [], nextId: 1 }, result, [context], [{ model: "test/model", stopReason: "stop", patch }], "test/model", 100, g);
   assert.equal(run()[1]!.status, "PROVEN"); assert.equal(run()[2]!.status, "PROVEN");
   assert.equal(run({ ...growth, growthReserve: 81 })[1]!.status, "UNPROVEN");
   assert.equal(run({ ...growth, memoryLimit: 99 })[1]!.status, "UNPROVEN");
@@ -46,14 +46,15 @@ test("capacity reconstruction uses frozen nextId and collision-aware actual rend
 
 test("capacity source binding rejects stale response, missing request/accounting and changed frozen M", () => {
   const memory: Memory = { version: 1, slots: [], nextId: 10 };
-  const context: Context = { systemPrompt: "Rendered memory limit: 50 estimated tokens", messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }] };
+  const context: Context = { systemPrompt: "Rendered memory advisory target: 50 estimated tokens; Independent saved-memory hard cap: 50 estimated tokens", messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }] };
   // Only the accounting field consumed by this component is supplied; native-host evidence is separate.
   const result = { ok: false, code: "CAPACITY", observations: { accounting: { memoryLimit: 50 } } } as MaintenanceResult;
   const response = { model: "test/model", stopReason: "stop", patch: { add: [{ key: "r", text: "note" }], remove: [], priority: ["r"], required: ["r"] } };
-  const run = (contexts = [context], responses = [response], mem = memory, res: MaintenanceResult | undefined = result) => qualifyCapacity("fits-required", mem, res, contexts, responses, "test/model");
+  const run = (contexts = [context], responses = [response], mem = memory, res: MaintenanceResult | undefined = result) => qualifyCapacity("fits-required", mem, res, contexts, responses, "test/model", 50);
   assert.equal(run()[0]!.status, "PROVEN");
+  assert.equal(qualifyCapacity("fits-required", memory, result, [context], [response], "test/model", 51)[0]!.status, "UNPROVEN", "rendered cap must equal effective configured hard cap");
   assert.equal(run()[0]!.observed && (run()[0]!.observed as { nextId: number }).nextId, 10);
-  for (const checks of [run([]), run([context], []), run([context], [response, response]), run([context], [{ ...response, stopReason: "length" }]), run([context], [{ ...response, model: "other/model" }]), run([context], [response], { ...memory, slots: [{ id: "s1", text: "old" }] }), qualifyCapacity("fits-required", memory, undefined, [context], [response], "test/model")]) {
+  for (const checks of [run([]), run([context], []), run([context], [response, response]), run([context], [{ ...response, stopReason: "length" }]), run([context], [{ ...response, model: "other/model" }]), run([context], [response], { ...memory, slots: [{ id: "s1", text: "old" }] }), qualifyCapacity("fits-required", memory, undefined, [context], [response], "test/model", 50)]) {
     assert.equal(checks[0]!.status, "UNPROVEN");
   }
 });

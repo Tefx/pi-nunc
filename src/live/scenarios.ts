@@ -415,13 +415,13 @@ export function evaluateCapacityPredicates(
   if (variant === "fits-required") {
     const reqFits = reqSize <= memoryLimit;
     results.push({
-      check: "all marked necessary candidates jointly fit within full memory limit",
+      check: "all marked necessary candidates jointly fit within saved-memory hard limit",
       status: reqFits ? "PROVEN" : "UNPROVEN",
       observed: { requiredTokens: reqSize, memoryLimit }
     });
     const totalExceeds = totalSize > memoryLimit;
     results.push({
-      check: "all candidates together exceed memory limit (actual competition)",
+      check: "all candidates together exceed saved-memory hard limit (actual competition)",
       status: totalExceeds ? "PROVEN" : "UNPROVEN",
       observed: { totalCandidateTokens: totalSize, memoryLimit }
     });
@@ -434,13 +434,13 @@ export function evaluateCapacityPredicates(
   } else if (variant === "required-too-large") {
     const reqExceeds = reqSize > memoryLimit;
     results.push({
-      check: "marked necessary set exceeds rendered memory limit",
+      check: "marked necessary set exceeds saved-memory hard limit",
       status: reqExceeds ? "PROVEN" : "UNPROVEN",
       observed: { requiredTokens: reqSize, memoryLimit }
     });
     const optFits = optionalCandidates.length > 0 && optionalCandidates.some(opt => measure([opt.slot]) <= memoryLimit);
     results.push({
-      check: "at least one optional candidate fits within memory limit",
+      check: "at least one optional candidate fits within saved-memory hard limit",
       status: optFits ? "PROVEN" : "UNPROVEN",
       observed: { optionalCount: optionalCandidates.length, optionalFits: optFits }
     });

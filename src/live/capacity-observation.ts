@@ -13,26 +13,29 @@ export function qualifyCapacity(
   contexts: Array<Context | TranscriptContext>,
   responses: Array<{ model: string; stopReason: string; patch: unknown }>,
   model: string,
+  hardLimit: number,
   growth?: { growthReserve: number; fixedTokens: number; memoryLimit: number; keptTokens: number; effectiveTrigger: number },
 ): CheckResult[] {
   const check = "capacity predicate bound to one frozen request and complete response";
-  const limit = result?.observations.accounting?.memoryLimit;
+  const advisory = result?.observations.accounting?.memoryLimit;
   try {
-    if (contexts.length !== 1 || responses.length !== 1 || limit === undefined ||
+    if (contexts.length !== 1 || responses.length !== 1 || advisory === undefined ||
         responses[0]!.stopReason !== "stop" || responses[0]!.model !== model) throw new Error("Missing transaction evidence");
     const context = contexts[0]!;
     const rawPrompt = ("systemPrompt" in context && typeof context.systemPrompt === "string") ? context.systemPrompt : getCurrentSystemPrompt(context.messages);
-    const declared = rawPrompt?.match(/Rendered memory limit: (\d+) estimated tokens/);
+    const declared = rawPrompt?.match(/Rendered memory advisory target: (\d+) estimated tokens/);
+    const declaredHard = rawPrompt?.match(/Independent saved-memory hard cap: (\d+) estimated tokens/);
     const records = context.messages.flatMap(m => typeof m.content === "string" ? readSourceRecords(m.content) :
       m.content.flatMap(b => b.type === "text" ? readSourceRecords(b.text) : []));
     const fm = records.filter(r => r.source === "F/M");
-    if (!declared || Number(declared[1]) !== limit || fm.length !== 1 || !isDeepStrictEqual(fm[0]!.M, memory.slots)) throw new Error("Frozen source differs");
+    if (!declared || Number(declared[1]) !== Math.min(advisory, hardLimit) || !declaredHard || Number(declaredHard[1]) !== hardLimit ||
+        fm.length !== 1 || !isDeepStrictEqual(fm[0]!.M, memory.slots)) throw new Error("Frozen source differs");
     const a = result?.observations.accounting;
     const growthMatches = growth && a && ["fixedTokens", "memoryLimit", "keptTokens", "effectiveTrigger"].every(k => (growth as any)[k] === (a as any)[k]);
-    const growthFits = growthMatches && growth!.fixedTokens + limit + growth!.keptTokens + growth!.growthReserve <= growth!.effectiveTrigger;
-    return [{ check, status: "PROVEN", observed: { model, memoryLimit: limit, nextId: memory.nextId, memory: memory.slots, response: responses[0]!.patch } },
-      { check: "growth reserved once outside the full memory limit", status: growthFits ? "PROVEN" : "UNPROVEN", observed: growth ?? null },
-      ...evaluateCapacityPredicates(variant, responses[0]!.patch, limit, memoryTokens, memory.slots, memory.nextId)];
+    const growthFits = growthMatches && growth!.fixedTokens + advisory + growth!.keptTokens + growth!.growthReserve <= growth!.effectiveTrigger;
+    return [{ check, status: "PROVEN", observed: { model, memoryLimit: hardLimit, advisoryTarget: advisory, nextId: memory.nextId, memory: memory.slots, response: responses[0]!.patch } },
+      { check: "growth reserved once outside the advisory target", status: growthFits ? "PROVEN" : "UNPROVEN", observed: growth ?? null },
+      ...evaluateCapacityPredicates(variant, responses[0]!.patch, hardLimit, memoryTokens, memory.slots, memory.nextId)];
   } catch {
     return [{ check, status: "UNPROVEN", reason: "Missing or inconsistent current request/response, frozen memory or actual memory limit" }];
   }

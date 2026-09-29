@@ -524,7 +524,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.setupChecks.push(...qualifyCapacity(selection.variant as "fits-required" | "required-too-large",
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
                 report.contexts.slice(capacityContextStart).filter(c => c.kind === "maintenance").map(c => c.context),
-                maintenanceResponses.slice(capacityResponseStart), capacityModel, report.rollovers!.at(-1)?.prepared?.calibration?.accounting)
+                maintenanceResponses.slice(capacityResponseStart), capacityModel, runConfig.nunc.memory?.hardMaxTokens ?? 8192,
+                report.rollovers!.at(-1)?.prepared?.calibration?.accounting)
                 .filter(c => selection.id !== "g8" || c.check !== "at least one necessary candidate is larger than an optional candidate"));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
@@ -560,7 +561,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                   if (selection.variant === "fits-required") {
                     report.setupChecks!.push(checkRequiredRetention(result, project(saved.buildContextEntries()).memory));
                   } else if (selection.variant === "required-too-large") {
-                    const reqExceeds = report.setupChecks?.find(p => p.check.includes("marked necessary set exceeds rendered memory limit"))?.status === "PROVEN";
+                    const reqExceeds = report.setupChecks?.find(p => p.check.includes("marked necessary set exceeds saved-memory hard limit"))?.status === "PROVEN";
                     report.setupChecks!.push({ check: "required-too-large rollover eligibility", status: reqExceeds ? "DISPROVEN" : "UNPROVEN", reason: reqExceeds ? "Maintenance succeeded despite the measured necessary-set overflow" : "Successful ordinary continuation remains eligible; the capacity variant did not qualify" });
                   }
                 } else if (group === "current") {

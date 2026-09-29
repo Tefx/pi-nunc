@@ -211,10 +211,10 @@ test("required retention is bound to saved memory and complete distinct required
 });
 
 test("g8 candidate size flags alone never prove actual retention or CAPACITY/recovery effects", () => {
-  const binding = ["capacity predicate bound to one frozen request and complete response", "growth reserved once outside the full memory limit"];
+  const binding = ["capacity predicate bound to one frozen request and complete response", "growth reserved once outside the advisory target"];
   for (const [check, names] of [
-    ["capacity-fit-effects", [...binding, "all marked necessary candidates jointly fit within full memory limit", "all candidates together exceed memory limit (actual competition)", "all marked necessary candidates jointly retained in final memory"]],
-    ["capacity-failure-effects", [...binding, "marked necessary set exceeds rendered memory limit", "at least one optional candidate fits within memory limit", "marked necessary set exceeding limit fails with CAPACITY without commit", "failed maintenance preserved prior saved memory/boundary", "continuation following capacity failure (failure-path recovery)"]],
+    ["capacity-fit-effects", [...binding, "all marked necessary candidates jointly fit within saved-memory hard limit", "all candidates together exceed saved-memory hard limit (actual competition)", "all marked necessary candidates jointly retained in final memory"]],
+    ["capacity-failure-effects", [...binding, "marked necessary set exceeds saved-memory hard limit", "at least one optional candidate fits within saved-memory hard limit", "marked necessary set exceeding limit fails with CAPACITY without commit", "failed maintenance preserved prior saved memory/boundary", "continuation following capacity failure (failure-path recovery)"]],
   ] as const) {
     const p = [...exposed, ...names.map(check => ({ check, status: "PROVEN" as const }))];
     assert.equal(score("g8", check, [], p).status, "PROVEN");

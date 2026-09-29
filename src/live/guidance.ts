@@ -221,9 +221,9 @@ export function scoreGuidance(
     return result("PROVEN", "No patch replay attempted through the later completed turn, including blocked attempts");
   }
   if (check === "capacity-fit-effects" || check === "capacity-failure-effects") {
-    const names = ["capacity predicate bound to one frozen request and complete response", "growth reserved once outside the full memory limit",
-      ...(check === "capacity-fit-effects" ? ["all marked necessary candidates jointly fit within full memory limit", "all candidates together exceed memory limit (actual competition)", "all marked necessary candidates jointly retained in final memory"] :
-        ["marked necessary set exceeds rendered memory limit", "at least one optional candidate fits within memory limit", "marked necessary set exceeding limit fails with CAPACITY without commit", "failed maintenance preserved prior saved memory/boundary", "continuation following capacity failure (failure-path recovery)"])];
+    const names = ["capacity predicate bound to one frozen request and complete response", "growth reserved once outside the advisory target",
+      ...(check === "capacity-fit-effects" ? ["all marked necessary candidates jointly fit within saved-memory hard limit", "all candidates together exceed saved-memory hard limit (actual competition)", "all marked necessary candidates jointly retained in final memory"] :
+        ["marked necessary set exceeds saved-memory hard limit", "at least one optional candidate fits within saved-memory hard limit", "marked necessary set exceeding limit fails with CAPACITY without commit", "failed maintenance preserved prior saved memory/boundary", "continuation following capacity failure (failure-path recovery)"])];
     const missing = names.filter(n => !proven(n));
     return missing.length ? result("UNPROVEN", "Missing transaction qualification or effect evidence", { missing }) : result("PROVEN", "Qualified capacity mechanics observed; whether required declarations cover real dependencies remains a separate semantic judgment");
   }
