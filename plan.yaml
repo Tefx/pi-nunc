@@ -5081,7 +5081,7 @@ phases:
       financial/cumulcalltokencap.
 - id: nunc-native-grammar
   name: 原生 grammar 支持与独立记忆保存
-  status: pending
+  status: in_progress
   gate: Orchestrator 在唯一 implementation 步骤完成程序中作本改造的最终整合接受：最终候选满足完整已接受 grammar/容量/保存/维护合同，完整适用项目离线库存及实际原生序列化、恢复和持久状态证明可用；复用仍适用历史观察，仅重做失效部分。阻断缺陷、失败必要检查或未证明必要要求阻止接受。无付费模型、安装、发布或
     Pi 修改；不增加独立 gate。
   depends_on:
@@ -5089,7 +5089,7 @@ phases:
   steps:
   - id: nunc-native-grammar.integration
     name: 原生声明透传、独立 M 保存与 Pi 0.99.0 完整兼容交付
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       examples/**\", \"policies/**\", \"README.md\", \"package.json\", \"package-lock.json\"\
@@ -5147,3 +5147,5 @@ phases:
     - package.json
     - package-lock.json
     agent: senior-engineer
+    claimed_by: senior-engineer
+    claimed_at: '2026-09-29T18:31:48.371211Z'
