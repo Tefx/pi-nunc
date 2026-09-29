@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { isDeepStrictEqual } from "node:util";
 import type { Model, Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { ModelRegistry, type InlineExtension, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { authorizePayload, canonicalJson, classifyPayloadChange, jsonView, outputCapState, payloadMode, payloadOutputCeiling } from "../../src/pi/payload.js";
 import { model } from "../engine/fixtures.js";
 import { fixture } from "./fixtures.js";
@@ -207,13 +208,14 @@ function payloadExtra(mode: () => string, second?: (payload: Record<string, unkn
   return extras;
 }
 
-async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }, mode: () => string, second?: (payload: Record<string, unknown>) => unknown) {
+async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }, mode: () => string, second?: (payload: Record<string, unknown>) => unknown, tools?: ToolDefinition[]) {
   let sends = 0;
   const bodies: Record<string, unknown>[] = [];
   const admissions: Array<{ outcome?: string; code?: string; payload?: { mode?: string; categories?: string[] } }> = [];
   const openai = openaiProvider();
   const catalog = openai.getModels().find(m => m.id === "gpt-4.1");
   assert(catalog);
+  const selected = tools ? { ...catalog, compat: { ...catalog.compat, supportsOpenAIGrammarTools: true } } : catalog;
   const transport: typeof fetch = async (resource, init) => {
     sends++;
     bodies.push(await new Request(resource, init).json() as Record<string, unknown>);
@@ -222,11 +224,13 @@ async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }
   const bound = { apiKey: "sk-offline-fixture-key", fetch: transport, maxRetries: 0 as const };
   const wrapped: Provider = {
     ...openai,
+    getModels: () => openai.getModels().map(m => m.id === catalog.id ? selected : m),
     streamSimple: (m, context, options) => openai.streamSimple(m as Model<"openai-responses">, context, { ...options, ...bound }),
     stream: (m, context, options) => openai.stream(m as Model<"openai-responses">, context, { ...options, ...bound } as Parameters<typeof openai.stream>[2]),
   };
   const f = await fixture({
     config: { budget: { inputLimit: 8000 } },
+    ...(tools ? { tools } : {}),
     extras: [
       { name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as typeof admissions[number])); } },
       ...payloadExtra(mode, second),
@@ -235,10 +239,26 @@ async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }
   t.after(() => f.close());
   new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
   await f.modelRuntime.setRuntimeApiKey("openai", "offline-fixture-key");
-  await f.runtime.session.setModel(catalog);
+  await f.runtime.session.setModel(selected);
   await f.runtime.session.prompt("Native main request through the stock serializer");
   return { f, catalog, sends: () => sends, bodies, admissions };
 }
+
+test("native grammar declaration is sent as grammar, without replacing it with JSON-schema parameters", async t => {
+  const tool: ToolDefinition = {
+    name: "constrained", label: "Constrained", description: "Native regex input",
+    parameters: Type.Object({ value: Type.String() }),
+    constrainedSampling: { type: "grammar", variants: { openai_regex: "[a-z]+" } },
+    execute: async () => ({ content: [{ type: "text", text: "unused" }], details: {} }),
+  };
+  const run = await nativeMain(t, () => "observe", undefined, [tool]);
+  assert.equal(run.sends(), 1);
+  const wireTool = (run.bodies[0]?.tools as Array<Record<string, unknown>>).find(t => t.name === "constrained");
+  assert.deepEqual(wireTool?.format, { type: "grammar", syntax: "regex", definition: "[a-z]+" }, JSON.stringify(wireTool));
+  assert.equal(wireTool?.type, "custom");
+  assert.equal(wireTool?.parameters, undefined);
+  assert.equal(run.f.runtime.session.messages.at(-1)?.role, "assistant");
+});
 
 test("stock loader noop, identity, in-place and replacement metadata reach controlled HTTP", { timeout: 90000 }, async t => {
   for (const mode of ["observe", "identity", "inplace-meta", "replace-meta"] as const) {

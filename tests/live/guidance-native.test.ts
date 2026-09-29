@@ -81,7 +81,7 @@ async function guidanceNative(lowUsage = false) {
   const selection: any = { target: { repository, stateRoot: join(f.dir, "nunc-live-guidance"), cleanup: "retain" }, limits: { maxCalls: 160, maxTotalTokens: 24000000, maxDurationMs: 240000, maxOutputTokens: 20000, maxCostUsd: null }, scenarios: selections,
     overrides: [{ requirement: "offline-guidance-mechanics", reason: "Synthetic loopback protocol only; no live model calls", model: { provider, id: model }, config: { nunc: { extraction: { outputTokens: 1024 } }, compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } },
       { requirement: "split", reason: "Actual automatic native split", scenario: "g6", config: { compaction: { enabled: true } } },
-      ...(lowUsage ? [] : ["fits-required", "required-too-large"]).map(variant => ({ requirement: "capacity", reason: "Measured finite memory competition", scenario: `g8/${variant}`, config: { nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } } } }))] };
+      ...(lowUsage ? [] : ["fits-required", "required-too-large"]).map(variant => ({ requirement: "capacity", reason: "Measured finite memory competition", scenario: `g8/${variant}`, config: { nunc: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 1024 } } } }))] };
   const run = async (args: string[], input = selection) => {
     const child = spawn(process.execPath, [join(repository, "scripts/verify-live.mjs"), ...args], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "", stderr = "";

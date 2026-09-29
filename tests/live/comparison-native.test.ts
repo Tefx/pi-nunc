@@ -16,7 +16,7 @@ async function actualWorker(f: any, selection: Pick<Selection, "id" | "variant">
   const stateRoot = join(f.state, "worker-run"); await mkdir(join(stateRoot, "tmp"), { recursive: true });
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     limits: { maxCalls: 24, maxTotalTokens: 1920000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 60000 },
-    scenarios: [{ ...selection, config: config ?? { compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
+    scenarios: [{ ...selection, config: config ?? { compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 1024 } }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
     comparison: { modes: ["defaults"], targets: { native: { repository }, current: { repository: join(repository, ".scratch/baseline-70dacad") }, candidate: { repository } } } };
   const overrides = { models: [model], controlledModels: { providers: { groq: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ ...model, provider: undefined, cost: undefined }] } } } };
   const job = { input, scenarioIndex: 0, deadline: Date.now() + 60000, resume: false, group };
