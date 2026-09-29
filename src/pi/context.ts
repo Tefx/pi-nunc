@@ -301,7 +301,7 @@ export function createContextSurface(options: {
             entries: inspected.entries,
             messages: inspected.messages,
             system: { text: fixed.systemPrompt, tokens: textTokens(fixed.systemPrompt) },
-            tools: toolLayer(fixed.tools),
+            tools: toolLayer(fixed.tools, fixed.toolState === "partial"),
           },
         };
       } catch { /* Freeze observation is best-effort. */ }
@@ -464,8 +464,7 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
 
 function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number): ContextLayout {
   const inspected = inspectEntries(active, imageTokens);
-  const declaredTools = toolLayer(fixed.tools);
-  const tools = fixed.toolState === "partial" ? { ...declaredTools, unknown: true } : declaredTools;
+  const tools = toolLayer(fixed.tools, fixed.toolState === "partial");
   const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
   const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0 };
   const packagingTokens = 64 + extraInputTokens;
@@ -537,7 +536,7 @@ function unavailableLayout(): ContextLayout {
   };
 }
 
-function toolLayer(tools: readonly { name: string; description?: string; parameters?: unknown; constrainedSampling?: unknown }[]): ToolsLayer {
+function toolLayer(tools: readonly { name: string; description?: string; parameters?: unknown; constrainedSampling?: unknown }[], partial = false): ToolsLayer {
   const names = tools.map(tool => tool.name);
   const definitions: ToolDefinitionView[] = tools.map(tool => {
     try {
@@ -552,7 +551,8 @@ function toolLayer(tools: readonly { name: string; description?: string; paramet
     }
   });
   try {
-    return { count: tools.length, names, tokens: textTokens(JSON.stringify(tools)), unknown: definitions.some(item => item.unknown), definitions };
+    return { count: tools.length, names, tokens: textTokens(JSON.stringify(tools)), unknown: partial || definitions.some(item => item.unknown),
+      definitions: partial ? definitions.map(def => ({ ...def, unknown: true })) : definitions };
   } catch {
     return { count: tools.length, names, tokens: null, unknown: true, definitions };
   }

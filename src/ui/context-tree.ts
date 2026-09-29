@@ -35,7 +35,7 @@ function scopeCurrent(current: CurrentContext, add: (node: CtxNode) => string): 
     label: "Current projection",
     description: current.model ? `${current.model.provider}/${current.model.id}` : "no model",
     preview: [
-      "Scope: current delivered F/R/M classification, not request send order. Later context/payload hooks are not included.",
+      "Scope: current-path F/R/M projection, not request send order. F can be partial before a persisted declaration; later context/payload hooks are not included.",
       bars(current),
       current.occupied ? "Maintenance occupied" : "",
       current.unconfirmed ? "Save unconfirmed" : "",
@@ -186,7 +186,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
       id: `${prefix}:F`,
       label: "F · Fixed",
       description: tokenLabel(layout.system.tokens + (layout.tools.tokens ?? 0), layout.tools.unknown),
-      preview: `F (current history): persisted prompt and tool references; last actual request is separate\nSystem ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
+      preview: `${prefix === "last-main" ? "F (last actual main Context): provider-bound prompt and tool declarations" : "F (current history): persisted declarations when available; otherwise partial public ToolInfo"}\nSystem ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
       children: [
         add({ id: `${prefix}:F:system`, label: "system", description: `${thousands(layout.system.tokens)} tok`, preview: layout.system.text || "(empty system)", children: [] }),
         add({ id: `${prefix}:F:tools`, label: "tools", description: `${layout.tools.count}`, preview: layout.tools.names.join(", ") || "(no tools)", children: toolIds }),

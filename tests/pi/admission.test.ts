@@ -10,6 +10,7 @@ import { LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, type AdmissionObservation, type Reso
 import { Type } from "typebox";
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { contextSurface } from "pi-nunc/pi";
+import { buildContextNodes } from "../../src/ui/context-tree.js";
 
 test("native grammar declaration reaches the main provider with its exact variant", async t => {
   const grammar = { type: "grammar" as const, variants: { openai_regex: "x+" } };
@@ -494,6 +495,10 @@ test("fixed context preserves constrainedSampling metadata and effective system 
   const sent = contextSurface(api!)!.read(ctx!).lastMain?.layout.tools;
   assert.equal(sent?.unknown, false, "last main reflects the complete actual Context");
   assert.deepEqual(sent?.definitions[0]?.constrainedSampling, toolWithSampling.constrainedSampling);
+  const nodes = buildContextNodes(contextSurface(api!)!.read(ctx!));
+  assert.match(nodes.get("last-main:F")?.preview ?? "", /last actual main Context/);
+  assert.match(nodes.get("last-main:F:tools:constrained_reader")?.preview ?? "", /Constrained sampling/);
+  assert.match(nodes.get("current:F")?.preview ?? "", /current history/);
   await f.runtime.session.compact();
 
   const view = contextSurface(api!)!.read(ctx!).current.layout;

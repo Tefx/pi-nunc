@@ -91,6 +91,7 @@ for (const imageTokens of [undefined, 512]) test(`current F/M/R counts, tool ass
     return { name, description: tool.description, parameters: tool.parameters };
   }) }, projected.memory.slots, projected.active));
   assert.equal(view.current.layout.tools.unknown, true, "no persisted declaration: ToolInfo omits sampling metadata");
+  assert(view.current.layout.tools.definitions.every(def => def.unknown), "per-tool partial estimates must not appear complete");
   assert.equal(view.current.layout.heuristic.unknown, true);
   assert.equal(view.current.layout.heuristic.tokens, expected, "partial metadata supplies a lower-bound estimate");
   assert.equal(view.current.layout.memory?.tokens, memoryTokens(projected.memory.slots));
@@ -490,7 +491,8 @@ test("tool definitions and frozen F survive later model change; snapshots stay d
   assert(tool);
   assert.equal(tool.description, "Read complete file");
   assert.notEqual(tool.tokens, null);
-  assert.equal(tool.unknown, false);
+  assert.equal(tool.unknown, true, "without a persisted declaration, ToolInfo may omit sampling metadata");
+  assert.equal(saved.lastMaintenance?.before.tools.unknown, true, "frozen historical F remains explicitly partial");
   assert.equal(saved.lastMaintenance?.before.system.text, systemAtFreeze);
   assert.equal(saved.lastMaintenance?.before.tools.definitions.find(item => item.name === "read")?.description, "Read complete file");
   if (saved.lastMaintenance?.candidate?.memory.slots[0]) saved.lastMaintenance.candidate.memory.slots[0].text = "consumer-draft";
