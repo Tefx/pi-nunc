@@ -65,8 +65,9 @@ export function memoryOccupancy(current: CurrentContext): string {
   const noModel = current.model === null;
   const occupied = b.memoryOccupied === null ? (noModel ? "no model" : "unknown") : thousands(b.memoryOccupied);
   if (b.memoryUnknown) return b.memoryOccupied === null ? occupied : `${occupied} · unknown limit`;
-  if (b.memoryLimit === null) return `${occupied} / ${noModel ? "no model" : "unknown"}`;
-  return `${occupied} / ${thousands(b.memoryLimit)}`;
+  const saveLimit = b.memoryHardLimit ?? b.memoryLimit;
+  if (saveLimit === null) return `${occupied} / ${noModel ? "no model" : "unknown"}`;
+  return `${occupied} / ${thousands(saveLimit)}`;
 }
 
 export function budgetLines(current: CurrentContext): string[] {
@@ -79,7 +80,9 @@ export function budgetLines(current: CurrentContext): string[] {
     `Main admission: ${quantity(b.mainAdmissionLimit, noModel)}`,
     `Memory/input plan: ${quantity(b.plannedInputLimit, noModel)}`,
     `Maintenance input plan: ${quantity(b.extractionInputLimit, noModel)}`,
-    `M occupancy: ${memoryOccupancy(current)}`,
+    `M occupancy / save hard cap: ${memoryOccupancy(current)}`,
+    `M advisory maintenance target: ${quantity(b.memoryLimit, noModel)} (historical F estimate)`,
+    `Current history tools: ${current.layout.tools.unknown ? "partial/unknown" : "persisted declarations"}; last actual request is separate`,
     `Main output reserve: ${quantity(b.outputReserveTokens, noModel)}`,
     `Maintenance output reserve: ${quantity(b.extractionOutputTokens, noModel)}`,
     `Main output cap: ${capLabel(b.outputCapKnown, b.outputCapTokens, noModel, "not observed")}`,

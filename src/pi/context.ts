@@ -76,7 +76,9 @@ export interface ContextBudget {
   plannedInputLimit: number | null;
   mainAdmissionLimit: number | null;
   extractionInputLimit: number | null;
+  /** Advisory maintenance target, not the save limit. */
   memoryLimit: number | null;
+  memoryHardLimit?: number | null;
   memoryOccupied: number | null;
   memoryUnknown: boolean;
   outputReserveTokens: number | null;
@@ -405,6 +407,7 @@ function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedCont
     mainAdmissionLimit: mainAdmissionLimit(model, config.main),
     extractionInputLimit: plan.extractionInputLimit,
     memoryLimit: plan.memoryLimit,
+    memoryHardLimit: config.memory.hardMaxTokens ?? 8192,
     memoryOccupied: occupied,
     memoryUnknown,
     outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens,
@@ -460,7 +463,8 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
 
 function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number): ContextLayout {
   const inspected = inspectEntries(active, imageTokens);
-  const tools = toolLayer(fixed.tools);
+  const declaredTools = toolLayer(fixed.tools);
+  const tools = fixed.toolState === "partial" ? { ...declaredTools, unknown: true } : declaredTools;
   const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
   const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0 };
   const packagingTokens = 64 + extraInputTokens;

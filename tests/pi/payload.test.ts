@@ -219,7 +219,7 @@ async function nativeMain(t: { after: (fn: () => Promise<void> | void) => void }
     bodies.push(await new Request(resource, init).json() as Record<string, unknown>);
     return responsesSSE(catalog.id, "Controlled native response.");
   };
-  const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const };
+  const bound = { apiKey: "sk-offline-fixture-key", fetch: transport, maxRetries: 0 as const };
   const wrapped: Provider = {
     ...openai,
     streamSimple: (m, context, options) => openai.streamSimple(m as Model<"openai-responses">, context, { ...options, ...bound }),

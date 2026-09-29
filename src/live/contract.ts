@@ -106,7 +106,7 @@ export interface RunInput {
   assets?: ScenarioAssets;
   batch?: BatchAuthority;
 }
-export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.87.1"; callsMade: 0 }
+export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: "0.99.0"; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
 export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>): Promise<unknown> {
   const chunks: Buffer[] = []; let length = 0;
@@ -338,7 +338,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   for (const name of ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "typescript"]) {
     const pkg = JSON.parse(await readFile(join(repository, "node_modules", name, "package.json"), "utf8"));
     requireValue(pkg.version === lock.packages[`node_modules/${name}`]?.version, "DEPENDENCY", `Local ${name} differs from lock; no installation is performed`);
-    if (name.startsWith("@earendil-works/pi-")) requireValue(pkg.version === "0.87.1", "DEPENDENCY", "This runner supports Pi 0.87.1 only");
+    if (name.startsWith("@earendil-works/pi-")) requireValue(pkg.version === "0.99.0", "DEPENDENCY", "This runner supports Pi 0.99.0 only");
   }
   const { loadScenario } = await import("./scenarios.js");
   for (const selection of input.scenarios) {
@@ -390,7 +390,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     try { const stat = await lstat(natPiPkg); requireValue(stat.isFile(), "DEPENDENCY", "Native target missing Pi package.json"); }
     catch { throw new RunnerError("DEPENDENCY", "Native target must have installed @earendil-works/pi-coding-agent"); }
     const natPiManifest = JSON.parse(await readFile(natPiPkg, "utf8"));
-    requireValue(natPiManifest.version === "0.87.1", "DEPENDENCY", `Native target requires Pi 0.87.1, found ${natPiManifest.version}`);
+    requireValue(natPiManifest.version === "0.99.0", "DEPENDENCY", `Native target requires Pi 0.99.0, found ${natPiManifest.version}`);
     const natCliBin = join(natRepo, "node_modules/@earendil-works/pi-coding-agent", natPiManifest.bin?.pi ?? "dist/bundle/cli.js");
     try { const stat = await lstat(natCliBin); requireValue(stat.isFile(), "DEPENDENCY", "Native target missing Pi CLI bin"); }
     catch { throw new RunnerError("DEPENDENCY", "Native target must have executable Pi CLI binary"); }
@@ -451,7 +451,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     requireValue(info.isFile(), "EXTENSION", "Larva extension must be a readable source file");
     digest.update(larva.extension); digest.update(await readFile(larva.extension));
   }
-  const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.87.1", callsMade: 0 };
+  const receipt: Receipt = { version: 1, binding: digest.digest("hex"), candidate, node, pi: "0.99.0", callsMade: 0 };
   if (input.receipt !== undefined) requireValue(canonical(input.receipt) === canonical(receipt), "RECEIPT", "Preflight receipt does not match current target/config/scenarios/candidate");
   return receipt;
 }

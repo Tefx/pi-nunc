@@ -82,6 +82,7 @@ export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEn
   const r = active.flatMap(e => e.messages);
   return { ...fixed, messages: slots.length > 0 ? [...r, memoryMessage(slots)] : [...r] };
 }
+export function hardMemoryLimit(config: EngineConfig): number { return config.memory.hardMaxTokens ?? 8192; }
 export function memoryTokens(slots: Slot[], imageTokens?: number): number {
   if (slots.length === 0) return 0;
   return messageTokens(memoryMessage(slots), imageTokens);
@@ -97,9 +98,10 @@ export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: Engin
   const effectiveTrigger = Math.min(config.triggerTokens, mainInputLimit);
   const fixedTokens = requestTokens(mainContext(fixed, [], []), config.imageTokens) + config.main.extraInputTokens;
   const available = effectiveTrigger - fixedTokens;
-  requireThat(available > 0, "CAPACITY", "A <= 0: effective F and summary envelope exhaust the work budget");
-  const memoryLimit = Math.floor(Math.min(config.memory.fraction * available, config.memory.maxTokens ?? Infinity));
-  const keepTarget = Math.floor(config.keepRecentFraction * (available - memoryLimit));
+  // Historical F is semantic evidence, not an upper bound for the next main loadout.
+  // These are advisory placement numbers; request admission measures actual Context.
+  const memoryLimit = Math.floor(Math.min(config.memory.fraction * Math.max(0, available), config.memory.maxTokens ?? Infinity));
+  const keepTarget = Math.floor(config.keepRecentFraction * Math.max(0, available - memoryLimit));
   return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, keepTarget };
 }
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
@@ -133,9 +135,12 @@ export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: nu
   const suffix: number[] = new Array(sizes.length + 1).fill(0);
   for (let i = sizes.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + sizes[i]!;
   const feasible = cuts.map(cut => ({ cut, keptTokens: suffix[cut]! })).filter(c => fixedTokens + memoryLimit + c.keptTokens + config.growthTokens <= trigger);
-  requireThat(feasible.length > 0, "CAPACITY", "No nonempty B/K boundary fits memory reserve and growth; an indivisible recent message/tool unit may be too large");
-  // Largest suffix under target. If rounding cannot reach target, smallest feasible complete unit above it.
-  return feasible.find(c => c.keptTokens <= keepTarget) ?? feasible[feasible.length - 1]!;
+  // A stale historical F cannot veto an otherwise valid maintenance extraction.
+  // The complete extraction is measured separately before transport; main admission
+  // measures the next real provider Context after Pi applies its tool loadout.
+  const candidates = feasible.length ? feasible : cuts.map(cut => ({ cut, keptTokens: suffix[cut]! }));
+  requireThat(candidates.length > 0, "CAPACITY", "No legal nonempty B/K boundary");
+  return candidates.find(c => c.keptTokens <= keepTarget) ?? candidates[candidates.length - 1]!;
 }
 export function unknownUsage(): UsageObservation {
   return { input: null, cacheRead: null, cacheWrite: null, contextInput: null, output: null, reasoning: null, totalTokens: null, cost: null };

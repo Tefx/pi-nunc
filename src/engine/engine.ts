@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import type { Complete, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
 import { decideToolResultCleanup, applyToolResultCleanup } from "./cleanup.js";
-import { chooseCut, mainContext, memoryPlan, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
+import { chooseCut, hardMemoryLimit, mainContext, memoryPlan, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies } from "./request.js";
 import { EngineError, freezeCopy, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
 
@@ -104,7 +104,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     let patch: unknown;
     try { patch = JSON.parse(text); }
     catch (cause) { throw new EngineError("RESPONSE", "Maintenance response is not one complete JSON object", { cause }); }
-    const applied = applyPatch(frozen.memory, patch, memoryLimit, slots => memoryTokens(slots, config.imageTokens));
+    const applied = applyPatch(frozen.memory, patch, hardMemoryLimit(config), slots => memoryTokens(slots, config.imageTokens));
     observations.droppedSlotIds = applied.droppedSlotIds;
     observations.required = applied.required;
     const kept = frozen.active.slice(cut);
@@ -129,7 +129,9 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     observations.accounting.mainAfterTokens = mainAfterTokens;
     observations.accounting.memoryTokens = memoryTokens(applied.memory.slots, config.imageTokens);
     observations.accounting.growthTokens = growth;
-    requireThat(mainAfterTokens <= mainInputLimit && mainAfterTokens < effectiveTrigger && growth >= config.growthTokens, "CAPACITY", "Candidate lacks safe input capacity or post-rollover growth space");
+    // Historical F is not the next main request's loadout. The native provider
+    // admission gates the actual continuation Context and lets Pi recover overflow.
+    // A successful extraction must not discard a valid M on a speculative forecast.
     cancelled(signal);
     observations.elapsedMs = performance.now() - start;
     return { ok: true, binding: frozen.binding, candidate: {

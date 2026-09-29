@@ -622,7 +622,7 @@ test("context Budget, Last maintenance accounting, Diagnostics, and warning summ
   const budget = clean(overlay.render(90));
   assert.match(budget, /Maintenance input plan: 11,111/);
   assert.doesNotMatch(budget, /Last-maintenance input plan/);
-  assert.match(budget, /M occupancy: 20 \/ 0/);
+  assert.match(budget, /M occupancy \/ save hard cap: 20 \/ 0/);
   assert.match(budget, /Main output cap: none/);
   assert.match(budget, /Maintenance output cap: none/);
   assert.match(budget, /Safety: 0/);

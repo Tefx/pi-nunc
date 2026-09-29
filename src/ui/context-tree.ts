@@ -186,7 +186,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
       id: `${prefix}:F`,
       label: "F · Fixed",
       description: tokenLabel(layout.system.tokens + (layout.tools.tokens ?? 0), layout.tools.unknown),
-      preview: `F (Fixed): effective system prompt and tool definitions\nSystem ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
+      preview: `F (current history): persisted prompt and tool references; last actual request is separate\nSystem ${thousands(layout.system.tokens)} tok\nTools ${tokenLabel(layout.tools.tokens, layout.tools.unknown)} (${layout.tools.count})`,
       children: [
         add({ id: `${prefix}:F:system`, label: "system", description: `${thousands(layout.system.tokens)} tok`, preview: layout.system.text || "(empty system)", children: [] }),
         add({ id: `${prefix}:F:tools`, label: "tools", description: `${layout.tools.count}`, preview: layout.tools.names.join(", ") || "(no tools)", children: toolIds }),
@@ -339,7 +339,7 @@ function bars(current: CurrentContext): string {
   return [
     `F ${meter(fUnknown ? null : f, cap)} ${tokenLabel(f, fUnknown)}`,
     `R ${meter(rUnknown ? null : rKnown, cap)} ${tokenLabel(rKnown, rUnknown)}`,
-    `M ${meter(current.budget.memoryUnknown ? null : current.budget.memoryOccupied, current.budget.memoryLimit)} ${memoryLine(current)}`,
+    `M ${meter(current.budget.memoryUnknown ? null : current.budget.memoryOccupied, current.budget.memoryHardLimit ?? current.budget.memoryLimit)} ${memoryLine(current)}`,
   ].join("\n");
 }
 
@@ -358,7 +358,7 @@ function tokenLabel(tokens: number | null | undefined, unknown: boolean): string
 
 function memoryLine(current: CurrentContext): string {
   const occupied = current.budget.memoryOccupied;
-  const limit = current.budget.memoryLimit;
+  const limit = current.budget.memoryHardLimit ?? current.budget.memoryLimit;
   if (current.budget.memoryUnknown) return occupied === null ? "unknown" : `${thousands(occupied)} · unknown limit`;
   if (limit === null) return occupied === null ? "unknown" : `${thousands(occupied)} / unknown`;
   return `${thousands(occupied ?? 0)} / ${thousands(limit)}`;

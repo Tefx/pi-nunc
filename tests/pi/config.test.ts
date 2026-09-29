@@ -15,7 +15,7 @@ for (const config of [null, [], { unknown: 1 }, { policyFile: "" }, { memory: { 
 test("actual host settings drive H, memory/keep configuration and stock output/thinking upper bounds", () => {
   const config = parseConfig({ memory: { fraction: 0.2, maxTokens: 400 }, rolling: { keepRecentFraction: 0.5 }, extraction: { toolResults: "full", outputTokens: 1024 } });
   const first = engineConfig(config, model, { reserveTokens: 36000, keepRecentTokens: 100 });
-  assert.equal(first.triggerTokens, 24000); assert.deepEqual(first.memory, { fraction: 0.2, maxTokens: 400 });
+  assert.equal(first.triggerTokens, 24000); assert.deepEqual(first.memory, { fraction: 0.2, maxTokens: 400, hardMaxTokens: 8192 });
   assert.equal(first.keepRecentFraction, 0.5); assert.equal(first.extraction.outputTokens, 1024);
   assert.equal(first.main.outputTokens, model.maxTokens);
   const second = engineConfig(config, { ...model, contextWindow: 45000 }, { reserveTokens: 36000, keepRecentTokens: 100 });

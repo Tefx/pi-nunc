@@ -8,7 +8,7 @@ export interface ActiveEntry {
   sourceRole: "user" | "assistant" | "toolResult" | "custom" | "bashExecution" | "branchSummary";
   messages: Message[];
 }
-export interface FixedContext { systemPrompt: string; tools: Tool[] }
+export interface FixedContext { systemPrompt: string; tools: Tool[]; /** No persisted system state: public ToolInfo may omit provider sampling metadata. */ toolState?: "partial" }
 /** Identity is an adapter-owned generation, advanced on session/path/model/options change. */
 export interface Binding { sessionId: string; leafId: string; generation: string }
 export interface PolicySnapshot { builtin: string; user: string }
@@ -28,7 +28,7 @@ export interface RequestBudget {
 export interface EngineConfig {
   /** Pi's effective contextWindow - compaction.reserveTokens, not another scheduler. */
   triggerTokens: number;
-  memory: { fraction: number; maxTokens?: number };
+  memory: { fraction: number; maxTokens?: number; /** Standalone M cap; never inferred from future F. */ hardMaxTokens?: number };
   keepRecentFraction: number;
   growthTokens: number;
   main: RequestBudget;

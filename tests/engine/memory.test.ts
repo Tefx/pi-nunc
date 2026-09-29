@@ -25,7 +25,7 @@ test("transaction merges/replaces incrementally, keeps bodies/order, appends gen
 
 test("capacity selects whole slots by priority without resurrecting explicitly invalidated old text", async () => {
   const source = await input(); source.memory = structuredClone(initial);
-  source.config.memory.maxTokens = memoryTokens([initial.slots[1]!]);
+  source.config.memory.hardMaxTokens = memoryTokens([initial.slots[1]!]);
   const result = await maintain(source, responder({ remove: ["s1", "s4"], add: [{ key: "tooBig", text: "corrected".repeat(1000) }], priority: ["tooBig", "s2"], required: [] }));
   assert(result.ok, result.ok ? "" : result.message);
   assert.deepEqual(result.candidate.memory.slots, [initial.slots[1]]);
@@ -49,11 +49,11 @@ test("no capacity competition preserves natural order despite reversed priority"
   assert.equal(result.memory.slots[3]!.id, "s5");
 });
 
-test("zero memory fraction and explicit full retirement both permit empty snapshots", async () => {
+test("zero advisory fraction preserves saved M; explicit full retirement permits empty snapshot", async () => {
   const source = await input(); source.memory = structuredClone(initial); source.config.memory.fraction = 0;
   const result = await maintain(source, responder({ add: [], remove: [], priority: ["s1", "s2", "s4"], required: [] }));
   assert(result.ok, result.ok ? "" : result.message);
-  assert.deepEqual(result.candidate.memory.slots, []);
+  assert.deepEqual(result.candidate.memory.slots, initial.slots);
   assert.equal(result.observations.accounting!.memoryLimit, 0);
   assert.deepEqual(applyPatch(initial, { add: [], remove: ["s1", "s2", "s4"], priority: [], required: [] }, 0, memoryTokens).memory.slots, []);
 });
@@ -100,7 +100,7 @@ test("all declared required items retained jointly; optional items dropped by pr
   const opt2Text = "Optional background note 2 ".repeat(20);
   // Set memory limit to exactly fit s2 + focus + small margin, but NOT opt1 or opt2
   const requiredBudget = memoryTokens([{ id: "s2", text: s2Text }, { id: "s5", text: focusText }]);
-  source.config.memory.maxTokens = requiredBudget;
+  source.config.memory.hardMaxTokens = requiredBudget;
   const patch = {
     add: [
       { key: "focus", text: focusText },
@@ -129,7 +129,7 @@ test("priority cannot skip large required item to pick small optional item and c
   const bigRequiredText = "Critical shipment constraint ".repeat(80);
   const smallOptionalText = "Small note";
   // Budget fits small optional item but NOT the large required item
-  source.config.memory.maxTokens = memoryTokens([{ id: "s5", text: smallOptionalText }]);
+  source.config.memory.hardMaxTokens = memoryTokens([{ id: "s5", text: smallOptionalText }]);
   const patch = {
     add: [
       { key: "bigReq", text: bigRequiredText },
@@ -155,7 +155,7 @@ test("multiple required items that fit individually but exceed limit jointly fai
   const req2Text = "Second required obligation ".repeat(25);
   // Budget fits either req1 or req2 individually, but not both jointly
   const singleBudget = memoryTokens([{ id: "s5", text: req1Text }]);
-  source.config.memory.maxTokens = singleBudget;
+  source.config.memory.hardMaxTokens = singleBudget;
   const patch = {
     add: [
       { key: "req1", text: req1Text },

@@ -23,12 +23,12 @@ test("real OpenAI adapter enforces serialized cap and stops on HTTP failure with
       return new Response(JSON.stringify({ error: { message: "Controlled rate-limit response", type: "rate_limit_error" } }), { status: 429, headers: { "content-type": "application/json", "retry-after": "0" } });
     };
     const provider = boundedProvider(base, [model], ledger, { fetch: transport });
-    const response = await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result();
-    assert.equal(response.stopReason, "error"); assert.equal(requests, 1);
+    const response = await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "sk-offline-fixture-key" }).result();
+    assert.equal(response.stopReason, "error"); assert.equal(requests, 1, response.errorMessage ?? "No HTTP request");
     assert(observed && typeof observed === "object" && "url" in observed && "body" in observed);
     assert.equal(observed.url, "https://api.openai.com/v1/responses");
     const body = observed.body as Record<string, unknown>; assert.equal(body.max_output_tokens, 1000); assert.equal(body.model, "gpt-4.1");
-    assert.equal((await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result()).stopReason, "error"); assert.equal(requests, 1);
+    assert.equal((await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "sk-offline-fixture-key" }).result()).stopReason, "error"); assert.equal(requests, 1);
     assert.equal(ledgerSummary(readLedger(ledger.path)).costUsd, null);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });

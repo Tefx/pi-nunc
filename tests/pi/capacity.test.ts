@@ -89,7 +89,7 @@ function fauxMsg(text: string, outputTokens = 50, inputTokens = 1000) {
 }
 
 test("required-capacity failure on manual compact: cancels, no default compaction, leaves M/K unchanged, subsequent turn succeeds without repeating extraction", async t => {
-  const f = await fixture(); t.after(() => f.close()); f.seed();
+  const f = await fixture({ config: { memory: { hardMaxTokens: 100 } } }); t.after(() => f.close()); f.seed();
   const oversizedPatch = JSON.stringify({
     add: [{ key: "oversizedReq", text: "Mandatory shipment constraint ".repeat(400) }],
     remove: [],
@@ -125,7 +125,7 @@ test("required-capacity failure on manual compact: cancels, no default compactio
 });
 
 test("required-capacity failure on pre-prompt threshold: cancels compaction, no default fallback, prompt delivered once without duplicate input", async t => {
-  const f = await fixture({ enabled: true }); t.after(() => f.close()); f.seed();
+  const f = await fixture({ enabled: true, config: { memory: { hardMaxTokens: 100 } } }); t.after(() => f.close()); f.seed();
   // Simulate previous response with usage near threshold to trigger pre-prompt threshold maintenance
   const previous = answer({}, f.faux.getModel()); previous.stopReason = "aborted"; previous.timestamp = Date.now();
   previous.usage = { ...previous.usage, input: 24500, cacheRead: 0, cacheWrite: 0, totalTokens: 24540 };
@@ -180,7 +180,7 @@ test("required-capacity failure on pre-prompt threshold: cancels compaction, no 
 });
 
 test("required-capacity failure on provider overflow: cancels compaction, terminates without infinite compaction loops or duplicate effects", async t => {
-  const f = await fixture({ enabled: true }); t.after(() => f.close()); f.seed();
+  const f = await fixture({ enabled: true, config: { memory: { hardMaxTokens: 100 } } }); t.after(() => f.close()); f.seed();
   const oversizedPatch = JSON.stringify({
     add: [{ key: "oversizedReq", text: "Mandatory shipment constraint ".repeat(400) }],
     remove: [],
@@ -225,7 +225,7 @@ test("host tool execution across required-capacity cancellations: tools execute 
         return { content: [{ type: "text" as const, text: "effect observed" }], details: {} };
       },
     };
-    const f = await fixture({ enabled: mode !== "manual", config: { memory: { maxTokens: 100 } }, tools: [tool] });
+    const f = await fixture({ enabled: mode !== "manual", config: { memory: { maxTokens: 100, hardMaxTokens: 100 } }, tools: [tool] });
     try {
       f.seed();
       if (mode === "threshold") {

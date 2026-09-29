@@ -27,7 +27,7 @@ async function memoryFixture(t: { after: (f: () => Promise<void>) => void }) {
   return { f, ctx: () => ctx!, surface: () => surface!, api: () => api!, observations };
 }
 
-test("atomic final budget, overlimit reduction, unknown-budget shrinking and manual/model conflicts share native M", async t => {
+test("standalone hard M cap, overlimit reduction, unknown-config shrinking and manual/model conflicts share native M", async t => {
   const e = await memoryFixture(t);
   const read = () => e.surface().read(e.ctx());
   const patch = (params: Parameters<MemorySurface["patch"]>[1]) => e.surface().patch(e.ctx(), params);
@@ -35,19 +35,22 @@ test("atomic final budget, overlimit reduction, unknown-budget shrinking and man
   const initial = patch({ expectedRevision: original.revision, add: [{ key: "a", text: "A".repeat(180) }, { key: "b", text: "B".repeat(180) }] });
   assert.equal(initial.ok, true);
   const before = read();
-  await writeFile(e.f.configFile, JSON.stringify({ memory: { maxTokens: before.budget.tokens } }));
+  await writeFile(e.f.configFile, JSON.stringify({ memory: { hardMaxTokens: before.budget.tokens } }));
   const entries = e.f.runtime.session.sessionManager.getEntries().length;
   const combined = patch({ expectedRevision: before.revision, remove: ["s1"], add: [{ key: "c", text: "C".repeat(160) }] });
   assert.equal(combined.ok, true, "final candidate fits even though add-before-remove would exceed M budget");
   assert.deepEqual(read().memory.slots.map(s => s.id), ["s2", "s3"]);
   assert.equal(e.f.runtime.session.sessionManager.getEntries().length, entries + 1);
   assert.equal(read().memory.slots[0]!.text, before.memory.slots[1]!.text);
-  await writeFile(e.f.configFile, JSON.stringify({ memory: { maxTokens: 8 } }));
+  await writeFile(e.f.configFile, JSON.stringify({ memory: { hardMaxTokens: 8 } }));
   assert.equal(read().budget.overLimit, true);
   assert.equal(patch({ expectedRevision: read().revision, update: [{ id: "s2", text: "B".repeat(100) }] }).ok, true);
   assert.equal(read().budget.overLimit, true, "shrink need not bring all M under the lowered cap");
   const count = e.f.runtime.session.sessionManager.getEntries().length;
+  // A future F budget can be unknown/invalid without vetoing a standalone M edit.
   e.f.settings.applyOverrides({ compaction: { reserveTokens: 100000, keepRecentTokens: 1 } });
+  assert.equal(read().budget.limit, 8);
+  await writeFile(e.f.configFile, JSON.stringify({ memory: { hardMaxTokens: 0 } }));
   const unknown = read();
   assert.equal(unknown.budget.limit, null);
   const growth = patch({ expectedRevision: unknown.revision, add: [{ key: "d", text: "growth" }] });
@@ -63,7 +66,7 @@ test("atomic final budget, overlimit reduction, unknown-budget shrinking and man
   const staleManual = e.surface().delete(e.ctx(), latest.revision, "s2");
   assert(!staleManual.ok);
   assert.equal(staleManual.code, "conflict");
-  assert.equal(read().memory.nextId, 4, "failed unknown-budget growth consumed no ID");
+  assert.equal(read().memory.nextId, 4, "failed unknown-config growth consumed no ID");
 });
 
 test("legacy checkpoint and later revision retain IDs/order/nextId across repeated requests and actual resume/reload/tree/fork/new", { timeout: 20000 }, async t => {

@@ -133,14 +133,20 @@ for (const [i, change] of invalidConfigs.entries()) test(`invalid budget configu
   assert(!result.ok); assert.equal(result.code, "CONFIG"); assert.equal(result.observations.requests, 0);
 });
 
-test("negative A, indivisible source, no retained growth and impossible small-model extraction are explicit failures", async () => {
+test("oversized extraction and indivisible source fail; advisory growth alone does not veto maintenance", async () => {
   const fixed = await input(); fixed.fixed.systemPrompt = "f".repeat(120000);
   const single = await input(); single.active = [user("one", "big".repeat(10000))];
   const growth = await input(); growth.config.growthTokens = 24900;
   const giantK = await input(); giantK.active = [user("old", "old"), user("large", "x".repeat(320000))];
-  for (const source of [fixed, single, growth, giantK]) {
+  for (const source of [single, giantK]) {
     const result = await maintain(source, async () => { assert.fail("unusable work budget"); });
-    assert(!result.ok); assert.equal(result.code, "CAPACITY"); assert.equal(result.observations.requests, 0);
+    assert(!result.ok); assert.equal(result.code, "CAPACITY", `${result.message}; ${String(result.cause)}`); assert.equal(result.observations.requests, 0);
+  }
+  for (const source of [fixed, growth]) {
+    const admissible = await maintain(source, responder());
+    assert(admissible.ok, admissible.ok ? "" : admissible.message);
+    assert.equal(admissible.observations.requests, 1);
+    assert(admissible.observations.accounting!.fullExtractionTokens <= admissible.observations.accounting!.extractionInputLimit);
   }
 });
 

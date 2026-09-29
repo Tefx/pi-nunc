@@ -221,7 +221,7 @@ test("tree switch between branches sharing a checkpoint rejects a stale path dra
 test("growing edits obey M budget; delete/shorten may reduce over-budget M without moving K", async t => {
   const { f, surface, ctx } = await prepared(t);
   const beforeActive = project(f.runtime.session.sessionManager.buildContextEntries()).active.map(e => e.entryId);
-  await writeFile(f.configFile, JSON.stringify({ memory: { maxTokens: 8 } }));
+  await writeFile(f.configFile, JSON.stringify({ memory: { hardMaxTokens: 8 } }));
   const view = surface().read(ctx());
   assert.equal(view.budget.unknown, false);
   const grow = surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, "too large ".repeat(400));
@@ -237,7 +237,7 @@ test("growing edits obey M budget; delete/shorten may reduce over-budget M witho
   assert.deepEqual(project(f.runtime.session.sessionManager.buildContextEntries()).active.map(e => e.entryId), beforeActive);
 });
 
-test("empty text, unknown budget, and skipped save do not append", async t => {
+test("empty text and invalid-config unknown budget do not append", async t => {
   const { f, surface, ctx } = await prepared(t);
   const before = f.runtime.session.sessionManager.getEntries().length;
   const view = surface().read(ctx());
@@ -245,6 +245,7 @@ test("empty text, unknown budget, and skipped save do not append", async t => {
   assert.equal(empty.ok, false);
   assert.equal(empty.ok ? "" : empty.code, "invalid");
   f.settings.applyOverrides({ compaction: { reserveTokens: 100000, keepRecentTokens: 1 } });
+  await writeFile(f.configFile, JSON.stringify({ memory: { hardMaxTokens: 0 } }));
   const unknown = surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, `${view.memory.slots[0]!.text} and more`);
   assert.equal(unknown.ok, false);
   assert.equal(unknown.ok ? "" : unknown.code, "unknown-budget");
@@ -346,6 +347,7 @@ test("abortCompaction failed terminal unlocks save; overlapping compact does not
   release.resolve();
   await Promise.allSettled([compacting, second]);
   const after = surface().read(ctx());
+  assert.equal(ctx().isIdle(), true, "native overlapping compactions have settled");
   assert.equal(after.status.occupied, false);
   const saved = surface().replace(ctx(), after.revision, after.memory.slots[0]!.id, "after failed terminal");
   assert.equal(saved.ok, true, JSON.stringify(saved));

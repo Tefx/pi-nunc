@@ -488,7 +488,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
             }
             if (selection.id === "e4") {
-              report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi 0.87.1 has no required-item guard" } });
+              report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi 0.99.0 has no required-item guard" } });
             }
           } else {
             const beforeActive = structuredClone(sm.buildContextEntries());

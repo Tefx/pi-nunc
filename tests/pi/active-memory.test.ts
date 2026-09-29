@@ -252,7 +252,7 @@ test("no-op patch does not append entry, bump revision, or invalidate receipt", 
 test("budget constraints: unknown budget blocks growth, overbudget blocks growth but permits shrinking", async t => {
   let ctxRef: ExtensionContext | undefined;
   const f = await fixture({
-    config: { memory: { maxTokens: 100 } },
+    config: { memory: { maxTokens: 100, hardMaxTokens: 100 } },
     flagValues: [["nunc-memory-tools", "true"]],
     extras: [{
       name: "capture-ctx",

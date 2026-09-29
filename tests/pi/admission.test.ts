@@ -11,11 +11,13 @@ import { Type } from "typebox";
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { contextSurface } from "pi-nunc/pi";
 
-test("constrained tool metadata unavailable at native maintenance seam is explicitly unsupported before main dispatch", async t => {
-  const f = await fixture({ tools: [{ name: "constrained", label: "Constrained", description: "Accept a constrained value", parameters: Type.Object({ value: Type.String() }), constrainedSampling: { type: "grammar", variants: { openai_regex: "x+" } }, execute: async () => ({ content: [{ type: "text", text: "unused" }], details: {} }) }] });
+test("native grammar declaration reaches the main provider with its exact variant", async t => {
+  const grammar = { type: "grammar" as const, variants: { openai_regex: "x+" } };
+  const f = await fixture({ tools: [{ name: "constrained", label: "Constrained", description: "Accept a constrained value", parameters: Type.Object({ value: Type.String() }), constrainedSampling: grammar, execute: async () => ({ content: [{ type: "text", text: "unused" }], details: {} }) }] });
   t.after(() => f.close()); await f.runtime.session.prompt("Use the configured tool");
-  assert.equal(f.faux.state.callCount, 0);
-  const last = f.runtime.session.messages.at(-1); assert(last?.role === "assistant"); assert.match(last.errorMessage ?? "", /Constrained tool sampling is unsupported/);
+  assert.equal(f.faux.state.callCount, 1);
+  assert.deepEqual(getCurrentTools(f.calls[0]!.messages).find(t => t.name === "constrained")?.constrainedSampling, grammar);
+  const last = f.runtime.session.messages.at(-1); assert(last?.role === "assistant"); assert.equal(last.stopReason, "stop", last.errorMessage ?? "");
 });
 
 test("admission delegates a registered native Azure Responses provider outside the old API list", async t => {

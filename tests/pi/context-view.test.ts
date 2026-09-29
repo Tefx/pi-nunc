@@ -90,8 +90,9 @@ for (const imageTokens of [undefined, 512]) test(`current F/M/R counts, tool ass
     assert(tool);
     return { name, description: tool.description, parameters: tool.parameters };
   }) }, projected.memory.slots, projected.active));
-  assert.equal(view.current.layout.heuristic.unknown, false);
-  assert.equal(view.current.layout.heuristic.tokens, expected);
+  assert.equal(view.current.layout.tools.unknown, true, "no persisted declaration: ToolInfo omits sampling metadata");
+  assert.equal(view.current.layout.heuristic.unknown, true);
+  assert.equal(view.current.layout.heuristic.tokens, expected, "partial metadata supplies a lower-bound estimate");
   assert.equal(view.current.layout.memory?.tokens, memoryTokens(projected.memory.slots));
   assert.equal(manager.getEntries().length, before);
   assert.equal(f.faux.state.callCount, 1);
@@ -103,7 +104,7 @@ for (const imageTokens of [undefined, 512]) test(`current F/M/R counts, tool ass
   const nativeImage = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
   assert.equal(image.tokens, 16 + (imageTokens ?? estimateTextAndImageContentTokens([nativeImage])));
   assert.equal(image.unknown, false);
-  assert.equal(imaged.current.layout.heuristic.unknown, false);
+  assert.equal(imaged.current.layout.heuristic.unknown, true);
   assert.equal(imaged.current.layout.heuristic.tokens, expected + 32 + textTokens("user") + 16 + textTokens("see") + image.tokens!);
 });
 

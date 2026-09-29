@@ -18,7 +18,7 @@ let overallStatus = 'FAIL';
 try {
   for (const mode of ['manual', 'threshold', 'overflow']) {
     const f = await new StockFixture().setup({
-      config: { memory: { maxTokens: 100 }, extraction: { outputTokens: 8192 } },
+      config: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 8192 } },
       compaction: { enabled: false },
       timeoutMs: 45000,
     });

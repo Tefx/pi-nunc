@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, Memory, Slot, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
-import { decideToolResultCleanup, memoryPlan, memoryTokens } from "../engine/index.js";
+import { decideToolResultCleanup, memoryTokens } from "../engine/index.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
-import { engineConfig, readConfig, type HostCompactionSettings } from "./config.js";
+import { readConfig, type HostCompactionSettings } from "./config.js";
 import { MANUAL_MEMORY_TYPE, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions } from "./projection.js";
 
 export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed" | "cancelled";
@@ -62,6 +62,10 @@ export function createMemorySurface(options: {
 }): MemoryFreeze {
   const state = { occupied: false, ignoreFailed: 0 };
   const viewOf = (ctx: ExtensionContext): MemoryView => {
+    // Pi may settle overlapping aborted/manual compactions without delivering
+    // their terminal hooks in start order. Native idle proves no checkpoint
+    // writer still owns the freeze; never leave a stale lock on M edits.
+    if (state.occupied && ctx.isIdle()) { state.occupied = false; state.ignoreFailed = 0; }
     const entries = ctx.sessionManager.buildContextEntries();
     const projected = project(entries);
     const budget = measureBudget(ctx, options, projected.memory.slots);
@@ -332,11 +336,10 @@ function sessionUnconfirmed(manager: SessionHandle): boolean {
 function measureBudget(ctx: ExtensionContext, options: Parameters<typeof createMemorySurface>[0], slots: Slot[]): MemoryBudgetView {
   const tokens = memoryTokens(slots);
   try {
-    if (!ctx.model) return { tokens, limit: null, unknown: true, overLimit: false };
-    const config = engineConfig(readConfig(options.pi.getFlag("nunc-config"), ctx.cwd).config, ctx.model, options.settings(ctx).compaction);
-    const plan = memoryPlan(options.fixed(ctx), ctx.model, config);
-    const used = memoryTokens(slots, config.imageTokens);
-    return { tokens: used, limit: plan.memoryLimit, unknown: false, overLimit: used > plan.memoryLimit };
+    const config = readConfig(options.pi.getFlag("nunc-config"), ctx.cwd).config;
+    const limit = config.memory?.hardMaxTokens ?? 8192;
+    const used = memoryTokens(slots, config.budget?.imageTokens);
+    return { tokens: used, limit, unknown: false, overLimit: used > limit };
   } catch {
     return { tokens, limit: null, unknown: true, overLimit: false };
   }

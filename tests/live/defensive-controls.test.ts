@@ -55,7 +55,7 @@ test("native OpenAI adapter keeps HTTP 429 facts and drops secrets from the cons
       return new Response(JSON.stringify({ error: { message: SECRET, type: "rate_limit_error" } }), { status: 429, headers: { "content-type": "application/json", "x-secret": SECRET, "retry-after": "0" } });
     };
     const provider = boundedProvider(base, [model], ledger, { fetch: transport });
-    const response = await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result();
+    const response = await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "sk-offline-fixture-key" }).result();
     assert.equal(response.stopReason, "error"); assert.equal(requests, 1);
     assert.match(response.errorMessage ?? "", /status=429/); assert.match(response.errorMessage ?? "", /PROVIDER_HTTP/); assert.match(response.errorMessage ?? "", /transport=started/);
     leak(response); leak(readLedger(ledger.path));
@@ -63,7 +63,7 @@ test("native OpenAI adapter keeps HTTP 429 facts and drops secrets from the cons
     assert(terminal && terminal.kind === "terminal");
     assert.equal(terminal.diagnostic?.httpStatus, 429);
     assert.equal(terminal.usage.totalTokens, null);
-    assert.equal((await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result()).stopReason, "error");
+    assert.equal((await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "sk-offline-fixture-key" }).result()).stopReason, "error");
     assert.equal(requests, 1);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
@@ -82,7 +82,7 @@ test("native OpenAI adapter distinguishes network failure from 200 protocol fail
         }
         return new Response(`not-sse ${SECRET}`, { status: 200, headers: { "content-type": "text/event-stream", "x-secret": SECRET } });
       };
-      const response = await boundedProvider(base, [model], ledger, { fetch: transport }).streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result();
+      const response = await boundedProvider(base, [model], ledger, { fetch: transport }).streamSimple(model, context, { maxTokens: 1000, apiKey: "sk-offline-fixture-key" }).result();
       assert.equal(response.stopReason, "error");
       leak(response); leak(readLedger(path));
       if (kind === "network") {

@@ -85,7 +85,7 @@ export default function nunc(pi: ExtensionAPI): void {
     return { compaction: s.compaction, blockImages: s.blockImages };
   };
   const supported = (ctx: ExtensionContext) => {
-    if (VERSION !== "0.87.1") throw new EngineError("CONFIG", `Supported Pi target is 0.87.1; found ${VERSION}`);
+    if (VERSION !== "0.99.0") throw new EngineError("CONFIG", `Supported Pi target is 0.99.0; found ${VERSION}`);
     if (!ctx.sessionManager.getSessionFile()) throw new EngineError("CONFIG", "Persistent sessions only; start Pi without --no-session");
     const s = getHostSettings(ctx);
     if (s.blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");
@@ -110,7 +110,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const sampling = (tool as { constrainedSampling?: Tool["constrainedSampling"] }).constrainedSampling;
       return { name, description: tool.description, parameters: tool.parameters, ...(sampling !== undefined ? { constrainedSampling: sampling } : {}) };
     });
-    return { systemPrompt, tools };
+    return { systemPrompt, tools, ...(hasSystemState ? {} : { toolState: "partial" as const }) };
   };
   const memory = createMemorySurface({ pi, fixed, settings, cleanup: cleanupOpportunity, onCommitted: () => { ui.refresh(); } });
   let toolsRegistered = false;

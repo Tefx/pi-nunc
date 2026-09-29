@@ -564,7 +564,6 @@ export class Admission {
         if (ctx.model?.id !== model.id || ctx.model.provider !== model.provider) throw new EngineError("CONFIG", "Selected model does not match the current session model");
         const config = this.config(ctx, model);
         const currentTools = getCurrentTools(effectiveContext.messages);
-        if (currentTools.some((tool: { constrainedSampling?: unknown }) => Boolean(tool.constrainedSampling && (tool.constrainedSampling as { type?: string }).type === "grammar"))) throw new EngineError("CONFIG", "Constrained tool sampling is unsupported: Pi's maintenance ToolInfo omits that metadata");
         // Keep stock Pi output sizing. outputTokens reports an upper bound;
         // nativeOutputReserve is admission headroom, not a simultaneous output cap.
         if (options?.maxTokens !== undefined) throw new EngineError("CONFIG", "Main maxTokens overrides are unsupported; use stock model defaults");

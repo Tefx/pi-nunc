@@ -133,7 +133,7 @@ test("detailsLines distinguishes no-model, unknown, uncapped none, and known zer
   assert.match(uncapped, /Unconfirmed: yes/);
   assert.match(uncapped, /Current warning: live warning/);
   assert.match(uncapped, /H \/ trigger: 0/);
-  assert.match(uncapped, /M occupancy: 0 \/ 0/);
+  assert.match(uncapped, /M occupancy \/ save hard cap: 0 \/ 0/);
   assert.match(uncapped, /Main output cap: none/);
   assert.match(uncapped, /Maintenance output cap: none/);
   assert.match(uncapped, /Safety: 0/);

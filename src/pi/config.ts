@@ -7,7 +7,7 @@ import { EngineError, validateConfig } from "../engine/validation.js";
 
 export interface NuncConfig {
   policyFile?: string;
-  memory?: { fraction?: number; maxTokens?: number };
+  memory?: { fraction?: number; maxTokens?: number; hardMaxTokens?: number };
   rolling?: { keepRecentFraction?: number };
   extraction?: { toolResults?: "auto" | "full"; headTailChars?: number; outputTokens?: number };
   budget?: { safetyTokens?: number; growthTokens?: number; extraMainInputTokens?: number; extraExtractionInputTokens?: number; inputLimit?: number; imageTokens?: number };
@@ -21,7 +21,7 @@ export function parseConfig(value: unknown): NuncConfig {
   const root = object(value, ["policyFile", "memory", "rolling", "extraction", "budget"], "nunc");
   if (root.policyFile !== undefined && (typeof root.policyFile !== "string" || !root.policyFile.trim())) throw new EngineError("CONFIG", "policyFile must be a nonempty path");
   const sections: Record<string, string[]> = {
-    memory: ["fraction", "maxTokens"], rolling: ["keepRecentFraction"], extraction: ["toolResults", "headTailChars", "outputTokens"],
+    memory: ["fraction", "maxTokens", "hardMaxTokens"], rolling: ["keepRecentFraction"], extraction: ["toolResults", "headTailChars", "outputTokens"],
     budget: ["safetyTokens", "growthTokens", "extraMainInputTokens", "extraExtractionInputTokens", "inputLimit", "imageTokens"],
   };
   for (const [section, keys] of Object.entries(sections)) {
@@ -70,7 +70,8 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
   const common = { safetyTokens: config.budget?.safetyTokens ?? 1024, ...(config.budget?.inputLimit === undefined ? {} : { inputLimit: config.budget.inputLimit }) };
   const result: EngineConfig = {
     triggerTokens,
-    memory: { fraction: config.memory?.fraction ?? 0.1, ...(config.memory?.maxTokens === undefined ? {} : { maxTokens: config.memory.maxTokens }) },
+    memory: { fraction: config.memory?.fraction ?? 0.1, hardMaxTokens: config.memory?.hardMaxTokens ?? 8192,
+      ...(config.memory?.maxTokens === undefined ? {} : { maxTokens: config.memory.maxTokens }) },
     keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.5,
     growthTokens: config.budget?.growthTokens ?? 1024,
     main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },
