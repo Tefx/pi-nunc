@@ -4,7 +4,8 @@
 // requires: Built tracked local Pi/Nunc, stock-driver.mjs, Python3 stdlib; no live model.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { renderMemory } from "../dist/src/engine/memory.js";
 import { StockFixture } from "./stock-driver.mjs";
@@ -17,6 +18,59 @@ const frame = (proc, mark, n = 8000) => {
   return text.slice(Math.max(0, text.length - n));
 };
 const diagnostics = fixture => fixture.log.filter(e => e.type === "diagnostic");
+
+async function observeLongProjection() {
+  const fixture = await new StockFixture().setup({ compaction: { enabled: false }, timeoutMs: 45000 });
+  let result = { status: "FAIL" };
+  try {
+    fixture.env.NUNC_OBSERVATION_COMPACT = "1";
+    const modelsPath = join(fixture.state, "agent/models.json");
+    const models = JSON.parse(await readFile(modelsPath, "utf8"));
+    models.providers.groq.models[0].contextWindow = 1050000;
+    await writeFile(modelsPath, JSON.stringify(models));
+    const manager = SessionManager.create(join(fixture.state, "work"), join(fixture.state, "sessions"));
+    if (process.env.NUNC_UI_LONG_SESSION) {
+      const entries = (await readFile(process.env.NUNC_UI_LONG_SESSION, "utf8")).trim().split("\n").map(JSON.parse);
+      entries[0] = { ...entries[0], id: manager.getSessionId(), cwd: join(fixture.state, "work") };
+      await writeFile(manager.getSessionFile(), entries.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+    } else {
+      const first = manager.appendMessage({ role: "user", content: "Long-context UI start", timestamp: 1 });
+      const memory = { version: 1, nextId: 2, slots: [{ id: "s1", text: "Keep the long-context test constraint." }] };
+      manager.appendCompaction(renderMemory(memory.slots), first, 100, { nunc: memory }, true);
+      for (let index = 0; index < 750; index++) manager.appendMessage({ role: "user", content: `${index}:` + "completed history ".repeat(100), timestamp: index + 2 });
+    }
+    const helpers = join(fixture.dir, "helpers");
+    await mkdir(helpers);
+    const observer = stage => `// purpose: Observe the public context-hook boundary for stock TUI input latency.\n// usage: Loaded by the isolated StockFixture.\n// effects: Appends boundary metadata to the existing fixture log.\n// requires: NUNC_OBSERVATION_LOG and public Pi hooks.\nimport { appendFileSync } from 'node:fs';\nexport default pi => pi.on('context', event => { appendFileSync(process.env.NUNC_OBSERVATION_LOG, JSON.stringify({ type: 'projection_${stage}', data: { at: Date.now(), messages: event.messages.length } }) + '\\n'); });\n`;
+    const before = join(helpers, "before-projection.mjs"), after = join(helpers, "after-projection.mjs");
+    await writeFile(before, observer("before")); await writeFile(after, observer("after"));
+    fixture.hold("main");
+    const proc = fixture.start("tui", manager.getSessionFile(), { beforeNunc: [before], extensions: [after] });
+    await fixture.wait(() => fixture.log.some(event => event.type === "start"), "long-context TUI start");
+    // send() includes a post-Enter settling delay; observe concurrently so keys
+    // are injected at the context boundary, before that delay can hide a stall.
+    const sending = proc.send("Prepare a long-context native request.");
+    const started = await fixture.wait(() => fixture.log.find(event => event.type === "projection_before"), "long-context projection start");
+    const sentAt = Date.now(), marker = "LONG_CONTEXT_KEYBOARD_DRAFT";
+    proc.keys(marker + "\x1b[17~");
+    const snapshot = await fixture.wait(() => fixture.log.find(event => event.type === "snapshot" && event.data.editor.includes(marker)), "keyboard during long request preparation", 1500);
+    const keyboardMs = Date.now() - sentAt;
+    await sending;
+    const ended = await fixture.wait(() => fixture.log.find(event => event.type === "projection_after"), "long-context projection end");
+    assert(started.data.messages >= 700, "Exercise a genuinely long native context");
+    assert.equal(snapshot.data.editor, marker, "Typed input reaches the actual Pi editor without being submitted");
+    assert(keyboardMs < 1500, `Editor blocked for ${keyboardMs}ms`);
+    assert(sentAt <= ended.data.at, "Keyboard input must be queued during projection, not only after it ends");
+    assert(ended.data.at - started.data.at < 1000, "Projection must not stall the interactive event loop");
+    await fixture.wait(() => fixture.requests.some(request => request.kind === "main"), "long-context native request admitted");
+    fixture.release("main");
+    await fixture.wait(() => fixture.log.some(event => event.type === "settled"), "long-context request settled");
+    assert(!fixture.log.some(event => event.type === "compact"), "Capacity handling is outside this observation");
+    result = { status: "PASS", projectionMessages: started.data.messages, projectionMs: ended.data.at - started.data.at, keyboardMs, keyboardSentDuringProjection: sentAt <= ended.data.at };
+    return result;
+  } finally { await fixture.close(result); }
+}
+
 const f = await new StockFixture().setup({ ...(process.argv[2] ? { artifactParent: process.argv[2] } : {}) });
 let outcome = { status: "FAIL" };
 try {
@@ -265,8 +319,14 @@ try {
   } finally {
     await short.close({ status: "short-screen" });
   }
+  const projection = await observeLongProjection();
   outcome = {
     status: "PASS",
+    projectionResponsive: projection.status === "PASS",
+    projectionMessages: projection.projectionMessages,
+    projectionMs: projection.projectionMs,
+    keyboardMs: projection.keyboardMs,
+    keyboardSentDuringProjection: projection.keyboardSentDuringProjection,
     footer: Boolean(strip(p.stdout).match(/🧠/)),
     overlay: true,
     savedManual: true,

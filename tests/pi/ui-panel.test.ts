@@ -17,5 +17,9 @@ test("stock TUI: footer, overlay tabs/search/edit/delete, commands, inflight, ed
   assert.equal(report.overlay, true);
   assert.equal(report.savedManual, true);
   assert.equal(report.inflightPreserved, true);
-  console.log(JSON.stringify({ observed: report.status, dir: report.dir, unproven: report.unproven }));
+  assert.equal(report.projectionResponsive, true);
+  assert(report.projectionMessages >= 700);
+  assert(report.projectionMs < 1000);
+  assert(report.keyboardMs < 1500);
+  console.log(JSON.stringify({ observed: report.status, dir: report.dir, projectionMs: report.projectionMs, keyboardMs: report.keyboardMs, keyboardSentDuringProjection: report.keyboardSentDuringProjection, unproven: report.unproven }));
 });

@@ -7,7 +7,7 @@ import { extractionContext } from "./engine/request.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
-import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, eligibleStarts, originalResults, project, sealDecisions, withEffectiveMemory } from "./pi/projection.js";
+import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, eligibleStarts, originalResults, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
 import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
@@ -15,7 +15,7 @@ import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines } from ".
 
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
 export interface HostSettingsSource {
-  readSettings: () => {
+  readSettings: (model?: ExtensionContext["model"]) => {
     compaction: ReturnType<SettingsManager["getCompactionSettings"]>;
     blockImages: boolean;
     nunc?: unknown;
@@ -42,7 +42,7 @@ export default function nunc(pi: ExtensionAPI): void {
   });
   const getHostSettings = (ctx: ExtensionContext) => {
     if (hostSettings) {
-      const read = hostSettings.readSettings();
+      const read = hostSettings.readSettings(ctx.model);
       const projectTrusted = hostSettings.isProjectTrusted ? hostSettings.isProjectTrusted() : ctx.isProjectTrusted();
       const globalNunc = hostSettings.getGlobalSettings ? hostSettings.getGlobalSettings()?.nunc : read.nunc;
       const projectNunc = projectTrusted ? (hostSettings.getProjectSettings ? hostSettings.getProjectSettings()?.nunc : read.nunc) : undefined;
@@ -58,7 +58,7 @@ export default function nunc(pi: ExtensionAPI): void {
     const globalSettings = manager.getGlobalSettings() as Record<string, unknown>;
     const projectSettings = manager.getProjectSettings() as Record<string, unknown>;
     return {
-      compaction: manager.getCompactionSettings(),
+      compaction: manager.getCompactionSettings(ctx.model),
       blockImages: manager.getBlockImages(),
       globalNunc: globalSettings.nunc,
       projectNunc: projectSettings.nunc,
@@ -408,7 +408,11 @@ export default function nunc(pi: ExtensionAPI): void {
       if (!isDeepStrictEqual(host.compaction, event.preparation.settings)) throw new EngineError("CONFIG", "Host settings differ from preparation; reload settings before maintenance");
       const model = structuredClone(ctx.model), f = structuredClone(fixed(ctx));
       const config = engineConfig(selection.config, model, event.preparation.settings);
-      const projected = project(manager.buildContextEntries());
+      const entries = manager.buildContextEntries();
+      const projected = project(entries);
+      const sourceRevision = memoryRevision(binding.sessionId, manager.getLeafId(), entries);
+      const sourceEntryIds = new Set(entries.map(entry => entry.id));
+      const frozenProjection = structuredClone(projected);
       const eligible = eligibleStarts(event.branchEntries, projected.active, projected.latestId);
       const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
       const active = effectiveActive(projected, opportunity.enabled);
@@ -432,14 +436,25 @@ export default function nunc(pi: ExtensionAPI): void {
         notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds planned input ${accounting.extractionInputLimit}; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance is checked separately; settings were not changed.`);
       }
       if (!result.ok) { notify(ctx, `${result.code}: ${result.message}`); return { cancel: true }; }
+      const currentEntries = manager.buildContextEntries();
+      const current = project(currentEntries);
+      const branch = manager.getBranch();
+      // A later D may extend the frozen path without changing its consumed source.
+      // Reuse manual-memory ancestry/revision rules; native context edits target
+      // old entries without rewriting their stored bodies, so check those too.
+      const editedSource = branch.slice(branch.findIndex(entry => entry.id === binding.leafId) + 1)
+        .some(entry => entry.type === "context_edit" && sourceEntryIds.has(entry.targetId));
+      const sourceUnchanged = !editedSource && revisionApplies(sourceRevision, manager.getSessionId(), manager.getLeafId(), currentEntries, branch) &&
+        isDeepStrictEqual(current.active.slice(0, frozenProjection.active.length), frozenProjection.active) &&
+        isDeepStrictEqual({ ...current, active: [] }, { ...frozenProjection, active: [] });
       if (controller.signal.aborted || event.signal.aborted || String(generation) !== binding.generation ||
-          manager.getSessionId() !== binding.sessionId || manager.getSessionFile() !== file || manager.getLeafId() !== binding.leafId ||
+          manager.getSessionId() !== binding.sessionId || manager.getSessionFile() !== file || !sourceUnchanged ||
           !isDeepStrictEqual(ctx.model, model) || !isDeepStrictEqual(fixed(ctx), f) ||
           !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), selection) || !isDeepStrictEqual(settings(ctx), host) ||
           cleanupEnabled(ctx) !== opportunity.enabled) {
         throw new EngineError("CANCELLED", "Session, path, model, tools or configuration changed during maintenance; candidate discarded");
       }
-      if (!eligible.includes(result.candidate.firstKeptEntryId)) throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
+      if (!eligibleStarts(branch, current.active, current.latestId).includes(result.candidate.firstKeptEntryId)) throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
       const retained = new Set(result.candidate.kept.map(e => e.entryId));
       const nextDecisions = [...projected.cleanup, ...(result.candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
         !d.sourceRefs?.some(ref => !retained.has(ref.entryId)));

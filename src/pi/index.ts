@@ -11,11 +11,11 @@ export type { HostSettingsSource, MaintenanceEvent } from "../index.js";
  */
 export function bindHostSettings(bus: EventBus, manager: SettingsManager): void {
   bus.emit("nunc:host-settings", {
-    readSettings: () => {
+    readSettings: model => {
       const g = manager.getGlobalSettings() as Record<string, unknown>;
       const p = manager.getProjectSettings() as Record<string, unknown>;
       return {
-        compaction: manager.getCompactionSettings(),
+        compaction: manager.getCompactionSettings(model),
         blockImages: manager.getBlockImages(),
         nunc: p.nunc ?? g.nunc,
       };

@@ -4,6 +4,7 @@ import { writeFile, rename, mkdir, rm } from "node:fs/promises";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { sourceRecords, answer } from "../engine/fixtures.js";
 import { fixture, memoryPatch } from "./fixtures.js";
+import { project } from "../../src/pi/projection.js";
 
 for (const reason of ["length", "error", "aborted", "toolUse"] as const) test(`nonterminal ${reason} response cancels real hook with no saved candidate/default fallback`, async t => {
   const f = await fixture(); t.after(() => f.close()); f.seed();
@@ -54,6 +55,54 @@ for (const change of ["model", "path", "config", "settings", "thinking"] as cons
   release.resolve(); await check;
   assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
   assert.equal(f.faux.state.callCount, 1);
+});
+
+for (const kind of ["reminder", "user"] as const) test(`later ${kind} append during extraction stays outside frozen source and survives native handoff once`, async t => {
+  const f = await fixture(); t.after(() => f.close()); f.seed();
+  const manager = f.runtime.session.sessionManager;
+  const before = project(manager.buildContextEntries());
+  const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  t.after(() => release.resolve());
+  f.respond(async context => {
+    if (!sourceRecords(context).length) return fauxAssistantMessage("Continued with the later input.");
+    started.resolve(); await release.promise; return memoryPatch(context);
+  });
+  const compact = f.runtime.session.compact();
+  compact.catch(() => {});
+  await started.promise;
+  const text = `LATER ${kind} correction excluded from this extraction`;
+  if (kind === "reminder") await f.runtime.session.sendCustomMessage({ customType: "reminder", content: text, display: false }, { triggerTurn: false });
+  else manager.appendMessage({ role: "user", content: text, timestamp: Date.now() });
+  const later = project(manager.buildContextEntries()).active.at(-1)!;
+  assert.notEqual(manager.getLeafId(), before.active.at(-1)!.entryId);
+  release.resolve();
+  const result = await compact;
+  assert.equal(f.events.length, 1);
+  assert(f.events[0]?.result.ok);
+  assert.equal(f.calls.length, 1, "one extraction, no repair or replay");
+  assert(!JSON.stringify(sourceRecords(f.calls[0]!)).includes(text), "later D was not consumed by extraction");
+  assert.deepEqual(project(manager.buildContextEntries()).active, [
+    ...before.active.slice(before.active.findIndex(entry => entry.entryId === result.firstKeptEntryId)), later,
+  ], "Pi keeps original K plus unchanged later D");
+  assert.equal(manager.getEntries().filter(entry => entry.type === "compaction").length, 1);
+  await f.runtime.session.prompt("Continue after append-safe maintenance");
+  assert.equal(f.calls.at(-1)!.messages.filter(message => JSON.stringify(message).includes(text)).length, 1);
+  assert.equal(f.events.length, 1, "the continuation does not repeat extraction");
+});
+
+for (const replacement of [null, { content: "Changed already-frozen requirement" }] as const) test(`append-only context edit ${replacement === null ? "omission" : "replacement"} invalidates the frozen source`, async t => {
+  const f = await fixture(); t.after(() => f.close()); const { first } = f.seed();
+  const manager = f.runtime.session.sessionManager;
+  const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  t.after(() => release.resolve());
+  f.respond(async context => { started.resolve(); await release.promise; return memoryPatch(context); });
+  const compact = f.runtime.session.compact();
+  const rejected = assert.rejects(compact, /cancel|abort/i);
+  await started.promise;
+  manager.appendContextEdit(first, replacement);
+  release.resolve(); await rejected;
+  assert.equal(f.calls.length, 1);
+  assert.equal(manager.getEntries().filter(entry => entry.type === "compaction").length, 0);
 });
 
 test("automatic pre-prompt threshold freezes delivered R and later sends new D once", async t => {

@@ -82,6 +82,28 @@ test("a changed main model recomputes H, extraction and final memory allowance o
   assert.equal(f.runtime.session.model?.id, "small");
 });
 
+for (const diskSettings of [false, true]) test(`selected model compaction overrides match native preparation through ${diskSettings ? "disk settings" : "public host binding"}`, async t => {
+  const compaction = { enabled: true, reserveTokens: 36000, keepRecentTokens: 1,
+    modelOverrides: {
+      "nunc-pi-fixture/large": { reserveTokens: 12000, keepRecentTokens: 2 },
+      "nunc-pi-fixture/small": { reserveTokens: 18000, keepRecentTokens: 1 },
+    },
+  };
+  const f = await fixture({ diskSettings, ...(diskSettings ? { globalSettings: { compaction } } : {}) });
+  t.after(() => f.close());
+  f.settings.applyOverrides({ compaction });
+  f.respond(memoryPatch); f.seed("large override");
+  await f.runtime.session.compact();
+  assert(f.events[0]?.result.ok);
+  assert.equal(f.events[0].result.observations.accounting!.effectiveTrigger, 48000);
+  await f.runtime.session.setModel(f.faux.getModel("small")!);
+  f.seed("small override");
+  await f.runtime.session.compact();
+  assert(f.events[1]?.result.ok);
+  assert.equal(f.events[1].result.observations.accounting!.effectiveTrigger, 27000);
+  assert.equal(f.calls.length, 2, "one extraction per native maintenance with no configuration rejection");
+});
+
 function fauxMsg(text: string, outputTokens = 50, inputTokens = 1000) {
   const m = fauxAssistantMessage(text);
   m.usage = { input: inputTokens, output: outputTokens, cacheRead: 0, cacheWrite: 0, totalTokens: inputTokens + outputTokens, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };

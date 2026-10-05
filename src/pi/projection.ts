@@ -311,9 +311,26 @@ function legalTail(messages: readonly LayoutMessage[]): number {
 function snapshot(value: unknown): unknown {
   try { return JSON.parse(JSON.stringify(value)); } catch { return undefined; }
 }
-function sameMessage(left: unknown, right: unknown): boolean {
-  const a = snapshot(left), b = snapshot(right);
-  return a !== undefined && b !== undefined && isDeepStrictEqual(a, b);
+type MessageKey = (value: unknown) => string | undefined;
+/** Request-local keys preserve JSON snapshot equality, including unordered object
+ * fields. Never retain this cache across calls: another hook can mutate an object.
+ */
+function messageKeys(): MessageKey {
+  const cache = new WeakMap<object, string | undefined>();
+  return value => {
+    const object = typeof value === "object" && value !== null ? value : undefined;
+    if (object && cache.has(object)) return cache.get(object);
+    const normalized = snapshot(value);
+    const key = normalized === undefined ? undefined : JSON.stringify(normalized, (_name, item: unknown) =>
+      item && typeof item === "object" && !Array.isArray(item)
+        ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
+    if (object) cache.set(object, key);
+    return key;
+  };
+}
+function sameMessage(left: unknown, right: unknown, key: MessageKey): boolean {
+  const a = key(left), b = key(right);
+  return a !== undefined && b !== undefined && a === b;
 }
 function sourceUnits(entries: readonly SessionEntry[]): { entryId: string; messages: ReturnType<typeof sessionEntryToContextMessages> }[] {
   const units: { entryId: string; messages: ReturnType<typeof sessionEntryToContextMessages> }[] = [];
@@ -327,27 +344,42 @@ function sourceUnits(entries: readonly SessionEntry[]): { entryId: string; messa
   }
   return units;
 }
-function matchesAt(hook: readonly LayoutMessage[], start: number, unit: readonly object[]): boolean {
-  return unit.every((message, offset) => sameMessage(hook[start + offset], message));
+function matchesAt(hook: readonly LayoutMessage[], start: number, unit: readonly object[], key: MessageKey): boolean {
+  return unit.every((message, offset) => sameMessage(hook[start + offset], message, key));
 }
 type SourceUnit = { entryId: string; messages: readonly object[] };
 /** A whole native unit must have a unique correspondence in both views.
  * Unmapped/transformed or repeated units never establish source provenance.
  */
-function mappedBoundaries(hook: readonly LayoutMessage[], units: readonly SourceUnit[]): { unit: SourceUnit; end: number }[] {
-  return units.flatMap(unit => {
-    if (units.filter(other => sameMessage(other.messages, unit.messages)).length !== 1) return [];
-    const starts: number[] = [];
-    for (let i = 0; i + unit.messages.length <= hook.length; i++) {
-      if (matchesAt(hook, i, unit.messages)) starts.push(i);
+function mappedBoundaries(hook: readonly LayoutMessage[], units: readonly SourceUnit[], key: MessageKey): { unit: SourceUnit; end: number }[] {
+  const unitKeys = units.map(unit => key(unit.messages));
+  const counts = new Map<string, number>();
+  for (const value of unitKeys) if (value !== undefined) counts.set(value, (counts.get(value) ?? 0) + 1);
+  const positions = new Map<string, number[]>();
+  for (const [index, message] of hook.entries()) {
+    const value = key(message);
+    if (value === undefined) continue;
+    const starts = positions.get(value);
+    if (starts) starts.push(index); else positions.set(value, [index]);
+  }
+  return units.flatMap((unit, index) => {
+    const value = unitKeys[index];
+    if (value === undefined || counts.get(value) !== 1 || !unit.messages.length) return [];
+    const first = key(unit.messages[0]);
+    if (first === undefined) return [];
+    let end: number | undefined;
+    for (const start of positions.get(first) ?? []) {
+      if (start + unit.messages.length > hook.length || !matchesAt(hook, start, unit.messages, key)) continue;
+      if (end !== undefined) return []; // A second exact occurrence is ambiguous.
+      end = start + unit.messages.length;
     }
-    return starts.length === 1 ? [{ unit, end: starts[0]! + unit.messages.length }] : [];
+    return end === undefined ? [] : [{ unit, end }];
   });
 }
-function reusableIndex(messages: readonly LayoutMessage[], anchor: MemoryAnchor, mapped: ReturnType<typeof mappedBoundaries>): number | undefined {
+function reusableIndex(messages: readonly LayoutMessage[], anchor: MemoryAnchor, mapped: ReturnType<typeof mappedBoundaries>, key: MessageKey): number | undefined {
   const boundary = anchor.boundary;
   if (!boundary) return;
-  const found = mapped.find(item => item.unit.entryId === boundary.entryId && sameMessage(item.unit.messages, boundary.messages));
+  const found = mapped.find(item => item.unit.entryId === boundary.entryId && sameMessage(item.unit.messages, boundary.messages, key));
   if (!found) return;
   const index = found.end;
   if (!hasPendingTools(messages, index)) return index;
@@ -363,6 +395,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
     stripped.push(message);
   }
   const content = renderMemory(memory.slots);
+  const key = messageKeys();
   const units = session?.entries ? sourceUnits(session.entries) : [];
   const decisions = new Map((session?.decisions ?? []).map(d => [`${d.entryId}:${d.messageIndex}`, d]));
   // Pi can carry a previous context-hook projection into the next turn. Match
@@ -376,8 +409,8 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
       ? { ...structuredClone(message), content: [{ type: "text" as const, text: d.text }] } : message;
   }) }));
   const patched = [...stripped];
-  const rawMapped = mappedBoundaries(stripped, units);
-  for (const owned of mappedBoundaries(stripped, ownUnits)) {
+  const rawMapped = mappedBoundaries(stripped, units, key);
+  for (const owned of mappedBoundaries(stripped, ownUnits, key)) {
     const index = units.findIndex(unit => unit.entryId === owned.unit.entryId);
     if (index < 0 || rawMapped.some(item => item.unit === units[index])) continue;
     const raw = units[index]!;
@@ -386,7 +419,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
   }
   // Match immutable native source units before changing any tool body. A foreign
   // hook rewrite or ambiguous repeated unit cannot establish provenance.
-  const nativeMapped = mappedBoundaries(patched, units);
+  const nativeMapped = mappedBoundaries(patched, units, key);
   const effectiveUnits = units.map(unit => {
     const found = nativeMapped.find(item => item.unit === unit);
     const start = found ? found.end - unit.messages.length : -1;
@@ -406,8 +439,8 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
     return patched;
   }
   const existing = session && !observerMoving() ? anchors.get(session.sessionId) : undefined;
-  const mapped = mappedBoundaries(patched, effectiveUnits);
-  const reuse = existing?.content === content ? reusableIndex(patched, existing, mapped) : undefined;
+  const mapped = mappedBoundaries(patched, effectiveUnits, key);
+  const reuse = existing?.content === content ? reusableIndex(patched, existing, mapped, key) : undefined;
   const index = reuse ?? legalTail(patched);
   const carrier = {
     role: "user",
