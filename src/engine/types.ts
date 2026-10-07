@@ -7,6 +7,8 @@ export interface ActiveEntry {
   entryId: string;
   sourceRole: "user" | "assistant" | "toolResult" | "custom" | "bashExecution" | "branchSummary";
   messages: Message[];
+  /** Adapter knows the original output no longer maps to this entry (e.g. native context edit). Transient, not saved memory. */
+  outputUsageUnavailable?: boolean;
 }
 export interface FixedContext { systemPrompt: string; tools: Tool[]; /** No persisted system state: public ToolInfo may omit provider sampling metadata. */ toolState?: "partial" }
 /** Identity is an adapter-owned generation, advanced on session/path/model/options change. */
@@ -81,7 +83,18 @@ export interface UsageObservation {
   totalTokens: number | null;
   cost: number | null;
 }
+export type PlanningUncertainty = "replay-mode-unknown" | "usage-unavailable" | "replay-mapping-unknown" | "fixed-context-partial";
+/** Per-message or aggregate planning cost; partial=false still does not mean tokenizer-exact. */
+export interface PlanningEstimate {
+  tokens: number;
+  visibleTokens: number;
+  additionalTokens: number;
+  basis: "visible-heuristic" | "response-output-proxy";
+  partial: boolean;
+  uncertainties: PlanningUncertainty[];
+}
 export interface Accounting {
+  /** Extraction estimation remains semantic; planning below can include output proxies. */
   estimator: "pi-heuristic";
   outputReserveTokens: number;
   outputCapTokens: number | null;
@@ -97,6 +110,8 @@ export interface Accounting {
   memoryLimit: number;
   keepTarget: number;
   keptTokens: number;
+  /** Retention/forecast only; never a new admission guard. Optional for older observations. */
+  planning?: { before: PlanningEstimate; kept: PlanningEstimate; after: PlanningEstimate | null };
   fullExtractionTokens: number;
   extractionTokens: number;
   normalExtractionAtTrigger: number;

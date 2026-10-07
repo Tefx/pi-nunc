@@ -1,6 +1,6 @@
 import type { ContextLayout, ContextMessage, ContextView, CurrentContext, LastMainContext, LastMaintenanceContext } from "../pi/context.js";
 import type { Slot } from "../engine/index.js";
-import { budgetLines, firstLine, maintenanceLines, thousands, type DiagnosticNote } from "./status.js";
+import { budgetLines, firstLine, maintenanceLines, planningLines, thousands, type DiagnosticNote } from "./status.js";
 
 export interface CtxNode {
   id: string;
@@ -278,7 +278,7 @@ function messageChildren(prefix: string, messages: readonly ContextMessage[], as
       id: `${prefix}:R:${message.order}`,
       label: `${message.order} ${message.role}`,
       description: tokenLabel(message.tokens, message.unknown),
-      preview: [`#${message.order} ${message.role} ${tokenLabel(message.tokens, message.unknown)}`, message.preview, assoc ? `tool ${assoc.toolName} ${assoc.toolCallId} call@${assoc.callOrder} result@${assoc.resultOrder}` : ""].filter(Boolean).join("\n"),
+      preview: [`#${message.order} ${message.role} ${tokenLabel(message.tokens, message.unknown)}`, message.preview, ...(message.planning ? planningLines(message.planning, "Message retention planning") : []), assoc ? `tool ${assoc.toolName} ${assoc.toolCallId} call@${assoc.callOrder} result@${assoc.resultOrder}` : ""].filter(Boolean).join("\n"),
       children: blockIds,
     });
   });
@@ -369,7 +369,7 @@ function budgetPreview(current: CurrentContext): string {
 }
 
 function countsPreview(layout: ContextLayout): string {
-  return `${layout.messageCount} messages / ${layout.blockCount} blocks\npackaging ${thousands(layout.packagingTokens)} · extra input ${thousands(layout.extraInputTokens)}\nheuristic ${tokenLabel(layout.heuristic.tokens, layout.heuristic.unknown)}`;
+  return `${layout.messageCount} messages / ${layout.blockCount} blocks\npackaging ${thousands(layout.packagingTokens)} · extra input ${thousands(layout.extraInputTokens)}\nvisible heuristic ${tokenLabel(layout.heuristic.tokens, layout.heuristic.unknown)}${layout.planning ? "\n" + planningLines(layout.planning).join("\n") : ""}`;
 }
 
 function memoryPositionLine(layout: ContextLayout, slotCount: number): string {

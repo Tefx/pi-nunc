@@ -20,5 +20,5 @@ export {
   type InvarDocSection,
   type InvarDocTocPayload,
 } from "./cleanup.js";
-export { mainContext, memoryPlan, memoryTokens, messageTokens, requestTokens, observeUsage } from "./accounting.js";
+export { mainContext, memoryPlan, memoryTokens, messageTokens, requestTokens, messagePlanningEstimate, historyPlanningEstimate, mainPlanningEstimate, observeUsage } from "./accounting.js";
 export { legalCuts, EngineError, validateConfig, validateMemory } from "./validation.js";

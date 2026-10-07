@@ -4,7 +4,7 @@ Nunc remains a standalone extension. This repair changes only this project: no P
 
 ## Separate planning from main admission
 
-Pi owns normal compaction scheduling, output sizing and provider overflow recovery. Nunc's memory/retention planning continues to reserve output, safety and post-maintenance growth. Crossing that planning target alone must not reject an ordinary main request.
+Pi owns normal compaction scheduling, output sizing and provider overflow recovery. Nunc's memory/retention planning continues to reserve output, safety and post-maintenance growth. Crossing that planning target alone must not reject an ordinary main request. Encrypted-reasoning output proxies are retention/forecast costs only: current_turn can discard earlier reasoning even when signed items are transported. The new message-level proxy is not added to fresh/trailing hard admission or a valid receipt. Planning/UI expose its basis and missing-mode/usage uncertainty separately; generic visible estimates and existing U/old-M protections remain intact.
 
 On the already supported native context-clamped and uncapped routes, main admission uses `min(model.contextWindow - serializerOutputFloor, configured inputLimit)`; the floor is 16 for capped Responses and 1 otherwise. The explicit input limit remains binding. The native serializer still owns the actual output cap; uncapped routes retain no cap. Unknown context-sizing routes retain fixed-output-reserve accounting until their native behavior is verified.
 

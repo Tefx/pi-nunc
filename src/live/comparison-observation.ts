@@ -52,6 +52,7 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
     model: `${model.provider}/${model.id}`, modelConfig: model, thinking: row.thinking,
     cutPoint: index < 0 ? null : index, firstKeptEntryId: snap?.firstKeptEntryId ?? null,
     kTokens: msgs ? msgs.reduce((sum, m) => sum + messageTokens(m), 0) : null,
+    kPlanning: accounting?.planning?.kept ?? null, // New planning basis; historical kTokens stays visible-only.
     mTokens, summarySize: snap?.summary.length ?? null,
     memoryLimit: native ? null : accounting?.memoryLimit ?? null,
     outputCaps: calls.map(cap), outputPlanning: calls.map(r => r.outputPlanning),

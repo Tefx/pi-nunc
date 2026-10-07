@@ -43,6 +43,24 @@ async function env() {
   return { faux, runtime, registry, model, ctx, admission, held, options, context, huge, observations, rewrap };
 }
 
+test("closing admission restores the complete native-registry legacy configuration", async () => {
+  const e = await env();
+  e.registry.unregisterProvider(e.model.provider);
+  const legacy: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> = {
+    api: "openai-completions", baseUrl: "https://controlled.invalid",
+    models: [{ id: e.model.id, name: e.model.name, reasoning: false, input: ["text"], cost: e.model.cost,
+      contextWindow: e.model.contextWindow, maxTokens: e.model.maxTokens, samplingParams: undefined }],
+  };
+  e.registry.registerProvider(e.model.provider, legacy);
+  const saved = e.registry.getRegisteredProviderConfig(e.model.provider); assert(saved);
+  e.admission.ensure(e.ctx);
+  assert(e.registry.getRegisteredNativeProvider(e.model.provider));
+  e.admission.close(e.ctx);
+  assert.equal(e.registry.getRegisteredNativeProvider(e.model.provider), undefined);
+  assert.deepEqual(e.registry.getRegisteredProviderConfig(e.model.provider), saved);
+  assert(e.registry.getProvider(e.model.provider));
+});
+
 test("held older wrapper still applies capacity; inner wrap on the live chain still sends", async () => {
   const e = await env();
   const latest = e.rewrap();

@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, getSystemMessageText, normalizeContext, renderSystemMessageUpdate, type AssistantMessage, type Context, type SystemMessage, type Tool, type ToolReference } from "@earendil-works/pi-ai";
-import { azureOpenAIResponsesProvider } from "@earendil-works/pi-ai/providers/azure-openai-responses";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { answer, sourceRecords } from "../engine/fixtures.js";
 import { project } from "../../src/pi/projection.js";
@@ -72,12 +71,12 @@ test("admission delegates a registered native Azure Responses provider outside t
   const admissions: Array<{ outcome?: string; code?: string }> = [];
   const f = await fixture({ extras: [{ name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as { outcome?: string; code?: string })); } }] });
   t.after(() => f.close());
-  const azure = azureOpenAIResponsesProvider();
+  const azure = f.modelRuntime.getProvider("azure"); assert(azure);
   new ModelRegistry(f.modelRuntime).registerProvider(azure);
   const model = azure.getModels().find(m => m.id === "gpt-4o-mini");
   assert(model && model.api === "azure-openai-responses");
   assert(!["openai-completions", "openai-responses", "anthropic-messages", "openai-codex-responses"].includes(model.api));
-  await f.modelRuntime.setRuntimeApiKey("azure-openai-responses", "offline-fixture-key");
+  await f.modelRuntime.setRuntimeApiKey(model.provider, "offline-fixture-key");
   await f.runtime.session.setModel(model);
   await f.runtime.session.prompt("Use the currently selected native provider").catch(() => {});
   assert.equal(f.faux.state.callCount, 0);

@@ -234,7 +234,7 @@ export class Admission {
     for (const [id, entry] of this.installed) {
       if (ctx.modelRegistry.getRegisteredNativeProvider(id) !== entry.wrapper) continue;
       if (entry.original) this.pi.registerProvider(entry.original);
-      else if (entry.legacy) { this.pi.unregisterProvider(id); this.pi.registerProvider(id, entry.legacy); }
+      else if (entry.legacy) { this.pi.unregisterProvider(id); ctx.modelRegistry.registerProvider(id, entry.legacy); }
       else this.pi.unregisterProvider(id);
     }
     this.installed.clear(); this.rejected.clear(); this.cancelledRun = false; this.invalidateUsage();

@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import type { Complete, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
 import { decideToolResultCleanup, applyToolResultCleanup } from "./cleanup.js";
-import { chooseCut, hardMemoryLimit, mainContext, memoryPlan, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
+import { chooseCut, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, omitsSerializedOutputCap, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies } from "./request.js";
 import { EngineError, freezeCopy, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
 
@@ -58,8 +58,9 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
     }
     const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, memoryLimit, keepTarget } = memoryPlan(frozen.fixed, frozen.model, config);
-    const { cut, keptTokens } = chooseCut(frozen.active, cuts, fixedTokens, memoryLimit, keepTarget, effectiveTrigger, config);
-    const mainBeforeTokens = requestTokens(mainContext(frozen.fixed, frozen.memory.slots, frozen.active), config.imageTokens) + config.main.extraInputTokens;
+    const { cut, keptTokens } = chooseCut(frozen.active, cuts, fixedTokens, memoryLimit, keepTarget, effectiveTrigger, config, frozen.model);
+    const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
+    const mainBeforeTokens = beforePlan.tokens;
     let context = extractionContext(frozen, cut, memoryLimit, frozen.active, []);
     const fullExtractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
     // Sustainable-trigger advice must never veto an executable current request.
@@ -71,7 +72,9 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens - mainBeforeTokens)),
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
-      effectiveTrigger, memoryLimit, keepTarget, keptTokens, fullExtractionTokens, extractionTokens: fullExtractionTokens,
+      effectiveTrigger, memoryLimit, keepTarget, keptTokens,
+      planning: { before: beforePlan, kept: historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens), after: null },
+      fullExtractionTokens, extractionTokens: fullExtractionTokens,
       normalExtractionAtTrigger, mainAfterTokens: null, memoryTokens: null, growthTokens: null,
     };
     if (fullExtractionTokens > extractionInputLimit && config.extraction.toolResults === "auto") {
@@ -124,7 +127,9 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     observations.toolResultCleanup = cleanupResult;
 
     const effectiveKept = applyToolResultCleanup(kept, cleanupResult.applied);
-    const mainAfterTokens = requestTokens(mainContext(frozen.fixed, applied.memory.slots, effectiveKept), config.imageTokens) + config.main.extraInputTokens;
+    const afterPlan = mainPlanningEstimate(frozen.fixed, applied.memory.slots, effectiveKept, frozen.model, config.imageTokens, config.main.extraInputTokens);
+    observations.accounting.planning!.after = afterPlan;
+    const mainAfterTokens = afterPlan.tokens;
     const growth = effectiveTrigger - mainAfterTokens;
     observations.accounting.mainAfterTokens = mainAfterTokens;
     observations.accounting.memoryTokens = memoryTokens(applied.memory.slots, config.imageTokens);

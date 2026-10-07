@@ -1,4 +1,5 @@
 import { VERSION } from "@earendil-works/pi-coding-agent";
+import type { PlanningEstimate } from "../engine/types.js";
 import type { ContextView, CurrentContext, LastMainContext, LastMaintenanceContext } from "../pi/context.js";
 
 export type FooterTone = "dim" | "accent" | "warning" | "error";
@@ -70,6 +71,14 @@ export function memoryOccupancy(current: CurrentContext): string {
   return `${occupied} / ${thousands(saveLimit)}`;
 }
 
+export function planningLines(estimate: PlanningEstimate, label = "Retention planning"): string[] {
+  return [
+    `${label}: ${thousands(estimate.tokens)} (${estimate.basis}${estimate.partial ? ", partial" : ""})`,
+    `Visible estimate ${thousands(estimate.visibleTokens)} + output proxy adjustment ${thousands(estimate.additionalTokens)}; not used for hard admission`,
+    ...(estimate.uncertainties.length ? [`Planning uncertainty: ${estimate.uncertainties.join(", ")}`] : []),
+  ];
+}
+
 export function budgetLines(current: CurrentContext): string[] {
   const noModel = current.model === null;
   const b = current.budget;
@@ -88,6 +97,7 @@ export function budgetLines(current: CurrentContext): string[] {
     `Main output cap: ${capLabel(b.outputCapKnown, b.outputCapTokens, noModel, "not observed")}`,
     `Maintenance output cap: ${capLabel(b.extractionOutputCapKnown, b.extractionOutputCapTokens, noModel)}`,
     `Safety: ${quantity(b.safetyTokens, noModel)}`,
+    ...(current.layout.planning ? planningLines(current.layout.planning) : []),
   ];
 }
 
@@ -112,6 +122,10 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
       `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
     );
+    if (a.planning) {
+      lines.push(...planningLines(a.planning.before, "Main-before planning"), ...planningLines(a.planning.kept, "Kept-history planning"));
+      if (a.planning.after) lines.push(...planningLines(a.planning.after, "Main-after planning"));
+    }
   }
   if (last.code) lines.push(`${last.code}: ${last.message ?? ""}`);
   return lines;

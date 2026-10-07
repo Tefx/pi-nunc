@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
 import { applyLastUserTextAppend } from "../../src/pi/payload.js";
 
@@ -8,6 +8,9 @@ import { applyLastUserTextAppend } from "../../src/pi/payload.js";
 export default function (pi: ExtensionAPI): void {
   const file = process.env.NUNC_OBSERVATION_LOG;
   if (!file) throw new Error("Missing isolated observation output");
+  if (process.env.NUNC_EXPECTED_SDK_VERSION && VERSION !== process.env.NUNC_EXPECTED_SDK_VERSION) {
+    throw new Error(`Stock CLI/SDK mismatch: expected ${process.env.NUNC_EXPECTED_SDK_VERSION}, imported ${VERSION}`);
+  }
   const log = (type: string, data: unknown) => appendFileSync(file, JSON.stringify({ type, data }) + "\n");
   // Full branch dumps distort input-latency observations; the explicit compact
   // fixture still observes the actual editor and native session identity.
@@ -26,7 +29,7 @@ export default function (pi: ExtensionAPI): void {
   pi.events.on("nunc:maintenance", data => log("maintenance", data));
   pi.events.on("nunc:ui-cleanup-usage", data => log("ui_cleanup_usage", data));
   pi.events.on("nunc:diagnostic", data => log("diagnostic", data));
-  pi.on("session_start", (event, ctx) => { log("start", { ...event, mode: ctx.mode }); snapshot(ctx, "start"); });
+  pi.on("session_start", (event, ctx) => { log("start", { ...event, mode: ctx.mode, sdkVersion: VERSION }); snapshot(ctx, "start"); });
   pi.on("session_compact", event => log("compact", event));
   pi.on("session_compact_failed", event => log("compact_failed", event));
   pi.on("agent_settled", (_event, ctx) => { log("settled", {}); snapshot(ctx, "settled"); });

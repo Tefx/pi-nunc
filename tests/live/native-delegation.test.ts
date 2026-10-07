@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InMemoryCredentialStore, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
-import { azureOpenAIResponsesProvider } from "@earendil-works/pi-ai/providers/azure-openai-responses";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { boundedProvider, BudgetLedger } from "../../src/live/budget.js";
 import { parseInput, selectedModels } from "../../src/live/contract.js";
@@ -96,7 +95,8 @@ test("native Completions serializer remains the bounded OpenRouter dispatch seam
 test("native Azure OpenAI Responses serializer remains the bounded dispatch seam outside the old API list", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
-    const azure = azureOpenAIResponsesProvider();
+    const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), refreshOnCreate: false, allowModelNetwork: false });
+    const azure = runtime.getProvider("azure"); assert(azure);
     const catalog = azure.getModels().find(m => m.id === "gpt-4o-mini"); assert(catalog);
     assert.equal(catalog.api, "azure-openai-responses");
     assert(!["openai-completions", "openai-responses", "anthropic-messages", "openai-codex-responses"].includes(catalog.api));

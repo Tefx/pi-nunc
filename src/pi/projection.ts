@@ -135,6 +135,7 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
     }
   }
   const active: ActiveEntry[] = [];
+  const edited = new Set(entries.flatMap(entry => entry.type === "context_edit" ? [entry.targetId] : []));
   for (const entry of entries) {
     if (entry.type === "compaction") continue;
     if (entry.type === "message" && isSystemMessage(entry.message)) continue;
@@ -148,7 +149,8 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
     if (!sourceRole || !["user", "assistant", "toolResult", "custom", "bashExecution", "branchSummary"].includes(sourceRole)) {
       throw new EngineError("UNSUPPORTED_INPUT", `Unsupported visible entry ${entry.id}`);
     }
-    active.push({ entryId: entry.id, sourceRole: sourceRole as ActiveEntry["sourceRole"], messages: structuredClone(messages) });
+    active.push({ entryId: entry.id, sourceRole: sourceRole as ActiveEntry["sourceRole"], messages: structuredClone(messages),
+      ...(edited.has(entry.id) ? { outputUsageUnavailable: true } : {}) });
   }
   const byId = new Map(active.map(entry => [entry.entryId, entry]));
   const unavailable: string[] = [...saved.invalid];

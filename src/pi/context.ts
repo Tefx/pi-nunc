@@ -1,7 +1,7 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, Slot } from "../engine/index.js";
-import { imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, PlanningEstimate, Slot } from "../engine/index.js";
+import { imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
@@ -24,6 +24,8 @@ export interface ContextBlock {
   mimeType?: string;
 }
 export interface ContextMessage {
+  /** Retention proxy is separate from visible tokens and main admission. */
+  planning?: PlanningEstimate;
   order: number;
   role: string;
   tokens: number | null;
@@ -56,6 +58,8 @@ export interface ToolsLayer {
   definitions: ToolDefinitionView[];
 }
 export interface ContextLayout {
+  /** Available for projected current history; not an authoritative input count. */
+  planning?: PlanningEstimate;
   system: { text: string; tokens: number };
   tools: ToolsLayer;
   memory?: { slots: Slot[]; tokens: number; envelopeTokens: number };
@@ -208,7 +212,7 @@ export function createContextSurface(options: {
       }
       const active = effectiveActive(projected, memory.cleanup?.enabled ?? false);
       const memoryIndex = currentMemoryIndex(sessionId, memory.memory, active);
-      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex);
+      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model);
       const current: CurrentContext = {
         scope: "current",
         sessionId,
@@ -275,7 +279,7 @@ export function createContextSurface(options: {
     beginMaintenance(input) {
       try {
         const imageTokens = input.config?.imageTokens;
-        const inspected = inspectEntries(input.active, imageTokens);
+        const inspected = inspectEntries(input.active, imageTokens, input.model);
         const fixed = structuredClone(input.fixed);
         state.frozen = {
           sessionId: input.ctx.sessionManager.getSessionId(),
@@ -462,8 +466,8 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
   } catch { /* Leave cut unknown rather than invent a partition. */ }
 }
 
-function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number): ContextLayout {
-  const inspected = inspectEntries(active, imageTokens);
+function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>): ContextLayout {
+  const inspected = inspectEntries(active, imageTokens, model);
   const tools = toolLayer(fixed.tools, fixed.toolState === "partial");
   const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
   const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0 };
@@ -480,6 +484,7 @@ function layoutFromProjection(fixed: FixedContext, memory: Memory, active: Activ
     tools,
     memory: memoryLayer,
     entries: inspected.entries,
+    ...(model ? { planning: mainPlanningEstimate(fixed, memory.slots, active, model, imageTokens, extraInputTokens) } : {}),
     messages: inspected.messages,
     messageCount: inspected.messages.length,
     blockCount: inspected.messages.reduce((n, message) => n + message.blocks.length, 0),
@@ -558,14 +563,14 @@ function toolLayer(tools: readonly { name: string; description?: string; paramet
   }
 }
 
-function inspectEntries(active: readonly ActiveEntry[], imageTokens: number | undefined): { entries: ContextEntry[]; messages: ContextMessage[]; associations: ToolAssociation[] } {
+function inspectEntries(active: readonly ActiveEntry[], imageTokens: number | undefined, model?: Model<Api>): { entries: ContextEntry[]; messages: ContextMessage[]; associations: ToolAssociation[] } {
   let order = 0;
   const entries: ContextEntry[] = [];
   const messages: ContextMessage[] = [];
   for (const entry of active) {
     const owned: ContextMessage[] = [];
     for (const message of entry.messages) {
-      const view = inspectMessage(message, order++, imageTokens);
+      const view = inspectMessage(message, order++, imageTokens, model, entry.outputUsageUnavailable);
       owned.push(view);
       messages.push(view);
     }
@@ -578,7 +583,7 @@ function inspectMessages(messages: readonly Message[], imageTokens: number | und
   return messages.map((message, order) => inspectMessage(message, order, imageTokens));
 }
 
-function inspectMessage(message: Message, order: number, imageTokens: number | undefined): ContextMessage {
+function inspectMessage(message: Message, order: number, imageTokens: number | undefined, model?: Model<Api>, outputUsageUnavailable = false): ContextMessage {
   const framing = messageCost(message, imageTokens);
   const blocks: ContextBlock[] = [];
   if (typeof message.content === "string") {
@@ -591,6 +596,7 @@ function inspectMessage(message: Message, order: number, imageTokens: number | u
   const unknown = framing.unknown || blocks.some(block => block.unknown);
   const view: ContextMessage = {
     order, role: message.role, tokens: framing.tokens, unknown, preview: messagePreview(message, blocks), blocks,
+    ...(model ? { planning: messagePlanningEstimate(message, model, imageTokens, outputUsageUnavailable) } : {}),
   };
   if (message.role === "toolResult") {
     view.toolCallId = message.toolCallId;
@@ -600,7 +606,7 @@ function inspectMessage(message: Message, order: number, imageTokens: number | u
   return view;
 }
 
-function inspectBlock(block: { type: string; text?: string; thinking?: string; redacted?: boolean; id?: string; name?: string; arguments?: unknown; mimeType?: string }, imageTokens: number | undefined): ContextBlock {
+function inspectBlock(block: { type: string; text?: string; thinking?: string; thinkingSignature?: string; redacted?: boolean; id?: string; name?: string; arguments?: unknown; mimeType?: string }, imageTokens: number | undefined): ContextBlock {
   switch (block.type) {
     case "text": {
       const text = typeof block.text === "string" ? block.text : "";
@@ -610,7 +616,7 @@ function inspectBlock(block: { type: string; text?: string; thinking?: string; r
       const thinking = typeof block.thinking === "string" ? block.thinking : "";
       const redacted = block.redacted === true;
       return {
-        type: "thinking", tokens: 16 + textTokens(thinking), unknown: false, preview: redacted ? "[redacted thinking]" : preview(thinking),
+        type: "thinking", tokens: 16 + textTokens(thinking), unknown: redacted || Boolean(block.thinkingSignature), preview: redacted ? "[redacted thinking]" : block.thinkingSignature ? `[opaque replay; visible text only] ${preview(thinking)}` : preview(thinking),
         ...(redacted ? { redacted: true } : { thinking }),
       };
     }
@@ -645,7 +651,7 @@ function messageCost(message: Message, imageTokens: number | undefined): TokenCo
   for (const block of message.content) {
     const view = inspectBlock(block, imageTokens);
     if (view.unknown || view.tokens === null) unknown = true;
-    else tokens += view.tokens;
+    if (view.tokens !== null) tokens += view.tokens;
   }
   return { tokens, unknown };
 }

@@ -17,7 +17,8 @@ export interface RetentionCalibration {
 
 /** Arithmetic only. No model call, host mutation, boundary injection, padding or observer prose enters a request. */
 export function calibrateRetention(source: MaintenanceInput, control: Control, turnEntries: Record<string, string[]>, turnOrder: string[], range: RetentionCalibrationRange, target?: { firstKeptEntryId: string; accounting: typeof import("../engine/accounting.js"); request: typeof import("../engine/request.js"); validation: typeof import("../engine/validation.js") }): RetentionCalibration {
-  const { chooseCut, inputLimit, mainContext, messageTokens, requestTokens } = target?.accounting ?? accounting;
+  const currentAccounting = target?.accounting ?? accounting;
+  const { chooseCut, inputLimit, mainContext, messageTokens, requestTokens } = currentAccounting;
   const { extractionContext, reduceToolBodies } = target?.request ?? request;
   const { legalCuts, validateConfig } = target?.validation ?? validation;
   const validateMemory: typeof validation.validateMemory = (target?.validation ?? validation).validateMemory;
@@ -63,7 +64,9 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     const memoryLimit = Math.floor(Math.min(config.memory.fraction * available, config.memory.maxTokens ?? Infinity));
     const denominator = available - memoryLimit;
     const suffix = new Array<number>(active.length + 1).fill(0);
-    for (let i = active.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + active[i]!.messages.reduce((sum, message) => sum + messageTokens(message, config.imageTokens), 0);
+    for (let i = active.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + (typeof currentAccounting.historyPlanningEstimate === "function"
+      ? currentAccounting.historyPlanningEstimate([active[i]!], model, config.imageTokens).tokens
+      : active[i]!.messages.reduce((sum, message) => sum + messageTokens(message, config.imageTokens), 0));
     const feasible = cuts.filter(cut => fixed + memoryLimit + suffix[cut]! + config.growthTokens <= trigger);
     for (const [position, cut] of feasible.entries()) {
       if (target && active[cut]!.entryId !== target.firstKeptEntryId) continue;
@@ -77,11 +80,13 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       const fraction = lower === upper ? lower : lower + (upper - lower) / 2;
       if (fraction < range.minFraction || fraction > range.maxFraction || fraction <= 0 || fraction >= 1) continue;
       const keepTarget = Math.floor(fraction * denominator);
-      const chosen = chooseCut(active, cuts, fixed, memoryLimit, keepTarget, trigger, { ...config, keepRecentFraction: fraction });
+      const chosen = chooseCut(active, cuts, fixed, memoryLimit, keepTarget, trigger, { ...config, keepRecentFraction: fraction }, model);
       if (chosen.cut !== cut) continue; // Includes an empty intersection at an exclusive floating-point edge.
       const context = extractionContext(source, cut, memoryLimit, active, []);
       const fullExtraction = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
-      const mainBefore = requestTokens(mainContext(source.fixed, source.memory.slots, active), config.imageTokens) + config.main.extraInputTokens;
+      const mainBefore = typeof currentAccounting.mainPlanningEstimate === "function"
+        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).tokens
+        : requestTokens(mainContext(source.fixed, source.memory.slots, active), config.imageTokens) + config.main.extraInputTokens;
       const normalAtTrigger = fullExtraction - mainBefore + trigger;
       // Trigger headroom is advisory. Calibrate against the actual extraction below.
       let extraction = fullExtraction;

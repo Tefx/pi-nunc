@@ -1,6 +1,6 @@
 import { calculateContextTokens, estimateTextTokens, estimateTextAndImageContentTokens, estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { getSystemMessageText, normalizeContext, type Api, type Context, type Message, type Model, type SystemMessage } from "@earendil-works/pi-ai";
-import type { ActiveEntry, EngineConfig, FixedContext, RequestBudget, Slot, UsageObservation } from "./types.js";
+import type { ActiveEntry, EngineConfig, FixedContext, PlanningEstimate, RequestBudget, Slot, UsageObservation } from "./types.js";
 import { memoryMessage } from "./memory.js";
 import { integer, record, requireThat } from "./validation.js";
 
@@ -17,27 +17,99 @@ export function imageTokenEstimate(override?: number): number {
   return override ?? estimateTextAndImageContentTokens([{ type: "image", data: "", mimeType: "image/png" }]);
 }
 
-export function messageTokens(message: Message, imageTokens?: number): number {
+function messageTokenParts(message: Message, imageTokens?: number): { framing: number; content: number } {
   if (message.role === "system") {
-    let tokens = textTokens(getSystemMessageText(message));
-    if (message.toolsAdded?.length) tokens += textTokens(JSON.stringify(message.toolsAdded));
-    if (message.toolsRemoved?.length) tokens += textTokens(JSON.stringify(message.toolsRemoved));
-    return tokens;
+    let content = textTokens(getSystemMessageText(message));
+    if (message.toolsAdded?.length) content += textTokens(JSON.stringify(message.toolsAdded));
+    if (message.toolsRemoved?.length) content += textTokens(JSON.stringify(message.toolsRemoved));
+    return { framing: 0, content };
   }
-  let tokens = 32 + textTokens(message.role);
-  if (message.role === "toolResult") tokens += textTokens(message.toolCallId) + textTokens(message.toolName) + 8;
-  if (typeof message.content === "string") return tokens + textTokens(message.content);
+  let framing = 32 + textTokens(message.role), content = 0;
+  if (message.role === "toolResult") framing += textTokens(message.toolCallId) + textTokens(message.toolName) + 8;
+  if (typeof message.content === "string") return { framing, content: textTokens(message.content) };
   for (const block of message.content) {
-    tokens += 16;
+    framing += 16;
     switch (block.type) {
-      case "text": tokens += textTokens(block.text); break;
-      case "thinking": tokens += textTokens(block.thinking); break;
-      case "toolCall": tokens += textTokens(block.id) + textTokens(block.name) + textTokens(JSON.stringify(block.arguments)); break;
-      case "image":
-        tokens += imageTokenEstimate(imageTokens); break;
+      case "text": content += textTokens(block.text); break;
+      case "thinking": content += textTokens(block.thinking); break;
+      case "toolCall": content += textTokens(block.id) + textTokens(block.name) + textTokens(JSON.stringify(block.arguments)); break;
+      case "image": content += imageTokenEstimate(imageTokens); break;
     }
   }
-  return tokens;
+  return { framing, content };
+}
+export function messageTokens(message: Message, imageTokens?: number): number {
+  const { framing, content } = messageTokenParts(message, imageTokens);
+  return framing + content;
+}
+
+/** Retention/forecast ONLY. Generated output is a proxy, not replay occupancy.
+ * Do not use this estimate for hard admission or in place of a bound receipt. */
+export function messagePlanningEstimate(message: Message, model: Model<Api>, imageTokens?: number, outputUsageUnavailable = false): PlanningEstimate {
+  const { framing, content } = messageTokenParts(message, imageTokens);
+  const visibleTokens = framing + content;
+  const result: PlanningEstimate = { tokens: visibleTokens, visibleTokens, additionalTokens: 0, basis: "visible-heuristic", partial: false, uncertainties: [] };
+  if (message.role !== "assistant" || message.provider !== model.provider || message.api !== model.api || message.model !== model.id ||
+      ["error", "aborted"].includes(message.stopReason) || !["openai-responses", "openai-codex-responses", "azure-openai-responses"].includes(model.api)) return result;
+  const signed = message.content.flatMap(block => block.type === "thinking" && block.thinkingSignature ? [block.thinkingSignature] : []);
+  if (!signed.length) return result;
+  if (message.content.some(block => block.type === "thinking" && !block.thinkingSignature)) {
+    result.partial = true;
+    result.uncertainties.push("replay-mapping-unknown");
+    return result;
+  }
+  let encrypted = 0;
+  for (const signature of signed) {
+    try {
+      const item: unknown = JSON.parse(signature);
+      if (!record(item) || item.type !== "reasoning" || !nonemptyEncrypted(item.encrypted_content)) throw new Error("Unknown replay mapping");
+      encrypted++;
+    } catch {
+      result.uncertainties.push("replay-mapping-unknown");
+      result.partial = true;
+      return result;
+    }
+  }
+  if (!encrypted) return result;
+  result.partial = true;
+  result.uncertainties.push("replay-mode-unknown");
+  if (outputUsageUnavailable) {
+    result.uncertainties.push("replay-mapping-unknown");
+    return result;
+  }
+  const usage: unknown = message.usage;
+  // Pi normalizes absent output to zero; zero cannot establish opaque occupancy.
+  if (!record(usage) || !integer(usage.output, 1) ||
+      (usage.reasoning !== undefined && (!integer(usage.reasoning) || usage.reasoning > usage.output))) {
+    result.uncertainties.push("usage-unavailable");
+    return result;
+  }
+  result.basis = "response-output-proxy";
+  result.tokens = framing + Math.max(content, usage.output);
+  result.additionalTokens = result.tokens - visibleTokens;
+  return result;
+}
+function nonemptyEncrypted(value: unknown): value is string { return typeof value === "string" && value.length > 0; }
+function combinePlanning(estimates: PlanningEstimate[], overhead = 0): PlanningEstimate {
+  const uncertainties = [...new Set(estimates.flatMap(estimate => estimate.uncertainties))];
+  return {
+    tokens: overhead + estimates.reduce((n, e) => n + e.tokens, 0),
+    visibleTokens: overhead + estimates.reduce((n, e) => n + e.visibleTokens, 0),
+    additionalTokens: estimates.reduce((n, e) => n + e.additionalTokens, 0),
+    basis: estimates.some(e => e.basis === "response-output-proxy") ? "response-output-proxy" : "visible-heuristic",
+    partial: estimates.some(e => e.partial), uncertainties,
+  };
+}
+export function historyPlanningEstimate(active: readonly ActiveEntry[], model: Model<Api>, imageTokens?: number): PlanningEstimate {
+  return combinePlanning(active.flatMap(entry => entry.messages.map(message => messagePlanningEstimate(message, model, imageTokens, entry.outputUsageUnavailable))));
+}
+export function mainPlanningEstimate(fixed: FixedContext, slots: Slot[], active: readonly ActiveEntry[], model: Model<Api>, imageTokens?: number, extraInputTokens = 0): PlanningEstimate {
+  const result = combinePlanning([historyPlanningEstimate(active, model, imageTokens)], requestTokens(mainContext(fixed, slots, []), imageTokens) + extraInputTokens);
+  if (fixed.toolState === "partial") {
+    result.partial = true;
+    result.uncertainties.push("fixed-context-partial");
+  }
+  return result;
 }
 export function requestTokens(context: Context, imageTokens?: number): number {
   const normalized = normalizeContext(context);
@@ -130,8 +202,8 @@ export function mainAdmissionLimit(model: Model<Api>, budget: RequestBudget): nu
   requireThat(limit > 0, "CAPACITY", "Model output floor leaves no main input capacity");
   return limit;
 }
-export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig): { cut: number; keptTokens: number } {
-  const sizes = active.map(e => e.messages.reduce((sum, m) => sum + messageTokens(m, config.imageTokens), 0));
+export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig, model?: Model<Api>): { cut: number; keptTokens: number } {
+  const sizes = active.map(e => model ? historyPlanningEstimate([e], model, config.imageTokens).tokens : e.messages.reduce((sum, m) => sum + messageTokens(m, config.imageTokens), 0));
   const suffix: number[] = new Array(sizes.length + 1).fill(0);
   for (let i = sizes.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + sizes[i]!;
   const feasible = cuts.map(cut => ({ cut, keptTokens: suffix[cut]! })).filter(c => fixedTokens + memoryLimit + c.keptTokens + config.growthTokens <= trigger);

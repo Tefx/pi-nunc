@@ -126,14 +126,13 @@ export class StockFixture {
       this.changes.on('change', check); check();
     });
   }
-  start(mode = 'rpc', sessionFile, { allowTools = false, beforeNunc = [], extensions = [] } = {}) {
-    const host = join(root, 'node_modules/@earendil-works/pi-coding-agent');
+  start(mode = 'rpc', sessionFile, { allowTools = false, beforeNunc = [], extensions = [], host = process.env.NUNC_STOCK_HOST ?? join(root, 'node_modules/@earendil-works/pi-coding-agent') } = {}) {
     const manifest = JSON.parse(readFileSync(join(host, 'package.json'), 'utf8'));
-    assert.equal(manifest.version, '0.99.0');
+    assert(['1.0.3', '1.0.4'].includes(manifest.version), `Unsupported stock host ${manifest.version}`);
     const cli = join(host, manifest.bin.pi);
     const args = [cli, ...(mode === 'rpc' ? ['--mode', 'rpc'] : []), '--no-approve', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', ...(!allowTools ? ['--no-tools'] : []), ...beforeNunc.flatMap(path => ['-e', path]), '-e', join(root, 'dist/src/index.js'), ...extensions.flatMap(path => ['-e', path]), '-e', join(root, 'dist/tests/pi/stock-extension.js'), '--nunc-config', this.configFile, '--provider', this.provider, '--model', this.modelId, '--thinking', 'off', '--system-prompt', 'Perform the current task.', '--session-dir', join(this.state, 'sessions'), ...(sessionFile ? ['--session', sessionFile] : [])];
     const command = mode === 'tui' ? ['/usr/bin/python3', join(root, 'scripts/pty-driver.py'), process.execPath, ...args] : [process.execPath, ...args];
-    const child = spawn(command[0], command.slice(1), { cwd: join(this.state, 'work'), env: this.env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(command[0], command.slice(1), { cwd: join(this.state, 'work'), env: { ...this.env, NUNC_EXPECTED_SDK_VERSION: manifest.version }, stdio: ['pipe', 'pipe', 'pipe'] });
     const p = { child, mode, events: [], stdout: '', stderr: '', serial: 0, exit: undefined };
     this.processes.push(p); this.timeline.push({ command, mode, pid: child.pid });
     let buffer = '';

@@ -85,7 +85,7 @@ export default function nunc(pi: ExtensionAPI): void {
     return { compaction: s.compaction, blockImages: s.blockImages };
   };
   const supported = (ctx: ExtensionContext) => {
-    if (VERSION !== "0.99.0") throw new EngineError("CONFIG", `Supported Pi target is 0.99.0; found ${VERSION}`);
+    if (VERSION !== "1.0.3" && VERSION !== "1.0.4") throw new EngineError("CONFIG", `Supported Pi targets are 1.0.3 and 1.0.4; found ${VERSION}`);
     if (!ctx.sessionManager.getSessionFile()) throw new EngineError("CONFIG", "Persistent sessions only; start Pi without --no-session");
     const s = getHostSettings(ctx);
     if (s.blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");

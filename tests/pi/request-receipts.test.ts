@@ -7,7 +7,8 @@ import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earend
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface } from "pi-nunc/pi";
 import { fixture, memoryPatch } from "./fixtures.js";
-import { messageTokens } from "../../src/engine/accounting.js";
+import { mainPlanningEstimate, messageTokens } from "../../src/engine/accounting.js";
+import { project } from "../../src/pi/projection.js";
 
 test("unconfigured native images reach the host provider and new images are charged after a usage receipt", async t => {
   const { f, observations } = await receiptsFixture(t);
@@ -29,7 +30,7 @@ test("unconfigured native images reach the host provider and new images are char
 
 const MARKER = "\n<turn-override>" + "Z".repeat(12000) + "</turn-override>";
 
-function responsesSSE(modelId: string, text: string) {
+function responsesSSE(modelId: string, text: string, mode?: "current_turn" | "all_turns") {
   const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
   const events = [
     { type: "response.created", response: { id: "response-1", model: modelId, status: "in_progress", output: [] } },
@@ -37,7 +38,7 @@ function responsesSSE(modelId: string, text: string) {
     { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
     { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
     { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 80, output_tokens: 4, total_tokens: 84, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
+    { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], ...(mode ? { reasoning: { context: mode } } : {}), usage: { input_tokens: 80, output_tokens: 4, total_tokens: 84, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
   ];
   return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 }
@@ -368,4 +369,48 @@ test("model, tools, and compaction invalidate receipts, while manual M preserves
   const afterSave = mains(env.observations).at(-1);
   assert.equal(afterSave?.estimator, "pi-usage-backed");
   assert.equal(afterSave?.estimateReason, "matching-receipt");
+});
+
+for (const mode of ["current_turn", "all_turns", undefined] as const) test(`native replay planning cannot become hard admission (${mode ?? "unknown"} controlled rendering metadata)`, async t => {
+  const env = await receiptsFixture(t), openai = openaiProvider();
+  const catalog = openai.getModels().find(m => m.id === "gpt-6-astra") ?? openai.getModels().find(m => m.id === "gpt-4.1");
+  assert(catalog);
+  const model = { ...catalog, contextWindow: 60000, maxTokens: 8192 };
+  const payloads: Record<string, unknown>[] = [];
+  const bound = { apiKey: "offline-fixture-key", maxRetries: 0 as const, fetch: (async (resource: RequestInfo | URL, init?: RequestInit) => {
+    payloads.push(await new Request(resource, init).json() as Record<string, unknown>);
+    return responsesSSE(model.id, "Controlled response", mode);
+  }) as typeof fetch };
+  const provider: Provider = { ...openai, getModels: () => [model],
+    streamSimple: (m, c, o) => openai.streamSimple(m as Model<"openai-responses">, c, { ...o, ...bound }),
+    stream: (m, c, o) => openai.stream(m as Model<"openai-responses">, c, { ...o, ...bound } as Parameters<typeof openai.stream>[2]),
+  };
+  new ModelRegistry(env.f.modelRuntime).registerProvider(provider);
+  await env.f.modelRuntime.setRuntimeApiKey(model.provider, "offline-fixture-key");
+  await env.f.runtime.session.setModel(model);
+  const manager = env.f.runtime.session.sessionManager;
+  const reasoning = Array.from({ length: 8 }, (_, i) => ({ type: "reasoning", id: `rs_existing_${i}`, summary: [], encrypted_content: `fixture-encrypted-${i}` }));
+  for (const [i, item] of reasoning.entries()) {
+    manager.appendMessage({ role: "user", content: `previous turn ${i}`, timestamp: i });
+    manager.appendMessage({ role: "assistant", api: model.api, provider: model.provider, model: model.id, timestamp: i, stopReason: "stop",
+      usage: { input: 100, cacheRead: 0, cacheWrite: 0, output: 8000, reasoning: 7900, totalTokens: 8100, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      content: [{ type: "thinking", thinking: "", thinkingSignature: JSON.stringify(item) }, { type: "text", text: `visible ${i}` }],
+    });
+  }
+  env.f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  const active = project(manager.buildContextEntries()).active;
+  assert(mainPlanningEstimate({ systemPrompt: "", tools: [] }, [], active, model).tokens > model.contextWindow);
+  await env.f.runtime.session.prompt("Fresh request must retain ordinary admission");
+  assert.equal(payloads.length, 1);
+  const first = mains(env.observations).at(-1)!;
+  assert.equal(first.outcome, "delegate"); assert.equal(first.estimator, "pi-heuristic");
+  assert(first.inputTokens! < first.inputLimit!);
+  assert.deepEqual((payloads[0]!.input as Record<string, unknown>[]).filter(item => item.type === "reasoning"), reasoning, "actual native serializer preserves every opaque item");
+  await env.f.runtime.session.prompt("Use the completed request receipt");
+  assert.equal(payloads.length, 2);
+  const second = mains(env.observations).at(-1)!;
+  assert.equal(second.estimator, "pi-usage-backed");
+  assert.equal(second.receiptBreakdown?.observedU, 84);
+  assert(second.inputTokens! < 10000, "old signed replies are not charged again above U");
+  // Metadata variation verifies client ownership only; this server does not measure real rendering.
 });
