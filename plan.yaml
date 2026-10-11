@@ -9,18 +9,14 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: 当前增量为 docs/MEMORY-IMPROVEMENT.md 的完整轻量关系记忆、局部修订与退役收缩。集成仅 feat/relational-memory，基线7654720277ee7b2a388b543ef973db1a279d5f7e；main保持不变。用户另行明确授权实现冻结后一次
-  fresh isolated MemoryArena native/Nunc 对照，覆盖方案中不重跑 MemoryArena 的原限制，仅此一次。既有 DONE
-  定义和证据保持不可变；不重开旧验收。
-project_guidance: 当前phase为nunc-relational-memory。已完成source/doc-evidence-correction定义、证据和生命周期不可变；native-migration由node-typescript-engineer交付必要源码/tests/docs原生认证与模型映射迁移，随后原live消费者交付隔离真实运行/成本失败分析/进程核对/清理。用户明确授权openai-codex/gpt-6.1-sol与openai-codex-responses迁移为openai/gpt-6.1-sol、openai-responses、native
-  subscription OAuth。最新用户要求“benchmark时的thinking level改用medium”：当前全部比较调用统一显式medium，包括old/new六条小场景及native/Nunc
-  MemoryArena两arm的main和maintenance。此授权覆盖phase及已claimed native-migration/live描述中的low/minimal；不得静默clamp或继续使用low，记录实际effective
-  medium。已授权provider/API及冻结3e9de76的必要迁移例外继续有效；其余场景、数据、顺序、有限预算、cut/q/defaults和一次性运行要求不变。迁移交付并集成后冻结最终候选，再继续原live的6条小场景和仅一次MemoryArena；不可并发源码修改与live推理。两个claimed步骤的claim/定义/依赖不改，由controller保持此顺序，复用原会话上下文但不自动重放效果。全部DO/NOT
-  DO仍以MEMORY-IMPROVEMENT为准，范围例外仅已授权一次MemoryArena及本次必要原生迁移和medium设置，禁止语义记忆策略调参。禁止main
-  merge、push、日常采用、全局设置、当前会话reload、Pi core及凭据读取/复制/管理/login/覆盖/文本传递，无fallback；仅正常native
-  handoff和安全auth check --json --no-refresh（绝不--credentials）。旧报告和旧fixture只读，新runtime协议/证据用新目录，顺序live
-  jobs。生产提示不含评估实体/gold/后续问题/评分规则。Orchestrator/parent architect在原live完成程序中作唯一最终整合接受，消费本phase全部source、doc
-  correction、migration和live结果，覆盖最终候选完整适用离线库存、真实行为、benchmark、成本及局限；复用有效83文件证据，补受影响范围，不因Plan/doc变化全量重跑。必要要求未证或阻断缺陷未解不能接受，不为分数重试，不在benchmark后调参。
+context: 当前增量：在 feat/relational-memory（授权基线 5d42f9d4e3b67ae26928102cc38145867273b2f0）实现四处
+  domain-general 提示修订，随后冻结候选并进行一次 selected 3-group MemoryArena MEDIUM native/Nunc
+  测量。保留全部既有 DONE 定义、证据和生命周期；不重开旧验收。
+project_guidance: 当前 phase 为 nunc-effective-state。用户限定四处提示改动及直接受影响 build/request/protocol
+  检查，不全量重测、不新增小场景/模型矩阵。source 为可回退仓库交付；benchmark 为消费冻结候选的独立外部运行/资源清理事务，故分两个顺序步骤，无额外
+  gate/reviewer。executor 适合已定行为的局部提示修改；node-typescript-engineer 复用既有 Node benchmark
+  driver，拥有获准环境恢复、真实运行与效果核对。Orchestrator 保持当前分支集成并在 benchmark 完成程序作本增量唯一整合接受；旧有效证据可复用。禁止
+  main merge/push/日常采用/reload、全局设置及凭据管理；只用既有 native OAuth handoff，不新增 credentials/spend。一次测量不以收益为通过条件，不调参、不重跑；失败/未知如实报告。
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -5561,3 +5557,85 @@ phases:
       live integration binding pending next dispatch. Zero real model operations;
       live claim remains original NodeTS and6branches+ONEArena unspent. No mainmerge/push/adoption/credentials
       effects. Worker processes reconciled/build runtimes cleaned.'
+- id: nunc-effective-state
+  name: 有效状态提示修订与一次 MEDIUM 测量
+  status: pending
+  gate: Orchestrator 在 benchmark 完成程序接受 source + benchmark 的完整本次增量：四处语义边界、直接受影响检查、冻结候选一次对照、比较/局限与清理。测量负收益允许接受，缺失必要交付或未核对效果不允许。无独立
+    gate。
+  depends_on:
+  - nunc-relational-memory
+  steps:
+  - id: nunc-effective-state.source
+    name: 四处有效状态与适用范围提示修订
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"**/auth.json\", \"\
+      .env\", \".env.*\"]\nchecks:\n  node: \"26.7.0\"\n  npm: \"11.19.0\"\n  dependency_state:\
+      \ \"package-lock.json; reuse matching installed dependencies, npm ci only if\
+      \ necessary\"\n  commands:\n    - [\"node\", \"node_modules/typescript/bin/tsc\"\
+      , \"--project\", \"tsconfig.json\"]\n    - [\"node\", \"--test\", \"--test-concurrency=2\"\
+      , \"dist/tests/engine/cleanup.test.js\", \"dist/tests/engine/memory.test.js\"\
+      ]\n\nDeliver: 仅修改 default policy 一段和 extractionContext 的 system prefix、cleanup/no-cleanup\
+      \ 两个 trailer，共四处。domain-general 语义：保留已建立且仍有效的状态/结果/关系及其适用范围，以后续来源判断修改、取代、取消或失效；不得以当前/下一回答是否相关作为遗忘依据。不猜测未来问题，不永久保存所有历史；完整任务、精确条件、来源权限、局部修订、已结束无持续用途的退役仍有效。生产提示不得包含\
+      \ benchmark 实体、gold、评分或特定领域答案。不修改 runtime 算法/schema/capacity/settings。\n\nBoundary:\
+      \ 用户明确指定 CURRENT branch feat/relational-memory，禁止创建另一实施分支替代目标或 main merge/push/adoption/reload。executor\
+      \ 负责已定语义的四处局部实现及必要直接检查；Orchestrator 负责当前分支最终集成。只做可 Git 回退源码事务，不运行模型或 benchmark，不修改旧证据。\n\
+      \nAdmit: 当前基线 5d42f9d4e3b67ae26928102cc38145867273b2f0；无现存 claims/writers，全部历史\
+      \ DONE。不需要重做设计或增设 prompt 评估框架。完成后 benchmark 消费集成冻结的产品候选。\n\nRecovery: owner\
+      \ 修复本范围内问题；不扩大源码范围或借失败加入算法/参数变化。保留有用候选和失败证据，不隐瞒未验证语义。"
+    verification: 在 Node26.7.0/npm11.19.0、锁定依赖、unset NODE_OPTIONS、PI_OFFLINE=1/PI_SKIP_VERSION_CHECK=1/PI_TELEMETRY=0
+      下执行所列 build 和 request/response-protocol 相关现有测试，或同等更精准选择。阅读四处最终 diff 确认语义一致、无协议/算法改动；禁止把
+      token-presence 断言当行为证据。只运行直接受影响检查；不加 full suite、小场景或模型调用。记录实际命令/结果，提示模型行为留给一次测量；Orchestrator
+      集成当前分支并冻结交付。
+    refs:
+    - policies/default.md
+    - src/engine/request.ts
+    - package.json
+    - package-lock.json
+    - tests/engine/cleanup.test.ts
+    - tests/engine/memory.test.ts
+    agent: executor
+  - id: nunc-effective-state.benchmark
+    name: 冻结候选一次 MEDIUM MemoryArena 比较与清理
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \"src/**\", \"policies/**\", \".pi/**\", \"**/auth.json\"\
+      , \".env\", \".env.*\"]\nprotocol_ref: \".scratch/relational-memory-live-medium-4e672b/protocol.json\"\
+      \nenvironment_ref: \".scratch/relational-memory-live-medium-4e672b/environment.json\"\
+      \nselected_groups: [1, 2, 3]\nexpected_deliveries: {native: 23, nunc: 23, total:\
+      \ 46}\nlimits: {runSeconds: 10800, operationSeconds: 900, assistantRoundsPerTraveler:\
+      \ 30, successfulOperations: 400, contextInput: 12000000, output: 200000, toolCalls:\
+      \ 800, maintenancePerSession: 16}\n\nDeliver: 用户另行授权本次一次 fixed-candidate native/Nunc\
+      \ MemoryArena MEDIUM 对照，23 people/arm、46 deliveries。复用 retained protocol/driver/scorer/cases，恢复已删除\
+      \ owned Python environment、完整固定来源 304807007B flights CSV/database 与必要 isolated\
+      \ runtime；不可用 retained score subset 替代真实工具数据库。只恢复本次所需环境，不重跑旧六条小场景或旧模型比较，不新增框架。保留旧观察只读，使用新\
+      \ owned 输出目录；冻结产品后无源码调参。测量后报告本次各 arm PS/SPS/SR、显式约束、catalog/strict gold、实际维护、成本/时延/使用量/失败与未知，并比较此前\
+      \ MEDIUM native PS10/23、Nunc8/23，explicit73/74 vs68/74，SPS97.619 vs89.980。负收益、混合结果和局限必须直述；不声称单次比较的因果性或\
+      \ leaderboard 结果。\n\nBoundary: 独立外部运行与清理事务，消费 source 已集成冻结产品；与仓库事务分开以防推理中修改产品或失败后重放效果。node-typescript-engineer\
+      \ 复用既有 driver 完成环境恢复、顺序运行、报告和资源回收，无新增产品设计。只用已授权 openai/gpt-6.1-sol、openai-responses、native\
+      \ subscription OAuth，main/maintenance 均显式 medium；不新增 credentials/spend/auth\
+      \ administration，不读写/复制/打印凭据，正常 host native handoff。维持既有六 session arm 顺序、自动维护阈值、q0.5/elastic\
+      \ defaults、memoryTools=false、官方数据工具/模板、评分和限额。无 main merge/push/adoption/reload/global\
+      \ config。\n\nAdmit: source 完成且 Orchestrator 冻结当前分支集成候选后才开始推理；旧 frozenProducerCommit\
+      \ 仅历史参考，新运行绑定新候选。恢复协议的前置检查只可无模型调用，避免额外 paid probe。分配重型资源前比较现有自由空间与保守 5GiB peak\
+      \ + 10GiB reserve；不够则缩减/清理已可释放 owned 材料后重查。复用 helper 源而不覆盖其他 active writer，无\
+      \ CodeGraph index，使用 native lookup。\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/relational-memory-live-medium-4e672b/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/native-migration/live-support/helpers\n\
+      \nRecovery: 一次 allocation，measurement only、no tuning/rerun。前置环境恢复失败在 owner 内安全修正；推理开始后任何失败先核对进程/效果/usage，不自动重播、不以好分数为目标重试。缺失/中断结果明确记录，不当作46份成功交付。保留最小原始独特观测、输入/来源与报告供接受及离线重评分；进程和消费者结束后实际删除重建的环境/完整\
+      \ CSV/cache/runtime/冗余副本，不删除共享依赖/旧 canonical evidence。清理报告实际 free-space change；未核对效果保持不接受。"
+    verification: 核对冻结候选、协议相同输入和有效 medium；实际运行最多一次 selected3-group 对照并检查两 arm 各23完成及缺失情况。用既有
+      scorer 对完整 selected manifest 评分，不注入 gold、不反馈预期答案；无调参/重试。报告比较、maintenance 观察缺口、单次噪声、非
+      leaderboard adaptation、目录价格不等于实际 subscription 账单。报告可如实为负/未知，完整交付缺口必须保留。Orchestrator
+      在此完成程序作 source+benchmark 唯一最终整合接受：复用适用旧离线证据，加本次直接 build/request/protocol 检查；无需全量重测或独立
+      reviewer/gate。产品改动边界满足、测量完整且效果/清理核对完毕可接受本次交付；无需胜过 native 或旧 Nunc。
+    refs:
+    - .scratch/relational-memory-live-medium-4e672b/protocol.json
+    - .scratch/relational-memory-live-medium-4e672b/environment.json
+    - .scratch/relational-memory-live-medium-4e672b/completion.json
+    - .scratch/relational-memory-live-medium-4e672b/helpers/run-arena-medium.mjs
+    - .scratch/relational-memory-live-medium-4e672b/helpers/score_travel.py
+    depends_on:
+    - nunc-effective-state.source
+    agent: node-typescript-engineer
