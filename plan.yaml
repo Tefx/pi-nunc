@@ -5559,7 +5559,7 @@ phases:
       effects. Worker processes reconciled/build runtimes cleaned.'
 - id: nunc-effective-state
   name: 有效状态提示修订与一次 MEDIUM 测量
-  status: in_progress
+  status: done
   gate: Orchestrator 在 benchmark 完成程序接受 source + benchmark 的完整本次增量：四处语义边界、直接受影响检查、冻结候选一次对照、比较/局限与清理。测量负收益允许接受，缺失必要交付或未核对效果不允许。无独立
     gate。
   depends_on:
@@ -5612,7 +5612,7 @@ phases:
       tests. Frozen product ffb936d for authorized ONE benchmark; no main merge/push/adoption/reload.'
   - id: nunc-effective-state.benchmark
     name: 冻结候选一次 MEDIUM MemoryArena 比较与清理
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"policies/**\", \".pi/**\", \"**/auth.json\"\
@@ -5655,3 +5655,27 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-11T18:21:27.289055Z'
+    done_at: '2026-10-11T18:45:45.806894+00:00'
+    evidence: 'Accepted source+ONE measurement deliverable, not quality improvement.
+      Frozen product ffb936de66996128e94675e619815b5d8da12df5, run integration f7c47e738bf637af129434b3b7805e4cfce5139e;
+      source unchanged, main7654720 protected. .scratch/effective-state-live-medium-ffb936d/RESULT.md,
+      completion.json, scores.json, analysis.json, maintenance-evidence.json, relation-evidence.json,
+      execution-checks.json, process-reconciliation.json and cleanup.json retain original
+      observations and grading inputs. Parent inspected full report/completion, actual
+      score aggregates, resource/source inventory,46answers, Git and no owned processes.
+      Six selected serial sessions/23people each arm, full304807007Bofficial CSV,
+      original finite caps/order/options, native OAuth openai/gpt-6.1-sol MEDIUM.100
+      logical operations973354context32713output232tools; no replay/unknown attempts.
+      Native vsNunc PS9/23 vs8/23,SPS96.230 vs84.524,SR0/3both,explicit72/74vs66/74,valid275/276vs267/276,exact341/414vs316/414.
+      PreviousNunc PS8/23/SPS89.980/explicit68/74: no improvement; no causal/statistical
+      claim. Austin->Monica lunch retained/used both arms; Nunc group1 output omissions
+      despite retained references. Native4CP/Nunc3CP all3nonemptyM delivered next
+      request;93main+3Nuncmaintenance payloadsMEDIUM; native4maintenance wire bodies
+      uncaptured, state+unchanged flow limitation retained. Native/Nunc catalogUSD.4982432/.5997228;actual
+      subscription null. Node26.10/npm11.19.1 vsprior26.7/11.19 disclosed; Pi1.1/Python3.12.12/numpy2.5.4
+      same. Offline analyzer missing-small dependency fixed in Arena-only local variant,
+      no inference replay/scoring change. All processes/service reconciled; owned
+      runtime/env/cache/fullDB deleted, observed423932KiB free increase. Source worktree
+      already removed (observed24784KiB increase); Git retained source. Canonical
+      minimal run evidence8.6MiB for offline inspection; previous canonical untouched.
+      No extra gate/reviewer, no full suite/regrade, no push/mainmerge/adoption/reload.'
