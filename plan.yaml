@@ -5172,3 +5172,112 @@ phases:
       scratch acceptance-only consumers now released for normal cleanup. Controlled
       services establish mechanics only; no real-model quality/cache/cost claim. No
       independent gate required by this step; parent owns integrated acceptance.'
+- id: memoryarena-sol-rerun
+  name: Fresh isolated MemoryArena Sol comparison
+  status: pending
+  steps:
+  - id: memoryarena-sol-rerun.benchmark
+    name: Prepare, run, score and clean fresh native/current-Nunc benchmark
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/memoryarena-sol-rerun-03ecb09/**\"]\n \
+      \ blocked_paths: [\"plan.yaml\", \".vectl/**\", \".git/**\", \"src/**\", \"\
+      policies/**\", \"tests/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\"\
+      , \"**/auth.json\", \".scratch/memoryarena-sol-pilot/**\", \".scratch/mab-codex-luna-pilot/**\"\
+      ]\ntarget:\n  repository: /Users/tefx/Projects/pi-nunc\n  product_revision:\
+      \ 03ecb094241381eae77fd9a2a290f37a6a89bc42\n  task_root: /Users/tefx/Projects/pi-nunc/.scratch/memoryarena-sol-rerun-03ecb09\n\
+      protocol:\n  provider: openai-codex\n  model: gpt-6.1-sol\n  api: openai-codex-responses\n\
+      \  thinking: minimal\n  physical_context: 272000\n  max_tokens: 128000\n  groups:\
+      \ [1, 2, 3]\n  travelers: [8, 7, 8]\n  original_requests: 46\n  persistent_sessions:\
+      \ 6\n  repetitions: 1\n  order: [[1, native], [1, nunc], [2, nunc], [2, native],\
+      \ [3, native], [3, nunc]]\n  compaction: {enabled: true, effective_trigger:\
+      \ 16384, reserve_tokens: 255616, keep_recent_tokens: 8000}\n  nunc: {q: 0.5,\
+      \ elastic_required: unchanged, memoryTools: false}\n  source_revision: 6cd9de14b71915e39ac742a20dc33785e14b6aab\n\
+      \  dataset_revision: da1a37c8b19280e18627ca01cf368195a5e1d92e\nlimits:\n  overall_seconds:\
+      \ 10800\n  operation_seconds: 900\n  assistant_steps_per_traveler: 30\n  successful_main_and_maintenance_operations:\
+      \ 400\n  input_plus_cache_tokens: 12000000\n  output_tokens: 200000\n  tool_calls:\
+      \ 800\n  maintenance_per_session: 16\n\nDeliver: One complete fresh isolated\
+      \ native/current-Nunc comparison, from preparation and zero-inference preflight\
+      \ through the six actual persistent native Pi sessions, unchanged offline scoring,\
+      \ comparison report and reconciled cleanup. One owner owns this whole outcome.\
+      \ Orchestrator makes the sole integrated completion judgment on this step; no\
+      \ extra gate, product repair, policy change, model change or scorer change is\
+      \ authorized. Negative scores are valid observations; missing required observations\
+      \ cannot be called a complete benchmark.\n\nBoundary: Explicit user authorization\
+      \ covers bounded real requests to the named provider/model and task-owned runtime\
+      \ preparation/cleanup only. Current Nunc comes from the named current product\
+      \ revision, not the old pilot snapshot. Preserve all originals, prior pilot\
+      \ evidence, global/daily environments, other sessions and credentials; use native\
+      \ authentication ownership without copying or mutating credentials. No repository\
+      \ product changes, publication, installation into global state, or fallback\
+      \ provider/model. Inspect root collision before allocating; never overwrite\
+      \ an existing run. Keep one CSV process and one candidate Pi at a time. Recheck\
+      \ filesystem free space against <3 GiB additional peak plus 4 GiB reserve and\
+      \ concurrent allocations; planning observed about 47 GiB free. Task isolation\
+      \ is local profiles/environment, not an OS sandbox.\n\nAdmit: Reuse the read-only\
+      \ prior PROTOCOL.md, protocol.json, selection.json, environment.json and existing\
+      \ helpers. Their historical no-delegation statement is obsolete; this step is\
+      \ assigned to the one owner. Historical product-snapshot and already-passed\
+      \ preflight claims do not apply to the new run. Preserve the same selected inputs,\
+      \ official prompts/templates/tool schemas and unchanged official ToolExecutor/scorer\
+      \ behavior. Reconstruct the full official flight CSV, not a historical result\
+      \ subset. Expose exactly the six official CSV tools, no shell/file/MCP/skill\
+      \ tools to candidates. Do not expose future requests, hidden gold, expected\
+      \ answers or scoring feedback to candidates; no accumulated-plan reinjection,\
+      \ padding or manual checkpoints. Run actual zero-inference preflight before\
+      \ provider effects, verifying both arms' model/API/physical-window/thinking/settings,\
+      \ exactly six working tools, Nunc only in its arm and zero candidate messages/model\
+      \ calls. Hidden-gold scoring preflight remains offline and must retain its distinction\
+      \ from candidate evidence. Reuse the recorded environment versions and compatible\
+      \ existing mechanisms; preparation must not alter product/policy/scoring/model\
+      \ semantics. If a material tracked producer change becomes necessary, stop for\
+      \ reconciliation rather than conceal it in temporary executable logic.\n\nScoring\
+      \ and interpretation: Preserve official PS/SPS/SR over the full fixed manifest/denominator\
+      \ (23 travelers per arm), plus 414 normalized exact gold fields, 276 catalog\
+      \ checks and 74 predeclared explicit changed-slot rules evaluated against actual\
+      \ candidate/prior-person plans. Keep the existing grader and rules unchanged;\
+      \ missing outputs remain visible failures/incompleteness. Compare the fresh\
+      \ two arms and old/new observations with single-run, noncausal limitations.\
+      \ This is the same-session adaptation and early automatic-maintenance pressure\
+      \ test, not an unmodified MemoryArena leaderboard result or daily 272K-window\
+      \ behavior. Auxiliary checks do not certify total trip budgets or all implicit\
+      \ travel constraints. Memory-effect claims require observed maintenance; report\
+      \ actual M/K/cuts and unequal maintenance rather than infer benefit from scores\
+      \ alone.\n\nRecovery: Enforce the stated bounded protocol; receipt ceilings\
+      \ can be crossed by the last operation, and interrupted unknown usage must be\
+      \ disclosed. Never replay attempted effects or automatically rerun failed sessions;\
+      \ reconcile started/saved effects and keep useful failure observations. Do not\
+      \ fallback or erase failures through configuration changes. Before cleanup stop/reconcile\
+      \ all owned controller, CLI, bridge and descendant processes/effects. Preserve\
+      \ minimal unique session/model/tool observations, selected inputs/source provenance,\
+      \ reports and this run's sufficient scoring slice; then physically delete owned\
+      \ runtime, venv, full CSV, caches and redundant outputs. Verify the same offline\
+      \ scores using retained inputs after cleanup. Report actual free-space change;\
+      \ never delete originals or unrelated paths. If stopped or blocked, retain the\
+      \ minimum diagnostic context and identify unresolved effects/evidence without\
+      \ claiming completion.\n\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/memoryarena-sol-pilot/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/mab-codex-luna-pilot/helpers"
+    verification: 'Orchestrator completion procedure consumes the owner''s current-run
+      evidence: fresh zero-inference preflight, actual six-session/46-request manifest
+      and unchanged configuration/official inputs, main and maintenance receipts,
+      actual maintenance/M/K/cuts, tool counts/errors, latency and catalog-equivalent
+      cost with unknown interrupted usage and subscription-billing caveats, full-denominator
+      official PS/SPS/SR plus 414/276/74 auxiliary results, current-arm and historical
+      comparison limitations, reconciled processes/effects and scoped physical cleanup.
+      Reuse existing run_comparison.mjs preflight/run and score_travel.py preflight/score
+      interfaces under the new root and recorded dependency environment; do not infer
+      behavioral success from process exit alone. All required observations and retained-input
+      post-cleanup score reproducibility must be established for complete benchmark
+      acceptance; negative candidate performance does not itself fail the observation
+      task. No product regression rerun or product acceptance claim is created by
+      this runtime-only benchmark.'
+    refs:
+    - .scratch/memoryarena-sol-pilot/PROTOCOL.md
+    - .scratch/memoryarena-sol-pilot/protocol.json
+    - .scratch/memoryarena-sol-pilot/selection.json
+    - .scratch/memoryarena-sol-pilot/environment.json
+    - .scratch/memoryarena-sol-pilot/helpers/run_comparison.mjs
+    - .scratch/memoryarena-sol-pilot/helpers/score_travel.py
+    - .scratch/memoryarena-sol-pilot/helpers/retain_score_inputs.py
+    - .scratch/mab-codex-luna-pilot/helpers/sol-observer.mjs
+    agent: node-typescript-engineer
