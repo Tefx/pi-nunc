@@ -12,9 +12,11 @@ strategy_ref: docs/DESIGN.md
 context: 当前增量为 docs/MEMORY-IMPROVEMENT.md 的完整轻量关系记忆、局部修订与退役收缩。集成仅 feat/relational-memory，基线7654720277ee7b2a388b543ef973db1a279d5f7e；main保持不变。用户另行明确授权实现冻结后一次
   fresh isolated MemoryArena native/Nunc 对照，覆盖方案中不重跑 MemoryArena 的原限制，仅此一次。既有 DONE
   定义和证据保持不可变；不重开旧验收。
-project_guidance: 当前phase为nunc-relational-memory。已完成source/doc-evidence-correction定义、证据和生命周期不可变；新增native-migration由node-typescript-engineer交付必要源码/tests/docs原生认证与模型映射迁移，随后原live消费者交付隔离真实运行/成本失败分析/进程核对/清理。用户现明确授权openai-codex/gpt-6.1-sol与openai-codex-responses迁移为openai/gpt-6.1-sol、openai-responses、native
-  subscription OAuth，thinking由minimal改为显式low（当前原生最低支持级）。这覆盖当前phase/live文本中旧provider/API/minimal及冻结3e9de76的对应约束；其余场景、数据、顺序、有限预算、cut/q/defaults和一次性运行要求不变。迁移交付并集成后冻结最终候选，再继续原live的6条小场景和仅一次MemoryArena；不可并发源码修改与live推理。live
-  claim/定义/依赖不改，由controller保持此顺序，复用原会话上下文但不自动重放效果。全部DO/NOT DO仍以MEMORY-IMPROVEMENT为准，范围例外仅已授权一次MemoryArena及本次必要原生迁移，禁止语义记忆策略调参。禁止main
+project_guidance: 当前phase为nunc-relational-memory。已完成source/doc-evidence-correction定义、证据和生命周期不可变；native-migration由node-typescript-engineer交付必要源码/tests/docs原生认证与模型映射迁移，随后原live消费者交付隔离真实运行/成本失败分析/进程核对/清理。用户明确授权openai-codex/gpt-6.1-sol与openai-codex-responses迁移为openai/gpt-6.1-sol、openai-responses、native
+  subscription OAuth。最新用户要求“benchmark时的thinking level改用medium”：当前全部比较调用统一显式medium，包括old/new六条小场景及native/Nunc
+  MemoryArena两arm的main和maintenance。此授权覆盖phase及已claimed native-migration/live描述中的low/minimal；不得静默clamp或继续使用low，记录实际effective
+  medium。已授权provider/API及冻结3e9de76的必要迁移例外继续有效；其余场景、数据、顺序、有限预算、cut/q/defaults和一次性运行要求不变。迁移交付并集成后冻结最终候选，再继续原live的6条小场景和仅一次MemoryArena；不可并发源码修改与live推理。两个claimed步骤的claim/定义/依赖不改，由controller保持此顺序，复用原会话上下文但不自动重放效果。全部DO/NOT
+  DO仍以MEMORY-IMPROVEMENT为准，范围例外仅已授权一次MemoryArena及本次必要原生迁移和medium设置，禁止语义记忆策略调参。禁止main
   merge、push、日常采用、全局设置、当前会话reload、Pi core及凭据读取/复制/管理/login/覆盖/文本传递，无fallback；仅正常native
   handoff和安全auth check --json --no-refresh（绝不--credentials）。旧报告和旧fixture只读，新runtime协议/证据用新目录，顺序live
   jobs。生产提示不含评估实体/gold/后续问题/评分规则。Orchestrator/parent architect在原live完成程序中作唯一最终整合接受，消费本phase全部source、doc
@@ -5313,8 +5315,10 @@ phases:
   gate: 由 parent architect/Orchestrator 在 nunc-relational-memory.live 完成程序作唯一整合接受：消费
     source 和 live 全部结果，判定要求覆盖、最终候选离线证据适用性、实际关联/修订/退役行为及 MemoryArena 结果和成本；不额外新增 gate
     链。
-  context: 最新用户要求完整迁移到新原生认证及模型名称/映射：本phase执行使用openai/gpt-6.1-sol、openai-responses、subscription
-    OAuth、显式low；旧live合同的provider/API/minimal由该授权覆盖，其余完整要求保持。native-migration是可回退源码生产者，既有live仍是独立运行消费者；controller确保迁移集成冻结后才恢复live，不改其claim或新增gate。phase唯一最终接受包含source、doc-evidence-correction、native-migration及live全部结果。
+  context: 用户已要求完整迁移到新原生认证及模型名称/映射：本phase使用openai/gpt-6.1-sol、openai-responses、subscription
+    OAuth。最新用户要求“benchmark时的thinking level改用medium”，当前全部比较main和maintenance调用均显式medium：old/new六条小场景以及native/Nunc
+    MemoryArena两arm；这覆盖已claimed native-migration/live描述中的low/minimal，实际effective值必须为medium。旧provider/API由既有迁移授权覆盖，其他完整要求及全部限额保持。native-migration完整源码交付范围不变，既有live仍为独立运行消费者；controller确保迁移集成冻结后才恢复6小分支及ONE
+    Arena，不改两个claim/步骤定义/依赖，不新增gate。phase唯一最终接受包含source、doc-evidence-correction、native-migration及live全部结果。
   steps:
   - id: nunc-relational-memory.source
     name: 完整提示、工具说明与文档交付
