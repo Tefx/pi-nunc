@@ -5472,7 +5472,7 @@ phases:
       allocation unspent. No main merge/push/daily/global/credential effects.
   - id: nunc-relational-memory.native-migration
     name: 原生 OpenAI OAuth、模型映射与观测迁移
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \".scratch/**\"]\n  blocked_paths: [\"plan.yaml\", \"policies/**\"\
@@ -5508,3 +5508,5 @@ phases:
     depends_on:
     - nunc-relational-memory.doc-evidence-correction
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-11T14:09:39.318352Z'
