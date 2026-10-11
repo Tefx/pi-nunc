@@ -5174,11 +5174,11 @@ phases:
       independent gate required by this step; parent owns integrated acceptance.'
 - id: memoryarena-sol-rerun
   name: Fresh isolated MemoryArena Sol comparison
-  status: pending
+  status: in_progress
   steps:
   - id: memoryarena-sol-rerun.benchmark
     name: Prepare, run, score and clean fresh native/current-Nunc benchmark
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/memoryarena-sol-rerun-03ecb09/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \".vectl/**\", \".git/**\", \"src/**\", \"\
@@ -5281,3 +5281,5 @@ phases:
     - .scratch/memoryarena-sol-pilot/helpers/retain_score_inputs.py
     - .scratch/mab-codex-luna-pilot/helpers/sol-observer.mjs
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-11T08:03:24.321298Z'
