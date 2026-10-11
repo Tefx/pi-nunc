@@ -5682,7 +5682,7 @@ phases:
       No extra gate/reviewer, no full suite/regrade, no push/mainmerge/adoption/reload.'
 - id: nunc-effective-state-replication
   name: 未改产品一次 MEDIUM 复测
-  status: in_progress
+  status: done
   gate: Orchestrator 在唯一 benchmark 完成程序判断一次复测是否完整、协议一致、比较和局限如实、效果及清理已核对；不要求改善分数，不新增
     gate/reviewer，不重开旧产品验收。
   depends_on:
@@ -5690,7 +5690,7 @@ phases:
   steps:
   - id: nunc-effective-state-replication.benchmark
     name: 固定 ffb936d 一次三组 MEDIUM 复测、事实比较与清理
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/effective-state-replication-medium-ffb936d/**\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"src/**\", \"\
@@ -5751,3 +5751,24 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-11T19:03:32.961376Z'
+    done_at: '2026-10-11T19:27:32.161329+00:00'
+    evidence: ONE newly authorized replication completed; frozen product ffb936de66996128e94675e619815b5d8da12df5
+      unchanged, run integration f986be59b2e6f5c931aca8e5d0947a2bc5737fba (onlyPlan
+      differs). Evidence .scratch/effective-state-replication-medium-ffb936d/{RESULT.md,completion.json,comparison.json,per-person-evidence.json,scores.json,analysis.json,maintenance-evidence.json,relation-evidence.json,execution-checks.json,process-reconciliation.json,cleanup.json}.
+      Parent inspected report, command exits, score aggregates,46per-person indexed
+      deliveries, run inventory, actual Git/product/main and process absence. Six
+      fresh serial sessions46/46 sameorder/protocol/caps/full304807007BofficialCSV/six
+      tools; latest environment matched Node26.10/npm11.19.1 Pi1.1 Python3.12.12 numpy2.5.4
+      pandas2.3.3. Native vsNunc PS6/23vs11/23,SPS93.254vs97.619,SR0/3both,explicit71/74vs73/74,valid274/276vs276/276,exact313/414vs340/414.
+      Ordering reverses priorffb936d9vs8; no causal/statistical conclusion. Native4CP/Nunc3CP,3nonemptyM4+7+4slots
+      delivered nextpayload;94main+3Nuncmaintmedium actual payloads. Native4maintenance
+      outboundbody omission retained; actualbillingnull.101logicaloperations982497context33202output234tools1075.849sec,
+      catalogUSD1.104118 total,zero unknownattempts. Changed upstream Emma dinner
+      vs nativeblankdependentoutput distinguished, bothAurora sharedrulefail with
+      reference available; deeper interpretation leftparentArchitect. Compilation/runtime/scoring/analyzers
+      exited0; preeffect service-readiness wait recovered, no inference replay/modelprobe/smallrun/fullsuite/scorerchange/tuning.
+      Allchildren/service stopped; ownedruntime/fullDB/env/cachedeleted, observed424356KiBfreeincrease;
+      minimaluniqueobservations+offlinegradinginputs retained, oldcanonical untouched.
+      No source/docs/Planworker/global/core/authadmin/push/mainmerge/adoption/reload;
+      main7654720 protected. Accept measurement delivery regardless score; originalDONEhistory
+      preserved.
