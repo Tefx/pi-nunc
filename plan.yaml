@@ -5419,7 +5419,7 @@ phases:
     claimed_at: '2026-10-11T13:01:37.258452Z'
   - id: nunc-relational-memory.doc-evidence-correction
     name: 容量文档与原始检查证据更正
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"docs/CAPACITY.md\", \"docs/DESIGN.md\", \".scratch/relational-memory-source/check-evidence.json\"\
       , \".scratch/relational-memory-source/audit.md\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -5448,3 +5448,5 @@ phases:
     depends_on:
     - nunc-relational-memory.source
     agent: executor
+    claimed_by: executor
+    claimed_at: '2026-10-11T13:34:48.223226Z'
