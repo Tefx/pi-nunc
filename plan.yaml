@@ -5476,7 +5476,7 @@ phases:
       allocation unspent. No main merge/push/daily/global/credential effects.
   - id: nunc-relational-memory.native-migration
     name: 原生 OpenAI OAuth、模型映射与观测迁移
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
       README.md\", \".scratch/**\"]\n  blocked_paths: [\"plan.yaml\", \"policies/**\"\
@@ -5514,3 +5514,22 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-11T14:09:39.318352Z'
+    done_at: '2026-10-11T15:01:17.014895+00:00'
+    evidence: 'Integrated frozen migrated product4e672b87a6c6d291e605f82a0a04f7c7cde8bdc7
+      on feat/relational-memory; retained refs/nunc/retained/native-migration. Base/integration_basis29f6e88d66f779aa1695e9f0f24311221c9bd4bc
+      unchanged; no-op rebase and exact FF checked. Inspected actual source diff/new
+      tests/docs. Native public OAuth metadata distinguishes shared OpenAI APIkey/subscription,
+      actualUSD unknown vs catalog; main+maintenance medium, frozen thinking invalidation;
+      native output-cap authorization/observations and Responses M/tool serializer.
+      Legacy retained, payload mapper unchanged, no policy/schema/accounting/cut algorithm
+      changes. Parent concrete decorator gap fixed before integration: real session.compact->piComplete8192->admission->boundedProvider->nativeOAuth
+      serializer now reserves128000 with planning8192/wirecapnull; APIkey8192 remains.
+      New composition regression reproduced failure then passes. Node26.7/npm11.19/Pi1.1
+      build;207tests17affectedfiles plus subsequent21 and5 relevant checks; final
+      cap/budget/legacy22pass. Reuse68 unaffected original files with15old files rerun+2new;
+      not a new full85file run. Evidence .scratch/native-migration/RESULT.md check-evidence.json
+      cap-before.log cap-after.log. Common source-only mechanical adaptation applies/builds
+      old7654720 with policy unchanged. Protocol/helper variants bind4e672b8 and medium;
+      live integration binding pending next dispatch. Zero real model operations;
+      live claim remains original NodeTS and6branches+ONEArena unspent. No mainmerge/push/adoption/credentials
+      effects. Worker processes reconciled/build runtimes cleaned.'
