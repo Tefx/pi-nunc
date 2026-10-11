@@ -5315,7 +5315,7 @@ phases:
   steps:
   - id: nunc-relational-memory.source
     name: 完整提示、工具说明与文档交付
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/index.ts\"\
       , \"docs/MEMORY-IMPROVEMENT.md\", \"docs/EXTRACTION.md\", \"docs/DESIGN.md\"\
@@ -5349,6 +5349,23 @@ phases:
     agent: executor
     claimed_by: executor
     claimed_at: '2026-10-11T11:53:45.295546Z'
+    done_at: '2026-10-11T13:01:27.068863+00:00'
+    evidence: 'Integrated on feat/relational-memory only: actual Git candidate 3e9de76a0d44bd942eda629dbcef42f54b6729e2
+      (worker prose expanded SHA incorrectly; git-resolved ID authoritative), retained
+      refs/nunc/retained/relational-memory-source. Base/integration_basis faa52d2e8643058d119f80d57609511924705e47
+      unchanged; rebase no-op and exact fast-forward verified. Complete diff inspected:
+      7 prompt/docs files plus capacity fixture adjustment, no algorithm/schema/runtime
+      changes or Plan changes. Removed synthetic semantic test; corrected cyclic retirement
+      condition and optional prose formatting. Mechanical build; full 83-file inventory
+      covered via139 engine tests,36 Pi files,29 independent live files plus44 tests
+      in7 historical comparative files. Missing fixture setup repaired using clean
+      locked historical targets; checks then passed, no live provider calls. check-evidence.json/audit.md
+      under .scratch/relational-memory-source record outcomes. Test fixture ceiling10000
+      still lies between unreduced10495/reduced9783 with positive omission assertion.
+      Historical fixture runtimes removed. Original untracked accepted design preserved
+      in .scratch/relational-memory-source/accepted-design-original.md before tracked
+      integration. main unchanged7654720; no push/adoption. Live quality remains unproven,
+      assigned subsequent live step.'
   - id: nunc-relational-memory.live
     name: 三组连续维护观察与一次 MemoryArena 对照
     status: pending
