@@ -254,7 +254,7 @@ export class BudgetLedger {
     return records;
   }
 
-  reserve(model: Model<Api>, context: Context | TranscriptContext, outputCeiling: number): CallRecord {
+  reserve(model: Model<Api>, context: Context | TranscriptContext, outputCeiling: number, subscription = model.api === "openai-codex-responses"): CallRecord {
     this.signal.throwIfAborted();
     requireValue(Date.now() < this.deadline, "TIME_LIMIT", "Run deadline reached");
     requireValue(!this.active, "CONCURRENCY", "Concurrent model calls are unsupported");
@@ -269,7 +269,7 @@ export class BudgetLedger {
     const knownRates = rates.every(r => [r.input, r.output, r.cacheRead, r.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && (this.limits.maxCostUsd !== null || rates.some(r => Math.max(r.input, r.output, r.cacheRead, r.cacheWrite) > 0));
     const catalogReservationUsd = knownRates ? Math.max(...rates.map(r => (model.contextWindow * Math.max(r.input, r.cacheRead, r.cacheWrite) + outputCeiling * r.output) / 1e6)) : undefined;
     const reservedCostUsd = this.limits.maxCostUsd === null ? null : catalogReservationUsd;
-    requireValue(model.api !== "openai-codex-responses" || this.limits.maxCostUsd === null, "COST_LIMIT", "Subscription billing is unknown; maxCostUsd must be null");
+    requireValue(!subscription || this.limits.maxCostUsd === null, "COST_LIMIT", "Subscription billing is unknown; maxCostUsd must be null");
     requireValue(reservedCostUsd !== undefined, "COST_LIMIT", "Unknown pricing cannot establish a USD reservation");
 
     const { calls: qualifiedCalls, currentFileRecords } = this.readQualifiedCalls();
@@ -463,7 +463,7 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
   requireValue(prefix === "/" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`), "ENDPOINT", "Transport path is outside authorized model baseUrl");
 }
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
-export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; effectiveThinking?: string | undefined; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
+export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; subscriptionBilling?: (model: Model<Api>) => boolean; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; effectiveThinking?: string | undefined; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
   function stream(model: Model<Api>, context: Context | TranscriptContext, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = new AssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
@@ -488,12 +488,12 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         // Planning values on uncapped APIs cannot lower consumption authorization.
         const maxTokens = omitsSerializedOutputCap(model) ? model.maxTokens : original?.maxTokens ?? model.maxTokens;
         requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "ENDPOINT", "Authorized model baseUrl is missing");
-        reservation = ledger.reserve(model, context, maxTokens);
+        reservation = ledger.reserve(model, context, maxTokens, options.subscriptionBilling?.(model) ?? model.api === "openai-codex-responses");
         // Agent tools also carry executable callbacks. Observe only the public model-facing Tool fields.
         const activeTools = ("tools" in context && Array.isArray(context.tools)) ? context.tools : getCurrentTools(context.messages);
         options.onContext?.(model, structuredClone({ ...context, tools: activeTools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) }), kind);
         options.onRequest?.({ callId: reservation.id, kind, model,
-          outputPlanning: original?.maxTokens ?? null, reasoning: (original as SimpleStreamOptions | undefined)?.reasoning ?? null,
+          outputPlanning: original?.maxTokens ?? null, reasoning: (original as SimpleStreamOptions | undefined)?.reasoning ?? (original as { reasoningEffort?: unknown } | undefined)?.reasoningEffort ?? null,
           context: { ...context, tools: activeTools.map(({ name, description, parameters }) => ({ name, description, parameters })) } });
         const combined = AbortSignal.any([ledger.signal, ...(original?.signal ? [original.signal] : [])]);
         const onPayload = async (payload: unknown, selected: Model<Api>) => {

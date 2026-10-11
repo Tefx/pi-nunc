@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { Control, ToolTrigger } from "./scenarios.js";
 import { memorySurface } from "../pi/manual.js";
 import { setObserverMemoryLayout } from "../pi/projection.js";
+import { subscriptionBilling } from "../engine/pi-model.js";
 
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
@@ -94,7 +95,12 @@ export default function observer(pi: ExtensionAPI): void {
         },
         onRequest: data => log("request", { ...data, thinking: state.ctx?.thinkingLevel ?? null }),
         onPayload: data => log("request-cap", data),
-        checkAuth: model => { if (model.provider === "openai-codex") requireValue(state.ctx!.modelRegistry.isUsingOAuth(model), "AUTHORIZATION", "Selected Codex route requires native OAuth in the isolated host"); },
+        checkAuth: model => {
+          const registry = state.ctx!.modelRegistry;
+          if (model.provider === "openai-codex") requireValue(registry.isUsingOAuth(model), "AUTHORIZATION", "Selected Codex route requires native OAuth in the isolated host");
+          log("auth-metadata", { model: `${model.provider}/${model.id}`, oauth: registry.isUsingOAuth(model), subscription: subscriptionBilling(model, registry) });
+        },
+        subscriptionBilling: model => subscriptionBilling(model, state.ctx!.modelRegistry),
         onContext: (model, context, kind) => log("context", { model, context, kind }),
         onResponse: (model, message, kind) => {
           if (kind === "maintenance") {

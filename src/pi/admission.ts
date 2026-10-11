@@ -8,6 +8,7 @@ import { admissionEstimate, inputLimit, isSystemMessage, mainAdmissionLimit, mem
 import { renderMemory } from "../engine/memory.js";
 import { isNuncCarrier, peekMemoryAnchor } from "./projection.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
+import { subscriptionBilling } from "../engine/pi-model.js";
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
@@ -620,7 +621,7 @@ export class Admission {
           estimateReason: selected.reason,
           ...(selected.receipt ? { anchorTrailingMessages: selected.anchorTrailingMessages } : {}),
           ...(hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest }),
-          ...(omitsSerializedOutputCap(model) ? { outputCapTokens: null } : {}),
+          ...((omitsSerializedOutputCap(model) || (model.api === "openai-responses" && subscriptionBilling(model, ctx.modelRegistry))) ? { outputCapTokens: null } : {}),
           ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
           ...(deliveredMemoryIndex !== undefined ? { memoryIndex: deliveredMemoryIndex } : {}),
           ...(binding ? { memoryPresent: binding.memory.slots.length > 0, memoryCarrierCount: context.messages.filter(isNuncCarrier).length,
@@ -654,8 +655,12 @@ export class Admission {
       }
       if (kind === "maintenance") {
         const config = this.config(ctx, model);
-        outputTokens = omitsSerializedOutputCap(model) ? model.maxTokens : scope!.request.outputTokens;
-        budgetObservation = { estimator: "pi-heuristic", outputReserveTokens: scope!.request.outputTokens, outputCapTokens: omitsSerializedOutputCap(model) ? null : scope!.request.outputTokens };
+        // Native Sign in with ChatGPT omits max_output_tokens even when the
+        // static openai model also supports API keys. Keep the planning reserve,
+        // but authorize/observe the full native output capability on this route.
+        const uncapped = omitsSerializedOutputCap(model) || (model.api === "openai-responses" && subscriptionBilling(model, ctx.modelRegistry));
+        outputTokens = uncapped ? model.maxTokens : scope!.request.outputTokens;
+        budgetObservation = { estimator: "pi-heuristic", outputReserveTokens: scope!.request.outputTokens, outputCapTokens: uncapped ? null : scope!.request.outputTokens };
         inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + initialMetadataTokens;
         limit = inputLimit(model, config.extraction);
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Maintenance input estimate ${inputTokens} exceeds planned input ${limit}; no recursive recovery`);

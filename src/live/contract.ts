@@ -313,6 +313,8 @@ export function selectedModels(input: RunInput): Model<Api>[] {
     requireValue(model.contextWindow === target.contextWindow && model.maxTokens === target.maxTokens && model.baseUrl === target.baseUrl, "MODEL", "Authorized model capacity/endpoint differs from native resolution");
     requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     requireValue(input.limits.maxOutputTokens >= model.maxTokens, "LIMIT", "Authorize the stock main model's total default output ceiling, including thinking");
+    // Legacy API is subscription-only. The shared openai API's billing type
+    // is checked from public native auth metadata at runtime, before reservation.
     if (model.api === "openai-codex-responses") requireValue(input.limits.maxCostUsd === null, "BILLING", "Codex OAuth subscription billing requires unknown USD billing");
     if (input.limits.maxCostUsd !== null) requireValue([model.cost, ...(model.cost.tiers ?? [])].every(rate => [rate.input, rate.output, rate.cacheRead, rate.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && Math.max(model.cost.input, model.cost.output) > 0, "MODEL", "Known catalog pricing required for a USD reservation");
     for (const s of input.scenarios) {

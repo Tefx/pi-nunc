@@ -79,7 +79,10 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   const observations = value.observations ?? ["continuation"];
   requireValue(Array.isArray(observations), "OBSERVATION", "Invalid observations");
   const offline = !observations.includes("continuation");
-  const limits = { ...value.limits, maxCalls: value.limits.maxCalls ?? null, maxTotalTokens: value.limits.maxTotalTokens ?? null, maxOutputTokens: value.limits.maxOutputTokens ?? Math.max(...resolvedModels.map(model => model.maxTokens)), ...(value.limits.maxCostUsd === undefined && provider === "openai-codex" ? { maxCostUsd: null } : {}) };
+  // Metadata-only resolution cannot distinguish OpenAI OAuth from API keys.
+  // Default to no USD guarantee; an explicit API-key USD limit remains valid,
+  // and the runtime metadata gate rejects it for an actual subscription route.
+  const limits = { ...value.limits, maxCalls: value.limits.maxCalls ?? null, maxTotalTokens: value.limits.maxTotalTokens ?? null, maxOutputTokens: value.limits.maxOutputTokens ?? Math.max(...resolvedModels.map(model => model.maxTokens)), ...(value.limits.maxCostUsd === undefined && ["openai", "openai-codex"].includes(provider) ? { maxCostUsd: null } : {}) };
   const input = parseInput({ version: 1,
     mode: offline ? "controlled" : "native",
     target: value.target, limits, models,

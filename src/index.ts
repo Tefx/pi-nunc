@@ -3,6 +3,7 @@ import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earen
 import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceResult, Memory } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch, requestTokens } from "./engine/index.js";
+import { subscriptionBilling } from "./engine/pi-model.js";
 import { extractionContext } from "./engine/request.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
@@ -242,13 +243,13 @@ export default function nunc(pi: ExtensionAPI): void {
     if (!opportunity.enabled || !semanticScope.length) return {};
     if (!ctx.model) return { warning: "Cleanup skipped: current model unavailable; memory can still be saved" };
     const frozen = { generation, sessionId: ctx.sessionManager.getSessionId(), leafId: ctx.sessionManager.getLeafId(),
-      revision: memory.read(ctx).revision, model: structuredClone(ctx.model), host: structuredClone(getHostSettings(ctx)),
+      revision: memory.read(ctx).revision, model: structuredClone(ctx.model), thinking: ctx.thinkingLevel, host: structuredClone(getHostSettings(ctx)),
       selected: readConfig(pi.getFlag("nunc-config"), ctx.cwd), fixed: structuredClone(fixed(ctx)) };
     const stale = () => {
       try {
         return signal.aborted || frozen.generation !== generation || frozen.sessionId !== ctx.sessionManager.getSessionId() ||
           frozen.leafId !== ctx.sessionManager.getLeafId() || frozen.revision !== memory.read(ctx).revision ||
-          !isDeepStrictEqual(ctx.model, frozen.model) || !isDeepStrictEqual(getHostSettings(ctx), frozen.host) ||
+          !isDeepStrictEqual(ctx.model, frozen.model) || ctx.thinkingLevel !== frozen.thinking || !isDeepStrictEqual(getHostSettings(ctx), frozen.host) ||
           !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), frozen.selected) || !isDeepStrictEqual(fixed(ctx), frozen.fixed);
       } catch { return true; }
     };
@@ -276,7 +277,7 @@ export default function nunc(pi: ExtensionAPI): void {
         return { warning: "Cleanup skipped: full source exceeds extraction input limit; memory can still be saved" };
       }
       callStartedAt = Date.now();
-      const response = await admission.complete(piComplete(ctx.modelRegistry))({ model: frozen.model, context, outputTokens: config.extraction.outputTokens, signal: combined });
+      const response = await admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context, outputTokens: config.extraction.outputTokens, signal: combined });
       observedResponse = true;
       try { pi.events.emit("nunc:ui-cleanup-usage", { status: "response", model: { provider: frozen.model.provider, id: frozen.model.id },
         elapsedMs: Date.now() - callStartedAt, stopReason: record(response) ? response.stopReason : null,
@@ -415,7 +416,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const file = manager.getSessionFile();
       const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd), host = settings(ctx);
       if (!isDeepStrictEqual(host.compaction, event.preparation.settings)) throw new EngineError("CONFIG", "Host settings differ from preparation; reload settings before maintenance");
-      const model = structuredClone(ctx.model), f = structuredClone(fixed(ctx));
+      const model = structuredClone(ctx.model), thinking = ctx.thinkingLevel, f = structuredClone(fixed(ctx));
       const config = engineConfig(selection.config, model, event.preparation.settings);
       const entries = manager.buildContextEntries();
       const projected = project(entries);
@@ -433,11 +434,11 @@ export default function nunc(pi: ExtensionAPI): void {
       contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config });
       ui.refresh(ctx);
       const result = await maintain({ binding, model, fixed: f, memory: projected.memory, active,
-        eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry)));
+        eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry, thinking)));
       contextView.noteEngine(result);
       ui.refresh(ctx);
-      // Native Codex OAuth's subscription zero is not an observed USD bill.
-      if (model.api === "openai-codex-responses") result.observations.usage.cost = null;
+      // Native subscription receipts/catalog estimates are not an observed USD bill.
+      if (subscriptionBilling(model, ctx.modelRegistry)) result.observations.usage.cost = null;
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }
       const accounting = result.observations.accounting;
       if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
@@ -458,7 +459,7 @@ export default function nunc(pi: ExtensionAPI): void {
         isDeepStrictEqual({ ...current, active: [] }, { ...frozenProjection, active: [] });
       if (controller.signal.aborted || event.signal.aborted || String(generation) !== binding.generation ||
           manager.getSessionId() !== binding.sessionId || manager.getSessionFile() !== file || !sourceUnchanged ||
-          !isDeepStrictEqual(ctx.model, model) || !isDeepStrictEqual(fixed(ctx), f) ||
+          !isDeepStrictEqual(ctx.model, model) || ctx.thinkingLevel !== thinking || !isDeepStrictEqual(fixed(ctx), f) ||
           !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), selection) || !isDeepStrictEqual(settings(ctx), host) ||
           cleanupEnabled(ctx) !== opportunity.enabled) {
         throw new EngineError("CANCELLED", "Session, path, model, tools or configuration changed during maintenance; candidate discarded");

@@ -18,13 +18,13 @@ function text(value: any): string | undefined {
   if (!Array.isArray(value) || value.some(b => !["text", "input_text", "output_text"].includes(b?.type))) return;
   return value.map(b => b.text).join("");
 }
-/** Scope: final native OpenAI chat-completions payload. Unsupported shapes are unknown.
+/** Scope: final native OpenAI chat-completions and Responses payloads. Unsupported shapes are unknown.
  * Compare tool-result records with the actual Context, so genuine text saying
  * 'No result provided' is never mistaken for a serializer-created result.
  */
 export function serializedEvidence(request: RequestObservation): { memory?: boolean; synthetic?: boolean } {
   const payload = request.finalPayload as any;
-  if (request.model.api === "openai-codex-responses") return serializedCodexEvidence(request, payload);
+  if (["openai-responses", "openai-codex-responses"].includes(request.model.api)) return serializedResponsesEvidence(request, payload);
   if (request.model.api !== "openai-completions" || !Array.isArray(payload?.messages)) return {};
   const actual = payload.messages as any[];
   if (actual.some(m => !m || typeof m.role !== "string" || (m.tool_calls !== undefined && !Array.isArray(m.tool_calls)))) return {};
@@ -59,7 +59,7 @@ function codexCallId(value: unknown): string | undefined {
   if (parts.length > 2 || !parts.every(part => /^[a-zA-Z0-9_-]{1,64}$/.test(part))) return;
   return parts[0];
 }
-function serializedCodexEvidence(request: RequestObservation, payload: any): { memory?: boolean; synthetic?: boolean } {
+function serializedResponsesEvidence(request: RequestObservation, payload: any): { memory?: boolean; synthetic?: boolean } {
   if (!Array.isArray(payload?.input) || payload.input.some((item: any) => !item || typeof item !== "object")) return {};
   const actual = payload.input as any[];
   // Other tool encodings need their own mapping. Ignoring one could fabricate

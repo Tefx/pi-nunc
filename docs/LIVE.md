@@ -6,6 +6,8 @@
 
 ## Defaults and ownership
 
+Current relational-memory comparisons use native `openai/gpt-6.1-sol` / `openai-responses`, ChatGPT subscription OAuth and explicit **medium** for main and maintenance in all fresh arms. [Native OpenAI routing](NATIVE-OPENAI.md) explains authentication metadata, unknown subscription billing, API-key compatibility and historical comparison limits. Earlier scenario-specific routes below remain scoped historical protocols.
+
 Required input is `target`, `limits`, and `scenarios`. Pi resolves its effective native model/provider/options/configuration; callers do not reconstruct a model catalog or repeat approval text. Existing full-delivery authorization applies. Only named test requirements justify `overrides`, with their reason and actual differences recorded.
 
 Standalone invocation resolves Pi's startup defaults. To preserve an invoking runtime's unsaved current choice, forward its nonsecret effective selection from public Pi context/invocation facilities. Another process cannot implicitly discover that selection. Static settings must never override the forwarded choice. Default main output/thinking remains unchanged; capacity failure requires a diagnostic or a named test override.
@@ -159,7 +161,7 @@ The task-file queue supplies three observation opportunities, without imposing a
 
 For runs selecting `gpt-5.6-luna` with thinking level `low`:
 - Native main requests set `thinkingLevel` on the stock Pi session, which serializes `reasoning: { effort: "low" }` into provider request payloads.
-- Maintenance requests go through `registry.complete`. Raw maintenance does not set thinking level and defaults to `effort: "none"`.
+- Nunc maintenance requests go through `registry.complete`. Current Responses maintenance passes the frozen session thinking level explicitly. Historical raw calls without a level did not inherit session thinking and could default to `effort: "none"`.
 - `boundedProvider` in `src/live/budget.ts` inspects serialized request payloads for both main and maintenance calls. If the specified thinking level is not applied in the actual payload, `boundedProvider` throws `RunnerError("THINKING_UNAPPLIED", ...)` and refuses the request before any HTTP transport occurs.
 - The named override `maintenance-thinking` (`maintenanceThinking: "low"`) allows isolated observation harnesses to apply the designated thinking level to maintenance compaction requests.
 
