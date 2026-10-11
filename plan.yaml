@@ -5368,7 +5368,7 @@ phases:
       assigned subsequent live step.'
   - id: nunc-relational-memory.live
     name: 三组连续维护观察与一次 MemoryArena 对照
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \".git/**\", \"src/**\", \"policies/**\", \".pi/**\", \".agents/**\", \".env\"\
@@ -5415,3 +5415,5 @@ phases:
     depends_on:
     - nunc-relational-memory.source
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-11T13:01:37.258452Z'
