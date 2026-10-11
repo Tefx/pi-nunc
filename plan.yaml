@@ -12,12 +12,13 @@ strategy_ref: docs/DESIGN.md
 context: 当前增量为 docs/MEMORY-IMPROVEMENT.md 的完整轻量关系记忆、局部修订与退役收缩。集成仅 feat/relational-memory，基线7654720277ee7b2a388b543ef973db1a279d5f7e；main保持不变。用户另行明确授权实现冻结后一次
   fresh isolated MemoryArena native/Nunc 对照，覆盖方案中不重跑 MemoryArena 的原限制，仅此一次。既有 DONE
   定义和证据保持不可变；不重开旧验收。
-project_guidance: 执行 nunc-relational-memory 的两个交付边界：executor 交付一个可回退源码/文档事务；node-typescript-engineer
-  随后拥有隔离真实运行、成本/失败分析、进程核对与清理。全部 DO 和 NOT DO 以 docs/MEMORY-IMPROVEMENT.md 全文为准，唯一范围修订是用户明确要求一次新
-  MemoryArena 对照。禁止 merge 到 main、push、采用到日常环境、全局设置、当前会话 reload、Pi core 或凭据编辑/文本传递；仅正常获准
-  runtime handoff。旧报告只读，新运行用新目录、顺序 live jobs。生产提示不含评估实体、gold、后续问题或评分规则。Orchestrator/parent
-  architect 在 live 步骤完成程序中负责唯一最终整合接受，覆盖本 phase 全部结果、最终集成候选完整适用 project-native 离线库存（复用有效证据、补受影响范围）、三组真实行为与一次
-  benchmark 的适用性及成本/局限。报告完成不等于质量改善；必要要求未证或阻断缺陷未解不能接受，不为分数重试或 benchmark 后调参。
+project_guidance: 当前phase为nunc-relational-memory。已完成source/doc-evidence-correction定义、证据和生命周期不可变；新增native-migration由node-typescript-engineer交付必要源码/tests/docs原生认证与模型映射迁移，随后原live消费者交付隔离真实运行/成本失败分析/进程核对/清理。用户现明确授权openai-codex/gpt-6.1-sol与openai-codex-responses迁移为openai/gpt-6.1-sol、openai-responses、native
+  subscription OAuth，thinking由minimal改为显式low（当前原生最低支持级）。这覆盖当前phase/live文本中旧provider/API/minimal及冻结3e9de76的对应约束；其余场景、数据、顺序、有限预算、cut/q/defaults和一次性运行要求不变。迁移交付并集成后冻结最终候选，再继续原live的6条小场景和仅一次MemoryArena；不可并发源码修改与live推理。live
+  claim/定义/依赖不改，由controller保持此顺序，复用原会话上下文但不自动重放效果。全部DO/NOT DO仍以MEMORY-IMPROVEMENT为准，范围例外仅已授权一次MemoryArena及本次必要原生迁移，禁止语义记忆策略调参。禁止main
+  merge、push、日常采用、全局设置、当前会话reload、Pi core及凭据读取/复制/管理/login/覆盖/文本传递，无fallback；仅正常native
+  handoff和安全auth check --json --no-refresh（绝不--credentials）。旧报告和旧fixture只读，新runtime协议/证据用新目录，顺序live
+  jobs。生产提示不含评估实体/gold/后续问题/评分规则。Orchestrator/parent architect在原live完成程序中作唯一最终整合接受，消费本phase全部source、doc
+  correction、migration和live结果，覆盖最终候选完整适用离线库存、真实行为、benchmark、成本及局限；复用有效83文件证据，补受影响范围，不因Plan/doc变化全量重跑。必要要求未证或阻断缺陷未解不能接受，不为分数重试，不在benchmark后调参。
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -5312,6 +5313,8 @@ phases:
   gate: 由 parent architect/Orchestrator 在 nunc-relational-memory.live 完成程序作唯一整合接受：消费
     source 和 live 全部结果，判定要求覆盖、最终候选离线证据适用性、实际关联/修订/退役行为及 MemoryArena 结果和成本；不额外新增 gate
     链。
+  context: 最新用户要求完整迁移到新原生认证及模型名称/映射：本phase执行使用openai/gpt-6.1-sol、openai-responses、subscription
+    OAuth、显式low；旧live合同的provider/API/minimal由该授权覆盖，其余完整要求保持。native-migration是可回退源码生产者，既有live仍是独立运行消费者；controller确保迁移集成冻结后才恢复live，不改其claim或新增gate。phase唯一最终接受包含source、doc-evidence-correction、native-migration及live全部结果。
   steps:
   - id: nunc-relational-memory.source
     name: 完整提示、工具说明与文档交付
@@ -5467,3 +5470,41 @@ phases:
       --check passed. Original source DONE history and live claim/session unchanged.
       Auth blocker still forbids all probes/model dispatch; runtime target remains3e9de76,
       allocation unspent. No main merge/push/daily/global/credential effects.
+  - id: nunc-relational-memory.native-migration
+    name: 原生 OpenAI OAuth、模型映射与观测迁移
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"scripts/**\", \"docs/**\", \"\
+      README.md\", \".scratch/**\"]\n  blocked_paths: [\"plan.yaml\", \"policies/**\"\
+      , \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \".scratch/memoryarena-sol-rerun-03ecb09/**\"\
+      , \".scratch/memoryarena-sol-pilot/**\", \".scratch/mab-codex-luna-pilot/**\"\
+      , \".scratch/relational-memory-source/**\", \".scratch/relational-memory-live-dbf7f8/**\"\
+      , \".scratch/relational-memory-live-openai-cfe44a/**\"]\n\nDeliver: 完整必要的原生认证/模型/API及费用和观测迁移，供原live\
+      \ step消费。主请求与维护均解析实际openai/gpt-6.1-sol、openai-responses、native subscription\
+      \ OAuth、显式low（原生最低支持档）；不把minimal静默clamp成low后仍报告minimal。利用已有Pi公共model registry/auth/transport接口，读取当前安装公共文档/types确认接口，不新增alias、自定义provider注册机制或框架，不覆盖宿主元数据。\n\
+      \n根据实际可达调用及原生payload形状判断修改面：src/index.ts维护已用ctx.modelRegistry，现cost=null仅按codex\
+      \ API判断；src/live/observer.ts OAuth检查、defaults.ts费用默认、budget.ts和contract.ts订阅费用约束、stable-memory-observation.ts序列化证据及pi/payload.ts\
+      \ codex delta需要分类。openai也支持API key，不能把所有openai请求视为OAuth；通过原生认证类型/实际路由判定订阅，OAuth实付未知保持null/unknown，catalog等价费用单列；API-key费用语义保持有效。修复本次真实路由需要的判定/序列化观察/限制检查，保留有效legacy与非活动兼容逻辑，不做全仓字符串替换。新API\
+      \ payload检查应由真实native形状支撑，未知形状不报已证。\n\n同步当前docs和新运行协议的provider/model/API/auth/thinking及费用含义；旧fixture、历史报告/协议/原始观察只读。新协议保持原6小分支情节、多维护/实际M延续、隐藏后问、随后ONE\
+      \ Arena全部数据/顺序/scorer/cuts/q/defaults/限额不变，仅授权映射改变。历史minimal/codex结果与新low/openai结果不能无条件作为同配置因果比较。若old/new小场景基线需要相同原生兼容适配，明确区分原始历史源码和共同机械适配，不改变任一arm的记忆语义或偷偷替换基线。\n\
+      \nBoundary: node-typescript-engineer拥有完整普通Node宿主集成诊断、修复、 meaningful受影响测试、docs及协议准备。源码事务隔离worktree，Orchestrator集成到feat/relational-memory并清理；main不变。源冻结3e9de76仅为本次必要迁移放宽，交付后冻结新的最终候选；不改语义memory\
+      \ policy、选择算法、schema、持久化或取消生命周期。不得修改旧fixture以迎合新断言；必要新增/修改当前测试须保留旧行为兼容证明。无主/维护模型调用；允许零推理原生加载/能力检查和auth\
+      \ check --json --no-refresh，绝不--credentials，不读复制管理凭据、不login/refresh/override/fallback，不改global/core/daily状态、不reload当前会话、不push或merge到main。\n\
+      \nAdmit: 最新用户明确授权迁移及parent接受low映射；当前已记录openai/oauth ready和原生low支持的零调用证据可复用。source及doc\
+      \ correction DONE历史保持不变。已有live owner及会话由controller顺序复用，无并发writer；本步骤只交付迁移，不运行原live配额。原live仍拥有6小分支然后一次Arena，以及全部成本/报告/核对/清理职责；不释放/重领其claim。\n\
+      \nRecovery: 同owner修正兼容源码/检查/准备问题，缺公开API合同或无法在不改受保护语义下迁移时报告具体证据，不能新增别名/绕过验证。没有真实推理不声称auth请求成功或记忆效果；迁移集成和冻结前禁止启动live。超出已接受映射或需要改变业务/预算/保护边界时停有关工作；不以旧会话重放或换模型解决。"
+    verification: 使用项目固定Node26.7.0/npm11.19.0及lock依赖完成build和实际受影响机械测试；读取当前Pi公共接口文档/types，验证主/维护解析同一授权provider/model/API/low、原生OAuth与API-key分类不同、订阅cost
+      unknown与catalog分离、费用限制拒绝语义、新API实际序列化/工具关联/请求准入及必要legacy兼容。测试必须执行判定/接口/真实宿主加载等行为，不使用关键词存在或自报PASS。零推理auth/capability证据可复用或用授权安全接口获取，不能读取credential内容；不执行模型请求。向controller交付commit、变更分类/保留兼容理由、受影响命令与结果、既有83文件证据适用性及未证live边界；不机械重跑all。新运行协议明确最终候选绑定与授权映射，原live随后获得真实主/维护观察，最终phase接受消费本交付，无新gate。
+    refs:
+    - src/index.ts
+    - src/live/observer.ts
+    - src/live/defaults.ts
+    - src/live/budget.ts
+    - src/live/contract.ts
+    - src/live/stable-memory-observation.ts
+    - src/pi/payload.ts
+    - package.json
+    - docs/MEMORY-IMPROVEMENT.md
+    depends_on:
+    - nunc-relational-memory.doc-evidence-correction
+    agent: node-typescript-engineer
