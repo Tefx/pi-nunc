@@ -5174,11 +5174,11 @@ phases:
       independent gate required by this step; parent owns integrated acceptance.'
 - id: memoryarena-sol-rerun
   name: Fresh isolated MemoryArena Sol comparison
-  status: in_progress
+  status: done
   steps:
   - id: memoryarena-sol-rerun.benchmark
     name: Prepare, run, score and clean fresh native/current-Nunc benchmark
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/memoryarena-sol-rerun-03ecb09/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \".vectl/**\", \".git/**\", \"src/**\", \"\
@@ -5283,3 +5283,28 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-11T08:03:24.321298Z'
+    done_at: '2026-10-11T08:28:39.518061+00:00'
+    evidence: Complete runtime observation accepted by Orchestrator, product03ecb094241381eae77fd9a2a290f37a6a89bc42
+      unchanged; integration difference only managed plan.yaml. Exact owner node-typescript-engineer
+      completed fresh root .scratch/memoryarena-sol-rerun-03ecb09; canonical RESULT.md
+      plus protocol/environment/preflight-evidence/run/status/scores/analysis/maintenance-evidence/relation-evidence/process-reconciliation/cleanup
+      receipts inspected. Fresh zero-inference genuine six-tool CLI preflight preceded
+      effects;6 persistent sessions and46 original requests in fixed order, exact
+      Sol/minimal/current runtime Pi1.1.0/Node26.7.0, H16384 both arms; source/dataset/full304807007-byte
+      flight CSV recorded. Unchanged runner/scorer/rules compared to prior helpers;
+      fixed denominators23/414/276/74. Native vs Nunc PS30.4348/34.7826%, SPS91.4021/89.1865%,
+      SR0/0; explicit70/74 vs64/74, gold319/414 vs326/414, catalog274/276 vs267/276.100
+      successful logical operations,954871 input+cache,29167 output,232 candidate
+      tools,843.575s controller, maintenance4/3, catalogUSD0.9839528,unknownusage0;
+      within limits, no fallback/replay or recorded tool/inference failure. M/K/cuts
+      and recurring Austin-Monica mapping omission retained; single-run early-pressure
+      observations do not establish improvement/causality/default272K or subscription
+      billing. Historical comparison recorded with Node/product/trajectory differences.
+      All owned controller/CLI/server/descendants reconciled exited; parent scoped
+      process scan empty. Runtime/venv/cache/fullCSV/upstream physically deleted;
+      actual df47714600->48154796KiB (+440196KiB, shared filesystem caveat). Full
+      per-rule scores identical before/after retained-slice cleanup, command exit0;
+      reuse valid execution instead of redundant rerun. Minimal unique raw observations,
+      cases/provenance/helpers/reports and scoring slice retained (~3.6MiB) for original-run
+      offline reprocessing. No blockers or product acceptance claim; old evidence/global/original
+      sessions untouched.
