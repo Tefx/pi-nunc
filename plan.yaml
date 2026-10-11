@@ -5308,14 +5308,14 @@ phases:
       sessions untouched.
 - id: nunc-relational-memory
   name: 轻量关系记忆与一次隔离实测
-  status: pending
+  status: in_progress
   gate: 由 parent architect/Orchestrator 在 nunc-relational-memory.live 完成程序作唯一整合接受：消费
     source 和 live 全部结果，判定要求覆盖、最终候选离线证据适用性、实际关联/修订/退役行为及 MemoryArena 结果和成本；不额外新增 gate
     链。
   steps:
   - id: nunc-relational-memory.source
     name: 完整提示、工具说明与文档交付
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/index.ts\"\
       , \"docs/MEMORY-IMPROVEMENT.md\", \"docs/EXTRACTION.md\", \"docs/DESIGN.md\"\
@@ -5347,6 +5347,8 @@ phases:
     - scripts/check.mjs
     - package.json
     agent: executor
+    claimed_by: executor
+    claimed_at: '2026-10-11T11:53:45.295546Z'
   - id: nunc-relational-memory.live
     name: 三组连续维护观察与一次 MemoryArena 对照
     status: pending
