@@ -5567,7 +5567,7 @@ phases:
   steps:
   - id: nunc-effective-state.source
     name: 四处有效状态与适用范围提示修订
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"**/auth.json\", \"\
@@ -5598,6 +5598,18 @@ phases:
     agent: executor
     claimed_by: executor
     claimed_at: '2026-10-11T18:13:04.126827Z'
+    done_at: '2026-10-11T18:21:08.498545+00:00'
+    evidence: 'Integrated source ffb936de66996128e94675e619815b5d8da12df5 on feat/relational-memory;
+      retained refs/nunc/retained/effective-state-source. Postclaim base/integration_basis
+      f3ee634c1d224e51398e38a0ec8c4a886d552667, no-op rebase and exact FF verified.
+      Parent inspected entire actual two-file/four-location diff: exactly approved
+      generic effective-state prompt replacements; source/machine/capacity and branch
+      endings preserved, no algorithms/schema/settings changed. Executor Node26.7/npm11.19
+      build passed, engine139 tests/11files plus59 overlapping cleanup/memory and7
+      controlled retention branches passed (no full suite, no model calls). Logs .scratch/effective-state-source/{engine-check,cleanup-memory,task-retention-branches}.log
+      inspected; no budget recalibration. Worker terminal, clean source, no residual
+      task processes. Prompt semantic quality remains measurement, not proven by deterministic
+      tests. Frozen product ffb936d for authorized ONE benchmark; no main merge/push/adoption/reload.'
   - id: nunc-effective-state.benchmark
     name: 冻结候选一次 MEDIUM MemoryArena 比较与清理
     status: pending
