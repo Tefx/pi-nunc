@@ -5419,7 +5419,7 @@ phases:
     claimed_at: '2026-10-11T13:01:37.258452Z'
   - id: nunc-relational-memory.doc-evidence-correction
     name: 容量文档与原始检查证据更正
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"docs/CAPACITY.md\", \"docs/DESIGN.md\", \".scratch/relational-memory-source/check-evidence.json\"\
       , \".scratch/relational-memory-source/audit.md\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -5450,3 +5450,20 @@ phases:
     agent: executor
     claimed_by: executor
     claimed_at: '2026-10-11T13:34:48.223226Z'
+    done_at: '2026-10-11T13:48:10.123558+00:00'
+    evidence: Integrated reviewed doc-only commit38ea4a20d36e08ac322b5ed54013f1cedad09b1f
+      on feat/relational-memory, retained refs/nunc/retained/relational-memory-doc-evidence.
+      Postclaim base/integration_basis e3fcb11544871b2749a8aea97c5357e9d3d26bd1, no-op
+      rebase then exact FF checked. Tracked diff exactly docs/CAPACITY.md and docs/DESIGN.md;
+      manual.ts growth-only known/unknown rejection and non-growing recovery distinguished
+      from maintenance soft target/explicit hard admission. K formula reserves max(planned
+      memoryLimit,current memoryTokens), permits negative available, floors q*remaining
+      and preserves no-recut. Canonical .scratch/relational-memory-source/check-evidence.json
+      corrected tested product3e9de76a0d44bd942eda629dbcef42f54b6729e2, retains prior
+      mistaken full SHA and Git provenance. audit.md narrows83/83 to recorded test-file
+      execution inventory, separates26 initial live passes+2timeout followups+1fixture
+      calibration+7historical fixture passes, no new tests or inference. Source/source-tests/Plan
+      candidate unchanged; docs inspected against actual source, JSON parsed, diff
+      --check passed. Original source DONE history and live claim/session unchanged.
+      Auth blocker still forbids all probes/model dispatch; runtime target remains3e9de76,
+      allocation unspent. No main merge/push/daily/global/credential effects.
