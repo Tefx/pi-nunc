@@ -5417,3 +5417,34 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-11T13:01:37.258452Z'
+  - id: nunc-relational-memory.doc-evidence-correction
+    name: 容量文档与原始检查证据更正
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"docs/CAPACITY.md\", \"docs/DESIGN.md\", \".scratch/relational-memory-source/check-evidence.json\"\
+      , \".scratch/relational-memory-source/audit.md\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"src/**\", \"policies/**\", \"tests/**\", \".pi/**\", \".agents/**\", \"\
+      .env\", \".env.*\", \"**/auth.json\", \".scratch/memoryarena-sol-rerun-03ecb09/**\"\
+      , \".scratch/memoryarena-sol-pilot/**\", \".scratch/mab-codex-luna-pilot/**\"\
+      ]\n\nDeliver: 一个完整的两份文档和两份canonical证据更正，供本phase既有parent architect/Orchestrator最终整合接受消费，无新gate。CAPACITY区分维护软目标和主动patch增长限制：limit=min(memoryTarget(config),explicitHard??Infinity)，增长才受预算拒绝，非增长恢复仍允许；精确说明显式hard\
+      \ cap的作用范围，不暗示自动缩减已保存M或保证正确遗忘。根据manual.ts221-226、339-348核对。DESIGN中K规划使用reserve=max(memoryLimit,memoryTokens(currentSlots))、keepTarget=floor(q*max(0,available-reserve))；按accounting.ts171-178保留估算口径和frozen\
+      \ cut/no-recut，不改变运行机制。\n\n将check-evidence.json的environment.head_commit从错误3e9de766579f1ec8dafc3ea793f6ea02ec3ae8db更正为3e9de76a0d44bd942eda629dbcef42f54b6729e2，并简短记录原值、正确值及Git/原执行记录依据。audit.md删除100%行为/离线覆盖泛化，将83/83严格限定为实际receipt支持的test-file执行库存，区分早期26/36诊断和后续修复fixture后的执行；不伪造观察、不将受控测试称为真实模型效果。\n\
+      \nBoundary: executor拥有settled local correction及检查。在隔离worktree修改并提交两个docs；另直接更正\
+      \ /Users/tefx/Projects/pi-nunc/.scratch/relational-memory-source 下两个canonical证据，不能只改worktree副本。仅四个文件可写，Orchestrator负责集成到feat/relational-memory及清理。main不变；不改prompt/source/tests或旧benchmark材料；禁止push/global/core/daily\
+      \ reload/凭据编辑或文本转移；本步骤无auth probes/login/credential access/fallback/inference权限。doc-only提交不授权fresh\
+      \ benchmark，不自动失效未变行为证据。\n\nAdmit: source DONE定义/证据/生命周期不变；冻结product target仍为3e9de76a0d44bd942eda629dbcef42f54b6729e2。依据原executor记录与Git核实证据，parent\
+      \ dispatch提供已授权的精确session路径，使用activity查看相关原调用与结果。修正不依赖live运行，live的claim、定义、依赖和会话均保持原样；本步骤不启动/重启live。既有phase整合接受消费本更正及source/live交付，不添加接受链。\n\
+      \nRecovery: 同owner完成四文件内修正和局部检查，保留原观察与更正来源。receipt不足则注明具体未证范围并报告parent，不重跑未受影响测试、不补写PASS。若需产品修改或四文件外写入，停止有关部分并报告，不扩展范围。"
+    verification: 对照manual.ts增长判定/measureBudget及accounting.ts memoryPlan审阅文档公式和适用范围；Git确认实际product
+      commit，通过原executor activity核对原命令/结果，区分早期诊断和后续fixture修复执行。解析canonical JSON，检查更正note和audit限定，执行git
+      diff --check及四文件范围审查。不得为此重复未受影响测试或模型运行。交付docs commit、canonical证据更正摘要及剩余未证项；Orchestrator在既有phase最终接受中判断证据适用性，不将文档修正视为新的行为证明。
+    refs:
+    - docs/CAPACITY.md
+    - docs/DESIGN.md
+    - src/pi/manual.ts
+    - src/engine/accounting.ts
+    - .scratch/relational-memory-source/check-evidence.json
+    - .scratch/relational-memory-source/audit.md
+    depends_on:
+    - nunc-relational-memory.source
+    agent: executor
