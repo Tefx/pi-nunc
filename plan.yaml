@@ -9,14 +9,15 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: 当前增量：在 feat/relational-memory（授权基线 5d42f9d4e3b67ae26928102cc38145867273b2f0）实现四处
-  domain-general 提示修订，随后冻结候选并进行一次 selected 3-group MemoryArena MEDIUM native/Nunc
-  测量。保留全部既有 DONE 定义、证据和生命周期；不重开旧验收。
-project_guidance: 当前 phase 为 nunc-effective-state。用户限定四处提示改动及直接受影响 build/request/protocol
-  检查，不全量重测、不新增小场景/模型矩阵。source 为可回退仓库交付；benchmark 为消费冻结候选的独立外部运行/资源清理事务，故分两个顺序步骤，无额外
-  gate/reviewer。executor 适合已定行为的局部提示修改；node-typescript-engineer 复用既有 Node benchmark
-  driver，拥有获准环境恢复、真实运行与效果核对。Orchestrator 保持当前分支集成并在 benchmark 完成程序作本增量唯一整合接受；旧有效证据可复用。禁止
-  main merge/push/日常采用/reload、全局设置及凭据管理；只用既有 native OAuth handoff，不新增 credentials/spend。一次测量不以收益为通过条件，不调参、不重跑；失败/未知如实报告。
+context: 当前增量：在 feat/relational-memory 对 unchanged product ffb936de66996128e94675e619815b5d8da12df5
+  进行用户新授权的一次 selected 3-group native/Nunc MEDIUM 复测。保留 nunc-effective-state 2/2 及全部既有
+  DONE 定义、证据和生命周期。深入指标下降/native 差距分析由 parent Architect 承担，本增量只交付运行、事实比较和分析输入。
+project_guidance: 当前 phase 为 nunc-effective-state-replication，只有一个 runtime_state_only
+  implementation，由用户指定 node-typescript-engineer 复用 Arena-only helpers 执行一次复测及清理。源代码、build、checks
+  适用旧证据复用；不新增 source/test/reviewer/gate，不改 prompt/scorer/docs、不调参。Orchestrator 在该步完成程序接受复测交付；负收益允许接受，必要结果缺失或效果未核对则不可宣称完整接受。只用已授权
+  native OAuth 正常 host auth owner；禁止手工读取/复制/打印凭据、auth administration、新 credentials/spend、model
+  probe、小分支、坏分数重跑、model judge、fallback、global/core/日常 session 修改、reload、push、main
+  merge、adoption。保持全部历史完成状态。
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -5679,3 +5680,72 @@ phases:
       already removed (observed24784KiB increase); Git retained source. Canonical
       minimal run evidence8.6MiB for offline inspection; previous canonical untouched.
       No extra gate/reviewer, no full suite/regrade, no push/mainmerge/adoption/reload.'
+- id: nunc-effective-state-replication
+  name: 未改产品一次 MEDIUM 复测
+  status: pending
+  gate: Orchestrator 在唯一 benchmark 完成程序判断一次复测是否完整、协议一致、比较和局限如实、效果及清理已核对；不要求改善分数，不新增
+    gate/reviewer，不重开旧产品验收。
+  depends_on:
+  - nunc-effective-state
+  steps:
+  - id: nunc-effective-state-replication.benchmark
+    name: 固定 ffb936d 一次三组 MEDIUM 复测、事实比较与清理
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/effective-state-replication-medium-ffb936d/**\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"src/**\", \"\
+      policies/**\", \"tests/**\", \"docs/**\", \".pi/**\", \"**/auth.json\", \".env\"\
+      , \".env.*\"]\ntask_root: \".scratch/effective-state-replication-medium-ffb936d\"\
+      \nprotocol_ref: \".scratch/effective-state-live-medium-ffb936d/protocol.json\"\
+      \nenvironment_ref: \".scratch/effective-state-live-medium-ffb936d/environment.json\"\
+      \nfrozen_product: \"ffb936de66996128e94675e619815b5d8da12df5\"\nbranch: \"feat/relational-memory\"\
+      \nselected_groups: [1, 2, 3]\norder: [[1, native], [1, nunc], [2, nunc], [2,\
+      \ native], [3, native], [3, nunc]]\nexpected_deliveries: {native: 23, nunc:\
+      \ 23, total: 46}\nmodel: {provider: openai, id: gpt-6.1-sol, api: openai-responses,\
+      \ mainThinking: medium, maintenanceThinking: medium, physicalContext: 272000}\n\
+      compaction: {enabled: true, reserveTokens: 255616, keepRecentTokens: 8000, effectiveTrigger:\
+      \ 16384}\nnunc: {q: 0.5, memoryTools: false, otherOptions: unchanged elastic\
+      \ defaults}\nenvironment: {node: 26.10.0, npm: 11.19.1, pi: 1.1.0, python: 3.12.12,\
+      \ numpy: 2.5.4, pandas: 2.3.3}\nlimits: {runSeconds: 10800, operationSeconds:\
+      \ 900, assistantRoundsPerTraveler: 30, successfulOperations: 400, contextInput:\
+      \ 12000000, output: 200000, toolCalls: 800, maintenancePerSession: 16}\nallocation:\
+      \ {estimatedPeakGiB: 5, reserveGiB: 10}\n\nDeliver: 新授权仅 ONE replication，保持原完整三组协议、官方\
+      \ prompt/templates、六个官方 CSV tools 和完整固定来源 304807007B flight CSV/database，不以\
+      \ retained scoring subset 代替实时工具数据。每组每 arm 一个真实 Pi session，共六 sessions、每 arm\
+      \ 23 人、46 deliveries。复用旧 protocol/environment/cases/scorer 与 Arena-only helpers，必要时恢复已删除\
+      \ owned runtime/full database/Python environment；不创建新框架或修改产品、prompt、scorer、docs。匹配最新\
+      \ Node26.10.0/npm11.19.1，不退回旧 Node。记录新运行 target binding，既有产品/source/build/checks\
+      \ 证据复用。报告各 arm PS/SPS/SR、explicit、strict gold/exact、catalog、usage/cache/time/catalog\
+      \ cost/MCP 和失败/未知，与上次 ffb936d 及更早 4e672b MEDIUM 逐项比较；保存 per-person M/source/next-payload\
+      \ links 供 parent Architect 深入分析，执行者只报告事实，不宣称因果或统计显著性。\n\nBoundary: 用户指定 node-typescript-engineer\
+      \ 负责新隔离运行及效果/资源核对，整个 outcome 为一个 runtime 事务。产品冻结不变，无 source/test step；旧 evidence/helpers\
+      \ 只读，不覆盖共享/其他 writer 文件。只使用 openai/gpt-6.1-sol openai-responses native subscription\
+      \ OAuth；允许正常 native auth owner，禁止 manual credential read/copy/print、auth admin、新\
+      \ credentials/spend。无 model probe、小分支、bad-score rerun、model judge、fallback、global/core/日常\
+      \ session mutation、reload、push、main merge、adoption。仅本次隔离 session 的协议内正常演进获授权。Source/build/checks\
+      \ 无相关输入变化不重复执行。\n\nAdmit: 运行前确认集成候选仍为冻结产品且旧证据适用；不将历史 integration binding 当作当前运行绑定。只做无模型前置检查。每次重型分配前核对自由空间覆盖全部并行重型任务的保守峰值加\
+      \ reserve；本次需 5GiB peak + 10GiB reserve，规划时约52.7GiB free，运行时重新检查。只恢复必要 owned\
+      \ runtime/fullDB；无 CodeGraph index，使用 native fallback。保留官方 adaptation/评分限制，不注入\
+      \ gold/future questions、不反馈预期答案，不改评分语义。\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/effective-state-live-medium-ffb936d/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/relational-memory-live-medium-4e672b/helpers\n\
+      \nRecovery: 一次有限 allocation，无推理重播或调参；前置环境错误可 owner-local 修复，推理开始后错误先核对进程、已发生效果和\
+      \ usage，缺失/中断和未知用量如实报告，不当作完整46交付。保留已知 native maintenance wire body 未观测限制，不为此增设\
+      \ auditor 或推理。实际 subscription billing unknown，catalog estimate 不等于实付。进程/效果核对且运行消费者结束后实际删除新建\
+      \ owned runtime/fullDB/env/cache/冗余副本；只保留 minimal unique evidence、selected offline\
+      \ grading inputs、来源和 parent 所需 per-person links，确保 links 不因清理失效。不删除旧 canonical\
+      \ evidence/共享依赖。报告实际 filesystem free-space change。失败或 unresolved effects 保留最低必要诊断并停止依赖效果。"
+    verification: 复用既有 source/build/checks 的适用证据，不全量重测。检查本次六 session 顺序、冻结产品、最新环境、完整
+      CSV/官方六工具、main+maintenance medium 有效配置和 finite caps；native maintenance wire-body
+      未观测与配置/状态证据分开披露，不新增 auditor。按既有 scorer 对完整 selected manifest 离线评分，逐项核对46 deliveries及缺失、全部所需指标、两次历史比较、每人
+      M/source/next-payload 证据和 MCP 状态。分开记录命令执行成功、实际行为及必要交付满足；负/混合分数不触发重跑，单次适配测量不称
+      leaderboard、因果或统计证明。Orchestrator 在本步完成程序作唯一复测交付接受：协议与范围满足、所需观测和比较完整、effects/usage/cleanup
+      已核对才可完成；失败/未知诚实报告但必要交付未证明保持未接受。旧 nunc-effective-state/source 验收保持不变，parent Architect
+      的深入分析不在本步验收内。
+    refs:
+    - .scratch/effective-state-live-medium-ffb936d/protocol.json
+    - .scratch/effective-state-live-medium-ffb936d/environment.json
+    - .scratch/effective-state-live-medium-ffb936d/completion.json
+    - .scratch/effective-state-live-medium-ffb936d/helpers/run-arena-medium.mjs
+    - .scratch/effective-state-live-medium-ffb936d/helpers/score_travel.py
+    - .scratch/relational-memory-live-medium-4e672b/completion.json
+    agent: node-typescript-engineer
