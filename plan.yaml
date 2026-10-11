@@ -5612,7 +5612,7 @@ phases:
       tests. Frozen product ffb936d for authorized ONE benchmark; no main merge/push/adoption/reload.'
   - id: nunc-effective-state.benchmark
     name: 冻结候选一次 MEDIUM MemoryArena 比较与清理
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"policies/**\", \".pi/**\", \"**/auth.json\"\
@@ -5653,3 +5653,5 @@ phases:
     depends_on:
     - nunc-effective-state.source
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-11T18:21:27.289055Z'
