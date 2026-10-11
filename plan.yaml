@@ -9,17 +9,15 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: 当前增量为 docs/TOOL-RESULT-CLEANUP.md 的完整原模型工具结果清理，配套 docs/DESIGN.md §0.1、§5.1。仅在
-  M 实际变化时清理已知旧 M 后、仍进入下次请求的合格工具正文；交付机械处理、omit/replace、逐项依赖验证、维护/模型工具/UI 全入口、原文恢复、持久化、默认开启的
-  settings 开关及真实续做对照。此前 nunc-task-retention 等全部完成定义和证据保持历史含义；本次不重开历史验收，不新增原生 compact
-  触发或替代流程。没有发布、部署、push、全局安装或修改日常环境的效果。
-project_guidance: 本增量以 docs/TOOL-RESULT-CLEANUP.md 全文为权威；其可选 toolResultEdits/originals
-  扩展和 UI 至多一次当前模型判断，是旧固定 schema/无额外请求规则的有限修订。保持 Memory/Slot 含义、原始 session 日志、Pi 原生调度/transport/持久化所有权、任务保真、容量与
-  revision/原子性。nunc.toolResultCleanup 默认 true，可信项目覆盖全局，独立于 memoryTools；false 忽略保存的清理投影并恢复当前活动正文，true
-  仅重用有效决定，不补跑。禁止普通轮次/no-op 清理、新 scheduler/database/evaluator/Jev、通用依赖图和额外治理实体。生产者拥有相关源码、测试、文档及既有
-  runner 的必要局部扩展。既有 Gemini/gpt-5.6-luna/low 限制及历史预授权仅属于原任务，不作为本次模型选择或调用授权；新真实观察使用执行时获准的当前模型、数据和有限效果边界，凭据经原生
-  owner，未知费用保持 unknown。完整项目增量接受由 Orchestrator 在 nunc-tool-result-cleanup.behavior
-  完成程序中作唯一整合判断，覆盖本 phase 全部交付、最终候选完整适用离线库存、真实宿主/模型/成本证据及未改变基线的适用证据。复用仍适用观察，改变证据输入只补受影响范围；不将组件通过、字符缩减或观察报告自报状态视为完整接受。
+context: 当前增量为 docs/MEMORY-IMPROVEMENT.md 的完整轻量关系记忆、局部修订与退役收缩。集成仅 feat/relational-memory，基线7654720277ee7b2a388b543ef973db1a279d5f7e；main保持不变。用户另行明确授权实现冻结后一次
+  fresh isolated MemoryArena native/Nunc 对照，覆盖方案中不重跑 MemoryArena 的原限制，仅此一次。既有 DONE
+  定义和证据保持不可变；不重开旧验收。
+project_guidance: 执行 nunc-relational-memory 的两个交付边界：executor 交付一个可回退源码/文档事务；node-typescript-engineer
+  随后拥有隔离真实运行、成本/失败分析、进程核对与清理。全部 DO 和 NOT DO 以 docs/MEMORY-IMPROVEMENT.md 全文为准，唯一范围修订是用户明确要求一次新
+  MemoryArena 对照。禁止 merge 到 main、push、采用到日常环境、全局设置、当前会话 reload、Pi core 或凭据编辑/文本传递；仅正常获准
+  runtime handoff。旧报告只读，新运行用新目录、顺序 live jobs。生产提示不含评估实体、gold、后续问题或评分规则。Orchestrator/parent
+  architect 在 live 步骤完成程序中负责唯一最终整合接受，覆盖本 phase 全部结果、最终集成候选完整适用 project-native 离线库存（复用有效证据、补受影响范围）、三组真实行为与一次
+  benchmark 的适用性及成本/局限。报告完成不等于质量改善；必要要求未证或阻断缺陷未解不能接受，不为分数重试或 benchmark 后调参。
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -5308,3 +5306,93 @@ phases:
       cases/provenance/helpers/reports and scoring slice retained (~3.6MiB) for original-run
       offline reprocessing. No blockers or product acceptance claim; old evidence/global/original
       sessions untouched.
+- id: nunc-relational-memory
+  name: 轻量关系记忆与一次隔离实测
+  status: pending
+  gate: 由 parent architect/Orchestrator 在 nunc-relational-memory.live 完成程序作唯一整合接受：消费
+    source 和 live 全部结果，判定要求覆盖、最终候选离线证据适用性、实际关联/修订/退役行为及 MemoryArena 结果和成本；不额外新增 gate
+    链。
+  steps:
+  - id: nunc-relational-memory.source
+    name: 完整提示、工具说明与文档交付
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/index.ts\"\
+      , \"docs/MEMORY-IMPROVEMENT.md\", \"docs/EXTRACTION.md\", \"docs/DESIGN.md\"\
+      , \"docs/CAPACITY.md\", \"tests/**\"]\n  blocked_paths: [\"plan.yaml\", \".git/**\"\
+      , \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver:\
+      \ 实施方案全文所有 DO 并保持 NOT DO（一次 MemoryArena 是当前用户明确例外）。统一持续目标/决定性条件、已交付结果和主体/范围关系、最简单自包含表达、混合条目局部更新、有效来源权限、未完成验证、结束互引组退役、外部继续用途的最小结果及安全收缩/退回普通文本。修改\
+      \ default policy、extractionContext 系统开头及两个尾分支、主动工具说明，并同步 EXTRACTION/DESIGN/CAPACITY\
+      \ 及纳入更新后的 MEMORY-IMPROVEMENT 设计文档；不复制整份设计或测试情节进生产文案。纠正文档为默认 target8192、未显式配置\
+      \ hard limit 为 null；不改运行默认值。\n\nBoundary: executor 负责一个可 Git 回退的源/tests/docs\
+      \ 交付，由 feat/relational-memory 集成，main不变。行为和范围已定，仅局部文字与检查选择；不改 Memory/Patch/schema、预算选择算法、q/reserve、切点/no-recut、持久化/UI/生命周期/工具参数或频率。不新增图协议/实体注册/引用计数/TTL/遍历/外部记忆/归档/审查调用/评估框架。保护来源权限、K有效修订、工具关联、取消、版本冲突和未确认保存；关系正文仍普通\
+      \ slot.text，无迁移。\n\nAdmit: 完整读取 accepted design；源基线7654720277ee7b2a388b543ef973db1a279d5f7e，后续\
+      \ live 消费冻结的新候选。检查现有测试和 runner；必要受影响机械检查随本 owner，不能用关键词存在、图格式或自报PASS假装行为证据。若发现现有执行/观测缺少必须\
+      \ tracked 的 material runner，交付前在本事务提供最小必要修复，不创建新框架；未发生的缺口不预造实体。\n\nRecovery:\
+      \ 同 owner 修正兼容源码缺陷；必要检查失败保持未完成。无需真实模型效果先验才能交付，但不得声称效果改善已证。交付可回退源码候选和检查证据，最终运行与接受留给\
+      \ live 完成程序。"
+    verification: 使用 package.json/.node-version/package-lock.json 固定 Node26.7.0、npm11.19.0
+      和锁定依赖；必要安装使用 npm ci，NODE_OPTIONS unset。原生 npm run build 和 scripts/check.mjs
+      的实际加载/请求构造、slot更新/required/显式硬限制/提交相关检查按受影响范围执行，报告命令、退出与行为含义。人工检查 opening 与两种
+      tail、工具入口及文档的完整合同与非改动边界；提示质量不以 token-presence tests 验证。为最终集成提供完整适用离线库存覆盖/证据适用性：scripts/check.mjs
+      all 为已知库存入口，可复用未变输入的有效观察加受影响检查，不因 Plan-only 变化重跑。
+    refs:
+    - docs/MEMORY-IMPROVEMENT.md
+    - policies/default.md
+    - src/engine/request.ts
+    - src/index.ts
+    - docs/EXTRACTION.md
+    - docs/DESIGN.md
+    - docs/CAPACITY.md
+    - scripts/check.mjs
+    - package.json
+    agent: executor
+  - id: nunc-relational-memory.live
+    name: 三组连续维护观察与一次 MemoryArena 对照
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \".git/**\", \"src/**\", \"policies/**\", \".pi/**\", \".agents/**\", \".env\"\
+      , \".env.*\", \"**/auth.json\", \".scratch/memoryarena-sol-rerun-03ecb09/**\"\
+      , \".scratch/memoryarena-sol-pilot/**\", \".scratch/mab-codex-luna-pilot/**\"\
+      ]\n\nDeliver: node-typescript-engineer 拥有一个隔离真实运行与证据交付，消费者为 parent architect/Orchestrator\
+      \ 的最终整合接受；包含准备、工具/运行诊断、记录、离线评分、费用/局限报告、进程核对和物理清理。先完成三组独立于 MemoryArena 的 old/new\
+      \ 多维护情节，再对冻结实现执行且只执行一次 fresh isolated MemoryArena native/Nunc 对照。不得为分数重试，不得\
+      \ benchmark 后调参。\n\n三组：关联续做（多主体、值、范围、否定及同名区别）；连续局部修订（非空M、旧值退出、未改条件和未完成验证保留）；结束互引组与外部有效消费者（整组退役无用细节，仅留必要自包含结果，安全收缩为普通文本）。每组旧/新版各一次共6分支，same\
+      \ Sol/minimal，每分支超过一次维护且续用自己的实际 M；起始来源/旧M/后续交付/切点规则/预算一致，后续问题和期望答案对提取模型隐藏。先冻结有限情节/时间/用量预算再调用，无新评估框架或模型裁判。记录实际候选/保存/续答、M/K、维护次数/调用/时间/用量，区分提取/保存/使用错误，不把相依错误当独立样本。\n\
+      \nMemoryArena 保留上一选择协议：3组共23 travelers/arm、6真实持久会话、46 deliveries、每组一次；固定顺序1native/1nunc/2nunc/2native/3native/3nunc。Pi1.1.0，openai-codex/gpt-6.1-sol/minimal，16K自动压力、q0.5/default\
+      \ elastic memory、memoryTools false、6官方CSV tools；physical272000/max128000，reserve255616/keep8000、trigger16384。限额总10800s、900s/op、30steps/query、400main+maintenance成功ops、12M\
+      \ input+cache、200K output、800tools、16maintenance/session；单操作跨receipt上限和中断未知用量如实报告，不能虚称硬单请求帽。复用原\
+      \ selection/protocol/scorer（官方PS/SPS/SR及原有辅助规则），无未来问题/gold/累积旧答案/评分反馈给候选，无 provider\
+      \ fallback。正常准备完整CSV数据，旧 score-inputs 是评分子集不能作运行数据库。\n\nBoundary: 只在新 task artifact/runtime\
+      \ 目录运行，previous reports/helpers只读；不改源、main、Pi core、全局设置/日常状态/当前会话，不merge/push/adoption，不编辑或文本转移凭据，只走正常已批准\
+      \ runtime handoff。新旧运行顺序执行，重分配前比较df与全部峰值和保留余量（此前约47.6GiB可用仅为历史参考）。旧runtime已删除，不能假定环境存在。复用现有\
+      \ helpers 前检查指定目录，不增加独立框架；material effect/acceptance 逻辑缺少受测tracked producer时停止相关效果并交还源producer边界，不能临时编写未跟踪逻辑绕过合同。\n\
+      \nAdmit: source 冻结候选；旧版基线7654720277ee7b2a388b543ef973db1a279d5f7e。fresh zero-inference\
+      \ preflight 证明两个真实CLI arms、模型/settings、Nunc仅在其arm和6工具可用，且无候选model调用；gold preflight仅验证评分器。沿用协议适配说明（same-session\
+      \ 16K压力，不是原跨session leaderboard），不把旧观察当新证据。记录实际 source visibility/M/K/cuts、所有\
+      \ main/maintenance receipts、工具错误、全程/维护延迟及input/cache/output、catalog等价费用；订阅实付未知保持unknown。报告旧/新结果比较但不凭不匹配轨迹推出因果改善。\n\
+      \nRecovery: 同owner处理同目标准备与观测错误；可能开始的效果先核对，不重放不明/已尝试调用，不补分数。源缺陷在未完成兼容producer修复；producer已DONE则保留历史，由Planner处理必要\
+      \ writable repair，live消费者保持原位。无新作用域授权时停止有关效果，报告实际缺口。保存最小独特观察/来源/评分输入/结果后核对controller/CLI/server/descendants，物理删除本次可重建runtime/venv/cache/fullCSV/upstream与冗余，离线重现保留数据的评分；记录df前后与仍有消费者的holds，不删除旧材料。\n\
+      \nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/memoryarena-sol-rerun-03ecb09/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/memoryarena-sol-pilot/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/mab-codex-luna-pilot/helpers"
+    verification: 提交绑定最终冻结集成候选的实际三组6分支与一次46-delivery报告、原始必要观察、评分/成本/错误与局限、process-reconciliation和cleanup证据。覆盖不足、维护未触发或budget耗尽不得报告完整证明；MemoryArena分数下降不自动证明产品缺陷，也不授权重跑。Orchestrator/parent
+      architect 消费 source+live，作唯一最终项目增量接受：完整DO/NOT DO要求、最终候选完整适用离线库存及交叉入口、关联/修订/退役安全、真实运行与成本/清理均有充分适用证据，无阻断缺陷或未证必要要求才接受。完整库存可由有效基线证据+受影响执行构成；不强制未变全量重测。可如实完成负面观察报告，但不把报告交付或组件PASS等同质量改善或项目接受。
+    refs:
+    - docs/MEMORY-IMPROVEMENT.md
+    - .scratch/memoryarena-sol-rerun-03ecb09/RESULT.md
+    - .scratch/memoryarena-sol-rerun-03ecb09/PROTOCOL.md
+    - .scratch/memoryarena-sol-rerun-03ecb09/protocol.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/selection.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/environment.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/INVESTIGATION.md
+    - .scratch/memoryarena-sol-rerun-03ecb09/maintenance-evidence.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/relation-evidence.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/scores.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/analysis.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/cleanup.json
+    - .scratch/memoryarena-sol-rerun-03ecb09/process-reconciliation.json
+    depends_on:
+    - nunc-relational-memory.source
+    agent: node-typescript-engineer
