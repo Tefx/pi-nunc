@@ -5559,7 +5559,7 @@ phases:
       effects. Worker processes reconciled/build runtimes cleaned.'
 - id: nunc-effective-state
   name: 有效状态提示修订与一次 MEDIUM 测量
-  status: pending
+  status: in_progress
   gate: Orchestrator 在 benchmark 完成程序接受 source + benchmark 的完整本次增量：四处语义边界、直接受影响检查、冻结候选一次对照、比较/局限与清理。测量负收益允许接受，缺失必要交付或未核对效果不允许。无独立
     gate。
   depends_on:
@@ -5567,7 +5567,7 @@ phases:
   steps:
   - id: nunc-effective-state.source
     name: 四处有效状态与适用范围提示修订
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"**/auth.json\", \"\
@@ -5596,6 +5596,8 @@ phases:
     - tests/engine/cleanup.test.ts
     - tests/engine/memory.test.ts
     agent: executor
+    claimed_by: executor
+    claimed_at: '2026-10-11T18:13:04.126827Z'
   - id: nunc-effective-state.benchmark
     name: 冻结候选一次 MEDIUM MemoryArena 比较与清理
     status: pending
