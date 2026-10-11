@@ -485,10 +485,14 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         if (options.requireThinkingLevel && options.requireThinkingLevel !== "off") {
           requireValue(selected.reasoning === true, "THINKING_UNAPPLIED", `Model ${selected.id} does not support reasoning/thinking, but thinking level "${options.requireThinkingLevel}" was required.`);
         }
-        // Planning values on uncapped APIs cannot lower consumption authorization.
-        const maxTokens = omitsSerializedOutputCap(model) ? model.maxTokens : original?.maxTokens ?? model.maxTokens;
+        // Native OpenAI OAuth also omits the wire cap on a shared static model.
+        // Keep the caller's planning value unchanged for native delegation/logs,
+        // but reserve the full capability when actual metadata identifies this route.
+        const subscription = options.subscriptionBilling?.(model) ?? model.api === "openai-codex-responses";
+        const uncapped = omitsSerializedOutputCap(model) || (model.api === "openai-responses" && subscription);
+        const maxTokens = uncapped ? model.maxTokens : original?.maxTokens ?? model.maxTokens;
         requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "ENDPOINT", "Authorized model baseUrl is missing");
-        reservation = ledger.reserve(model, context, maxTokens, options.subscriptionBilling?.(model) ?? model.api === "openai-codex-responses");
+        reservation = ledger.reserve(model, context, maxTokens, subscription);
         // Agent tools also carry executable callbacks. Observe only the public model-facing Tool fields.
         const activeTools = ("tools" in context && Array.isArray(context.tools)) ? context.tools : getCurrentTools(context.messages);
         options.onContext?.(model, structuredClone({ ...context, tools: activeTools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) }), kind);

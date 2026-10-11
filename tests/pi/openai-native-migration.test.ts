@@ -40,12 +40,13 @@ for (const oauth of [true, false]) test(`real loader / native openai serializer 
     assert.equal(Object.hasOwn(body, "max_output_tokens"), !oauth, "Native subscription omits cap; API-key serializer retains it");
     return sse(bodies.length === 2 ? JSON.stringify({ add: [{ key: "fact", text: "Continue verification." }], remove: [], priority: ["fact"], required: ["fact"] }) : "Controlled continuation.");
   };
-  const nativeModel = (m: Model<Api>): Model<"openai-responses"> => { assert.equal(m.api, "openai-responses"); return { ...m, api: "openai-responses" }; };
-  const wrapped: Provider = { ...provider,
-    stream: (m, context, options) => provider.stream(nativeModel(m), context, { ...options, fetch: transport } as Parameters<typeof provider.stream>[2]),
-    streamSimple: (m, context, options) => provider.streamSimple(nativeModel(m), context, { ...options, fetch: transport }),
-  };
-  registry.registerProvider(wrapped);
+  const requests: Array<{ callId: number; outputPlanning: number | null; kind: string }> = [];
+  const caps: Array<{ callId: number; cap: ReturnType<typeof import("../../src/pi/payload.js").outputCapState> }> = [];
+  const boundedLedger = new BudgetLedger(join(f.dir, "bounded.jsonl"), { maxCalls: 4, maxTotalTokens: 2000000, maxOutputTokens: model.maxTokens, maxDurationMs: 30000, maxCostUsd: null }, Date.now() + 30000, new AbortController().signal);
+  // Same registration as the live observer. Nunc then wraps this actual native
+  // decorator for main admission and the owned piComplete maintenance scope.
+  registry.registerProvider(boundedProvider(provider, [model], boundedLedger, { subscriptionBilling: m => subscriptionBilling(m, registry), fetch: transport,
+    onRequest: data => requests.push(data), onPayload: data => caps.push(data) }));
   const refreshed = await f.modelRuntime.refresh({ allowNetwork: false });
   assert.equal(refreshed.errors.size, 0, [...refreshed.errors.values()].map(e => e.message).join("; "));
   assert.equal(registry.isUsingOAuth(model), oauth, JSON.stringify(await f.modelRuntime.checkAuth("openai")));
@@ -60,6 +61,11 @@ for (const oauth of [true, false]) test(`real loader / native openai serializer 
   const maintenance = admissions.findLast(o => o.kind === "maintenance");
   assert.equal(maintenance?.outcome, "delegate");
   assert.equal(maintenance?.outputCapTokens, oauth ? null : 8192);
+  const boundedMaintenance = requests.find(r => r.kind === "maintenance"); assert(boundedMaintenance);
+  assert.equal(boundedMaintenance.outputPlanning, 8192);
+  const reservation = readLedger(boundedLedger.path).find(r => r.kind === "reserve" && r.id === boundedMaintenance.callId);
+  assert(reservation?.kind === "reserve"); assert.equal(reservation.outputCeiling, oauth ? 128000 : 8192);
+  assert.equal(caps.find(r => r.callId === boundedMaintenance.callId)?.cap.kind, oauth ? "missing" : "value");
   const cp = f.runtime.session.sessionManager.getBranch().findLast(e => e.type === "compaction");
   assert(cp?.type === "compaction"); assert.match(cp.summary, /Continue verification/);
   await f.runtime.session.prompt("Continue using saved state.");
