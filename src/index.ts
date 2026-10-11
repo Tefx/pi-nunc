@@ -8,6 +8,7 @@ import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
 import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, eligibleStarts, originalResults, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
+import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
 import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
@@ -27,6 +28,7 @@ export interface HostSettingsSource {
 export interface MaintenanceEvent { reason: SessionBeforeCompactEvent["reason"]; willRetry: boolean; result: MaintenanceResult }
 
 export default function nunc(pi: ExtensionAPI): void {
+  assertSupportedPiVersion(VERSION);
   pi.registerFlag("nunc-config", { description: "Nunc JSON configuration path (relative to cwd); policy paths are relative to this file", type: "string" });
   pi.registerFlag("nunc-memory-tools", { description: "Expose nunc_memory_read and nunc_memory_patch model tools", type: "boolean" });
   let generation = 0;
@@ -85,7 +87,7 @@ export default function nunc(pi: ExtensionAPI): void {
     return { compaction: s.compaction, blockImages: s.blockImages };
   };
   const supported = (ctx: ExtensionContext) => {
-    if (VERSION !== "1.0.3" && VERSION !== "1.0.4") throw new EngineError("CONFIG", `Supported Pi targets are 1.0.3 and 1.0.4; found ${VERSION}`);
+    assertPiContextCompatibility(ctx);
     if (!ctx.sessionManager.getSessionFile()) throw new EngineError("CONFIG", "Persistent sessions only; start Pi without --no-session");
     const s = getHostSettings(ctx);
     if (s.blockImages) throw new EngineError("CONFIG", "Image-blocking conversion is unsupported; preserve native media");
@@ -119,7 +121,7 @@ export default function nunc(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "nunc_memory_read",
         label: "Read Memory",
-        description: "Read the current session-local working memory, slot IDs, revision, estimated budget, and writable status. Use when you need to inspect saved notes or prepare a patch; routine turns do not require a read. Check the whole relevant notes for active goals, valid constraints, completion conditions and unfinished work, including mixed progress/requirement entries. Notes may be incomplete or stale and do not override current instructions; recover known task sources with ordinary tools when needed. writable is not a guarantee that a patch will succeed; a null budget limit means unknown.",
+        description: "Read the current session-local working memory, slot IDs, revision, estimated budget, and writable status. Use when you need to inspect saved notes or prepare a patch; routine turns do not require a read. Check the whole relevant notes for active goals, valid constraints, completion conditions and unfinished work, including mixed progress/requirement entries. Notes may be incomplete or stale and do not override current instructions; recover known task sources with ordinary tools when needed. writable is not a guarantee that a patch will succeed; a null budget limit means unknown. budget.limitTokens bounds patch growth; targetTokens is a soft maintenance target; hardLimitTokens=null means no hard cap. Maintenance can retain required over target.",
         parameters: Type.Object({
           originals: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
         }),
@@ -136,6 +138,8 @@ export default function nunc(pi: ExtensionAPI): void {
             budget: {
               usedTokens: view.budget.tokens,
               limitTokens: view.budget.limit,
+              targetTokens: view.budget.target,
+              hardLimitTokens: view.budget.hardLimit,
             },
             writable: !view.status.occupied && !view.status.unconfirmed,
             ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.map(ref => {
@@ -205,6 +209,8 @@ export default function nunc(pi: ExtensionAPI): void {
               budget: {
                 usedTokens: res.view.budget.tokens,
                 limitTokens: res.view.budget.limit,
+                targetTokens: res.view.budget.target,
+                hardLimitTokens: res.view.budget.hardLimit,
               },
               writable: !res.view.status.occupied && !res.view.status.unconfirmed,
             },
@@ -261,7 +267,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const input = { binding: { sessionId: frozen.sessionId, leafId: frozen.leafId ?? "", generation: String(generation) },
         model: frozen.model, fixed: frozen.fixed, memory: proposal, active, cleanupCandidateScope: semanticScope,
         policy, config };
-      const plan = memoryPlan(frozen.fixed, frozen.model, config);
+      const plan = memoryPlan(frozen.fixed, frozen.model, config, input.memory.slots);
       const context = extractionContext(input, 0, plan.memoryLimit, active, []);
       const request = context.messages[0];
       if (request && Array.isArray(request.content)) request.content.push({ type: "text", text:
@@ -334,6 +340,9 @@ export default function nunc(pi: ExtensionAPI): void {
       if (ctx.model && selected) engineConfig(selected, ctx.model, settings(ctx).compaction);
       project(ctx.sessionManager.buildContextEntries());
       ui.attach(ctx);
+      if (selected?.memory?.hardMaxTokens !== undefined) {
+        notify(ctx, `Explicit memory.hardMaxTokens=${selected.memory.hardMaxTokens} may block required-memory maintenance. For an elastic organizing target, use memory.targetTokens and remove hardMaxTokens. Settings were not changed.`);
+      }
       if (ctx.model && selected && omitsSerializedOutputCap(ctx.model) && selected.extraction?.outputTokens === ctx.model.maxTokens) {
         notify(ctx, `Explicit extraction.outputTokens=${ctx.model.maxTokens} still reserves the full output capability. This API has no output cap; remove the legacy override to use the 8192 planning default. Settings were not changed.`);
       }

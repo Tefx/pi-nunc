@@ -1,7 +1,7 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, PlanningEstimate, Slot } from "../engine/index.js";
-import { imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
@@ -84,6 +84,8 @@ export interface ContextBudget {
   /** Advisory maintenance target, not the save limit. */
   memoryLimit: number | null;
   memoryHardLimit?: number | null;
+  memoryTarget?: number | null;
+  memoryReserveTokens?: number | null;
   memoryOccupied: number | null;
   memoryUnknown: boolean;
   outputReserveTokens: number | null;
@@ -205,7 +207,7 @@ export function createContextSurface(options: {
           const config = options.config(ctx, ctx.model);
           imageTokens = config.imageTokens;
           extraInputTokens = config.main.extraInputTokens;
-          budget = measureBudget(ctx.model, config, options.fixed(ctx), memory.budget.tokens, memory.budget.unknown);
+          budget = measureBudget(ctx.model, config, options.fixed(ctx), memory.budget.tokens, memory.budget.unknown, memory.memory.slots);
         } catch {
           budget = unknownBudget(memory.budget.tokens, true);
         }
@@ -402,8 +404,8 @@ export function unknownBudget(occupied: number, unknown: boolean): ContextBudget
   };
 }
 
-function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedContext, occupied: number, memoryUnknown: boolean): ContextBudget {
-  const plan = memoryPlan(fixed, model, config);
+function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedContext, occupied: number, memoryUnknown: boolean, slots: Slot[]): ContextBudget {
+  const plan = memoryPlan(fixed, model, config, slots);
   const uncapped = omitsSerializedOutputCap(model);
   return {
     modelWindow: model.contextWindow,
@@ -412,7 +414,9 @@ function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedCont
     mainAdmissionLimit: mainAdmissionLimit(model, config.main),
     extractionInputLimit: plan.extractionInputLimit,
     memoryLimit: plan.memoryLimit,
-    memoryHardLimit: config.memory.hardMaxTokens ?? 8192,
+    memoryHardLimit: hardMemoryLimit(config),
+    memoryTarget: memoryTarget(config),
+    memoryReserveTokens: plan.memoryReserveTokens,
     memoryOccupied: occupied,
     memoryUnknown,
     outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens,

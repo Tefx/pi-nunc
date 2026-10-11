@@ -1,9 +1,10 @@
 // purpose: Stock Pi regression for soft-planning overruns versus binding main input limits.
 // usage: node scripts/observe-capacity-recurrence.mjs
 // effects: Isolated CLI/RPC, fictional OAuth, loopback SSE and saved evidence; fixture cleanup.
-// requires: Current dist, locked stock Pi 0.86.1; no live credentials or service.
+// requires: Current dist, locked supported stable Pi1.x; no live credentials or service.
 import assert from 'node:assert/strict';
 import { StockFixture, text } from './stock-driver.mjs';
+import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate';
 
 for (const test of [
   { name: 'short-history-auto', enabled: true },
@@ -23,7 +24,8 @@ for (const test of [
   try {
     const p = f.start(); await p.command('get_state');
     if (test.fresh) {
-      await p.prompt('Fresh evidence: ' + 'x'.repeat(1018500));
+      const scale = 1000 / estimateTextTokens('x'.repeat(4000));
+      await p.prompt('Fresh evidence: ' + 'x'.repeat(Math.floor(1018500 * scale)));
       assert.equal(f.requests.length, 1);
     } else {
       await p.prompt('First evidence'); await p.prompt('Recent evidence');
@@ -47,9 +49,11 @@ for (const test of [
       assert.equal(observation.plannedInputLimit, 254592);
       assert.equal(observation.inputExceededPlan, true);
       assert.equal(observation.estimator, test.fresh ? 'pi-heuristic' : 'pi-usage-backed');
-      if (!test.fresh && !test.append) assert.equal(observation.inputTokens, 254598);
+      // Receipt254497 + prior output50 + one user-message frame/content.
+      const trailing = 32 + estimateTextTokens('user') + 16 + estimateTextTokens('next') + estimateTextTokens('{}');
+      if (!test.fresh && !test.append) assert.equal(observation.inputTokens, 254497 + 50 + trailing);
       if (test.append) {
-        assert.equal(observations.filter(o => !o.payload).at(-1).inputTokens, 254590);
+        assert.equal(observations.filter(o => !o.payload).at(-1).inputTokens, 254489 + 50 + trailing);
         assert(observation.inputTokens > observation.plannedInputLimit);
         assert.equal(observation.payload.transform, 'last-user-text-append');
       }

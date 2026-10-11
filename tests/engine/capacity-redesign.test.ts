@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { engineConfig } from "../../src/pi/config.js";
 import { admissionEstimate, inputLimit, mainAdmissionLimit, requestTokens, textTokens } from "../../src/engine/accounting.js";
@@ -73,7 +74,7 @@ test("raw semantic transcript preserves text, arguments, status and boundaries w
 });
 
 test("planning uses Pi text scale and ignores opaque signature size; usage needs an applicable prefix and model", async () => {
-  assert.equal(textTokens("a".repeat(4000)), 1000);
+  assert.equal(textTokens("a".repeat(4000)), estimateTextTokens("a".repeat(4000)));
   const source = await input();
   const message = { ...answer(), content: [{ type: "thinking" as const, thinking: "Visible", thinkingSignature: "x".repeat(700000) }], usage: { ...answer().usage, input: 10000, output: 1000, cacheRead: 2000, cacheWrite: 0, totalTokens: 13000 } };
   const context = { ...source.fixed, messages: [message, user("tail", "Continue").messages[0]!] };

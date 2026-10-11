@@ -62,7 +62,7 @@ test("no-system-history manual M saves grow under the independent hard cap and r
     const existing = fm?.M as { id: string; text: string }[];
     assert.deepEqual(existing.map(s => s.text), ["x".repeat(180), "y".repeat(180)]);
     assert.equal((fm?.F as { toolState?: string }).toolState, "partial", "F is marked incomplete, never presented as exact");
-    return fauxAssistantMessage(JSON.stringify({ add: [], remove: [], priority: existing.map(s => s.id), required: [] }));
+    return fauxAssistantMessage(JSON.stringify({ add: [], remove: [], priority: existing.map(s => s.id), required: existing.map(s => s.id) }));
   });
   await f.runtime.session.compact();
   assert.equal(f.events[0]?.result.ok, true);

@@ -66,9 +66,9 @@ export function memoryOccupancy(current: CurrentContext): string {
   const noModel = current.model === null;
   const occupied = b.memoryOccupied === null ? (noModel ? "no model" : "unknown") : thousands(b.memoryOccupied);
   if (b.memoryUnknown) return b.memoryOccupied === null ? occupied : `${occupied} · unknown limit`;
-  const saveLimit = b.memoryHardLimit ?? b.memoryLimit;
-  if (saveLimit === null) return `${occupied} / ${noModel ? "no model" : "unknown"}`;
-  return `${occupied} / ${thousands(saveLimit)}`;
+  const target = b.memoryTarget ?? b.memoryLimit;
+  if (target === null) return `${occupied} / ${noModel ? "no model" : "unknown"}`;
+  return `${occupied} / target ${thousands(target)}${b.memoryOccupied !== null && b.memoryOccupied > target ? " · over target" : ""}${b.memoryHardLimit != null ? ` · hard ${thousands(b.memoryHardLimit)}` : " · elastic maintenance"}`;
 }
 
 export function planningLines(estimate: PlanningEstimate, label = "Retention planning"): string[] {
@@ -89,8 +89,11 @@ export function budgetLines(current: CurrentContext): string[] {
     `Main admission: ${quantity(b.mainAdmissionLimit, noModel)}`,
     `Memory/input plan: ${quantity(b.plannedInputLimit, noModel)}`,
     `Maintenance input plan: ${quantity(b.extractionInputLimit, noModel)}`,
-    `M occupancy / save hard cap: ${memoryOccupancy(current)}`,
-    `M advisory maintenance target: ${quantity(b.memoryLimit, noModel)} (historical F estimate)`,
+    `M occupancy / organizing target: ${memoryOccupancy(current)}`,
+    `M maintenance target: ${quantity(b.memoryLimit, noModel)} (historical F estimate)`,
+    `M planning reserve: ${quantity(b.memoryReserveTokens ?? null, noModel)} (includes current M)`,
+    ...(b.memoryHardLimit != null ? [`Explicit memory hard limit ${thousands(b.memoryHardLimit)} may block maintenance; migrate to memory.targetTokens for elastic required retention.`] : []),
+    "Active patches reject growth beyond target/explicit hard limit; automatic maintenance retains required over target.",
     `Current history tools: ${current.layout.tools.unknown ? "partial/unknown" : "persisted declarations"}; last actual request is separate`,
     `Main output reserve: ${quantity(b.outputReserveTokens, noModel)}`,
     `Maintenance output reserve: ${quantity(b.extractionOutputTokens, noModel)}`,
@@ -122,6 +125,10 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
       `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
     );
+    if (a.memoryReserveTokens !== undefined) {
+      lines.push(`Memory: target ${thousands(a.memoryLimit)} · reserved ${thousands(a.memoryReserveTokens)} · saved ${a.memoryTokens === null ? "pending" : thousands(a.memoryTokens)}${a.memoryTargetExceeded ? " · over target; required retained" : ""}`,
+        `Memory hard limit: ${a.memoryHardLimit == null ? "none (elastic maintenance)" : `${thousands(a.memoryHardLimit)} (explicit; may block maintenance)`}`);
+    }
     if (a.planning) {
       lines.push(...planningLines(a.planning.before, "Main-before planning"), ...planningLines(a.planning.kept, "Kept-history planning"));
       if (a.planning.after) lines.push(...planningLines(a.planning.after, "Main-after planning"));

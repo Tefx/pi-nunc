@@ -1,18 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
-import { buildContextEntries, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { buildContextEntries, convertToLlm, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { prepareBoundary } from "../../src/live/preparation.js";
 import { metricsCommand } from "../../src/live/tool-path.js";
 import { toolBlockReason } from "../../src/live/observer.js";
 import { RunnerError } from "../../src/live/contract.js";
-import { requestTokens, mainContext } from "../../src/engine/accounting.js";
+import { requestTokens, mainContext, messageTokens } from "../../src/engine/accounting.js";
+import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { repository } from "./fixtures.js";
 
 function createExactFixtureEntries(): { branch: SessionEntry[]; requestText: string; fixtureContent: string; extraMainInputTokens: number } {
   const requestText = "Read TASK.md. We have work to do.";
-  // 7581 chars yields exactly requestedK = 2019 tokens for the retained tool exchange.
-  const fixtureContent = "x".repeat(7581);
+  let fixtureContent = ""; // Fill after constructing the complete retained tool unit.
   const branch: SessionEntry[] = [
     {
       id: "entry-req",
@@ -43,6 +43,13 @@ function createExactFixtureEntries(): { branch: SessionEntry[]; requestText: str
       timestamp: new Date(3).toISOString(),
     },
   ];
+  // Keep the observed numerical shortfall exact under the imported SDK heuristic.
+  const call = branch[1] as Extract<SessionEntry, { type: "message" }>;
+  const result = branch[2] as Extract<SessionEntry, { type: "message" }>;
+  const contentTokens = 2019 - convertToLlm([call.message, result.message]).reduce((sum, message) => sum + messageTokens(message), 0);
+  const charsPerToken = 14000 / estimateTextTokens("x".repeat(14000));
+  fixtureContent = "x".repeat(Math.floor(contentTokens * charsPerToken));
+  (result.message as { content: { text: string }[] }).content[0]!.text = fixtureContent;
   const fixed = { systemPrompt: "Work on task.", tools: [] };
   const baseF = requestTokens(mainContext(fixed, [], []), undefined);
   // Setting extraMainInputTokens so that F = 1854 exactly as in the observed Luna task.

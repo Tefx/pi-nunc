@@ -1,8 +1,10 @@
 # Local development
 
-Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **1.0.4**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
+Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **1.1.0**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
 
-`package-lock.json` pins dependencies. Pi development packages remain exact pins. Host peers explicitly support `1.0.3 || 1.0.4`; newer releases require compatibility verification before admission. Pi 1.0.4 declares its own server dependency; Nunc requires no separate `pi-server` workaround, running server, global import or private core patch.
+Tests bind receipts/CLI imports to actual locked/installed versions, never a release-specific constant. Estimated-size fixtures use the public SDK text/image heuristic, including per-image rounding, so a minor change in Pi’s estimates does not silently invalidate a retained-unit or boundary precondition. Known framing/receipt algebra remains checked independently. Compatibility policy tests cover future stable1.x inputs, rejected major/prerelease/malformed inputs, required API absence and packaging/lock contracts; real-host suites establish behavior on the actual installed SDK.
+
+`package-lock.json` pins dependencies. Pi development packages remain exact pins. Pi supplies host peers (`*`), while runtime policy accepts stable `^1.0.3` without a per-release list. New major/prerelease hosts and missing required public APIs fail explicitly. Keep development pins/lock exact for reproducible evidence; updating that checked target does not redefine the host range. The Pi SDK declares its own server dependency; Nunc requires no separate `pi-server` workaround, running server, global import or private core patch.
 
 **Stable memory status:** [Stable memory placement and retention](STABLE-MEMORY.md) is implemented in the adapter: stable anchors, independent CAS/content checks, complete parallel tool boundaries, hook mapping and middle-M admission/UI attribution. The default retention fraction `0.5` remains in `src/pi/config.ts`. Tracked m1–m4 observation support extends `scripts/verify-live.mjs`; an ACK-only probe cannot prove memory-use quality. Future live checks follow the Gemini-first / bounded-Luna / no-Astra rule; this document does not run live tests or enable Nunc in daily settings.
 
@@ -46,7 +48,7 @@ Tracked comparison tests load `$PWD/.scratch/baseline-70dacad` as the historical
 - compiled `dist/src/index.js` built against the baseline's tracked source
 - that tree’s lock pins `@earendil-works/pi-coding-agent` **0.85.1**, with matching isolated `node_modules`
 
-The candidate checkout is the isolated native-compatibility worktree and has its own Pi **1.0.4** dependencies. Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
+The candidate checkout is the isolated native-compatibility worktree and has its own locked development Pi dependencies (currently **1.1.0**). Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
 
 ```sh
 git rev-parse --verify 70dacad1f065a70b29f565b5bfcf02d31cec2bdc

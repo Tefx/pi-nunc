@@ -30,7 +30,7 @@ export interface RequestBudget {
 export interface EngineConfig {
   /** Pi's effective contextWindow - compaction.reserveTokens, not another scheduler. */
   triggerTokens: number;
-  memory: { fraction: number; maxTokens?: number; /** Standalone M cap; never inferred from future F. */ hardMaxTokens?: number };
+  memory: { fraction: number; maxTokens?: number; /** Soft organizing target, default8192. */ targetTokens?: number; /** Explicit standalone hard cap; absent means elastic maintenance. */ hardMaxTokens?: number };
   keepRecentFraction: number;
   growthTokens: number;
   main: RequestBudget;
@@ -108,6 +108,10 @@ export interface Accounting {
   extractionInputLimit: number;
   effectiveTrigger: number;
   memoryLimit: number;
+  /** Separate target, current-M reserve and explicit hard limit; optional on old observations. */
+  memoryReserveTokens?: number;
+  memoryHardLimit?: number | null;
+  memoryTargetExceeded?: boolean;
   keepTarget: number;
   keptTokens: number;
   /** Retention/forecast only; never a new admission guard. Optional for older observations. */

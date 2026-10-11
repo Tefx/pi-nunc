@@ -3,6 +3,7 @@
 // effects: Isolated stock RPC/native HTTP/JSONL against bounded loopback SSE; cleanup and retained evidence.
 // requires: Locked build and stock-driver.mjs; no live models or credential reads.
 import assert from 'node:assert/strict';
+import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate';
 import { StockFixture, records, text } from './stock-driver.mjs';
 const api = process.argv[2]; assert(['openai-responses', 'anthropic-messages', 'openai-codex-responses'].includes(api));
 // Codex's old fixture used synthetic main overhead solely to force a local soft-limit error.
@@ -11,7 +12,9 @@ const api = process.argv[2]; assert(['openai-responses', 'anthropic-messages', '
 const f = await new StockFixture().setup({ api, config: { rolling: { keepRecentFraction: 0.9 }, ...(api === 'openai-codex-responses' ? { budget: {} } : {}) }, ...(api === 'openai-codex-responses' ? { compaction: { reserveTokens: 240000 } } : {}) }); let outcome = { status: 'FAIL', api };
 try {
   const p = f.start(); await p.command('get_state');
-  const old = 'Prior work:' + 'a'.repeat(f.codex ? 106000 : 92000), recent = 'Delivered recent:' + 'b'.repeat(f.codex ? 52000 : 68000);
+  // Keep the intended estimated payload sizes as Pi changes its heuristic.
+  const scale = 1000 / estimateTextTokens('x'.repeat(4000));
+  const old = 'Prior work:' + 'a'.repeat(Math.floor((f.codex ? 106000 : 92000) * scale)), recent = 'Delivered recent:' + 'b'.repeat(Math.floor((f.codex ? 52000 : 68000) * scale));
   await p.prompt(old); assert.equal(f.requests.length, 1);
   await p.prompt(recent);
   assert.equal(f.requests.length, 3, 'two ordinary mains followed by native threshold maintenance');

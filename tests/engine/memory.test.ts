@@ -49,9 +49,9 @@ test("no capacity competition preserves natural order despite reversed priority"
   assert.equal(result.memory.slots[3]!.id, "s5");
 });
 
-test("zero advisory fraction preserves saved M; explicit full retirement permits empty snapshot", async () => {
+test("zero organizing target preserves declared required M; explicit full retirement permits empty snapshot", async () => {
   const source = await input(); source.memory = structuredClone(initial); source.config.memory.fraction = 0;
-  const result = await maintain(source, responder({ add: [], remove: [], priority: ["s1", "s2", "s4"], required: [] }));
+  const result = await maintain(source, responder({ add: [], remove: [], priority: ["s1", "s2", "s4"], required: ["s1", "s2", "s4"] }));
   assert(result.ok, result.ok ? "" : result.message);
   assert.deepEqual(result.candidate.memory.slots, initial.slots);
   assert.equal(result.observations.accounting!.memoryLimit, 0);

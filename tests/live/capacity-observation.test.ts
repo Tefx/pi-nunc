@@ -5,6 +5,8 @@ import { checkCapacityRecovery, qualifyCapacity } from "../../src/live/capacity-
 import { evaluateCapacityPredicates } from "../../src/live/scenarios.js";
 import type { MaintenanceResult, Memory } from "../../src/engine/types.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
+import { maintain } from "../../src/engine/engine.js";
+import { answer, input } from "../engine/fixtures.js";
 
 test("capacity predicates distinguish required fit, real competition and an optional candidate that cannot fit", () => {
   const patch = (r: number, o: number) => ({ add: [{ key: "r", text: "x".repeat(r) }, { key: "o", text: "o".repeat(o) }], remove: [], priority: ["r", "o"], required: ["r"] });
@@ -18,9 +20,10 @@ test("capacity qualification binds the saved-M hard limit and observes advisory 
   const result = { ok: true, observations: { accounting: growth } } as unknown as MaintenanceResult;
   const patch = { add: [{ key: "r", text: "x".repeat(120) }, { key: "o", text: "o" }], remove: [], priority: ["r", "o"], required: ["r"] };
   const requiredSize = memoryTokens([{ id: "s1", text: patch.add[0]!.text }]);
-  assert(requiredSize <= 100 && requiredSize > 100 - growth.growthReserve);
-  const context: Context = { systemPrompt: "Rendered memory advisory target: 100 estimated tokens; Independent saved-memory hard cap: 100 estimated tokens", messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }] };
-  const run = (g = growth) => qualifyCapacity("fits-required", { version: 1, slots: [], nextId: 1 }, result, [context], [{ model: "test/model", stopReason: "stop", patch }], "test/model", 100, g);
+  const hardLimit = Math.max(100, requiredSize); // Explicit bound holds the declared set, without spending growth twice.
+  assert(requiredSize <= hardLimit && requiredSize > 100 - growth.growthReserve);
+  const context: Context = { systemPrompt: `Rendered memory advisory target: 100 estimated tokens; Independent saved-memory hard cap: ${hardLimit} estimated tokens`, messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }] };
+  const run = (g = growth) => qualifyCapacity("fits-required", { version: 1, slots: [], nextId: 1 }, result, [context], [{ model: "test/model", stopReason: "stop", patch }], "test/model", hardLimit, g);
   assert.equal(run()[1]!.status, "PROVEN"); assert.equal(run()[2]!.status, "PROVEN");
   assert.equal(run({ ...growth, growthReserve: 81 })[1]!.status, "UNPROVEN");
   assert.equal(run({ ...growth, memoryLimit: 99 })[1]!.status, "UNPROVEN");
@@ -57,6 +60,18 @@ test("capacity source binding rejects stale response, missing request/accounting
   for (const checks of [run([]), run([context], []), run([context], [response, response]), run([context], [{ ...response, stopReason: "length" }]), run([context], [{ ...response, model: "other/model" }]), run([context], [response], { ...memory, slots: [{ id: "s1", text: "old" }] }), qualifyCapacity("fits-required", memory, undefined, [context], [response], "test/model", 50)]) {
     assert.equal(checks[0]!.status, "UNPROVEN");
   }
+});
+
+test("capacity qualification binds the actual new organizing prompt and never invents an implicit hard limit", async () => {
+  const source = await input(); source.config.memory.targetTokens = 50; source.config.memory.hardMaxTokens = 200;
+  const patch = { add: [{ key: "r", text: "x".repeat(120) }, { key: "o", text: "o".repeat(4000) }], remove: [], priority: ["r", "o"], required: ["r"] };
+  let sent!: Context;
+  const result = await maintain(source, async request => { sent = request.context; return answer(patch, request.model); });
+  assert(result.ok);
+  const responses = [{ model: source.model.id, stopReason: "stop", patch }];
+  const checks = qualifyCapacity("fits-required", source.memory, result, [sent], responses, source.model.id, 200);
+  assert.equal(checks[0]!.status, "PROVEN");
+  assert.equal(qualifyCapacity("fits-required", source.memory, result, [sent], responses, source.model.id, null)[0]!.status, "UNPROVEN");
 });
 
 test("capacity recovery needs a real failed transaction, one delivered input, unchanged checkpoint and no repeat maintenance", () => {

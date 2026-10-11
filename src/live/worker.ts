@@ -129,7 +129,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   let runConfig = structuredClone(selection.config);
   // Historical current targets predate the independent saved-M limit. Keep
   // their original setting grammar while candidate exercises the new cap.
-  if (group === "current" && runConfig.nunc.memory) delete runConfig.nunc.memory.hardMaxTokens;
+  if (group === "current" && runConfig.nunc.memory) {
+    delete runConfig.nunc.memory.hardMaxTokens;
+    delete runConfig.nunc.memory.targetTokens;
+  }
   let effectiveConfig = runConfig.nunc;
   let prepared: PreparedBoundary | undefined;
   let boundaryRestoreConfig: Selection["config"] | undefined;
@@ -491,7 +494,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
             }
             if (selection.id === "e4") {
-              report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi 1.0.4 has no required-item guard" } });
+              report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi does not apply Nunc required-item selection" } });
             }
           } else {
             const beforeActive = structuredClone(sm.buildContextEntries());
@@ -524,7 +527,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               report.setupChecks.push(...qualifyCapacity(selection.variant as "fits-required" | "required-too-large",
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
                 report.contexts.slice(capacityContextStart).filter(c => c.kind === "maintenance").map(c => c.context),
-                maintenanceResponses.slice(capacityResponseStart), capacityModel, runConfig.nunc.memory?.hardMaxTokens ?? 8192,
+                maintenanceResponses.slice(capacityResponseStart), capacityModel, runConfig.nunc.memory?.hardMaxTokens ?? null,
                 report.rollovers!.at(-1)?.prepared?.calibration?.accounting)
                 .filter(c => selection.id !== "g8" || c.check !== "at least one necessary candidate is larger than an optional candidate"));
             }

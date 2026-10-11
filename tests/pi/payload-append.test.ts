@@ -4,7 +4,7 @@ import type { Api, Context, Model, Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
-import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { estimateContextTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { EngineError } from "../../src/engine/validation.js";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
@@ -202,7 +202,7 @@ test("append charges Nunc input headroom separately from Pi estimateContextToken
   const grok = { ...model, id: "grok-4.6", api: "openai-responses" as const, contextWindow: 500000, maxTokens: 500000 };
   const smallPrompt = "a".repeat(4000);
   const pContext: Context = { messages: [{ role: "user", content: smallPrompt, timestamp: 1 }] };
-  assert.equal(estimateContextTokens(pContext.messages).tokens, 1000);
+  assert.equal(estimateContextTokens(pContext.messages).tokens, estimateTextTokens(smallPrompt));
   const pBefore = { model: grok.id, stream: true, max_output_tokens: 494904, input: [{ role: "user", content: smallPrompt }] };
   const pSmall = applyLastUserTextAppend(pBefore, "x".repeat(20));
   assert.equal(pSmall.changed, true);

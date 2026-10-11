@@ -23,7 +23,7 @@ Checked environment:
 | --- | --- |
 | Node | 26.7.0 (`.node-version`) |
 | npm | 11.19.0 |
-| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | Development: 1.0.4; supported hosts: 1.0.3 and 1.0.4 |
+| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | Development: 1.1.0; supported policy: stable 1.x, ≥1.0.3 |
 
 Runtime limits:
 
@@ -32,7 +32,7 @@ Runtime limits:
 - One custom compaction owner. If another compaction extension is also enabled, keep exactly one writer.
 - Nunc uses Pi’s current model, thinking level, authentication, compaction settings, and transport. It does not log in, copy credentials, or select another account.
 
-Nunc checks the imported SDK `VERSION` at session start and accepts 1.0.3 or 1.0.4. Pi supplies runtime SDK modules; the stock checks use the package CLI entrypoint, including its embedded module mapping, and record the imported SDK version. Direct ESM imports can instead resolve a local development SDK, so an installed global binary alone does not establish the active SDK binding. Keep development pins at the latest verified stable release and expand host support only after compatibility checks.
+Nunc checks the imported SDK `VERSION` before registration and accepts stable `^1.0.3`: newer 1.x minor/patch releases do not need a release-specific allowlist edit. It checks required public context/session/provider APIs before maintenance. Prereleases, other major versions and missing required APIs fail explicitly. Pi supplies runtime SDK modules; the stock checks use the package CLI entrypoint, including its embedded module mapping, and record the imported SDK version. Direct ESM imports can instead resolve a local development SDK, so an installed global binary alone does not establish the active SDK binding. Pi supplies host SDK packages; peers use `*` as its packaging contract requires, while the runtime support rule remains `^1.0.3`. Development dependencies/lock stay exact for reproducible checks; they do not cap a newer host. This follows Pi’s public-API/semantic-versioning contract, not a guarantee that every future minor release is bug-free. No updater, automatic dependency installation or runtime/config rewrite is introduced.
 
 ## Quick start
 
@@ -144,7 +144,7 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 - Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests inject one current M carrier at a stable legal boundary. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
-- Supported hosts are stock Pi **1.0.3 and 1.0.4** with persistent sessions. No minimum-version or all-provider claim.
+- Host support policy is stable stock Pi **1.x from 1.0.3**, with persistent sessions and the required public APIs. Verified releases have their recorded coverage; accepting a future minor version does not imply it has been individually tested. No all-provider claim.
 - Images need model image input and remain native blocks. Missing `budget.imageTokens` uses Pi's heuristic instead of rejecting the request. Estimates can undercount or overcount; provider capacity failures remain possible. PDF, audio, and unknown blocks fail explicitly.
 - Unload or downgrade without a later native compaction: stock Pi reads the last native summary, not unabsorbed manual edits.
 - `scripts/check.mjs` requires the pinned Node and matching npm CLI. It also needs a local comparison baseline before `all`. See [local development](docs/DEVELOPMENT.md). Real TUI checks also need POSIX PTYs and `/usr/bin/python3`.

@@ -1,9 +1,12 @@
-// purpose: Verify required-capacity cancellation across stock RPC manual, threshold, and overflow paths.
+// purpose: Verify explicit-hard-limit cancellation and default elastic required-memory continuation on stock RPC overflow.
 // usage: node scripts/observe-required-capacity.mjs
 // effects: Isolated stock RPC, fictional native authentication and controlled loopback SSE; saves evidence and cleans up.
 // requires: Locked local build and stock-driver.mjs; no live model/credentials.
 import assert from 'node:assert/strict';
-import { StockFixture } from './stock-driver.mjs';
+import { buildContextEntries } from '@earendil-works/pi-coding-agent';
+import { StockFixture, records } from './stock-driver.mjs';
+import { memoryTokens } from '../dist/src/engine/accounting.js';
+import { project } from '../dist/src/pi/projection.js';
 
 const patch = JSON.stringify({
   add: [{ key: 'oversizedReq', text: 'Mandatory shipment constraint '.repeat(400) }],
@@ -104,6 +107,62 @@ try {
       await f.close(summary ?? { mode, error: 'probe incomplete' });
     }
   }
+  // Default elastic behavior: an incremental required set grows beyond8192
+  // during actual native provider-overflow recovery, without another extraction.
+  const f = await new StockFixture().setup({ config: { extraction: { outputTokens: 8192 } }, compaction: { enabled: false }, timeoutMs: 45000 });
+  const oldText = 'seed:'.repeat(5600), delta = 'stillactive:'.repeat(650);
+  let phase = 'seed', overflows = 0, summary;
+  f.response = row => {
+    if (row.kind === 'maintenance') {
+      const m = records(row.payload).find(r => r.source === 'F/M').M;
+      const candidate = phase === 'seed'
+        ? { add: [{ key: 'seed', text: oldText }], remove: [], priority: ['seed'], required: ['seed'] }
+        : { add: [{ key: 'delta', text: delta }, { key: 'optional', text: 'Completed process detail' }], remove: [], priority: ['optional', ...m.map(s => s.id), 'delta'], required: [...m.map(s => s.id), 'delta'] };
+      return { text: JSON.stringify(candidate), input: 15000, outputTokens: phase === 'seed' ? 7300 : 2100 };
+    }
+    if (phase === 'overflow' && overflows++ === 0) return { status: 400, message: 'maximum context length exceeded' };
+    return { text: 'Controlled continuation', input: 1500, outputTokens: 50 };
+  };
+  try {
+    const p = f.start('rpc');
+    await f.wait(() => f.log.some(e => e.type === 'start'), 'start');
+    await p.prompt('OLD-SEED:' + 'a'.repeat(16000));
+    await p.prompt('RECENT-SEED:' + 'b'.repeat(4000));
+    await p.command('compact');
+    const first = f.log.filter(e => e.type === 'maintenance').at(-1).data.result;
+    assert(first.ok);
+    assert.equal(first.candidate.memory.slots[0].text, oldText);
+    assert(memoryTokens(first.candidate.memory.slots) < 8192);
+    const before = f.requests.length, eventCount = f.log.filter(e => e.type === 'maintenance').length;
+    phase = 'overflow';
+    await p.command('set_auto_compaction', { enabled: true });
+    await p.prompt('ELASTIC-OVERFLOW-CONTINUE');
+    await p.send('/fixture-inspect');
+    await f.wait(() => f.log.at(-1)?.type === 'snapshot', 'elastic snapshot');
+    const events = f.log.filter(e => e.type === 'maintenance').slice(eventCount);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].data.reason, 'overflow');
+    const result = events[0].data.result;
+    assert(result.ok, result.message);
+    assert.equal(result.observations.requests, 1);
+    assert.equal(result.observations.accounting.memoryHardLimit, null);
+    assert.equal(result.observations.accounting.memoryTargetExceeded, true);
+    assert.deepEqual(result.candidate.memory.slots.map(s => s.text), [oldText, delta]);
+    assert(memoryTokens(result.candidate.memory.slots) > 8192);
+    const snapshot = f.log.filter(e => e.type === 'snapshot').at(-1).data;
+    assert.equal(snapshot.entries.filter(e => e.type === 'compaction').length, 2);
+    assert.deepEqual(project(buildContextEntries(snapshot.entries)).memory, result.candidate.memory, 'native persisted checkpoint round trip');
+    const users = snapshot.entries.filter(e => e.type === 'message' && e.message.role === 'user');
+    assert.equal(users.filter(e => JSON.stringify(e.message.content).includes('ELASTIC-OVERFLOW-CONTINUE')).length, 1);
+    const calls = f.requests.slice(before);
+    assert.deepEqual(calls.map(r => r.kind), ['main', 'maintenance', 'main']);
+    assert(JSON.stringify(calls.at(-1).payload).includes(oldText));
+    assert(JSON.stringify(calls.at(-1).payload).includes(delta));
+    assert.equal(snapshot.entries.at(-1).message?.stopReason, 'stop');
+    await p.quit();
+    summary = { mode: 'elastic-overflow', events: 1, additionalCompactions: 1, savedTokens: memoryTokens(result.candidate.memory.slots), mainDelta: 2, exit: p.exit };
+    results.push(summary);
+  } finally { await f.close(summary ?? { mode: 'elastic-overflow', error: 'probe incomplete' }); }
   overallStatus = 'PROVEN_CONTROLLED';
 } catch (error) {
   console.error(error);

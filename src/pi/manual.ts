@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, Memory, Slot, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
-import { decideToolResultCleanup, memoryTokens } from "../engine/index.js";
+import { decideToolResultCleanup, hardMemoryLimit, memoryTarget, memoryTokens } from "../engine/index.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
 import { readConfig, type HostCompactionSettings } from "./config.js";
 import { MANUAL_MEMORY_TYPE, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions } from "./projection.js";
@@ -12,6 +12,9 @@ export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" 
 export interface MemoryBudgetView {
   tokens: number;
   limit: number | null;
+  /** Manual growth limit is min(target, explicit hard cap); maintenance may exceed target. */
+  target?: number | null;
+  hardLimit?: number | null;
   unknown: boolean;
   overLimit: boolean;
 }
@@ -337,9 +340,10 @@ function measureBudget(ctx: ExtensionContext, options: Parameters<typeof createM
   const tokens = memoryTokens(slots);
   try {
     const config = readConfig(options.pi.getFlag("nunc-config"), ctx.cwd).config;
-    const limit = config.memory?.hardMaxTokens ?? 8192;
+    const target = memoryTarget(config), hardLimit = hardMemoryLimit(config);
+    const limit = Math.min(target, hardLimit ?? Infinity);
     const used = memoryTokens(slots, config.budget?.imageTokens);
-    return { tokens: used, limit, unknown: false, overLimit: used > limit };
+    return { tokens: used, limit, target, hardLimit, unknown: false, overLimit: used > limit };
   } catch {
     return { tokens, limit: null, unknown: true, overLimit: false };
   }

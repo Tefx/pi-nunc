@@ -1,6 +1,6 @@
 import type { ContextLayout, ContextMessage, ContextView, CurrentContext, LastMainContext, LastMaintenanceContext } from "../pi/context.js";
 import type { Slot } from "../engine/index.js";
-import { budgetLines, firstLine, maintenanceLines, planningLines, thousands, type DiagnosticNote } from "./status.js";
+import { budgetLines, firstLine, maintenanceLines, memoryOccupancy, planningLines, thousands, type DiagnosticNote } from "./status.js";
 
 export interface CtxNode {
   id: string;
@@ -339,7 +339,7 @@ function bars(current: CurrentContext): string {
   return [
     `F ${meter(fUnknown ? null : f, cap)} ${tokenLabel(f, fUnknown)}`,
     `R ${meter(rUnknown ? null : rKnown, cap)} ${tokenLabel(rKnown, rUnknown)}`,
-    `M ${meter(current.budget.memoryUnknown ? null : current.budget.memoryOccupied, current.budget.memoryHardLimit ?? current.budget.memoryLimit)} ${memoryLine(current)}`,
+    `M ${meter(current.budget.memoryUnknown ? null : current.budget.memoryOccupied, current.budget.memoryTarget ?? current.budget.memoryLimit)} ${memoryOccupancy(current)}`,
   ].join("\n");
 }
 
@@ -354,14 +354,6 @@ function tokenLabel(tokens: number | null | undefined, unknown: boolean): string
   if (unknown && (tokens === null || tokens === undefined)) return "unknown";
   if (tokens === null || tokens === undefined) return "unknown";
   return unknown ? `${thousands(tokens)} + unknown` : `${thousands(tokens)} tok`;
-}
-
-function memoryLine(current: CurrentContext): string {
-  const occupied = current.budget.memoryOccupied;
-  const limit = current.budget.memoryHardLimit ?? current.budget.memoryLimit;
-  if (current.budget.memoryUnknown) return occupied === null ? "unknown" : `${thousands(occupied)} · unknown limit`;
-  if (limit === null) return occupied === null ? "unknown" : `${thousands(occupied)} / unknown`;
-  return `${thousands(occupied ?? 0)} / ${thousands(limit)}`;
 }
 
 function budgetPreview(current: CurrentContext): string {

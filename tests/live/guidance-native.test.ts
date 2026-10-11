@@ -5,6 +5,7 @@ import { readFile, writeFile, stat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { repository } from "./fixtures.js";
 import { checkFullExtraction } from "../../src/live/scenarios.js";
+import { capacityRequiredText } from "./comparison-native-fixture.js";
 import { readSourceRecords } from "../../src/engine/request.js";
 
 // Synthetic SSE supplies tools, not model judgments. All effects run through the
@@ -37,7 +38,7 @@ async function guidanceNative(lowUsage = false) {
     const scenario = scenarios[scenarioIndex];
     if (source) {
       const capacity = scenario?.id === "g8";
-      const add = capacity ? [{ key: "req", text: "n".repeat(scenario.variant === "required-too-large" ? 1000 : 120) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "task", text: scenario?.id === "g6" ? "Wait for deployment lock release; then write deployed.json for orders-pipeline and verify." : "Pending milestone; recover original obligations from obligations.txt." }];
+      const add = capacity ? [{ key: "req", text: capacityRequiredText(scenario.variant === "required-too-large") }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "task", text: scenario?.id === "g6" ? "Wait for deployment lock release; then write deployed.json for orders-pipeline and verify." : "Pending milestone; recover original obligations from obligations.txt." }];
       return JSON.stringify({ add, remove: source.M.map((s: any) => s.id), priority: capacity ? ["opt", "extra", "req"] : ["task"], required: [add[0]!.key] });
     }
     const messages = row.payload.messages.filter((m: any) => !text(m).includes("Nunc working memory"));

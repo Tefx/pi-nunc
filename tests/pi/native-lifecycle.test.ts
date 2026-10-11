@@ -33,7 +33,7 @@ test("stock native lifecycle: repeated K overlap, manual/threshold, restore/relo
   const result = spawnSync(process.execPath, ["scripts/observe-lifecycle.mjs"], { cwd: root, encoding: "utf8", timeout: 100000, maxBuffer: 2_000_000, env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" } });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());
 });
-test("stock RPC required-capacity recovery: manual/threshold/overflow cancellation without saved compaction", { timeout: 110000 }, () => {
+test("stock RPC explicit-hard-limit cancellation and elastic required-over-target overflow continuation", { timeout: 110000 }, () => {
   const root = fileURLToPath(new URL("../../../", import.meta.url));
   const result = spawnSync(process.execPath, ["scripts/observe-required-capacity.mjs"], { cwd: root, encoding: "utf8", timeout: 100000, maxBuffer: 2_000_000, env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" } });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? "")); console.log(result.stdout.trim());

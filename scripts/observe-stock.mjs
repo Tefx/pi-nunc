@@ -3,13 +3,16 @@
 // effects: Controlled loopback calls and isolated PTY/CLI state; saves evidence, cleans fixtures.
 // requires: Built tracked local Pi/Nunc, stock-driver.mjs, Python3 for TUI; no live service.
 import assert from 'node:assert/strict';
+import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate';
 import { StockFixture, text, records } from './stock-driver.mjs';
 const mode = process.argv[2]; assert(['rpc', 'tui'].includes(mode), 'Select rpc or tui');
 const IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aBMsAAAAASUVORK5CYII=';
 // Threshold runs after A's response, so retain the complete recent turn rather than only its assistant suffix.
 const f = await new StockFixture().setup({ config: { rolling: { keepRecentFraction: 0.9 }, budget: { imageTokens: 1000 } }, ...(process.argv[3] ? { artifactParent: process.argv[3] } : {}) });
 let outcome = { status: 'FAIL', mode };
-const OLD = 'Old delivered work:' + 'a'.repeat(92000), A = 'Delivered steering A:' + 'b'.repeat(68000);
+// Preserve the intended estimated payload sizes when the native heuristic changes.
+const scale = 1000 / estimateTextTokens('x'.repeat(4000));
+const OLD = 'Old delivered work:' + 'a'.repeat(Math.floor(92000 * scale)), A = 'Delivered steering A:' + 'b'.repeat(Math.floor(68000 * scale));
 const B = 'Follow-up B: preserve order', C = 'Queued extension evidence C', D = 'Late correction D: changed after freeze';
 try {
   f.hold('main'); f.hold('maintenance');

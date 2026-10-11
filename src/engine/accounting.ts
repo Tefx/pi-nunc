@@ -154,7 +154,8 @@ export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEn
   const r = active.flatMap(e => e.messages);
   return { ...fixed, messages: slots.length > 0 ? [...r, memoryMessage(slots)] : [...r] };
 }
-export function hardMemoryLimit(config: EngineConfig): number { return config.memory.hardMaxTokens ?? 8192; }
+export function memoryTarget(config: { memory?: { targetTokens?: number } }): number { return config.memory?.targetTokens ?? 8192; }
+export function hardMemoryLimit(config: { memory?: { hardMaxTokens?: number } }): number | null { return config.memory?.hardMaxTokens ?? null; }
 export function memoryTokens(slots: Slot[], imageTokens?: number): number {
   if (slots.length === 0) return 0;
   return messageTokens(memoryMessage(slots), imageTokens);
@@ -164,7 +165,7 @@ export function omitsSerializedOutputCap(model: Model<Api>): boolean {
   return model.api === "openai-codex-responses" || (model.api === "openai-responses" && record(model.compat) && model.compat.supportsMaxOutputTokens === false);
 }
 /** Shared F/M planning numbers for maintenance and manual M edits. */
-export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: EngineConfig) {
+export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: EngineConfig, currentSlots: Slot[] = []) {
   const mainInputLimit = inputLimit(model, config.main);
   const extractionInputLimit = inputLimit(model, config.extraction);
   const effectiveTrigger = Math.min(config.triggerTokens, mainInputLimit);
@@ -172,9 +173,10 @@ export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: Engin
   const available = effectiveTrigger - fixedTokens;
   // Historical F is semantic evidence, not an upper bound for the next main loadout.
   // These are advisory placement numbers; request admission measures actual Context.
-  const memoryLimit = Math.floor(Math.min(config.memory.fraction * Math.max(0, available), config.memory.maxTokens ?? Infinity));
-  const keepTarget = Math.floor(config.keepRecentFraction * Math.max(0, available - memoryLimit));
-  return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, keepTarget };
+  const memoryLimit = Math.floor(Math.min(config.memory.fraction * Math.max(0, available), config.memory.maxTokens ?? Infinity, memoryTarget(config)));
+  const memoryReserveTokens = Math.max(memoryLimit, memoryTokens(currentSlots, config.imageTokens));
+  const keepTarget = Math.floor(config.keepRecentFraction * Math.max(0, available - memoryReserveTokens));
+  return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, memoryReserveTokens, keepTarget };
 }
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   requireThat(integer(model.contextWindow, 1) && integer(model.maxTokens, 1), "CONFIG", "Invalid effective model capacity");

@@ -1,11 +1,12 @@
 // purpose: Shared bounded stock CLI/RPC and actual PTY/TUI observation mechanics.
 // usage: import { StockFixture } from './stock-driver.mjs'; fixture.close() in finally.
 // effects: Isolated local state, native CLI children and controlled loopback HTTP only.
-// requires: Tracked local Pi 0.85.1 build, Node 26.7.0; Python3 stdlib for TUI.
+// requires: Locked supported stable Pi1.x build, Node26.7.0; Python3 stdlib for TUI.
 import assert from 'node:assert/strict';
 import { zstdDecompressSync } from 'node:zlib';
 import { oauthFixture } from '../dist/tests/pi/oauth-fixture.js';
 import { readSourceRecords } from '../dist/src/engine/request.js';
+import { isSupportedPiVersion, SUPPORTED_PI_RANGE } from '../dist/src/pi/compat.js';
 import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -128,7 +129,7 @@ export class StockFixture {
   }
   start(mode = 'rpc', sessionFile, { allowTools = false, beforeNunc = [], extensions = [], host = process.env.NUNC_STOCK_HOST ?? join(root, 'node_modules/@earendil-works/pi-coding-agent') } = {}) {
     const manifest = JSON.parse(readFileSync(join(host, 'package.json'), 'utf8'));
-    assert(['1.0.3', '1.0.4'].includes(manifest.version), `Unsupported stock host ${manifest.version}`);
+    assert(isSupportedPiVersion(manifest.version), `Unsupported stock host ${manifest.version}; expected ${SUPPORTED_PI_RANGE}`);
     const cli = join(host, manifest.bin.pi);
     const args = [cli, ...(mode === 'rpc' ? ['--mode', 'rpc'] : []), '--no-approve', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', ...(!allowTools ? ['--no-tools'] : []), ...beforeNunc.flatMap(path => ['-e', path]), '-e', join(root, 'dist/src/index.js'), ...extensions.flatMap(path => ['-e', path]), '-e', join(root, 'dist/tests/pi/stock-extension.js'), '--nunc-config', this.configFile, '--provider', this.provider, '--model', this.modelId, '--thinking', 'off', '--system-prompt', 'Perform the current task.', '--session-dir', join(this.state, 'sessions'), ...(sessionFile ? ['--session', sessionFile] : [])];
     const command = mode === 'tui' ? ['/usr/bin/python3', join(root, 'scripts/pty-driver.py'), process.execPath, ...args] : [process.execPath, ...args];

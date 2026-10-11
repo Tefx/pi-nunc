@@ -9,6 +9,7 @@ import { loadScenario } from "../../src/live/scenarios.js";
 import { confirmedEdits } from "../../src/live/task-retention.js";
 import { ledgerSummary, readLedger } from "../../src/live/budget.js";
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
+import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { repository } from "./fixtures.js";
 
 async function branch(variant: Selection["variant"], controlledOpportunity = false) {
@@ -20,7 +21,7 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
   const scoped = variant === "scoped-tasks";
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const selection: Selection = { id: scoped ? "g3" : "g4", variant: variant!, config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
-    nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40 }, ...(sourceLoss ? { budget: { inputLimit: 8400 } } : {}) },
+    nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40 }, ...(sourceLoss ? { budget: { inputLimit: estimateTextTokens("x".repeat(8400 * 4)) } } : {}) },
     retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } };
   const scenario = (await loadScenario(repository, selection)).input;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],

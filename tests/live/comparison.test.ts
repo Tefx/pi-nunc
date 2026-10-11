@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseInput, preflight, type RunInput } from "../../src/live/contract.js";
 import { liveExtensionFlags } from "../../src/live/host.js";
@@ -48,7 +48,7 @@ test("comparison preflight validates modes, all prepared targets, baseline ident
     await writeFile(join(isolated, "dist/src/stale-extra-file.js"), "export const stale = true;");
     await assert.rejects(preflight(badBuild, repository), /Stale extra JS|BUILD/);
   } finally { await rm(isolated, { recursive: true, force: true }); }
-  const receipt = await preflight(input, repository); assert.equal(receipt.pi, "1.0.4"); assert.equal(receipt.callsMade, 0);
+  const receipt = await preflight(input, repository); assert.equal(receipt.pi, JSON.parse(await readFile(join(repository, "package-lock.json"), "utf8")).packages["node_modules/@earendil-works/pi-coding-agent"].version); assert.equal(receipt.callsMade, 0);
   assert.equal(receipt.version, 1); assert.equal(typeof receipt.binding, "string"); assert(receipt.binding.length > 0);
   input.scenarios = [{ id: "e3", config: input.scenarios[0]!.config }];
   const run = spawnSync(process.execPath, [compareScript, "--preflight"], { env: { ...env, PI_PROVIDER: input.models[0]!.provider, PI_MODEL: input.models[0]!.id }, input: JSON.stringify(publicValue(input)), encoding: "utf8" });

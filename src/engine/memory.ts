@@ -43,7 +43,7 @@ export const RESPONSE_CONTRACT = `Return ONLY one JSON object with required add,
 add: zero or more new candidates. Keys must be unique nonempty strings, distinct from ALL existing slot IDs. Text must be nonempty. Markdown is encouraged inside text (lists, paragraphs, inline code, and necessary short code blocks).
 remove: each existing slot explicitly invalidated/retired, exactly once. Replacement/merge means removing the old IDs AND adding a candidate.
 priority: ALL surviving old IDs and ALL added keys, each exactly once, most valuable first. Omission is invalid, never silent deletion.
-required: subset of priority identifying the active task focus and all necessary continuation items (surviving old IDs or added keys). Every declared required slot must be retained jointly; if the required set cannot fit within capacity, maintenance fails. Empty array is valid when no active focus or necessary continuation items exist.
+required: subset of priority identifying the active task focus and all necessary continuation items (surviving old IDs or added keys). Retain all declared required jointly, even over the organizing target; then omit optional items. Only an explicit hard limit can fail capacity. Empty array is valid when no active focus or necessary continuation items exist.
 toolResultEdits: optional array of semantic cleanups for completed tool results in candidate scope. Each item specifies entryId, zero-based messageIndex, action ("omit" or "replace"), non-empty text for replace (omit must not include text), and optional memoryRefs and sourceRefs. Omit this field if no semantic cleanup is requested.
 Unchanged slots reuse their bodies; do not regenerate them. Priority controls whole-slot capacity selection for optional items, not memory order. Old survivors keep relative order; additions append.
 An invalidated old slot stays removed even if its replacement cannot fit. Empty arrays and empty memory are valid. No tools, outer code fences around the JSON, commentary, or rewriting retained history.`;
@@ -102,14 +102,18 @@ export function parsePatch(value: unknown, memory: Memory): Patch {
   return { add, remove: [...removed], priority, required, ...(toolResultEdits !== undefined ? { toolResultEdits } : {}) };
 }
 
+export interface MemorySelectionBudget { targetTokens: number; hardMaxTokens?: number }
+/** Numeric budget retains the legacy explicit-hard-limit API. */
 export function applyPatch(
   memory: Memory,
   value: unknown,
-  limit: number,
+  budget: number | MemorySelectionBudget,
   measure: (slots: Slot[]) => number
 ): PatchResult {
   validateMemory(memory);
-  requireThat(integer(limit), "CONFIG", "Invalid memory budget");
+  const { targetTokens, hardMaxTokens } = typeof budget === "number" ? { targetTokens: budget, hardMaxTokens: budget } : budget;
+  requireThat(integer(targetTokens) && (hardMaxTokens === undefined || integer(hardMaxTokens)), "CONFIG", "Invalid memory budget");
+  const limit = Math.min(targetTokens, hardMaxTokens ?? Infinity);
   const patch = parsePatch(value, memory);
   const removed = new Set(patch.remove);
   const allIds = new Set(memory.slots.map(s => s.id));
@@ -128,11 +132,12 @@ export function applyPatch(
   }
 
   const requiredKeys = new Set(patch.required);
-  // Verify that all declared required items can jointly fit within limit.
+  // Only an explicit hard limit may reject required; the organizing target is soft.
   const requiredCandidates = candidates.filter(c => requiredKeys.has(c.key));
   const requiredProposal = requiredCandidates.map(c => c.slot);
-  if (measure(requiredProposal) > limit) {
-    const err = new EngineError("CAPACITY", "Declared required memory items cannot fit within memory limit");
+  const requiredTokens = measure(requiredProposal);
+  if (hardMaxTokens !== undefined && requiredTokens > hardMaxTokens) {
+    const err = new EngineError("CAPACITY", "Declared required memory items cannot fit within explicit memory hard limit");
     (err as unknown as { required: RequiredObservation }).required = {
       declared: patch.required,
       retainedSlotIds: [],
@@ -145,7 +150,7 @@ export function applyPatch(
   const selected = new Set<string>(patch.required);
   if (measure(natural) <= limit) {
     candidates.forEach(c => selected.add(c.key));
-  } else {
+  } else if (requiredTokens <= limit) {
     for (const key of patch.priority) {
       if (selected.has(key)) continue;
       // Measure in final rendering order, including each ID and all wrapping.

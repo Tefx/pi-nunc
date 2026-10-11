@@ -57,8 +57,8 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     for (const e of frozen.active) for (const m of e.messages) if (typeof m.content !== "string" && m.content.some(b => b.type === "image")) {
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
     }
-    const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, memoryLimit, keepTarget } = memoryPlan(frozen.fixed, frozen.model, config);
-    const { cut, keptTokens } = chooseCut(frozen.active, cuts, fixedTokens, memoryLimit, keepTarget, effectiveTrigger, config, frozen.model);
+    const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, memoryLimit, memoryReserveTokens, keepTarget } = memoryPlan(frozen.fixed, frozen.model, config, frozen.memory.slots);
+    const { cut, keptTokens } = chooseCut(frozen.active, cuts, fixedTokens, memoryReserveTokens, keepTarget, effectiveTrigger, config, frozen.model);
     const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;
     let context = extractionContext(frozen, cut, memoryLimit, frozen.active, []);
@@ -72,7 +72,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens - mainBeforeTokens)),
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
-      effectiveTrigger, memoryLimit, keepTarget, keptTokens,
+      effectiveTrigger, memoryLimit, memoryReserveTokens, memoryHardLimit: hardMemoryLimit(config), memoryTargetExceeded: false, keepTarget, keptTokens,
       planning: { before: beforePlan, kept: historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens), after: null },
       fullExtractionTokens, extractionTokens: fullExtractionTokens,
       normalExtractionAtTrigger, mainAfterTokens: null, memoryTokens: null, growthTokens: null,
@@ -107,7 +107,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     let patch: unknown;
     try { patch = JSON.parse(text); }
     catch (cause) { throw new EngineError("RESPONSE", "Maintenance response is not one complete JSON object", { cause }); }
-    const applied = applyPatch(frozen.memory, patch, hardMemoryLimit(config), slots => memoryTokens(slots, config.imageTokens));
+    const applied = applyPatch(frozen.memory, patch, { targetTokens: memoryLimit, ...(config.memory.hardMaxTokens === undefined ? {} : { hardMaxTokens: config.memory.hardMaxTokens }) }, slots => memoryTokens(slots, config.imageTokens));
     observations.droppedSlotIds = applied.droppedSlotIds;
     observations.required = applied.required;
     const kept = frozen.active.slice(cut);
@@ -133,6 +133,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     const growth = effectiveTrigger - mainAfterTokens;
     observations.accounting.mainAfterTokens = mainAfterTokens;
     observations.accounting.memoryTokens = memoryTokens(applied.memory.slots, config.imageTokens);
+    observations.accounting.memoryTargetExceeded = observations.accounting.memoryTokens > memoryLimit;
     observations.accounting.growthTokens = growth;
     // Historical F is not the next main request's loadout. The native provider
     // admission gates the actual continuation Context and lets Pi recover overflow.

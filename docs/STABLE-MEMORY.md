@@ -205,13 +205,17 @@ U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含�
 
 ```text
 保留真实历史目标
-= floor(keepRecentFraction × (available − memoryLimit))
+= floor(keepRecentFraction × max(0, available − memoryReserve))
+memoryReserve = max(memoryLimit, 当前已保存 M 的估值)
+memoryLimit = min(原有建议目标, memory.targetTokens ?? 8192)
 ```
 
-| available | memoryLimit | 比例 | 保留目标 |
+| available | memoryReserve | 比例 | 保留目标 |
 | ---: | ---: | ---: | ---: |
 | 220,000 | 22,000 | 0.67 | 132,660 |
 | 220,000 | 22,000 | 0.5 | 99,000 |
+
+表中 22,000 表示规划预留，例如已保存 M 的占用；新默认整理目标为 8192。必要项超目标时仍可完整保存，下一轮减少 K 预算；提取结束后不改变本轮切点或退休额外原文。显式 `memory.hardMaxTokens` 仍绑定且可能阻止维护。必要性按每轮有效目标与完成证据重新判断，无永久 pin。
 
 同预算下目标降低约 25.4%。`0.5` 是已选择的工程折中值，尚未证明最优。
 

@@ -13,7 +13,7 @@ test("image accounting uses Pi per-image estimates or an explicit override for u
   ]) {
     const empty = { ...base, content: [] };
     const images = { ...base, content: [image, image] };
-    assert.equal(messageTokens(images) - messageTokens(empty), 32 + estimateTextAndImageContentTokens([image, image]));
+    assert.equal(messageTokens(images) - messageTokens(empty), 32 + 2 * estimateTextAndImageContentTokens([image]));
     assert.equal(messageTokens(images, 512) - messageTokens(empty), 32 + 2 * 512);
     assert.throws(() => messageTokens(images, 0), /positive per-image estimate/);
   }

@@ -1,7 +1,16 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { memoryTokens } from "../../src/engine/accounting.js";
 import { repository } from "./fixtures.js";
+
+/** Fixed hard-cap scenarios need a truly fitting required body on each SDK. */
+export function capacityRequiredText(tooLarge: boolean): string {
+  if (tooLarge) return "n".repeat(1000);
+  let length = 120;
+  while (length > 1 && memoryTokens([{ id: "s999", text: "n".repeat(length) }]) > 100) length--;
+  return "n".repeat(length);
+}
 
 /** Protocol fixtures execute tools and native scheduling; generated content makes no model-quality claim. */
 export async function comparisonStock(options: { e3?: "single" | "siblings" | "failed" | "small" | "wrong" | "maintenance-failure" | "long-suffix" | "low-native" | "repeat-threshold" | "restart-threshold" | "archive"; tooLarge?: boolean; earlyVerify?: boolean; invalidCapacity?: boolean; variedTools?: boolean; failMaintenance?: boolean; sameMemory?: boolean } = {}) {
@@ -33,7 +42,7 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
       }
       if (current?.scenario === "e4" && options.invalidCapacity) return "Incomplete capacity response";
       if (current?.scenario === "e3" && options.e3 === "maintenance-failure") return { status: 503, message: "Controlled failure" };
-      const add = current?.scenario === "e4" ? [{ key: "req", text: "n".repeat(options.tooLarge ? 1000 : 120) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "note", text: "Controlled protocol note." }];
+      const add = current?.scenario === "e4" ? [{ key: "req", text: capacityRequiredText(options.tooLarge ?? false) }, { key: "extra", text: "x".repeat(200) }, { key: "opt", text: "o" }] : [{ key: "note", text: "Controlled protocol note." }];
       const priority = current?.scenario === "e4" ? ["opt", "extra", "req"] : ["note"];
       return JSON.stringify({ add, remove: source.M.map((s: any) => s.id), priority, ...(supportsRequired ? { required: [add[0]!.key] } : {}) });
     }
