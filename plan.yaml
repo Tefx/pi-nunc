@@ -5682,7 +5682,7 @@ phases:
       No extra gate/reviewer, no full suite/regrade, no push/mainmerge/adoption/reload.'
 - id: nunc-effective-state-replication
   name: 未改产品一次 MEDIUM 复测
-  status: pending
+  status: in_progress
   gate: Orchestrator 在唯一 benchmark 完成程序判断一次复测是否完整、协议一致、比较和局限如实、效果及清理已核对；不要求改善分数，不新增
     gate/reviewer，不重开旧产品验收。
   depends_on:
@@ -5690,7 +5690,7 @@ phases:
   steps:
   - id: nunc-effective-state-replication.benchmark
     name: 固定 ffb936d 一次三组 MEDIUM 复测、事实比较与清理
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/effective-state-replication-medium-ffb936d/**\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"src/**\", \"\
@@ -5749,3 +5749,5 @@ phases:
     - .scratch/effective-state-live-medium-ffb936d/helpers/score_travel.py
     - .scratch/relational-memory-live-medium-4e672b/completion.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-11T19:03:32.961376Z'
