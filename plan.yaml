@@ -5311,7 +5311,7 @@ phases:
       sessions untouched.
 - id: nunc-relational-memory
   name: 轻量关系记忆与一次隔离实测
-  status: in_progress
+  status: done
   gate: 由 parent architect/Orchestrator 在 nunc-relational-memory.live 完成程序作唯一整合接受：消费
     source 和 live 全部结果，判定要求覆盖、最终候选离线证据适用性、实际关联/修订/退役行为及 MemoryArena 结果和成本；不额外新增 gate
     链。
@@ -5375,7 +5375,7 @@ phases:
       assigned subsequent live step.'
   - id: nunc-relational-memory.live
     name: 三组连续维护观察与一次 MemoryArena 对照
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \".git/**\", \"src/**\", \"policies/**\", \".pi/**\", \".agents/**\", \".env\"\
@@ -5424,6 +5424,34 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-11T13:01:37.258452Z'
+    done_at: '2026-10-11T16:04:16.733928+00:00'
+    evidence: Original authorized observation delivery completed on frozen migrated
+      product4e672b87a6c6d291e605f82a0a04f7c7cde8bdc7/integration4b930b0f258eb4a4573f31ed40f8399c3f2f9ecc,
+      openai/gpt-6.1-sol subscriptionOAuth/openai-responses MEDIUM. Six old/new fixed
+      branches each2maintenances with own actualM, hiddenlaterquery absent; inspected
+      all6 finalanswers match required constraints/revision/retirement.30logicalops47717context2910output212.546s.
+      ONEArena executed6sessions46deliveries23/arm101logicalops236tools968888context31115output1151.652s,
+      no visibleerrors/unknownattempts; all finite limits met. Native/Nunc PS43.4783/34.7826,SPS97.6190/89.9802,SR0/0;
+      complete23/23both,gold333/414vs321/414,catalog276/276vs274/276,explicit73/74vs68/74.
+      Negative benchmark result is valid observed outcome, not proof of improvement
+      or permission to tune/rerun. Proposal-stage actor/result omissions Bart/Jasmine/Austin
+      and separate current-visible choice errors classified with source/M/K/output;3NuncM
+      nonempty886/998/1050tokens allrequired saved/nextpayload exact; no engine drops.
+      Medium direct wire observed30small,94Arena-main,3Nunc-maintenance;4native default-maintenance
+      wire bodies NOT captured. Controller independently inspected native _getSummarizationRequestAuth->
+      _runDefaultCompaction->createSummarizationOptions carrying actualmedium state;
+      this is code/state-backed configuration evidence, not direct body or exactHTTP-count
+      proof. Preserve limitation for parent final acceptance; no additional model
+      allowance. Allsmall+Arena catalogUSD1.237716 actualsubscriptionunknown; historicalprovider/API/thinking
+      differences prohibit prompt-only causal claims. Canonical .scratch/relational-memory-live-medium-4e672b/RESULT.md
+      completion.json scores.json execution-checks.json maintenance-evidence.json
+      relation-evidence.json. Original-vs-retained scoring parity and postcleanup
+      regradepassed. No ownedcontroller/CLI/server remains;runtime/fullDB/venv/cache/build
+      physically removed observed+419412KiB;9.1MiB unique rawsessions/captures/answers
+      and minimalofficialregradinginputs retained for parentacceptance/offlinereprocessing.
+      No source/policy/postscore changes/no replay/fallback/credentialadmin/push/mainmerge/adoption.
+      Main7654720 unchanged. All agent execution delivered; parentArchitect final
+      independent review remains, no quality-improvement/adoption claim.
   - id: nunc-relational-memory.doc-evidence-correction
     name: 容量文档与原始检查证据更正
     status: done
