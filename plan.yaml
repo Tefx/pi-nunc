@@ -5839,7 +5839,7 @@ phases:
       uniqueverification/interruption evidence retained.'
   - id: nunc-source-fidelity.benchmark
     name: 固定候选一次 OpenRouter MEDIUM 比较与效果核对
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/source-fidelity-openrouter/**\", \".scratch/source-fidelity-openrouter-fixed/**\"\
       , \".scratch/source-fidelity-openrouter-final/**\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -5911,3 +5911,5 @@ phases:
     depends_on:
     - nunc-source-fidelity.deliver
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-12T10:30:13.765795Z'
