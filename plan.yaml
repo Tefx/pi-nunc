@@ -5779,7 +5779,7 @@ phases:
   steps:
   - id: nunc-source-fidelity.deliver
     name: 精确两处提示替换、固定提交一次 MEDIUM 比较及清理
-    status: claimed
+    status: pending
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \".scratch/source-fidelity-medium/**\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"\
@@ -5862,5 +5862,3 @@ phases:
     - .scratch/effective-state-replication-medium-ffb936d/completion.json
     - .scratch/effective-state-live-medium-ffb936d/completion.json
     agent: node-typescript-engineer
-    claimed_by: node-typescript-engineer
-    claimed_at: '2026-10-12T08:44:15.619804Z'
