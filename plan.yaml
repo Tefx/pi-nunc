@@ -5771,7 +5771,7 @@ phases:
       preserved.
 - id: nunc-source-fidelity
   name: 两处维护提示修订与固定候选一次比较
-  status: in_progress
+  status: done
   gate: Orchestrator 在 deliver 完成程序依据已接受源/局部回归证据整合当前 feat/relational-memory；独立 benchmark
     的预算或输出容量未解决不阻止源交付。Orchestrator 在 benchmark 完成程序作本增量唯一整体接受：消费适用源证明，确认固定候选的一次六 session/46
     delivery OpenRouter MEDIUM 比较及历史事实比较完整，效果、用量、未知项和清理已核对。完整比较缺失时整体未接受；无改善门槛、额外 reviewer/gate
@@ -5839,7 +5839,7 @@ phases:
       uniqueverification/interruption evidence retained.'
   - id: nunc-source-fidelity.benchmark
     name: 固定候选一次 OpenRouter MEDIUM 比较与效果核对
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/source-fidelity-openrouter/**\", \".scratch/source-fidelity-openrouter-fixed/**\"\
       , \".scratch/source-fidelity-openrouter-final/**\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -5913,3 +5913,31 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-12T10:30:13.765795Z'
+    done_at: '2026-10-12T11:48:23.285889+00:00'
+    evidence: COMPLETE46/46 comparison accepted; source deliverDONE unchanged productdddd9dc72adbb6385edccdca62b4e76d60c7543f,
+      runintegration76d4e0bdfd6cab09a015bedebc12ab57119aaac6. LatestexplicitHUMAN
+      '完成完整benchmark并汇报对比结果' authorizesboundedcontinuation; subsequent '不用关心openrouter消耗
+      100以下都不用再次要求授权' supersedesearlier5catalogceiling withTASKCUMULATIVE OpenRouter
+      UNDER100, withoutclearinghistoricalunknowns oractualbillhardcap. Authorityrecorded
+      protocol/RESULT/completion. Original26answerspreserved; publicSessionManagerbranch
+      native2afterEmily preserved3answers17tools and retriedidenticalfailedVictorinput
+      once; only20newdeliveries, no completedrequest/toolreplay. Full6sessioninventory23each,
+      unchangedscorerONCE exit0, full74rules276catalog414gold. NativevsNunc PS8/23vs10/23
+      SPS94.378vs98.611 SR0/3vs1/3 explicit71/74vs73/74 valid275/276vs276/276 exact332/414vs335/414.
+      Bothffbhistorysamplescompared no purepromptcausal/stableadvantageclaim (provider/API/thinkingfix/trajectory/continuationconfounds).
+      Currentknown962582context32998output232tools100logicaloperations catalogUSD1.1399526;
+      native.570429/nunc.5695236. CumulativeOpenRouterknown1.3262445 heldunknown5.88
+      maxadmitted10.8315171<100; actualbilling unknown,2OpenRouterlogicalunknowns
+      plus3historicalsubscriptionunknowns$.2151356separate, nonezeroed. Original10800wall
+      retainedelapsed3946.389s, allworkloadcapsunchanged. Native4CP,Nunc3CP with4/7/3slots,94main+3maintenancewireMEDIUM
+      viaREALPRODUCT noeffortinjection, exactMnextpayload3/3; native4maintenancebodygapdisclosed
+      state+unchangednativeflow evidence. Fidelity preserves deliveredchoices/qualifiers/negativefindings;
+      NuncAustinratingfailure capturedinM notglobalimpossibility,Monicalunchrelationcorrect.
+      Evidence .scratch/source-fidelity-openrouter-continuation/{RESULT.md,completion.json,scores.json,analysis.json,maintenance-evidence.json,relation-evidence.json,per-person-evidence.json,catalog-admission.json,timing.json,process-reconciliation.json,cleanup.json,logs/}.
+      ParentOrchestratorreadfullreport,scoreaggregates,46personinventory,commandexitrecords,budget/processevidence/currentGit.
+      No sourcechanges/newtests/reviews/modeljudge/probes/scorertuning/parityregrade.
+      Buildonlyruntimerestoration; earlier48+3adapter+1Responses evidence reused.
+      Allownedprocesses/serviceabsent, runtimefullDBenvcachedeleted observed424700KiBfreeincrease,
+      canonicalminimumuniqueevidence/offlinegradinginputs+oldpartials retained. Main7654720protected
+      no push/adoption/reload/globalchanges. Budgetcapupdate recorded here underlaterdirecthuman
+      authority; completedsource/historyimmutable.
