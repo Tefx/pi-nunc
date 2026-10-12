@@ -5772,8 +5772,10 @@ phases:
 - id: nunc-source-fidelity
   name: 两处维护提示修订与固定候选一次比较
   status: in_progress
-  gate: Orchestrator 在唯一 deliver 步骤的完成程序判断：精确两处文本变更、持久化兼容性与限定检查成立；冻结候选的一次六 session/46
-    delivery 比较及历史事实比较完整；效果、用量、清理已核对；同一候选已整合。无改善门槛、额外 reviewer/gate 或项目重新验收。
+  gate: Orchestrator 在 deliver 完成程序依据已接受源/局部回归证据整合当前 feat/relational-memory；独立 benchmark
+    的预算或输出容量未解决不阻止源交付。Orchestrator 在 benchmark 完成程序作本增量唯一整体接受：消费适用源证明，确认固定候选的一次六 session/46
+    delivery OpenRouter MEDIUM 比较及历史事实比较完整，效果、用量、未知项和清理已核对。完整比较缺失时整体未接受；无改善门槛、额外 reviewer/gate
+    或历史项目重新验收。
   depends_on:
   - nunc-effective-state-replication
   steps:
