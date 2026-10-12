@@ -5771,7 +5771,7 @@ phases:
       preserved.
 - id: nunc-source-fidelity
   name: 两处维护提示修订与固定候选一次比较
-  status: pending
+  status: in_progress
   gate: Orchestrator 在唯一 deliver 步骤的完成程序判断：精确两处文本变更、持久化兼容性与限定检查成立；冻结候选的一次六 session/46
     delivery 比较及历史事实比较完整；效果、用量、清理已核对；同一候选已整合。无改善门槛、额外 reviewer/gate 或项目重新验收。
   depends_on:
@@ -5779,7 +5779,7 @@ phases:
   steps:
   - id: nunc-source-fidelity.deliver
     name: 精确两处提示替换、固定提交一次 MEDIUM 比较及清理
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \".scratch/source-fidelity-medium/**\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"\
@@ -5862,3 +5862,5 @@ phases:
     - .scratch/effective-state-replication-medium-ffb936d/completion.json
     - .scratch/effective-state-live-medium-ffb936d/completion.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-12T08:44:15.619804Z'
