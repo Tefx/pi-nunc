@@ -5842,43 +5842,51 @@ phases:
     status: pending
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/source-fidelity-openrouter/**\", \".scratch/source-fidelity-openrouter-fixed/**\"\
-      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"\
-      .agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"src/**\", \"tests/**\"\
-      , \"policies/**\", \"docs/**\"]\nbranch: \"feat/relational-memory\"\nprotocol_ref:\
-      \ \".scratch/source-fidelity-openrouter-fixed/protocol.json\"\nselected_groups:\
-      \ [1, 2, 3]\norder: [[1, native], [1, nunc], [2, nunc], [2, native], [3, native],\
-      \ [3, nunc]]\nexpected_deliveries: {native: 23, nunc: 23, total: 46}\nmodel:\
-      \ {provider: openrouter, id: \"openai/gpt-6.1-sol\", api: openai-completions,\
-      \ mainThinking: medium, maintenanceThinking: medium, catalogContext: 1050000,\
-      \ effectiveContext: 272000}\ncompaction: {enabled: true, reserveTokens: 255616,\
-      \ keepRecentTokens: 8000, effectiveTrigger: 16384}\nnunc: {q: 0.5, memoryTools:\
-      \ false, otherOptions: unchanged defaults}\nenvironment: {node: 26.10.0, npm:\
-      \ 11.19.1, pi: 1.1.0, python: 3.12.12, numpy: 2.5.4, pandas: 2.3.3}\nupstream:\
-      \ {sourceRevision: \"6cd9de14b71915e39ac742a20dc33785e14b6aab\", datasetRevision:\
-      \ \"da1a37c8b19280e18627ca01cf368195a5e1d92e\", flightCsvBytes: 304807007, officialTools:\
-      \ 6}\nlimits: {runSeconds: 10800, operationSeconds: 900, assistantRoundsPerTraveler:\
-      \ 30, successfulOperations: 400, contextInput: 12000000, output: 200000, toolCalls:\
-      \ 800, maintenancePerSession: 16}\nallocation: {estimatedPeakGiB: 5, reserveGiB:\
-      \ 10}\n\nDeliver: 对 deliver 整合的固定候选交付 ONE OpenRouter comparison，完整三组、六真实 Pi\
-      \ sessions、46 deliveries，按上述顺序，真实 product main+maintenance MEDIUM，observer 仅观察不得强制\
-      \ reasoning effort。catalog 1.05M 如实披露，session-local effective272K；不声称与历史模型/provider完全同质。复用适用\
+      , \".scratch/source-fidelity-openrouter-final/**\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".pi/**\", \".agents/**\", \".env\", \".env.*\"\
+      , \"**/auth.json\", \"src/**\", \"tests/**\", \"policies/**\", \"docs/**\"]\n\
+      branch: \"feat/relational-memory\"\nprotocol_ref: \".scratch/source-fidelity-openrouter-fixed/protocol.json\"\
+      \nselected_groups: [1, 2, 3]\norder: [[1, native], [1, nunc], [2, nunc], [2,\
+      \ native], [3, native], [3, nunc]]\nexpected_deliveries: {native: 23, nunc:\
+      \ 23, total: 46}\nmodel: {provider: openrouter, id: \"openai/gpt-6.1-sol\",\
+      \ api: openai-completions, mainThinking: medium, maintenanceThinking: medium,\
+      \ catalogContext: 1050000, effectiveContext: 272000}\ncompaction: {enabled:\
+      \ true, reserveTokens: 255616, keepRecentTokens: 8000, effectiveTrigger: 16384}\n\
+      nunc: {q: 0.5, memoryTools: false, otherOptions: unchanged defaults}\nenvironment:\
+      \ {node: 26.10.0, npm: 11.19.1, pi: 1.1.0, python: 3.12.12, numpy: 2.5.4, pandas:\
+      \ 2.3.3}\nupstream: {sourceRevision: \"6cd9de14b71915e39ac742a20dc33785e14b6aab\"\
+      , datasetRevision: \"da1a37c8b19280e18627ca01cf368195a5e1d92e\", flightCsvBytes:\
+      \ 304807007, officialTools: 6}\nlimits: {runSeconds: 10800, operationSeconds:\
+      \ 900, assistantRoundsPerTraveler: 30, successfulOperations: 400, contextInput:\
+      \ 12000000, output: 200000, toolCalls: 800, maintenancePerSession: 16}\nallocation:\
+      \ {estimatedPeakGiB: 5, reserveGiB: 10, catalogAllowanceUsd: 5, independent:\
+      \ true, billingHardCap: false}\nruntime_root: \".scratch/source-fidelity-openrouter-final\"\
+      \n\nDeliver: 对 deliver 整合的固定候选交付 ONE OpenRouter comparison，完整三组、六真实 Pi sessions、46\
+      \ deliveries，按上述顺序，真实 product main+maintenance MEDIUM，observer 仅观察不得强制 reasoning\
+      \ effort。catalog 1.05M 如实披露，session-local effective272K；不声称与历史模型/provider完全同质。复用适用\
       \ protocol/environment/cases/helpers，保留完整 flight CSV/fullDB、六官方 tools、官方 prompts/templates、评分及适配限制；禁止\
       \ future gold/questions 泄露或 expected-answer feedback。报告每 arm PS/SPS/SR、explicit/catalog/strict\
       \ gold-exact、usage/cache/time/catalog cost、M/CP 和逐人 source→M→next output。比较\
       \ BOTH ffb936d 历史 Nunc 8PS/84.524SPS/66 rules 与11PS/97.619SPS/73 rules，仅事实比较，不推断因果、稳定性或统计显著性。\n\
       Boundary: 同一 node-typescript-engineer 负责隔离 benchmark runtime 与证据，消费独立交付的源候选，不再修改产品。仅已授权\
-      \ OpenRouter route，正常 host credential handoff，不读取/复制/打印凭据或 auth admin，不新增 credentials、账户、成本授权。已发生推理不可回滚。禁止\
+      \ OpenRouter route，正常 host credential handoff，不读取/复制/打印凭据或 auth admin，不新增 credentials、账户，不超出本次独立成本授权。已发生推理不可回滚。禁止\
       \ probe、小case、小模型 replay、model judge、forced failure、fallback、global/core/日常\
       \ session mutation、reload、push、main merge、adoption；不调参或重播换取改善。首次固定候选推理前源提交冻结并确认\
-      \ live 加载适用候选。\nAdmit: source integration 完成与预算/输出/时间容量合法可用均为必要条件。沿用同一 $5 allowance\
-      \ 和全部原 caps，不重置 money/workload/time，elapsed 从原 OpenRouter 开始计。保留已报告 $0.1862919\
-      \ 与未知 maintenance reservation $3.92（至多2未知subcalls）；可用 $0.8937081 小于下一 main envelope\
-      \ $1.96。已报告 output4868，原200000 cap 剩195132，但未知输出 envelope256000，容量未成立。权威 provider\
-      \ usage receipts 只有在支持释放未知 reservation 且全部 caps 可满足时才能解除对应限制；否则必须由用户明确修订相关 allowance/caps，当前没有该授权。不得把\
-      \ unknown 当0，不启动推理、支付、probe 或预算 reset。保留原 native7 answers、1 persisted compaction、未完成\
-      \ maintenance 及未启动 Nunc 的事实，不能充作修复后候选 live 证据。历史 subscription3 unknown attempts/$0.2151356\
-      \ 单独核算，不与 OpenRouter未知逻辑维护混淆；actual billing unknown。这些残余约束不得因步骤拆分而丢失。\n使用原受控\
-      \ Node/npm 与 tracked lock，不改 manifests 或扩展全量检查。重型分配前核对所有并行峰值5GiB加10GiB reserve，已清理环境仅在具有具体消费者且可合法继续时恢复。\n\
+      \ live 加载适用候选。\nAdmit: source integration 完成与本次独立预算/输出/时间容量合法可用均为必要条件。用户对“是否允许给修复后的完整比较单独再分配$5目录价预算？旧未知用量单列保留”明确答复“允许”：授权\
+      \ ONE fixed-candidate OpenRouter comparison 独立 $5 catalog admission allowance，不是\
+      \ actual billing hard cap。上述 limits 的原数值全部不变，作为本次新 allocation 的 fresh workload/time\
+      \ caps；runSeconds 从本次运行开始计，旧 allocation 的剩余 money/output/time 不再阻塞本次 admission。不得借此清零、释放或改写任何旧\
+      \ unknown/reservation；本次 admission 仍须满足自身 finite caps，未知用量不能当0。仅一次完整比较尝试，provider\
+      \ failure 或 admission blocker 即停止，不追加 retry。\n历史单独保留：原 OpenRouter 已报告 $0.1862919，未知\
+      \ maintenance reservation $3.92（至多2未知subcalls），原可用 $0.8937081 小于下一 main envelope\
+      \ $1.96；原 reported output4868、剩195132、未知输出 envelope256000，原容量未成立。这些属于旧 allocation\
+      \ 的记录，不扣减本次新 $5，也不声称旧 usage/billing 已解决或 reset。保留原 native7 answers、1 persisted\
+      \ compaction、未完成 maintenance 及未启动 Nunc 的事实，不能充作修复后候选 live 证据。历史 subscription3\
+      \ unknown attempts/$0.2151356 单独核算，不与 OpenRouter未知逻辑维护混淆；actual billing unknown。旧\
+      \ ledger/receipts 保持不变，后续权威 receipts 仅用于对应历史核对。\n使用原受控 Node/npm 与 tracked lock，不改\
+      \ manifests 或扩展全量检查。复用适用源检查/build 证据，不重跑；仅允许必要 runtime compile。重型分配前核对所有并行峰值5GiB加10GiB\
+      \ reserve，已清理环境仅在具有具体消费者且可合法继续时恢复。\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/source-fidelity-openrouter-fixed/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/source-fidelity-openrouter/helpers\n\
       Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/effective-state-replication-medium-ffb936d/helpers\n\
       Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/effective-state-live-medium-ffb936d/helpers\n\
       Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/native-migration/live-support/helpers\n\
