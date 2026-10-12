@@ -5781,7 +5781,7 @@ phases:
   steps:
   - id: nunc-source-fidelity.deliver
     name: 两处维护提示与 API thinking 修复的源交付
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/engine/pi-model.ts\"\
       , \"tests/engine/pi-model.test.ts\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -5813,6 +5813,8 @@ phases:
     - .scratch/source-fidelity-openrouter-fixed/RESULT.md
     - .scratch/source-fidelity-openrouter-fixed/completion.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-12T10:26:03.494253Z'
   - id: nunc-source-fidelity.benchmark
     name: 固定候选一次 OpenRouter MEDIUM 比较与效果核对
     status: pending
