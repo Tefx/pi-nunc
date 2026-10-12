@@ -6189,7 +6189,7 @@ phases:
     claimed_at: '2026-10-12T12:31:23.628938Z'
   - id: nunc-three-suite.mab
     name: MemoryAgentBench 原样本四条件比较
-    status: claimed
+    status: pending
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6286,5 +6286,3 @@ phases:
     - .scratch/mab-codex-luna-pilot/sol-test/BENCHMARK-FIT.md
     - .scratch/mab-codex-luna-pilot/sol-test/protocol.json
     agent: node-typescript-engineer
-    claimed_by: node-typescript-engineer
-    claimed_at: '2026-10-12T12:31:23.628962Z'
