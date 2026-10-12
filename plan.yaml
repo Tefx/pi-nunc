@@ -5951,7 +5951,7 @@ phases:
       authority; completedsource/historyimmutable.
 - id: nunc-three-suite
   name: OpenRouter Luna/Sol 三套件并行比较
-  status: pending
+  status: in_progress
   gate: 'Orchestrator owns the single final campaign acceptance in suite completion
     procedures: all12 conditions across MemoryArena, BEAM and MAB on unchanged product,
     official per-suite scores and bounded actual evidence, aggregate campaign <USD200
@@ -5972,7 +5972,7 @@ phases:
   steps:
   - id: nunc-three-suite.arena
     name: MemoryArena 新完整组四条件比较
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6069,9 +6069,11 @@ phases:
     - .scratch/memory-benchmark-survey/FOLLOWUP-2026-10-12.md
     - .scratch/source-fidelity-openrouter-continuation/RESULT.md
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-12T12:31:23.628873Z'
   - id: nunc-three-suite.beam
     name: BEAM 长对话四条件比较
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6165,9 +6167,11 @@ phases:
     refs:
     - .scratch/memory-benchmark-survey/FOLLOWUP-2026-10-12.md
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-12T12:31:23.628938Z'
   - id: nunc-three-suite.mab
     name: MemoryAgentBench 原样本四条件比较
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6264,3 +6268,5 @@ phases:
     - .scratch/mab-codex-luna-pilot/sol-test/BENCHMARK-FIT.md
     - .scratch/mab-codex-luna-pilot/sol-test/protocol.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-12T12:31:23.628962Z'
