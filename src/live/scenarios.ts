@@ -388,12 +388,13 @@ export function evaluateCapacityPredicates(
   const requiredKeys = new Set(patch.required ?? []);
   const removedKeys = new Set(patch.remove ?? []);
   const existingIds = new Set(survivingOldSlots.map(s => s.id));
+  const updates = new Map(patch.update?.map(item => [item.id, item.text]));
   let curId = nextId;
 
   const candidates: Array<{ key: string; slot: { id: string; text: string } }> = [];
   for (const s of survivingOldSlots) {
     if (!removedKeys.has(s.id)) {
-      candidates.push({ key: s.id, slot: { id: s.id, text: s.text } });
+      candidates.push({ key: s.id, slot: { id: s.id, text: updates.get(s.id) ?? s.text } });
     }
   }
   for (const a of patch.add ?? []) {

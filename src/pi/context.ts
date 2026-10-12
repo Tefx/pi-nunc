@@ -149,6 +149,7 @@ export interface LastMaintenanceContext {
   leafId: string | null;
   model: { id: string; provider: string; api: string };
   reason?: string;
+  stopReason?: string | null;
   engine?: "ok" | "fail" | "cancel";
   native: "pending" | "saved" | "failed" | "none";
   invalidated?: true;
@@ -318,6 +319,7 @@ export function createContextSurface(options: {
       if (!current || !frozen || current.native !== "pending") return;
       try {
         if (result.observations.accounting) current.accounting = structuredClone(result.observations.accounting);
+        if (result.observations.stopReason !== undefined) current.stopReason = result.observations.stopReason;
         if (result.ok) {
           current.engine = "ok";
           if (!current.cut) {

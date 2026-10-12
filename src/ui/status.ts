@@ -99,6 +99,7 @@ export function budgetLines(current: CurrentContext): string[] {
     `Maintenance output reserve: ${quantity(b.extractionOutputTokens, noModel)}`,
     `Main output cap: ${capLabel(b.outputCapKnown, b.outputCapTokens, noModel, "not observed")}`,
     `Maintenance output cap: ${capLabel(b.extractionOutputCapKnown, b.extractionOutputCapTokens, noModel)}`,
+    "Maintenance output includes reasoning and JSON wrapping; a planning reserve is not an uncapped API limit.",
     `Safety: ${quantity(b.safetyTokens, noModel)}`,
     ...(current.layout.planning ? planningLines(current.layout.planning) : []),
   ];
@@ -112,6 +113,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
     `Observed: ${new Date(last.observedAt).toISOString()}`,
     `Scope: last-maintenance · ${last.reason ?? "unknown reason"}`,
     `Engine: ${engine} · native ${last.native}${last.invalidated ? " · invalidated" : ""}`,
+    `Response stop reason: ${last.stopReason ?? "unknown"}`,
     last.candidate ? `Engine candidate: ${last.candidate.memory.slots.length} slots @ ${last.candidate.firstKeptEntryId}` : "Engine candidate: none",
     last.native === "saved" && last.after
       ? `Native save: saved · after ${last.after.memory.slots.length} slots`
@@ -122,6 +124,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
     lines.push(
       `Input estimate: full ${thousands(a.fullExtractionTokens)} → selected ${thousands(a.extractionTokens)}`,
       `Last-maintenance input plan: ${thousands(a.extractionInputLimit)}`,
+      `Maintenance output: planned reserve ${thousands(a.outputReserveTokens)} · serialized cap ${a.outputCapTokens === null ? "none" : thousands(a.outputCapTokens)} (reasoning + JSON included)`,
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
       `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
     );

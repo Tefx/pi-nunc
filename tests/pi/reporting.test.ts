@@ -8,6 +8,7 @@ import { engineConfig } from "../../src/pi/config.js";
 import { budgetLines, capLabel, detailsLines, DIAGNOSTIC_LIMIT, maintenanceLines, quantity } from "../../src/ui/status.js";
 import { NuncUi } from "../../src/ui/index.js";
 import { model } from "../engine/fixtures.js";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { fixture, memoryPatch } from "./fixtures.js";
 
 function port(): {
@@ -156,7 +157,7 @@ test("ContextSurface uncapped model marks extraction cap none rather than unknow
     pi: host as never,
     memory: memory as never,
     fixed: () => ({ systemPrompt: "sys", tools: [] }),
-    config: () => engineConfig({}, uncapped, { reserveTokens: 16384, keepRecentTokens: 1 }),
+    config: (_ctx, selected) => engineConfig({}, selected, { reserveTokens: 16384, keepRecentTokens: 1 }),
   });
   const view = surface.read(ctx);
   assert.equal(view.current.budget.extractionOutputCapKnown, true);
@@ -165,6 +166,12 @@ test("ContextSurface uncapped model marks extraction cap none rather than unknow
   assert.notEqual(view.current.budget.extractionInputLimit, null);
   const none = capLabel(view.current.budget.extractionOutputCapKnown, view.current.budget.extractionOutputCapTokens, view.current.model === null);
   assert.equal(none, "none");
+  const capped = surface.read({ ...ctx, model: { ...model, api: "openai-responses" } });
+  assert.equal(capped.current.budget.extractionOutputCapKnown, true);
+  assert.equal(capped.current.budget.extractionOutputCapTokens, 8192);
+  assert.equal(capped.current.budget.extractionOutputTokens, 8192);
+  const compatUncapped = surface.read({ ...ctx, model: { ...model, api: "openai-responses", compat: { supportsMaxOutputTokens: false } } });
+  assert.equal(compatUncapped.current.budget.extractionOutputCapTokens, null);
   const missing = { ...ctx, model: undefined };
   const noModel = surface.read(missing as never);
   assert.equal(noModel.current.model, null);
@@ -187,6 +194,7 @@ test("last-maintenance engine vs native states stay on ContextSurface used by th
   assert.equal(pending.lastMaintenance?.engine, undefined);
   const pendingReport = detailsLines({ view: pending, diagnostics: [] });
   assert.match(pendingReport, /Engine: pending · native pending/);
+  assert.match(pendingReport, /Response stop reason: unknown/);
   assert.match(pendingReport, /candidate success is not a native save/);
   release.resolve();
   await compacting;
@@ -195,9 +203,26 @@ test("last-maintenance engine vs native states stay on ContextSurface used by th
   assert.equal(saved.lastMaintenance?.native, "saved");
   const savedReport = detailsLines({ view: saved, diagnostics: [] });
   assert.match(savedReport, /Native save: saved/);
+  assert.equal(saved.lastMaintenance?.stopReason, "stop");
+  assert.match(savedReport, /Response stop reason: stop/);
+  assert.match(savedReport, /Maintenance output: planned reserve 8,192 · serialized cap 8,192/);
   assert(saved.lastMaintenance?.accounting);
   assert.match(savedReport, new RegExp(`full ${saved.lastMaintenance.accounting.fullExtractionTokens.toLocaleString("en-US")} → selected ${saved.lastMaintenance.accounting.extractionTokens.toLocaleString("en-US")}`));
   assert.match(savedReport, new RegExp(`Last-maintenance input plan: ${saved.lastMaintenance.accounting.extractionInputLimit.toLocaleString("en-US")}`));
+});
+
+test("failed maintenance keeps the received terminal in the existing context report", async t => {
+  const captured = port();
+  const f = await fixture({ extras: captured.extras }); t.after(() => f.close());
+  f.seed(); f.respond(() => fauxAssistantMessage("{\"add\":[]}", { stopReason: "length" }));
+  await assert.rejects(f.runtime.session.compact(), /Compaction cancelled/);
+  const result = f.events.at(-1)!.result;
+  assert(!result.ok); assert.equal(result.code, "RESPONSE");
+  assert.equal(result.observations.stopReason, "length");
+  const view = captured.context().read(captured.ctx());
+  assert.equal(view.lastMaintenance?.stopReason, "length");
+  assert.match(detailsLines({ view, diagnostics: [] }), /Response stop reason: length/);
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(entry => entry.type === "compaction").length, 0);
 });
 
 test("last-maintenance input plan stays on frozen accounting after current model/budget change", async t => {

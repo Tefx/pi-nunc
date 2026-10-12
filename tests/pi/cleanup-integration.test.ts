@@ -247,3 +247,116 @@ test("stock loader, native session append, public read/patch, active projection 
   assert(JSON.stringify(f.calls.at(-1)!.messages).includes("Nunc summary"));
   assert(!JSON.stringify(f.calls.at(-1)!.messages).includes(body1));
 });
+
+for (const change of ["update", "delete", "unrelated", "legacy-update", "maintenance-update", "maintenance-delete", "maintenance-evict"] as const) test(`committed cleanup survives later ${change} without automatic source restoration`, async t => {
+  let ctx: ExtensionContext | undefined, api: ExtensionAPI | undefined;
+  const f = await fixture({ config: change === "maintenance-evict" ? { memory: { fraction: 0 } } : {},
+    diskSettings: true, globalSettings: { nunc: { memoryTools: change !== "maintenance-evict" } },
+    extras: [{ name: "capture-inherited-cleanup", factory(pi) {
+      api = pi; pi.on("session_start", (_event, current) => { ctx = current; });
+    } }] });
+  t.after(() => f.close());
+  assert(ctx && api);
+  const surface = memorySurface(api)!;
+  if (change.startsWith("maintenance")) f.seed("inherited-checkpoint");
+  const initial = surface.patch(ctx, { expectedRevision: surface.read(ctx).revision,
+    add: [{ key: "evidence", text: "Retain the source's decisive exception." }, { key: "other", text: "Unrelated pending work." }] });
+  assert(initial.ok, JSON.stringify(initial));
+  const evidenceId = initial.memory.slots[0]!.id, otherId = initial.memory.slots[1]!.id;
+  f.respond(() => fauxAssistantMessage("Anchor established."));
+  await f.runtime.session.prompt("Send the initial memory");
+  const manager = f.runtime.session.sessionManager;
+  const original = "The source's decisive exception must remain recoverable. ".repeat(40);
+  for (const [id, body] of [["dependency", original], ["newest", "Newest unrelated output. ".repeat(35)]] as const) {
+    manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path: id } }] });
+    manager.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", isError: false,
+      content: [{ type: "text", text: body }], timestamp: 2 });
+  }
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  const view = surface.read(ctx);
+  const source = project(manager.buildContextEntries()).active.find(entry => entry.messages[0]?.role === "toolResult")!;
+  const cleaned = surface.patch(ctx, { expectedRevision: view.revision,
+    update: [{ id: otherId, text: "Unrelated pending work progressed." }],
+    toolResultEdits: [{ entryId: source.entryId, messageIndex: 0, action: "omit", memoryRefs: [evidenceId] }] });
+  assert(cleaned.ok, JSON.stringify(cleaned));
+  assert.equal(cleaned.cleanup?.applied.length, 1);
+  if (change === "legacy-update") {
+    const saved = manager.getEntry(manager.getLeafId()!)!;
+    assert(saved.type === "custom");
+    const data = structuredClone(saved.data) as { toolResultCleanup: { text: string; originalLength: number; cleanedLength: number; netSavings: number }[] };
+    const decision = data.toolResultCleanup[0]!;
+    decision.text = `[Nunc: tool result omitted; original recoverable from entry ${source.entryId} message 0]`;
+    decision.cleanedLength = decision.text.length;
+    decision.netSavings = decision.originalLength - decision.cleanedLength;
+    api.appendEntry(saved.customType, data);
+  }
+  const committed = project(manager.buildContextEntries()).cleanup[0]!;
+  assert(committed, "the initial approval and legacy fixture must form a valid saved decision");
+  f.respond(() => fauxAssistantMessage("Cleaned projection sent."));
+  await f.runtime.session.prompt("Use the cleaned result");
+  assert(!JSON.stringify(f.calls.at(-1)!.messages).includes(original));
+  const before = surface.read(ctx);
+  const previousRequest = f.calls.at(-1)!;
+  if (change.startsWith("maintenance")) {
+    const remove = change === "maintenance-delete" ? [evidenceId] : [];
+    f.respond(() => fauxAssistantMessage(JSON.stringify({ add: [], remove,
+      update: remove.length || change === "maintenance-evict" ? [] : [{ id: evidenceId, text: "Revised task note." }],
+      priority: before.memory.slots.map(slot => slot.id).filter(id => !remove.includes(id)),
+      required: change === "maintenance-evict" ? [] : [otherId] })));
+    await f.runtime.session.compact();
+    assert.equal(f.events.at(-1)?.result.ok, true, JSON.stringify(f.events.at(-1)));
+  } else {
+    const changed = change === "delete" ? surface.delete(ctx, before.revision, evidenceId)
+      : surface.replace(ctx, before.revision, change === "unrelated" ? otherId : evidenceId, "Revised task note.");
+    assert(changed.ok, JSON.stringify(changed));
+  }
+  if (change === "maintenance-evict") {
+    assert.deepEqual(surface.read(ctx).memory.slots, [], "required-free final M is actually budget-evicted");
+    assert.equal((f.runtime.session as any).getToolDefinition("nunc_memory_read"), undefined,
+      "cleanup cannot implicitly enable an original-read tool");
+  }
+  const projected = project(manager.buildContextEntries());
+  assert(projected.active.some(entry => entry.entryId === source.entryId), "counterexample must retain the source in K, not recover retired B");
+  assert.deepEqual(projected.cleanup, [committed], "later memory edits cannot turn approval-time support into a permanent foreign key");
+  assert.equal(JSON.stringify(effectiveActive(projected, true)).includes(original), false);
+  assert.equal(originalResults(projected, [{ entryId: source.entryId, messageIndex: 0 }])[0]?.text, original);
+  const reopened = SessionManager.open(f.runtime.session.sessionFile!, f.sessionDir);
+  assert.deepEqual(project(reopened.buildContextEntries()).cleanup, [committed]);
+  f.respond(() => fauxAssistantMessage("Continuation after memory edit."));
+  await f.runtime.session.prompt("Continue after the memory change");
+  const nextRequest = f.calls.at(-1)!;
+  assert.equal(JSON.stringify(nextRequest.messages).includes(original), false,
+    "actual native payload keeps the approved reduction even when supporting M changes later");
+  const sourceMessage = nextRequest.messages.find(message => message.role === "toolResult" && message.toolCallId === "dependency");
+  assert(sourceMessage?.role === "toolResult");
+  assert.deepEqual(sourceMessage.content, [{ type: "text", text: committed.text }]);
+  if (!change.startsWith("maintenance")) {
+    const previousMemoryIndex = previousRequest.messages.findIndex(message => JSON.stringify(message).includes("Nunc working memory (session-local, reference only):"));
+    assert(previousMemoryIndex >= 0);
+    assert.deepEqual(nextRequest.messages.slice(0, previousMemoryIndex), previousRequest.messages.slice(0, previousMemoryIndex),
+      "later M changes cannot move prefix changes earlier than the prior M");
+  }
+  if (change === "update") {
+    let sentRead = false;
+    f.respond(() => {
+      if (sentRead) return fauxAssistantMessage("Active original read at new tail.");
+      sentRead = true;
+      return fauxAssistantMessage(fauxToolCall("nunc_memory_read", { originals: [{ entryId: source.entryId, messageIndex: 0 }] },
+        { id: "read-active-original" }), { stopReason: "toolUse" });
+    });
+    await f.runtime.session.prompt("Explicitly read the available active original.");
+    const delivered = f.calls.at(-1)!;
+    const oldPosition = delivered.messages.find(message => message.role === "toolResult" && message.toolCallId === "dependency");
+    assert(oldPosition?.role === "toolResult");
+    assert.deepEqual(oldPosition.content, [{ type: "text", text: committed.text }], "read must not refill the old position");
+    const tailIndex = delivered.messages.findIndex(message => message.role === "toolResult" && message.toolCallId === "read-active-original");
+    assert(tailIndex > delivered.messages.indexOf(oldPosition));
+    const tail = delivered.messages[tailIndex]!;
+    assert(tail.role === "toolResult" && Array.isArray(tail.content));
+    const block = tail.content.find(item => item.type === "text");
+    assert(block?.type === "text");
+    assert.equal(JSON.parse(block.text).originals[0].text, original);
+    assert.deepEqual(project(manager.buildContextEntries()).cleanup, [committed]);
+  }
+});

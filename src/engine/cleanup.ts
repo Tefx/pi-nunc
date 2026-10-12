@@ -8,11 +8,11 @@ export function refKey(ref: ToolResultRef): string {
 }
 
 export function formatOmitMarker(ref: ToolResultRef): string {
-  return `[Nunc: tool result omitted; original recoverable from entry ${ref.entryId} message ${ref.messageIndex}]`;
+  return `[Nunc: tool result omitted; original stored at entry ${ref.entryId} message ${ref.messageIndex}]`;
 }
 
 export function formatReplaceMarker(ref: ToolResultRef, summaryText: string): string {
-  return `[Nunc summary; original recoverable from entry ${ref.entryId} message ${ref.messageIndex}]:\n${summaryText}`;
+  return `[Nunc summary; original stored at entry ${ref.entryId} message ${ref.messageIndex}]:\n${summaryText}`;
 }
 
 export function formatDeduplicateMarker(target: ToolResultRef, keeper: ToolResultRef): string {

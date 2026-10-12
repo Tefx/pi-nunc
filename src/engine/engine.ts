@@ -87,7 +87,10 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     cancelled(signal);
     observations.requests = 1;
     const response = await withCancellation(() => complete({ model: frozen.model, context: freezeCopy(context), outputTokens: config.extraction.outputTokens, signal }), signal);
-    if (record(response)) observations.usage = observeUsage(response.usage);
+    if (record(response)) {
+      observations.usage = observeUsage(response.usage);
+      observations.stopReason = typeof response.stopReason === "string" ? response.stopReason : null;
+    }
     cancelled(signal);
     requireThat(record(response) && response.role === "assistant", "RESPONSE", "Expected an assistant response");
     requireThat(response.model === frozen.model.id && response.provider === frozen.model.provider && response.api === frozen.model.api && (!response.responseModel || response.responseModel === frozen.model.id), "RESPONSE", "Maintenance response changed model/provider/API");

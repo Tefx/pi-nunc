@@ -10,7 +10,7 @@
 
 ## 1. 用户能力与命令
 
-交付一个 footer 状态项和一个仅含 Slots、Context 两个 tab 的 overlay。查看、编辑、删除不调用模型，不触发 compaction，不发送用户消息。`/nunc status` 及旧的三行短报告已被完整文字报告取代，不再是兼容别名。
+交付一个 footer 状态项和一个仅含 Slots、Context 两个 tab 的 overlay。浏览、搜索和只读报告不调用模型。确认编辑或删除后的保存可按 §5.4 对合格工具结果进行一次当前模型清理判断；不触发 compaction、不发送用户消息。`/nunc status` 及旧的三行短报告已被完整文字报告取代，不再是兼容别名。
 
 | 命令 | 行为 |
 | --- | --- |
@@ -127,7 +127,7 @@ Context 根级另有可浏览的 recent Diagnostics 节点，与文字报告共�
 - extraction 默认 `min(8192, model.maxTokens)` 是独立规划值；uncapped Codex/Responses 的 cap 为无，不能把规划值标成强制 cap。调用消费授权仍覆盖真实原生能力。
 - 正常触发余量建议与输入/输出超规划记录保留。`normalExtractionAtTrigger` 为 advisory，不能阻止当前可容纳的 manual/overflow 维护。UI 不写 Pi settings 或自动调整 H。
 
-Current projection 的 Budget 与完整文字报告共用 `ContextSurface` 当前预算：模型窗口、H、主准入、memory/input plan、维护输入规划、M 占用、主/维护输出预留、cap 与 safety。unknown、无模型和 uncapped（none）不得与已知零值混淆。Last maintenance 使用 `LastMaintenanceContext.accounting` 显示 full→selected、该次维护冻结的 input plan（`extractionInputLimit`，不随当前 Budget 改写）、normal-trigger headroom/advice、input/output over-plan，并保留实际模型、观察时间、范围以及 engine candidate 与 native saved/pending/failed 的区别。正常触发建议仍为 advisory，不改 settings。文字报告不得把自身写入诊断历史。
+Current projection 的 Budget 与完整文字报告共用 `ContextSurface` 当前预算：模型窗口、H、主准入、memory/input plan、维护输入规划、M 占用、主/维护输出预留、cap 与 safety。unknown、无模型和 uncapped（none）不得与已知零值混淆。Last maintenance 显示可见响应的 stopReason；旧记录缺失或响应未观测时为 unknown，不等同于 engine/native 保存状态。`LastMaintenanceContext.accounting` 显示 M 整理目标/当前预留/显式硬上限、本次输出规划预留及序列化 cap（none 表示 API 无 cap）；总输出包括 reasoning 与 JSON 包装。它还显示 full→selected、该次维护冻结的 input plan（`extractionInputLimit`，不随当前 Budget 改写）、normal-trigger headroom/advice、input/output over-plan，并保留实际模型、观察时间、范围以及 engine candidate 与 native saved/pending/failed 的区别。正常触发建议仍为 advisory，不改 settings。文字报告不得把自身写入诊断历史。
 
 ## 5. 人工记忆提交与兼容
 
@@ -171,7 +171,7 @@ Pi adapter/projection 是唯一有效 M 投影所有者：当前路径最新原�
 
 Pi settings 的 `nunc.toolResultCleanup` 默认开启、与 `memoryTools` 独立；关闭会在当前活动路径恢复原始工具正文，可能导致下一次请求超容量。Context 和 `/nunc details` 区分开关、已保存决定、当前生效投影、候选与无法应用的原因。`nunc_memory_read` 可按 `originals` 引用读取当前路径的原文，未重新执行工具。
 
-TUI 确认修改或删除 M 后，有符合条件的候选才显示“Saving…”并通过当前模型进行一次清理判断；Esc 取消整个保存，保留编辑草稿。模型请求失败、超时或凭据不可用时，合法 M 仍保存，清理不生效且给出提示。保存期间 session、路径、模型、设置或 revision 改变则不提交过期的 M/清理，用户需核对草稿；原生持久化结果未确认时不可自动重试。原工具结果一直保留在 Pi session 中；卸载 Nunc 后不保证缩减后的容量。
+TUI 确认修改或删除 M 后，有符合条件的候选才显示“Saving…”并通过当前模型进行一次清理判断；Esc 取消整个保存，保留编辑草稿。清理专用请求要求 add/update/remove 为空，M 已由用户选定；非空 update（即使正文相同）与 add/remove 一样拒绝该清理响应。模型请求失败、越界改写、超时或凭据不可用时，合法 M 仍保存，清理不生效且给出提示。保存期间 session、路径、模型、设置或 revision 改变则不提交过期的 M/清理，用户需核对草稿；原生持久化结果未确认时不可自动重试。原工具结果一直保留在 Pi session 中；卸载 Nunc 后不保证缩减后的容量。
 
 ## 6. 实现者需要的边界
 

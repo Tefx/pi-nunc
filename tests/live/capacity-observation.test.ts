@@ -15,6 +15,16 @@ test("capacity predicates distinguish required fit, real competition and an opti
   assert(evaluateCapacityPredicates("required-too-large", patch(50, 15), 40, measure).every(c => c.status === "PROVEN"));
   assert.equal(evaluateCapacityPredicates("required-too-large", patch(50, 45), 40, measure)[1]!.status, "UNPROVEN");
 });
+test("capacity predicates measure updates under existing IDs even without additions", () => {
+  const measure = (slots: Array<{ text: string }>) => slots.reduce((n, slot) => n + slot.text.length, 0);
+  const old = [{ id: "s1", text: "x" }, { id: "s2", text: "Optional" }];
+  const patch = { add: [], remove: [], update: [{ id: "s1", text: "r".repeat(40) }], priority: ["s2", "s1"], required: ["s1"] };
+  const checks = evaluateCapacityPredicates("required-too-large", patch, 30, measure, old);
+  assert(checks.every(check => check.status === "PROVEN"), JSON.stringify(checks));
+  assert.deepEqual(checks[0]!.observed, { requiredTokens: 40, memoryLimit: 30 });
+  assert.deepEqual(old, [{ id: "s1", text: "x" }, { id: "s2", text: "Optional" }]);
+});
+
 test("capacity qualification binds the saved-M hard limit and observes advisory growth separately", () => {
   const growth = { fixedTokens: 10, memoryLimit: 100, keptTokens: 10, growthReserve: 80, effectiveTrigger: 200 };
   const result = { ok: true, observations: { accounting: growth } } as unknown as MaintenanceResult;

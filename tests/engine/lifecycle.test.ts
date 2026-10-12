@@ -2,12 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
 import { maintain } from "../../src/engine/index.js";
-import { answer, input, responder } from "./fixtures.js";
+import { answer, input, responder, usage } from "./fixtures.js";
 
 for (const stopReason of ["length", "pending", "error", "aborted", "toolUse", "deferred", "truncated"]) test(`parseable JSON with ${stopReason} status never becomes a candidate`, async () => {
   const source = await input();
   const result = await maintain(source, async request => ({ ...answer(undefined, request.model), stopReason }));
   assert(!result.ok); assert.equal(result.code, "RESPONSE"); assert.equal(result.observations.requests, 1); assert(!("candidate" in result));
+  assert.equal(result.observations.stopReason, stopReason);
+  assert.equal(result.observations.usage.output, usage.output);
 });
 
 test("tool calls, false endTurn, deferred handles, malformed JSON and different response model fail without tool execution/repair", async () => {
@@ -19,6 +21,8 @@ test("tool calls, false endTurn, deferred handles, malformed JSON and different 
   for (const response of responses) {
     const result = await maintain(await input(), async () => response);
     assert(!result.ok); assert.equal(result.code, "RESPONSE"); assert.equal(result.observations.requests, 1);
+    assert.equal(result.observations.stopReason, "stop");
+    assert.equal(result.observations.usage.output, usage.output);
   }
 });
 
@@ -42,10 +46,21 @@ test("abort before dispatch, during service wait, and immediately before handoff
   assert(!during.ok); assert.equal(during.code, "CANCELLED"); assert(receivedSignal?.aborted);
   assert.equal(getEventListeners(duringControl.signal, "abort").length, 0);
   assert.equal(during.observations.usage.cost, null);
+  assert.equal(during.observations.stopReason ?? null, null, "unseen response remains unknown");
 
   const lastSource = await input(); const lastControl = new AbortController(); lastSource.signal = lastControl.signal;
   const last = await maintain(lastSource, async request => { lastControl.abort(); return answer(undefined, request.model); });
   assert(!last.ok); assert.equal(last.code, "CANCELLED");
+});
+
+test("visible terminal and usage survive cancellation during response accounting", async () => {
+  const source = await input(), controller = new AbortController(); source.signal = controller.signal;
+  const response = { ...answer(), get usage() { controller.abort(); return structuredClone(usage); } };
+  const result = await maintain(source, async () => response);
+  assert(!result.ok); assert.equal(result.code, "CANCELLED");
+  assert.equal(result.observations.stopReason, "stop");
+  assert.equal(result.observations.usage.contextInput, usage.input + usage.cacheRead + usage.cacheWrite);
+  assert.equal(result.observations.usage.output, usage.output);
 });
 
 test("freeze entire transaction before await; mutable host data cannot rewrite model/policy/source/boundary", async () => {

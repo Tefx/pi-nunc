@@ -127,6 +127,8 @@ export interface Observations {
   requests: number;
   elapsedMs: number;
   usage: UsageObservation;
+  /** Visible terminal response only; missing/null means unknown, including old records. */
+  stopReason?: string | null;
   accounting: Accounting | null;
   omissions: Omission[];
   droppedSlotIds: string[];

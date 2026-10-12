@@ -25,6 +25,7 @@ export function memoryMessage(slots: Slot[]): Message {
 
 export interface Patch {
   add: { key: string; text: string }[];
+  update?: { id: string; text: string }[];
   remove: string[];
   priority: string[];
   required: string[];
@@ -38,59 +39,89 @@ export interface PatchResult {
   retainedKeys: Set<string>;
   patch: Patch;
 }
-export const RESPONSE_CONTRACT = `Return ONLY one JSON object with required add, remove, priority, required fields, and optional toolResultEdits:
-{"add":[{"key":"new1","text":"self-contained note"}],"remove":["old-id"],"priority":["new1","surviving-old-id"],"required":["new1"],"toolResultEdits":[{"entryId":"e1","messageIndex":0,"action":"replace","text":"short continuation note","memoryRefs":["new1"]}]}
+export const RESPONSE_CONTRACT = `Return ONLY one JSON object with required add, remove, priority, required fields, and optional update and toolResultEdits:
+{"add":[{"key":"new1","text":"self-contained note"}],"update":[{"id":"surviving-old-id","text":"complete revised note"}],"remove":["old-id"],"priority":["new1","surviving-old-id"],"required":["new1"],"toolResultEdits":[{"entryId":"e1","messageIndex":0,"action":"replace","text":"short continuation note","memoryRefs":["new1"]}]}
 add: zero or more new candidates. Keys must be unique nonempty strings, distinct from ALL existing slot IDs. Text must be nonempty. Markdown is encouraged inside text (lists, paragraphs, inline code, and necessary short code blocks).
-remove: each existing slot explicitly invalidated/retired, exactly once. Replacement/merge means removing the old IDs AND adding a candidate.
-priority: ALL surviving old IDs and ALL added keys, each exactly once, most valuable first. Omission is invalid, never silent deletion.
+update: optional complete body replacements for existing slots, preserving ID and relative position. Each item has only id and nonempty text; IDs must exist, appear once, and cannot also be removed. Preserve still-valid parts of mixed slots. Omit unchanged bodies. Merge/split may use remove plus add.
+remove: each existing slot explicitly invalidated/retired, exactly once.
+priority: ALL surviving old IDs (including updated IDs) and ALL added keys, each exactly once, most valuable first. Omission is invalid, never silent deletion.
 required: subset of priority identifying the active task focus and all necessary continuation items (surviving old IDs or added keys). Retain all declared required jointly, even over the organizing target; then omit optional items. Only an explicit hard limit can fail capacity. Empty array is valid when no active focus or necessary continuation items exist.
-toolResultEdits: optional array of semantic cleanups for completed tool results in candidate scope. Each item specifies entryId, zero-based messageIndex, action ("omit" or "replace"), non-empty text for replace (omit must not include text), and optional memoryRefs and sourceRefs. Omit this field if no semantic cleanup is requested.
+toolResultEdits: optional array of semantic cleanups for completed tool results in candidate scope. Each item specifies entryId, zero-based messageIndex, action ("omit" or "replace"), non-empty text for replace (omit must not include text), and optional memoryRefs (support in this transaction's final M) and sourceRefs (full retained sources). Later M changes do not automatically reverse committed edits. Omit this field if no semantic cleanup is requested.
 Unchanged slots reuse their bodies; do not regenerate them. Priority controls whole-slot capacity selection for optional items, not memory order. Old survivors keep relative order; additions append.
-An invalidated old slot stays removed even if its replacement cannot fit. Empty arrays and empty memory are valid. No tools, outer code fences around the JSON, commentary, or rewriting retained history.`;
+A removed or unselected updated slot never reverts to its old body. Empty arrays and empty memory are valid. No tools, outer code fences around the JSON, commentary, or rewriting retained history.`;
+
+// Diagnostics name the offending field/ref without disclosing an unbounded reply.
+const describeRef = (ref: unknown): string => typeof ref === "string"
+  ? JSON.stringify(ref.length > 80 ? `${ref.slice(0, 80)}…` : ref)
+  : `[${ref === null ? "null" : Array.isArray(ref) ? "array" : typeof ref}]`;
+const describeRefs = (refs: Iterable<string>): string => {
+  const values = [...refs];
+  return values.slice(0, 4).map(describeRef).join(", ") + (values.length > 4 ? ` (+${values.length - 4} more)` : "");
+};
 
 export function parsePatch(value: unknown, memory: Memory): Patch {
-  requireThat(
-    record(value) &&
-    keys(value, ["add", "remove", "priority", "required", "toolResultEdits"]) &&
-    Array.isArray(value.add) &&
-    Array.isArray(value.remove) &&
-    Array.isArray(value.priority) &&
-    Array.isArray(value.required),
-    "RESPONSE",
-    "Expected add/remove/priority/required arrays"
-  );
+  requireThat(record(value), "RESPONSE", "Expected a patch object with add/remove/priority/required arrays");
+  const fields = ["add", "update", "remove", "priority", "required", "toolResultEdits"];
+  requireThat(keys(value, fields), "RESPONSE", `Unsupported patch fields: ${describeRefs(Object.keys(value).filter(key => !fields.includes(key)))}`);
+  requireThat(Array.isArray(value.add), "RESPONSE", "add: expected an array");
+  requireThat(Array.isArray(value.remove), "RESPONSE", "remove: expected an array");
+  requireThat(Array.isArray(value.priority), "RESPONSE", "priority: expected an array");
+  requireThat(Array.isArray(value.required), "RESPONSE", "required: expected an array");
+  requireThat(value.update === undefined || Array.isArray(value.update), "RESPONSE", "update: expected an array if provided");
   const ids = new Set(memory.slots.map(s => s.id));
   const removed = new Set<string>();
-  for (const id of value.remove) {
-    requireThat(typeof id === "string" && ids.has(id) && !removed.has(id), "RESPONSE", "Unknown or duplicate removal");
+  for (const [index, id] of value.remove.entries()) {
+    const field = `remove[${index}]`;
+    requireThat(typeof id === "string", "RESPONSE", `${field}: expected a slot ID, received ${describeRef(id)}`);
+    requireThat(ids.has(id), "RESPONSE", `${field}: unknown reference ${describeRef(id)}`);
+    requireThat(!removed.has(id), "RESPONSE", `${field}: duplicate reference ${describeRef(id)}`);
     removed.add(id);
+  }
+  const updated = new Set<string>();
+  const update: NonNullable<Patch["update"]> = [];
+  for (const [index, item] of (value.update ?? []).entries()) {
+    const field = `update[${index}]`;
+    requireThat(record(item) && keys(item, ["id", "text"]), "RESPONSE", `${field}: expected only id and text fields`);
+    requireThat(nonempty(item.id), "RESPONSE", `${field}.id: expected a nonempty slot ID`);
+    requireThat(nonempty(item.text), "RESPONSE", `${field}.text: expected a nonempty replacement body`);
+    requireThat(ids.has(item.id), "RESPONSE", `${field}.id: unknown reference ${describeRef(item.id)}`);
+    requireThat(!updated.has(item.id), "RESPONSE", `${field}.id: duplicate update reference ${describeRef(item.id)}`);
+    requireThat(!removed.has(item.id), "RESPONSE", `${field}.id: deleted reference ${describeRef(item.id)} cannot also be updated`);
+    updated.add(item.id);
+    update.push({ id: item.id, text: item.text });
   }
   const candidates = new Set([...ids].filter(id => !removed.has(id)));
   const added = new Set<string>();
   const add: Patch["add"] = [];
-  for (const item of value.add) {
-    requireThat(record(item) && keys(item, ["key", "text"]) && nonempty(item.key) && nonempty(item.text), "RESPONSE", "Invalid addition");
-    requireThat(!ids.has(item.key) && !added.has(item.key), "RESPONSE", "Addition key collides with an old id or another addition");
+  for (const [index, item] of value.add.entries()) {
+    const field = `add[${index}]`;
+    requireThat(record(item) && keys(item, ["key", "text"]) && nonempty(item.key) && nonempty(item.text), "RESPONSE", `${field}: expected only nonempty key and text fields`);
+    requireThat(!ids.has(item.key), "RESPONSE", `${field}.key: collides with existing slot ID ${describeRef(item.key)}`);
+    requireThat(!added.has(item.key), "RESPONSE", `${field}.key: duplicate addition key ${describeRef(item.key)}`);
     added.add(item.key);
     candidates.add(item.key);
     add.push({ key: item.key, text: item.text });
   }
   const allCandidateKeys = new Set(candidates);
   const priority: string[] = [];
-  for (const ref of value.priority) {
-    requireThat(typeof ref === "string" && candidates.delete(ref), "RESPONSE", "Unknown or duplicate priority reference");
+  for (const [index, ref] of value.priority.entries()) {
+    const field = `priority[${index}]`;
+    requireThat(typeof ref === "string", "RESPONSE", `${field}: expected a candidate reference, received ${describeRef(ref)}`);
+    requireThat(!removed.has(ref), "RESPONSE", `${field}: deleted reference ${describeRef(ref)}`);
+    requireThat(allCandidateKeys.has(ref), "RESPONSE", `${field}: unknown reference ${describeRef(ref)}`);
+    requireThat(candidates.delete(ref), "RESPONSE", `${field}: duplicate reference ${describeRef(ref)}`);
     priority.push(ref);
   }
-  requireThat(candidates.size === 0, "RESPONSE", "priority omitted surviving/addition references");
+  requireThat(candidates.size === 0, "RESPONSE", `priority: omitted candidate references ${describeRefs(candidates)}`);
 
   const required: string[] = [];
   const seenRequired = new Set<string>();
-  for (const ref of value.required) {
-    requireThat(
-      typeof ref === "string" && allCandidateKeys.has(ref) && !seenRequired.has(ref),
-      "RESPONSE",
-      "Unknown or duplicate required reference"
-    );
+  for (const [index, ref] of value.required.entries()) {
+    const field = `required[${index}]`;
+    requireThat(typeof ref === "string", "RESPONSE", `${field}: expected a candidate reference, received ${describeRef(ref)}`);
+    requireThat(!removed.has(ref), "RESPONSE", `${field}: deleted reference ${describeRef(ref)}`);
+    requireThat(allCandidateKeys.has(ref), "RESPONSE", `${field}: unknown reference ${describeRef(ref)}`);
+    requireThat(!seenRequired.has(ref), "RESPONSE", `${field}: duplicate reference ${describeRef(ref)}`);
     seenRequired.add(ref);
     required.push(ref);
   }
@@ -99,7 +130,7 @@ export function parsePatch(value: unknown, memory: Memory): Patch {
     ? (value.toolResultEdits as ToolResultEdit[])
     : undefined;
 
-  return { add, remove: [...removed], priority, required, ...(toolResultEdits !== undefined ? { toolResultEdits } : {}) };
+  return { add, ...(value.update !== undefined ? { update } : {}), remove: [...removed], priority, required, ...(toolResultEdits !== undefined ? { toolResultEdits } : {}) };
 }
 
 export interface MemorySelectionBudget { targetTokens: number; hardMaxTokens?: number }
@@ -117,10 +148,11 @@ export function applyPatch(
   const patch = parsePatch(value, memory);
   const removed = new Set(patch.remove);
   const allIds = new Set(memory.slots.map(s => s.id));
+  const updates = new Map(patch.update?.map(item => [item.id, item.text]));
   let nextId = memory.nextId;
   const candidates = memory.slots
     .filter(s => !removed.has(s.id))
-    .map(slot => ({ key: slot.id, slot: { ...slot } }));
+    .map(slot => ({ key: slot.id, slot: { ...slot, text: updates.get(slot.id) ?? slot.text } }));
   for (const addition of patch.add) {
     let id: string;
     do {
