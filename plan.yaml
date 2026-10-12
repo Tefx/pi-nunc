@@ -5972,7 +5972,7 @@ phases:
   steps:
   - id: nunc-three-suite.arena
     name: MemoryArena 新完整组四条件比较
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6071,6 +6071,24 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-12T12:31:23.628873Z'
+    done_at: '2026-10-12T13:16:23.809791+00:00'
+    evidence: Completed4/4 OpenRouter Luna/Sol×native/Nunc conditions on unchanged
+      productdddd9dc; original NEW groups4,5,6 (actual oldIDs1–3 excluded),20 travelers/condition80responses.
+      Canonical .scratch/parallel-memory-campaign-2026-10-12/arena/RESULT.md plus
+      scores.json,cost.json,resources.json,handoff-summary.json,inventory-diagnostic.json.
+      PS native/Nunc Luna35/15%,Sol5/20%; SPS84.2949/65.3751%,98.6111/81.9444%; officialSR
+      all0/3; explicitnew105rules97/71/103/82; completeplans20/15/20/16. Officialscorerunchanged;
+      frozen supplemental exact-attraction-string equality false-negatives disclosed,
+      combined explicitPassingPeople excluded from claims; separate complete inventory
+      diagnostic covers all80people and raw delivered fields/catalog. Same physical1.05M/effective272K,MEDIUM,early16K,keep8K,q.5;
+      actualNuncwire no effort injection, native state+unchangedflow boundedproof.
+      Actual six officialtools/full304807007BflightDB,adapter/scorer behavioralchecks.
+      Settledcatalog$1.74656978,unknown0,pending0; no paidfailures/replays. Controllers/Pidescendants/bridge
+      reconciled exited; runtime/fullDB/env deleted,uniqueobservations/minimumscoringinputs
+      retained; measuredfree+354480128B concurrentattributioncaveat. SuiteGitf105b7771e5fdde9cfbe8a2e4147591935d1c0ea.
+      uvdefaultsharedcachewrite outsideworkerpath recorded, no globalinstall/config/credentials;
+      no unsafe sharedcache deletion. Parent inspected contracts/scores/newrule source/inventory/representativehandoff/terminalstate;
+      mainrepository diff onlyPlan. Other2suites/campaign acceptance remain independent.
   - id: nunc-three-suite.beam
     name: BEAM 长对话四条件比较
     status: claimed
