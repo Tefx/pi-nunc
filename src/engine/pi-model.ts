@@ -14,8 +14,8 @@ export function subscriptionBilling(model: Model<Api>, registry: Pick<ModelRegis
 }
 
 /** Public Pi complete: native authentication/transport remain host-owned.
- * Responses raw calls need explicit effort; omitting it does not inherit the
- * session's thinking level. Other APIs retain their existing raw-call behavior. */
+ * OpenAI-compatible raw calls need explicit effort; omitting it does not inherit
+ * the session's thinking level. Other APIs retain their existing raw-call behavior. */
 export function piComplete(registry: Pick<ModelRegistry, "complete">, thinking?: ModelThinkingLevel): Complete {
   return ({ model, context, outputTokens, signal }) => registry.complete(model, context, {
     maxTokens: outputTokens,
@@ -24,11 +24,11 @@ export function piComplete(registry: Pick<ModelRegistry, "complete">, thinking?:
     cacheRetention: "none",
     transport: "sse",
     sessionId: randomUUID(),
-    ...responsesThinking(model, thinking),
+    ...rawThinking(model, thinking),
   });
 }
-function responsesThinking(model: Model<Api>, thinking?: ModelThinkingLevel): { reasoningEffort?: Exclude<ModelThinkingLevel, "off"> } {
-  if (thinking === undefined || !["openai-responses", "openai-codex-responses", "azure-openai-responses"].includes(model.api)) return {};
+function rawThinking(model: Model<Api>, thinking?: ModelThinkingLevel): { reasoningEffort?: Exclude<ModelThinkingLevel, "off"> } {
+  if (thinking === undefined || !["openai-completions", "openai-responses", "openai-codex-responses", "azure-openai-responses"].includes(model.api)) return {};
   if (clampThinkingLevel(model, thinking) !== thinking) throw new EngineError("CONFIG", `Maintenance thinking ${thinking} is unsupported by the current native model`);
   return thinking === "off" ? {} : { reasoningEffort: thinking };
 }
