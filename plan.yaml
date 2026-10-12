@@ -9,12 +9,12 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: 当前增量：用户授权在 feat/relational-memory 仅替换两处维护提示文本，并对固定新候选进行 ONE 三组 native/Nunc
-  MEDIUM comparison。全部既有 DONE 定义、证据、状态及生命周期保持不变。parent 供应精确替换文本并负责深入分析与通知。
-project_guidance: 当前 nunc-source-fidelity 为一个 node-typescript-engineer implementation：两处
-  source 替换、必要小范围离线检查及同一固定候选的一次受限 live observation 共同交付。运行只是该候选完成程序的效果观察，无独立发布/运行服务交付或额外验收消费者；不拆
-  source/reviewer/gate。候选必须在首次推理前提交冻结，Orchestrator 仅整合同一候选并负责唯一整体接受；benchmark 阴性或混合结果可接受，不得调参/重播换取改善。必须核对效果、用量和
-  owned runtime 清理；必要交付缺失保持未接受。所有现存 DONE 保持不变；没有 push/main merge/adoption 授权。
+context: 当前增量：用户授权两处精确维护提示替换及 API-level thinking 修复/真实 SDK 回归，并要求将已接受源结果整合至 feat/relational-memory。独立剩余
+  ONE OpenRouter 三组 native/Nunc MEDIUM comparison 保留原 allowance/caps及未知效果。既有 DONE
+  定义、证据、状态及生命周期不变。
+project_guidance: nunc-source-fidelity 同阶段两个 node-typescript-engineer 交付：deliver 原ID承担已接受源/局部回归及当前分支整合，benchmark依赖该源并承担一次固定候选OpenRouter比较、效果/usage核对与清理。Orchestrator可凭既有适用源证明完成deliver，无需等待独立benchmark预算解除或重跑。benchmark保持原$5及caps，unknown
+  reservation不可归零，无预算reset或额外推理授权；必要观察缺失保持未完成。benchmark完成程序承担本增量唯一最终整体接受，源完成不等于整体接受。不新增phase/reviewer/gate，所有DONE不变，无push/main
+  merge/adoption/reload授权。
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -5778,87 +5778,102 @@ phases:
   - nunc-effective-state-replication
   steps:
   - id: nunc-source-fidelity.deliver
-    name: 精确两处提示替换、固定提交一次 MEDIUM 比较及清理
+    name: 两处维护提示与 API thinking 修复的源交付
     status: pending
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
-      \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \".scratch/source-fidelity-medium/**\"\
-      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"\
-      .agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"src/engine/memory.ts\"\
-      , \"tests/**\", \"docs/**\"]\nsource_changes:\n  - {path: \"policies/default.md\"\
-      , location: \"Apply revisions within their source and scope / second paragraph\"\
-      }\n  - {path: \"src/engine/request.ts\", location: \"systemPrompt / Source records\
-      \ sentence only\"}\ntask_root: \".scratch/source-fidelity-medium\"\nprotocol_ref:\
-      \ \".scratch/effective-state-replication-medium-ffb936d/protocol.json\"\nenvironment_ref:\
-      \ \".scratch/effective-state-replication-medium-ffb936d/environment.json\"\n\
-      branch: \"feat/relational-memory\"\nbase_product: \"ffb936de66996128e94675e619815b5d8da12df5\"\
-      \nselected_groups: [1, 2, 3]\norder: [[1, native], [1, nunc], [2, nunc], [2,\
-      \ native], [3, native], [3, nunc]]\nexpected_deliveries: {native: 23, nunc:\
-      \ 23, total: 46}\nmodel: {provider: openai, id: gpt-6.1-sol, api: openai-responses,\
-      \ mainThinking: medium, maintenanceThinking: medium, physicalContext: 272000}\n\
-      compaction: {enabled: true, reserveTokens: 255616, keepRecentTokens: 8000, effectiveTrigger:\
-      \ 16384}\nnunc: {q: 0.5, memoryTools: false, otherOptions: unchanged defaults}\n\
-      environment: {node: 26.10.0, npm: 11.19.1, pi: 1.1.0, python: 3.12.12, numpy:\
-      \ 2.5.4, pandas: 2.3.3}\nupstream: {sourceRevision: \"6cd9de14b71915e39ac742a20dc33785e14b6aab\"\
-      , datasetRevision: \"da1a37c8b19280e18627ca01cf368195a5e1d92e\", flightCsvBytes:\
-      \ 304807007, officialTools: 6}\nlimits: {runSeconds: 10800, operationSeconds:\
-      \ 900, assistantRoundsPerTraveler: 30, successfulOperations: 400, contextInput:\
-      \ 12000000, output: 200000, toolCalls: 800, maintenancePerSession: 16}\nallocation:\
-      \ {estimatedPeakGiB: 5, reserveGiB: 10}\n\nDeliver: 在隔离 detached worktree 应用\
-      \ parent 提供的精确两处文本替换，改善维护忠实度：避免将未经来源支持的 feasibility、全局不存在或不可能判断写成事实，保留已有确证的否定、实际选择及限定条件。只修改列明两处；其余\
-      \ prompt/trailer 保持原样。不改 renderMemory、headers、memory.ts、projection、anchors，保留\
-      \ persisted exact compatibility；不改 schema、算法、q、budget、cuts、auth、main reader\
-      \ hooks、scorer、docs 或任何其他产品内容。完成实际 diff、build 及直接调用现有快速 request/protocol 行为检查后，提交并冻结源候选，首次推理必须晚于冻结。\n\
-      \n同一 owner 对该候选交付 ONE fresh comparison：完整三组、六真实 Pi sessions、46 deliveries，按既定顺序。复用旧\
-      \ protocol/environment/cases/helpers 的适用内容，在新 task root 记录此次候选及运行绑定；旧 roots/evidence/helpers\
-      \ 只读，不沿用旧 authority/product binding 当成此次授权。恢复完整固定 flight CSV/full database 和六官方\
-      \ tools，不以 retained grading subset 代替 live 数据。保留官方 prompts/templates、评分与适配限制，禁止\
-      \ future gold/questions 泄露或 expected-answer feedback。报告每 arm PS/SPS/SR、explicit/catalog/strict\
-      \ gold-exact、usage/cache/time/catalog cost、M/CP 和 source→M→next output 的逐人证据。比较\
-      \ BOTH ffb936d 历史运行：Nunc 8PS/84.524SPS/66 rules 与 11PS/97.619SPS/73 rules；只作事实比较，无因果、稳定性或统计显著性结论，parent\
-      \ 另行深入分析。\n\nBoundary: 用户指定 node-typescript-engineer 负责完整产品候选和其有限效果观察。仓库变更可\
-      \ Git 回退；已发生推理不可回滚，只核对而不重放。效果仅在该候选的隔离 benchmark sessions 内，不交付另一个 runtime 服务；完成程序包含\
-      \ live 观察，故无需额外 source/runtime/reviewer/gate chain。只允许已授权 native ChatGPT subscription\
-      \ OAuth，通过正常 native auth owner；不手工读取、复制或打印凭据，不做 auth admin，不引入新 credentials/spend。禁止\
-      \ probe、小 case、小模型 replay、model judge、forced failure、fallback、global/core/日常\
-      \ session mutation、reload、push、main merge、adoption。仅隔离 benchmark session 内正常协议演进获授权。候选冻结后禁止\
-      \ tuning/source 修改与推理重播。Orchestrator 负责整合同一候选，worker 不操作主集成分支或 Plan。\n\nAdmit:\
-      \ parent 的精确两处替换文本为写入输入，不能自行另拟文本扩大修改。现有协议/环境/helpers/cases 可复用；旧 protocol 中旧\
-      \ product/authority/historical comparison binding 由本步明确增量覆盖，其余不变。使用受控 Node26.10.0/npm11.19.1\
-      \ 与 tracked lock 依赖；不修改 manifest 来迎合环境，不调用要求旧版本且扩大测试面的默认检查入口。无 CodeGraph index，使用\
-      \ native fallback。每次重型分配前重新确认 free space 能覆盖所有并行峰值 5GiB 加 10GiB reserve，规划时约57GiB\
-      \ free。仅恢复必要 owned runtime/fullDB/env/cache。\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/effective-state-replication-medium-ffb936d/helpers\n\
-      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/effective-state-live-medium-ffb936d/helpers\n\
-      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/native-migration/live-support/helpers\n\
-      \nRecovery: 前置环境错误可在 owner 内修复；推理开始后的故障先核对进程/效果/usage，缺失和 unknown 如实记录，不能冒充完整46交付，不能通过重跑修补结果。保留已知\
-      \ native 四次 maintenance body 未捕获的观察限制；不新增 auditor 或观测框架。实际 billing unknown，catalog\
-      \ cost 只为估算。整合、证据消费及效果核对完成后删除本次 owned runtime/worktree/fullDB/env/cache 与冗余副本；只保留\
-      \ minimal unique evidence、offline grading inputs、有效来源和 parent 分析所需 links；禁止对复制的\
-      \ grading inputs 再评分。不得删除旧 canonical evidence 或共享依赖。记录清理实际 filesystem free-space\
-      \ change；未知效果保留最低必要诊断并停止依赖动作。"
-    verification: "限定离线检查：审查实际 diff，证明只有授权两处文本变化、其余提示/持久化/rendering/projection/anchors/schema\
-      \ 无变化；用 tracked lock 的开发依赖完成 build，再直接运行已有 request/source 与响应协议行为检查。命令参考如下，owner\
-      \ 可在同一限定语义范围选择等价直接调用；干净 worktree 依赖按 tracked package-lock 重现，Node26.10.0/npm11.19.1\
-      \ 是本次明确环境覆盖，不改 manifests。\n```yaml\nchecks:\n  - id: diff\n    argv: [git, diff,\
-      \ --check]\n    exit_code: 0\n  - id: build\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
-      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, node_modules/typescript/bin/tsc,\
-      \ --project, tsconfig.json]\n    exit_code: 0\n  - id: quick-request-protocol\n\
-      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
-      \ PI_TELEMETRY=0, node, --test, --test-concurrency=1, dist/tests/engine/source.test.js,\
-      \ dist/tests/engine/memory.test.js]\n    exit_code: 0\n```\n禁止 default205suite、全量检查、小模型重播、新框架或\
-      \ phrase assertions；不把 prompt 字串存在视为语义证明。复用未受影响离线证据，不重开历史产品验收。\n运行前确认提交冻结及 live\
-      \ 加载的是同一候选；没有推理前 probe。运行后按现有 scorer 对完整 selected manifest 一次离线评分，核对六 session/46\
-      \ deliveries、顺序、完整数据/官方工具、实际 main+maintenance MEDIUM 配置、finite caps、全部要求指标、与两次\
-      \ ffb 历史结果的事实比较及每人 source/M/next-output links。native maintenance outbound body\
-      \ 未捕获与配置证据分开披露；不补观测或新增 auditor。分开报告命令退出、观察事实及要求满足。Orchestrator 在本步完成程序作唯一此次整体接受，并整合同一已观察源候选：两处变更和持久化兼容限制、限定机械检查、一次完整比较及已知局限、effects/usage/cleanup\
-      \ 均成立才完成；负收益允许，必要结果缺失不可接受。parent 深入分析和通知不构成额外 acceptance node。"
+      \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/engine/pi-model.ts\"\
+      , \"tests/engine/pi-model.test.ts\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"src/engine/memory.ts\"\
+      , \"docs/**\"]\nbranch: \"feat/relational-memory\"\n\nDeliver: 交付 parent 已接受的精确两处维护提示替换，以及用户“修复”授权的\
+      \ API-level thinking 修复与真实 native SDK 回归。两处提示仅修改 policies/default.md 指定段落与 src/engine/request.ts\
+      \ 的 Source records 句，其余提示/trailer 不变。pi-model 将选定且支持的 thinking 传递给 openai-completions，保留\
+      \ Responses、LOW、OFF/default omission 与 unsupported rejection 语义，不以 provider\
+      \ 特例或 wrapper 强制 MEDIUM。保留 rendering、headers、memory、projection、anchors、schema、持久化\
+      \ exact compatibility、算法、q、budget、cuts、auth、main reader hooks 和 scorer。\nBoundary:\
+      \ 原 node-typescript-engineer 责任不变；保留已有候选及源工作。仅仓库事务，可 Git 回退。Orchestrator 根据已接受源证据整合至当前\
+      \ feat/relational-memory；worker 不操作主集成分支或 Plan。无 paid inference、probe、全局/日常\
+      \ session mutation、reload、push、main merge 或 adoption。\nAdmit: parent 已独立检查完整实际\
+      \ diff 与 RESULT，接受 build、原48检查、3 adapter checks 与1 Responses check，以及新增真实 SDK\
+      \ serializer regression 修复前失败/修复后通过。这些适用证据足以完成本步；不得因拆分、Plan-only 变化或整合重跑。无 CodeGraph\
+      \ index，必要源定位使用 native fallback。不另拟 prompt，不扩大产品范围。\nRecovery: 保留源候选、可恢复提交和下游必要证据；整合由\
+      \ Orchestrator 核对实际目标。释放 acceptance-only worktree 前保留可恢复源及 minimal unique evidence。运行比较及原有未知效果/预算保留由依赖步骤负责，源步骤完成不表示\
+      \ benchmark 或本增量整体完成。"
+    verification: Orchestrator 复用 parent 已接受且适用于整合源的实际 diff、build、原48 request/source检查、3
+      adapter checks、1 Responses check，以及真实 maintenance→public registry/runtime→native
+      SDK serializer 的失败前/通过后证据。受控 transport 不能冒充 live service 或 UI loader 证明。无需新增检查或重跑；不运行
+      default205suite、全量检查、模型微测或 phrase assertions。Orchestrator 整合当前 feat/relational-memory
+      并确认源交付；benchmark 结果不再是本步完成前提，整体增量接受仍由依赖 benchmark 完成程序负责。
     refs:
     - policies/default.md
     - src/engine/request.ts
-    - tests/engine/source.test.ts
-    - tests/engine/memory.test.ts
+    - src/engine/pi-model.ts
     - package-lock.json
+    - .scratch/source-fidelity-openrouter-fixed/RESULT.md
+    - .scratch/source-fidelity-openrouter-fixed/completion.json
+    agent: node-typescript-engineer
+  - id: nunc-source-fidelity.benchmark
+    name: 固定候选一次 OpenRouter MEDIUM 比较与效果核对
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/source-fidelity-openrouter/**\", \".scratch/source-fidelity-openrouter-fixed/**\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\", \"\
+      .agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"src/**\", \"tests/**\"\
+      , \"policies/**\", \"docs/**\"]\nbranch: \"feat/relational-memory\"\nprotocol_ref:\
+      \ \".scratch/source-fidelity-openrouter-fixed/protocol.json\"\nselected_groups:\
+      \ [1, 2, 3]\norder: [[1, native], [1, nunc], [2, nunc], [2, native], [3, native],\
+      \ [3, nunc]]\nexpected_deliveries: {native: 23, nunc: 23, total: 46}\nmodel:\
+      \ {provider: openrouter, id: \"openai/gpt-6.1-sol\", api: openai-completions,\
+      \ mainThinking: medium, maintenanceThinking: medium, catalogContext: 1050000,\
+      \ effectiveContext: 272000}\ncompaction: {enabled: true, reserveTokens: 255616,\
+      \ keepRecentTokens: 8000, effectiveTrigger: 16384}\nnunc: {q: 0.5, memoryTools:\
+      \ false, otherOptions: unchanged defaults}\nenvironment: {node: 26.10.0, npm:\
+      \ 11.19.1, pi: 1.1.0, python: 3.12.12, numpy: 2.5.4, pandas: 2.3.3}\nupstream:\
+      \ {sourceRevision: \"6cd9de14b71915e39ac742a20dc33785e14b6aab\", datasetRevision:\
+      \ \"da1a37c8b19280e18627ca01cf368195a5e1d92e\", flightCsvBytes: 304807007, officialTools:\
+      \ 6}\nlimits: {runSeconds: 10800, operationSeconds: 900, assistantRoundsPerTraveler:\
+      \ 30, successfulOperations: 400, contextInput: 12000000, output: 200000, toolCalls:\
+      \ 800, maintenancePerSession: 16}\nallocation: {estimatedPeakGiB: 5, reserveGiB:\
+      \ 10}\n\nDeliver: 对 deliver 整合的固定候选交付 ONE OpenRouter comparison，完整三组、六真实 Pi\
+      \ sessions、46 deliveries，按上述顺序，真实 product main+maintenance MEDIUM，observer 仅观察不得强制\
+      \ reasoning effort。catalog 1.05M 如实披露，session-local effective272K；不声称与历史模型/provider完全同质。复用适用\
+      \ protocol/environment/cases/helpers，保留完整 flight CSV/fullDB、六官方 tools、官方 prompts/templates、评分及适配限制；禁止\
+      \ future gold/questions 泄露或 expected-answer feedback。报告每 arm PS/SPS/SR、explicit/catalog/strict\
+      \ gold-exact、usage/cache/time/catalog cost、M/CP 和逐人 source→M→next output。比较\
+      \ BOTH ffb936d 历史 Nunc 8PS/84.524SPS/66 rules 与11PS/97.619SPS/73 rules，仅事实比较，不推断因果、稳定性或统计显著性。\n\
+      Boundary: 同一 node-typescript-engineer 负责隔离 benchmark runtime 与证据，消费独立交付的源候选，不再修改产品。仅已授权\
+      \ OpenRouter route，正常 host credential handoff，不读取/复制/打印凭据或 auth admin，不新增 credentials、账户、成本授权。已发生推理不可回滚。禁止\
+      \ probe、小case、小模型 replay、model judge、forced failure、fallback、global/core/日常\
+      \ session mutation、reload、push、main merge、adoption；不调参或重播换取改善。首次固定候选推理前源提交冻结并确认\
+      \ live 加载适用候选。\nAdmit: source integration 完成与预算/输出/时间容量合法可用均为必要条件。沿用同一 $5 allowance\
+      \ 和全部原 caps，不重置 money/workload/time，elapsed 从原 OpenRouter 开始计。保留已报告 $0.1862919\
+      \ 与未知 maintenance reservation $3.92（至多2未知subcalls）；可用 $0.8937081 小于下一 main envelope\
+      \ $1.96。已报告 output4868，原200000 cap 剩195132，但未知输出 envelope256000，容量未成立。权威 provider\
+      \ usage receipts 只有在支持释放未知 reservation 且全部 caps 可满足时才能解除对应限制；否则必须由用户明确修订相关 allowance/caps，当前没有该授权。不得把\
+      \ unknown 当0，不启动推理、支付、probe 或预算 reset。保留原 native7 answers、1 persisted compaction、未完成\
+      \ maintenance 及未启动 Nunc 的事实，不能充作修复后候选 live 证据。历史 subscription3 unknown attempts/$0.2151356\
+      \ 单独核算，不与 OpenRouter未知逻辑维护混淆；actual billing unknown。这些残余约束不得因步骤拆分而丢失。\n使用原受控\
+      \ Node/npm 与 tracked lock，不改 manifests 或扩展全量检查。重型分配前核对所有并行峰值5GiB加10GiB reserve，已清理环境仅在具有具体消费者且可合法继续时恢复。\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/effective-state-replication-medium-ffb936d/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/effective-state-live-medium-ffb936d/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/native-migration/live-support/helpers\n\
+      Recovery: 先核对进程、effects、usage；缺失/unknown 如实保留，不能冒充46交付或通过重跑修补，不新增 resume/观测框架。旧原始诊断与7\
+      \ answers及 minimal scoring inputs 保持有效，不改写原 ledger 或对复制 grading inputs 重评分。仅在实际完整\
+      \ selected manifest 成立后按现有 scorer 一次离线评分。保留已知 native四次 maintenance body未捕获限制，配置与\
+      \ outbound事实分开。运行结束、整合及证据消费完成后删除 eligible owned runtime/fullDB/env/cache/冗余副本，保留\
+      \ minimal unique evidence、offline grading inputs及parent分析links；不删旧canonical或共享依赖，记录实际filesystem\
+      \ free-space change。预算/容量未解决时终态为无活动效果、保留必要诊断及比较未完成。"
+    verification: 在合法预算/输出/时间容量成立前保持未完成，不以源接受或受控 serializer 回归代替 live 证据。合法运行后核对固定候选、六
+      sessions/46 deliveries、顺序、完整数据/官方工具、实际 product MEDIUM、finite caps及所有要求指标和逐人证据。分开报告命令退出、观察事实及满足情况；negative/mixed
+      quality允许，必要结果缺失不接受。Orchestrator 在本步完成程序负责 nunc-source-fidelity 唯一最终整体接受：消费源步骤适用离线证明与当前整合候选绑定，判断完整比较、原始/新增效果与usage核对、限制披露和cleanup。复用未受影响的源回归与历史证据，不重开既有项目验收、不重复全量检查；parent深入分析无额外gate。
+    refs:
+    - .scratch/source-fidelity-openrouter-fixed/protocol.json
+    - .scratch/source-fidelity-openrouter-fixed/RESULT.md
+    - .scratch/source-fidelity-openrouter-fixed/budget-blocker.json
+    - .scratch/source-fidelity-openrouter-fixed/completion.json
     - .scratch/effective-state-replication-medium-ffb936d/protocol.json
     - .scratch/effective-state-replication-medium-ffb936d/environment.json
     - .scratch/effective-state-replication-medium-ffb936d/completion.json
     - .scratch/effective-state-live-medium-ffb936d/completion.json
+    depends_on:
+    - nunc-source-fidelity.deliver
     agent: node-typescript-engineer
