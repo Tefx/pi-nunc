@@ -6091,7 +6091,7 @@ phases:
       mainrepository diff onlyPlan. Other2suites/campaign acceptance remain independent.
   - id: nunc-three-suite.beam
     name: BEAM 长对话四条件比较
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6187,6 +6187,24 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-12T12:31:23.628938Z'
+    done_at: '2026-10-12T13:29:40.995264+00:00'
+    evidence: 'Completed all4 OpenRouter Luna/Sol×native/Nunc, pinned original nominal128K
+      chats/100K/1,2, 12original probes/condition48answers,96officialcriterionjudge
+      calls with fixed blindedOpenRouterLunaMEDIUM. Productdddd9dcunchanged; sourceGitb2da22eac88bb0874c64665f13457eb99835774a,HFcompanion3205395e897e7318c7b094ef4e6047b9b82dbb03
+      (notclaimedbyteidentical). Canonical .scratch/parallel-memory-campaign-2026-10-12/beam/RESULT.md,outcome.json,protocol.json,scores.json,condition-summary.json,cost.json,source-memory-next-payload.json;
+      evidenceGit37c0b29cf7bc820938cdf68afe70a61f58664cb3. IFmeans all.875; KU Luna.5→.75
+      Sol.75→1; CR Luna.40625→.46875 Sol.59375→.5625. Accepted as adapteddiagnostic,
+      NOTschedule-matchedadvantage: sameeffective98304/MEDIUM/sourceorder; native3CP/history
+      Nunc5 after zero-requestfull-extractioncapacity failures required naturalmidbatchsplits.
+      TwoLunaschema-only retries after rejecteduncommittedpatches, noquery/goldcoaching/no
+      successfulanswerreplay. Staleruntimeadaptercontext repaired withfreshownership,unknownholdsretained.
+      Frozen originalrubric/parser/mechanicalmean exercised;5adaptertests pass;4realzero-callpreflights;
+      actualsessiontree originalhistory/queryancestry; representative actualM→nextwire
+      forbothmodels. Parent inspected guard/scorer/sourceevidence/applicability and
+      report limits, no duplicate producttests. Knowncatalog$4.27620563 includingjudge$.01828465;unknown$.64512,inflight0,totaladmission$4.92132563<65.
+      Allworker/judgeprocesses exited; runtime removed,uniquerawscoring/runtimeobservations
+      retained; free+9654272B concurrent/APFScaveat. MainrepoonlyPlanchanged. MAB
+      still incomplete/blockedevidence; campaign not fullycomplete.'
   - id: nunc-three-suite.mab
     name: MemoryAgentBench 原样本四条件比较
     status: pending
