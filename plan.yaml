@@ -5781,7 +5781,7 @@ phases:
   steps:
   - id: nunc-source-fidelity.deliver
     name: 两处维护提示与 API thinking 修复的源交付
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/request.ts\", \"src/engine/pi-model.ts\"\
       , \"tests/engine/pi-model.test.ts\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -5815,6 +5815,28 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-12T10:26:03.494253Z'
+    done_at: '2026-10-12T10:26:42.120549+00:00'
+    evidence: 'SOURCE DELIVERY ACCEPTED AND INTEGRATED on current feat/relational-memory
+      at dddd9dc72adbb6385edccdca62b4e76d60c7543f. Original candidate cb2718ea570b997a004d3eb2d522a825af05fab2
+      retained refs/nunc/retained/source-fidelity-openrouter-fixed, preserving precedingcec2promptchanges.
+      Planner separated independently accepted source outcome from blocked externalbenchmark
+      in samephase/sameNodeowner; necessarydefer/reclaim onlyforlegalcontractedit,
+      no writer/effectoverlap or workdiscard. Postclaimintegration_basis81d091fe7d65d685a482223885f15c25406224ad;
+      rebased exactlytwo implementation commits from12fafd74, onlyPlan differs from
+      originalcandidate, existing source/build/regression evidence remainsapplicable.
+      Exactancestor/HEAD compare then FFverified. Fourfiles: policies/default.md+src/engine/request.ts
+      exact2approvedpromptreplacements; src/engine/pi-model.ts API-level selectedsupportedthinking
+      forwarding includesopenai-completions preservingResponses/off/undefined/unsupported
+      behavior; tests/engine/pi-model.test.ts actualmaintenance->piComplete->registry/runtime->nativeOpenRouterserializer
+      controlledregression failedbefore/passedafter. Parent+Orchestrator inspectedactualdiff;
+      build48priorfocusedchecks+3adapter+1Responses evidence reused unchanged, no
+      newtests/model/probes. Evidence .scratch/source-fidelity-openrouter-fixed/{RESULT.md,completion.json,candidate.patch,logs/}
+      and .scratch/source-fidelity-medium/source-checks.json. No memory/header/persistence/schema/budgetalgorithm
+      changes. Controlledserializer evidence doesnotprove liveOpenRoutercomparison/UIloader.
+      Nativepartial7answers and unknowncost/output preserved, no inference duringintegration;
+      benchmark separateunfinished step retains$5budget blocker. Main7654720 untouched,
+      no push/adoption/reload/globalchanges. Cleanworktree cleanup follows; minimal
+      uniqueverification/interruption evidence retained.'
   - id: nunc-source-fidelity.benchmark
     name: 固定候选一次 OpenRouter MEDIUM 比较与效果核对
     status: pending
