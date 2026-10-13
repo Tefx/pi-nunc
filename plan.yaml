@@ -6424,7 +6424,7 @@ phases:
       main unchanged, no push/install/adoption.
   - id: nunc-three-suite.arena-rerun
     name: MemoryArena 整合候选四条件重跑
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6511,6 +6511,22 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T03:20:52.003119Z'
+    done_at: '2026-10-13T03:44:43.750769+00:00'
+    evidence: Accepted fresh exact-product c6bc35bd4af0f57cfc3b3db675b31deda446d147
+      Arena four conditions/80of80 answers, unchanged groups4/5/6/order/templates/scorer/full304807007BflightCSV/6tools
+      and paired272K/16K/q.5. Read RESULT/provenance/cost/scores/handoff and process/cleanup
+      evidence; unchanged official scorer comparison confirmed. Official PS10/20/15/15%,
+      SPS85.3086/84.7578/98.6111/75%, SR0/3 all; complete plans17/17/20/16of20; explicit87/82/103/79of105.
+      Mixed outcomes valid, no improvement mandate. All12Nunc checkpoints savedM→nextactualpayload
+      observed; native maintenance directwire unavailable, installed-flow/session
+      proof only; persistentPi adapter and upstream3day/5day tension/cosmetic supplemental
+      inventory limitation disclosed. Newcost1.74213144USD, unknown0,inflight0,194admissions
+      settled,45USDcap. Prior28.384968475 unchanged; BEAM/MAB new cost separate. Build/preflight/adapter/scorer
+      checks valid; offline inventory-path repair without paid replay. All suite processes
+      stopped/bridge terminated; reproducible runtime/fullDB/env removed, observed
+      free delta421228544B with concurrent caveat. Evidence .scratch/memory-update-rerun-2026-10-12/arena/RESULT.md
+      and canonical reports/raw records; suite Git33b70d8ffc612dd9631820e4aa9a6b4dd6bfbeac.
+      Old results/history preserved. No product/Plan worker edits or Telegram.
   - id: nunc-three-suite.beam-rerun
     name: BEAM 整合候选四条件重跑
     status: claimed
