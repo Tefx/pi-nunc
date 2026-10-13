@@ -9,22 +9,26 @@
 version: 1
 project: pi-nunc
 strategy_ref: docs/DESIGN.md
-context: Authorized implementation of GENERAL-IMPROVEMENT-DESIGN followed by fresh
-  three-suite Luna/Sol native/Nunc benchmarks on the integrated candidate. Current
-  user instruction supersedes proposal-only/no-benchmark language. Preserve completed
-  history and original incomplete MAB goal; no adoption/reload/push/global install.
-  Existing cumulative <USD200 includes all prior known/held amounts.
-project_guidance: 'Follow nunc-three-suite contracts and docs/CONSTITUTION.md: retained
-  senior-engineer owns source update, same-submit cleanup validation and stable committed
-  cleanup; existing node-typescript-engineer owners retain four-condition suites.
-  Orchestrator integrates source before fresh benchmarks and owns final integrated
-  acceptance/report. Affected deterministic tests/build plus applicable prior proof;
-  no extra gate/model matrix. Preserve claims, completed history and original observations.
-  Event first uses original sample/protocol on the fresh candidate; only recurring
-  content_filter permits already-authorized separately labeled fixed same-four-arm
-  replacement inputs/questions, with no score selection/mixing/bypass/redaction. Missing
-  original answers remain incomplete. Cumulative prior28.384968475 plus all new effects
-  stays <USD200; exclusive new caps Arena45/BEAM50/MAB50, headroom controller-held.'
+context: User accepted DEFAULTS-IMPROVEMENT-PROPOSAL.md and requested implementation
+  plus bounded benchmarks. Add one cohesive auto-output/full-source/content/retention
+  source delivery; reuse pending mab for separately consumed paid evidence. This durable
+  scope supersedes the pending fresh all-three-suite/12-condition replay and Event
+  instructions; preserve all completed definitions, failures and original incomplete
+  coverage. No adoption/install/reload/global settings writes/push/main merge. Cumulative
+  prior51.085838350 remains charged; this bounded benchmark allows at most newUSD20
+  within strict total<USD200.
+project_guidance: Follow docs/CONSTITUTION.md and the accepted DEFAULTS-IMPROVEMENT-PROPOSAL.md.
+  node-typescript-engineer owns defaults source and the existing mab runtime outcome
+  across separate repository/effect boundaries. Orchestrator integrates and accepts
+  offline source before calls, then makes final integrated acceptance in mab completion;
+  no extra gate or blanket matrix. Use actual auto/full defaults, preserve explicit
+  numeric/auto-source options, Pi ownership and existing invariants. Reuse applicable
+  evidence and helpers; historical results, unknown holds and completed Plan history
+  stay immutable. New Fact Luna/Nunc and Sol/Nunc plus one frozen ordinary rolling
+  case only; reuse unchanged native evidence, no Event replay. New≤USD20 including
+  holds/reservations, cumulative<USD200 from prior known30.784718350+held20.30112.
+  Keep15GiB disk reserve and clean reconstructible task artifacts after consumers
+  end.
 clipboard:
   author: vectl-orchestrator
   summary: 稳定记忆功能验收已完成；工作树归档，旧比较结论保留
@@ -5954,30 +5958,32 @@ phases:
 - id: nunc-three-suite
   name: OpenRouter Luna/Sol 三套件并行比较
   status: in_progress
-  gate: 'Orchestrator accepts this suite only with all four contracted conditions
-    on the integrated candidate, full frozen coverage, unchanged official scores,
-    bounded runtime/pressure evidence and reconciled costs/effects/cleanup. Missing
-    observations keep it partial. Reuse applicable deterministic proof, run only affected
-    adapter checks; no extra product/model matrix or reviewer gate. Orchestrator owns
-    final integrated acceptance across memory-update, arena-rerun, beam-rerun and
-    mab: material design contracts proved by build/affected deterministic tests plus
-    applicable prior offline inventory evidence, and all12 benchmark conditions on
-    the same candidate under cumulative <USD200. Separate mechanical correctness from
-    bounded quality/cost observations and historical unresolved MAB scope; missing
-    original Event or truncation prevents declaring the original 12-condition benchmark
-    complete. The conditionally authorized fixed four-arm Event replacement, if triggered
-    and completed, is reported separately with its own coverage; it cannot fill original
-    missing answers or retroactively complete historical results. No cross-suite score
-    average or universal benefit claim.'
-  context: Accepted general-memory improvement under docs/CONSTITUTION.md and first
-    revised design sections, then fresh original three-suite/12-condition benchmarks.
-    Withdraw cross-time semantic cleanup reversal while retaining same-submit mechanical
-    checks, explicit reads/disable restoration and stable prefix. Completed Arena/BEAM
-    definitions/evidence unchanged; existing MAB retains historical incomplete scope.
-    Event first runs original fresh-candidate protocol; recurring content_filter alone
-    triggers user-authorized separately labeled fixed four-arm replacement. Original
-    observations and missing-answer status remain distinct. No new scope or acceptance
-    chain. Existing cumulative <USD200 counts all known/held spending.
+  gate: Orchestrator owns the single final integrated acceptance of this accepted
+    defaults-improvement source plus bounded benchmark outcome in nunc-three-suite,
+    consuming defaults source proof and mab runtime evidence, with applicable completed
+    memory-update/arena-rerun/beam-rerun and native observations as provenance rather
+    than required reruns. Bind source/complete applicable offline regression inventory
+    and required runtime observations to the integrated candidate; reuse unchanged
+    valid evidence and execute affected gaps. Required observations are two new Nunc
+    Fact formation/SH+MH attempts (40/model when formation succeeds) and one frozen
+    ordinary rolling case with applicable native comparison, full coverage/failure/resource/semantic
+    reporting and reconciled spend/effects/cleanup. A witnessed formation failure
+    is a valid negative measurement; missing necessary observation, unproven product
+    contract, failed necessary deterministic check or blocking product defect prevents
+    acceptance. No required score gain, full-mark Arena outcome, zero-filled missing
+    answers or universal benefit claim. Report separately whether bounded work completed,
+    mechanical contracts passed, and measured quality/cost improved, regressed or
+    remain unknown. The original12-condition benchmark and default8192 Sol/Event gaps
+    remain incomplete historical results; completing this newly authorized scope does
+    not retroactively complete them. No additional gate or external adoption.
+  context: User accepted DEFAULTS-IMPROVEMENT-PROPOSAL.md and requested implementation
+    plus bounded benchmarks. Add one cohesive auto-output/full-source/content/retention
+    source delivery; reuse pending mab for separately consumed paid evidence. This
+    durable scope supersedes the pending fresh all-three-suite/12-condition replay
+    and Event instructions; preserve all completed definitions, failures and original
+    incomplete coverage. No adoption/install/reload/global settings writes/push/main
+    merge. Cumulative prior51.085838350 remains charged; this bounded benchmark allows
+    at most newUSD20 within strict total<USD200.
   steps:
   - id: nunc-three-suite.arena
     name: MemoryArena 新完整组四条件比较
@@ -6215,103 +6221,107 @@ phases:
       retained; free+9654272B concurrent/APFScaveat. MainrepoonlyPlanchanged. MAB
       still incomplete/blockedevidence; campaign not fullycomplete.'
   - id: nunc-three-suite.mab
-    name: MAB 整合候选重跑与原未完成范围
+    name: 新默认 Fact 与一次普通滚动有界比较
     status: pending
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
-      , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
-      , \"package.json\", \"package-lock.json\", \".pi/**\", \".env\", \".env.*\"\
-      , \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\nproduct_target: \"\
-      Orchestrator-integrated nunc-three-suite.memory-update candidate\"\nprotected_main:\
-      \ \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nsuite: \"MemoryAgentBench\"\n\
-      conditions: [\"Luna/native\", \"Luna/Nunc\", \"Sol/native\", \"Sol/Nunc\"]\n\
-      \nupstream: {repository: \"https://github.com/HUST-AI-HYZ/MemoryAgentBench\"\
-      }\nsampling: {tasks: [\"FactConsolidation SH\", \"FactConsolidation MH\", \"\
-      EventQA\"], questionsPerTask: 20, questionsPerCondition: 60}\nmaintenance: {manualAfterChunks:\
-      \ [8, 17], bothArms: true, discloseStressAdaptation: true}\nDeliver: Fresh four-condition\
-      \ MAB candidate rerun using original SH/MH FactConsolidation and EventQA first20\
-      \ each,60 per condition/240 total, original framing, shared Fact formation,\
-      \ independent frozen-state query clones and manual chunks8/17 pressure. Preserve\
-      \ official scorer/gold despite latest-fact or punctuation conflicts, report\
-      \ conflicts separately. Historical120/240 QA and all original observations remain\
-      \ incomplete history; fresh candidate answers do not retroactively fill old\
-      \ missing observations. Sol default8192 unchanged; fresh truncation remains\
-      \ incomplete. Event authorization: First execute the original Event sample/protocol\
-      \ on the fresh integrated candidate. Only recurrence of content_filter permits\
-      \ a separately labeled replacement with one fixed input/question set shared\
-      \ by all four arms. This conditional alternative is already user-authorized;\
-      \ do not seek the same approval again. No score-driven selection, original/replacement\
-      \ mixing, bypass, redaction or provider substitution. Preserve original failed/missing\
-      \ answers as incomplete and keep historical results unchanged; alternative results\
-      \ never fill original missing observations. Stop identical filtered replay after\
-      \ the authorized fresh-original observation. Independent suites and Fact remain\
-      \ independent.\nBoundary: node-typescript-engineer owns suite-local adapter\
-      \ preparation, meaningful affected checks, finite paid execution, official scoring\
-      \ and cleanup as one runtime transaction. Only task-owned .scratch evidence/runtime;\
-      \ source frozen at Orchestrator-integrated memory-update candidate. No product\
-      \ edits, push/main merge/adoption/reload/global install or credential administration.\
-      \ Existing supported credentials via native owner handoff only; OpenRouter openai/gpt-6-luna\
-      \ and openai/gpt-6.1-sol, openai-completions MEDIUM for main/maintenance; no\
-      \ effort injection, route fallback or additional model matrix.\nAdmit: Fresh\
-      \ formation and answers only AFTER integrated source delivery; all suites bind\
-      \ the same immutable candidate. Freeze original sample order, templates, scorer\
-      \ and protocol before answers; retain source/probe/gold isolation and independent\
-      \ QA clones. Reuse canonical historical protocols and disclosed clarifications,\
-      \ not stale legacy route/thinking fields. Observe actual Nunc wire and bounded\
-      \ native MEDIUM/installed-flow proof; preserve physical bounds and paired effective\
-      \ pressure. Preserve default extraction min(8192,model.maxTokens), no adaptive\
-      \ budget, automatic retries, answer-driven selection or replay until passing.\
-      \ Required fresh benchmark observations cannot be substituted by historical\
-      \ scores.\nMoney: One existing strict cumulative <USD200 ceiling, NOT a fresh\
-      \ USD200 allowance. Conservatively charge historical known1.3262445 +held5.88\
-      \ and prior campaign known13.645603975 +held7.53312 (=28.384968475) plus every\
-      \ new call, failed/unknown hold and in-flight envelope. Current exclusive new\
-      \ suite caps are Arena45/BEAM50/MAB50 USD within the same cumulative ceiling;\
-      \ controller retains remaining headroom and reconciles reservations before reallocation\
-      \ using existing guards. Old60/65/55 allocations are historical, never new grants.\
-      \ Pre-call reserve all possible subcalls at current supported catalog prices;\
-      \ unknown usage remains held. No billing/credential administration.\nEvidence:\
-      \ Preserve original reports/observations unchanged; use a separate fresh-candidate\
-      \ run directory and versioned/tested material adapter, guard and scoring source\
-      \ before paid use. Reuse existing helpers rather than create a framework. Record\
-      \ per-case official results, actual maintenance counts, source→saved M→next\
-      \ payload, usage/cache/context/output/latency/cost and fairness limits. No DB/runtime\
-      \ remains from prior campaign; rebuild needed full inputs from canonical sources,\
-      \ never use scorer subsets as live databases. Budget concurrent disk peaks and\
-      \ reserve before allocation. Independent suites and MAB Fact may proceed without\
-      \ Event.\nRecovery: The MAB contract authorizes one fresh-original Event execution\
-      \ on the integrated candidate despite historical filtering, followed only on\
-      \ recurring content_filter by its fixed separately labeled alternative. No further\
-      \ identical filtered replay. Reconcile processes/descendants and uncertain effects\
-      \ before any bounded distinguishing recovery; preserve failed outcomes and reservations.\
-      \ Truncated/missing answers remain incomplete, never zero-score or PASS. Reconcile\
-      \ before deleting reconstructible task-owned runtimes; retain minimum unique\
-      \ observations/protocols/scoring inputs. Report actual free-space change if\
-      \ claiming reclaimed capacity. Mixed/negative quality is valid evidence, not\
-      \ an improvement mandate.\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/mab/helpers"
-    verification: 'Orchestrator accepts this suite only with all four contracted conditions
-      on the integrated candidate, full frozen coverage, unchanged official scores,
-      bounded runtime/pressure evidence and reconciled costs/effects/cleanup. Missing
-      observations keep it partial. Reuse applicable deterministic proof, run only
-      affected adapter checks; no extra product/model matrix or reviewer gate. Orchestrator
-      owns final integrated acceptance across memory-update, arena-rerun, beam-rerun
-      and mab: material design contracts proved by build/affected deterministic tests
-      plus applicable prior offline inventory evidence, and all12 benchmark conditions
-      on the same candidate under cumulative <USD200. Separate mechanical correctness
-      from bounded quality/cost observations and historical unresolved MAB scope;
-      missing original Event or truncation prevents declaring the original 12-condition
-      benchmark complete. The conditionally authorized fixed four-arm Event replacement,
-      if triggered and completed, is reported separately with its own coverage; it
-      cannot fill original missing answers or retroactively complete historical results.
-      No cross-suite score average or universal benefit claim.'
+      , \"plan-dashboard.html\", \".vectl/**\", \"src/**\", \"tests/**\", \"docs/**\"\
+      , \"policies/**\", \"package.json\", \"package-lock.json\", \".pi/**\", \".env\"\
+      , \".env.*\", \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\nproduct_target:\
+      \ \"Orchestrator-integrated nunc-three-suite.defaults candidate\"\nprotected_main:\
+      \ \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nconditions: [\"Luna/Nunc Fact\
+      \ SH+MH\", \"Sol/Nunc Fact SH+MH\", \"one ordinary automatic-rolling Nunc case\
+      \ with retained native counterpart\"]\nmodels: [\"openai/gpt-6-luna\", \"openai/gpt-6.1-sol\"\
+      ]\nroute: {provider: \"openrouter\", api: \"openai-completions\", thinking:\
+      \ \"MEDIUM\"}\nsampling: {factQuestionsPerTask: 20, factQuestionsPerModel: 40,\
+      \ factManualAfterChunks: [8, 17], ordinaryRollingCases: 1, native: \"reuse valid\
+      \ unchanged retained evidence\"}\nbudget: {strictCumulativeLessThanUSD: 200,\
+      \ priorKnownUSD: 30.784718350, priorUnknownHeldUSD: 20.30112, priorEnvelopeUSD:\
+      \ 51.085838350, initialInflightUSD: 0, maximumNewUSD: 20, diskReserveGiB: 15}\n\
+      Deliver: Bounded fresh-candidate benchmark of Luna/Nunc and Sol/Nunc Fact SH+MH\
+      \ on retained canonical inputs/protocol, 40 questions each if formation succeeds,\
+      \ plus exactly one existing ordinary automatic-rolling Nunc case with a relevant\
+      \ retained native counterpart (an Arena group is suitable). Freeze the ordinary\
+      \ case/model and applicability before model calls using protocol relevance,\
+      \ never scores. Preserve MAB shared Fact formation, independent frozen-state\
+      \ query clones, original first20 SH/MH, original scorer/gold/framing and disclosed\
+      \ chunks8/17 pressure. No Event original/filter/replacement replay, BEAM rerun,\
+      \ all-three-suite matrix or extra model matrix. Completed Event replacement\
+      \ requires no renewed authorization. Old default8192 missing scores and original12-condition\
+      \ incompleteness remain historical facts, not a replay gate.\nBoundary: Existing\
+      \ node-typescript-engineer owns this separately consumed paid-runtime evidence\
+      \ and cleanup transaction; source remains frozen after integration and offline\
+      \ acceptance. Use existing runner/helper mechanisms and producer-delivered tracked/tested\
+      \ material logic; only thin task-local selection/delegation may be new. No product\
+      \ edits, main merge/push, host/global configuration writes, adoption/install/reload,\
+      \ provider/bot fallback or credential/billing administration. Use supported\
+      \ native OpenRouter authorization through existing runtime handoff; no secrets\
+      \ or credential locations in artifacts.\nAdmit: Source delivery and offline\
+      \ checks precede calls. Demonstrate actual product omitted/auto output and full-source\
+      \ defaults in effective configuration and wire observations; helpers must not\
+      \ pin legacy8192. Preserve all other canonical inputs, model routes, MEDIUM\
+      \ main/maintenance, effective pressure and protocols; disclose changed product/defaults/retention\
+      \ and limitations. Reuse valid unchanged native evidence with an explicit applicability\
+      \ decision; do not replay it to create artificial freshness. Restore full source-native\
+      \ DB for a live Arena case; tiny offline scorer subsets are not live inputs.\
+      \ Use canonical source/probe/gold isolation and unchanged official scoring.\n\
+      Money: New USD20 is a maximum inclusive envelope for ALL new main/maintenance/judge/error\
+      \ calls, reservations, in-flight and unknown holds, within the existing cumulative\
+      \ strict <USD200 campaign limit. Carry known30.784718350 + unknown held20.30112\
+      \ =51.085838350 forward without release/reset; historical45/50/50 or earlier\
+      \ allocations are not new grants. Pre-call conservatively reserve all possible\
+      \ subcalls at supported catalog prices with existing guards; reconcile completion\
+      \ before reserving again. Unknown usage remains held, never zero. Stop before\
+      \ exceeding either envelope; a budget stop is a disclosed missing observation,\
+      \ not authority to expand spend.\nEvidence: Preserve original reports/raw provenance\
+      \ and failures unchanged. New target-bound comparison includes coverage/failures,\
+      \ actual source→saved M→next payload, necessary semantic contents/relationships\
+      \ (not just larger M/valid JSON/self-report), complete source, cap/reserve/M/K,\
+      \ output/reasoning, maintenance counts, usage/cost/cache, subsequent input,\
+      \ latency and fairness limits. Compare native versus new candidate using applicable\
+      \ native evidence; distinguish changed defaults from old8192 outcomes and avoid\
+      \ isolated-cause/universal-benefit claims. Catalog usage observations are not\
+      \ provider bills. Formation failure permits no invented answers or zero-filled\
+      \ scores; keep truncated output uncommitted. Negative quality/formation results\
+      \ are valid measurements, never permission for repeated sampling.\nRecovery:\
+      \ No automatic retry, JSON repair, postfailure cap increase, fallback or retry-until-green.\
+      \ Reconcile processes/descendants, actual effects and reservations after failure\
+      \ or stop. Before heavy allocation compare all concurrent additional peaks against\
+      \ current free space with15GiB reserve; reduce concurrency or scope of preparation\
+      \ if needed, without reducing contracted observations silently. Reconstructible\
+      \ runtimes/fullDB/build environments are removable after consumers end and effects\
+      \ reconcile; retain minimal unique raw observations, canonical scoring/protocol\
+      \ inputs and source. Report actual filesystem free-space change when claiming\
+      \ reclamation.\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/arena/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/beam/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/mab/helpers"
+    verification: Orchestrator owns the single final integrated acceptance of this
+      accepted defaults-improvement source plus bounded benchmark outcome in nunc-three-suite,
+      consuming defaults source proof and mab runtime evidence, with applicable completed
+      memory-update/arena-rerun/beam-rerun and native observations as provenance rather
+      than required reruns. Bind source/complete applicable offline regression inventory
+      and required runtime observations to the integrated candidate; reuse unchanged
+      valid evidence and execute affected gaps. Required observations are two new
+      Nunc Fact formation/SH+MH attempts (40/model when formation succeeds) and one
+      frozen ordinary rolling case with applicable native comparison, full coverage/failure/resource/semantic
+      reporting and reconciled spend/effects/cleanup. A witnessed formation failure
+      is a valid negative measurement; missing necessary observation, unproven product
+      contract, failed necessary deterministic check or blocking product defect prevents
+      acceptance. No required score gain, full-mark Arena outcome, zero-filled missing
+      answers or universal benefit claim. Report separately whether bounded work completed,
+      mechanical contracts passed, and measured quality/cost improved, regressed or
+      remain unknown. The original12-condition benchmark and default8192 Sol/Event
+      gaps remain incomplete historical results; completing this newly authorized
+      scope does not retroactively complete them. No additional gate or external adoption.
     refs:
-    - .scratch/parallel-memory-campaign-2026-10-12/RESULT.md
-    - .scratch/parallel-memory-campaign-2026-10-12/summary.json
-    - .scratch/parallel-memory-campaign-2026-10-12/allocation.json
+    - .scratch/memory-update-rerun-2026-10-12/DEFAULTS-IMPROVEMENT-PROPOSAL.md
+    - .scratch/memory-update-rerun-2026-10-12/RESULT.md
+    - .scratch/memory-update-rerun-2026-10-12/summary.json
+    - .scratch/memory-update-rerun-2026-10-12/allocation.json
+    - .scratch/memory-update-rerun-2026-10-12/NATIVE-COMPARISON.md
     - .scratch/parallel-memory-campaign-2026-10-12/mab/protocol.json
-    - .scratch/parallel-memory-campaign-2026-10-12/mab/RESULT.md
     depends_on:
-    - nunc-three-suite.memory-update
+    - nunc-three-suite.defaults
     agent: node-typescript-engineer
   - id: nunc-three-suite.memory-update
     name: 通用维护 update、清理依赖与诊断完整交付
@@ -6629,3 +6639,92 @@ phases:
       removed. Measuredfree+13479936B concurrent/APFScaveat. Canonical .scratch/memory-update-rerun-2026-10-12/beam/RESULT.md/reports/rawobservations;
       suiteGitf84a63c36f6b9e3a18125158ba86f6bf6a9cc28d. Historical results unchanged,
       no worker product/Plan mutation.
+  - id: nunc-three-suite.defaults
+    name: 默认维护额度、完整来源与内容保留改进
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"tests/**\", \"policies/**\", \"docs/**\", \"\
+      README.md\", \"scripts/**\", \".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".vectl/**\", \".pi/**\", \".env\", \".env.*\",\
+      \ \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\nprotected_main: \"\
+      7654720277ee7b2a388b543ef973db1a279d5f7e\"\noffline_environment: {node: \"26.7.0\"\
+      , npm: \"11.19.0\", dependencies: \"package-lock.json\", setup: \"npm ci --ignore-scripts\"\
+      , unset: [\"NODE_OPTIONS\"]}\noffline_inventory: {entrypoint: [\"node\", \"\
+      scripts/check.mjs\", \"all\"], build: [\"npm\", \"run\", \"build\"], suites:\
+      \ [\"tests/engine\", \"tests/pi\", \"tests/live\"]}\nDeliver: Implement the\
+      \ accepted DEFAULTS-IMPROVEMENT-PROPOSAL as one source delivery, including meaningful\
+      \ behavioral tests, public documentation and necessary tracked/tested changes\
+      \ to existing benchmark helpers consumed by nunc-three-suite.mab. Content policy\
+      \ preserves necessary task materials, relationships, evidence and results alongside\
+      \ goals/state; clarify faithful source-based organization, explicit revisions\
+      \ and direct calculations versus business execution or unsupported conclusions.\
+      \ Visible necessary content cannot be replaced by a gap note; old M references\
+      \ to K do not prove current availability. Retire unneeded metadata/completed\
+      \ material while retaining current consumers and independently revisable slots;\
+      \ no fixed slot count, fill quota or semantic judge.\nDeliver: Public extraction.outputTokens\
+      \ accepts number|'auto', omitted means auto. For capped APIs use effective capacity\
+      \ C, default floor=min(8192,C), desired ceiling=min(32768,C), actual cap at\
+      \ most remaining effective window after the complete frozen maintenance request\
+      \ and safety and at most C. Do not reserve the whole desired ceiling before\
+      \ deciding whether a full source fits; below the default floor return CAPACITY\
+      \ without dispatch. Preserve explicit numeric fixed-reserve/cap semantics, explicit\
+      \ input/output limits, serializer floor, media/tool associations and extraInputTokens.\
+      \ Freeze consistently measured final request/cap; no postfailure retry, cap\
+      \ doubling, JSON repair or partial commit. Uncapped APIs retain existing planning\
+      \ reserve/no serialized cap semantics. Existing status/accounting must distinguish\
+      \ desired amount, actual reserve/cap and limiting reason without claiming tokenizer\
+      \ guarantees or guaranteed 32K.\nDeliver: Default extraction.toolResults becomes\
+      \ full; explicit auto/head-tail remains available with omissions honestly disclosed.\
+      \ Keep M target8192/fraction0.1/no implicit hardMax, q0.5, safety/growth1024,\
+      \ inherited model/thinking and memoryToolsfalse/toolResultCleanuptrue. Improve\
+      \ feasible legal-unit rounding near soft K target to avoid gratuitous retirement\
+      \ of a whole adjacent unit when budget/growth permit it, preserving contiguous\
+      \ nonempty B/K, tool units and frozen post-extraction cut. Do not promise universally\
+      \ larger K. Keep old M and manual-growth semantics, explicit configuration,\
+      \ Memoryv1/IDs/order/CAS, sourceRefs/memoryRefs same-submit checks, cleanup/explicit\
+      \ reads/disable restoration and stable prefix.\nBoundary: node-typescript-engineer\
+      \ owns this ordinary Node/TypeScript interface and budget-policy change; accepted\
+      \ behavior is settled and existing mechanisms/local behavioral checks suffice\
+      \ without changing persistence or asynchronous ownership. No new scheduler,\
+      \ per-turn scan, semantic scorer, budget service, per-model registry or long-lived\
+      \ DB. Pi scheduling, persistence, transport, main admission and output sizing\
+      \ remain Pi-owned. No user/global host settings writes, adoption/install/reload,\
+      \ push/main merge, credentials administration or paid calls. Private algorithms/examples\
+      \ are replaceable within the accepted boundaries.\nAdmit: Start from the integrated\
+      \ completed memory-update source and docs/CONSTITUTION.md; completed definitions/evidence\
+      \ remain immutable. Existing proposal and source contracts govern scope, not\
+      \ historical default8192 benchmark gates. Keep source plus tests/docs in one\
+      \ transaction; reuse relevant helpers and adapt any material target/payload/guard/scoring\
+      \ logic as tracked tested source before the runtime consumer uses it. Existing\
+      \ helper overrides must not pin legacy8192 or hide actual auto/full defaults.\n\
+      Recovery: Failed necessary source checks keep this delivery unfinished; repair\
+      \ within this step and current authority. Preserve valid existing work/evidence,\
+      \ reconcile writers before handoff, and report any material contract conflict.\
+      \ Reconstructible isolated environments/build outputs may be deleted after their\
+      \ consumer ends; keep minimal unique evidence and recoverable source. No product\
+      \ benchmark retry loop.\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/arena/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/beam/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/mab/helpers"
+    verification: Orchestrator accepts the integrated source only after build and
+      discriminating deterministic proof for ample/limited/insufficient auto headroom,
+      provider capability and uncapped routes, explicit numbers and full/auto compatibility,
+      complete frozen input accounting, legal lower/upper K boundaries, failure/cancellation
+      without retry or partial save, and unchanged old-M/manual budgets and host/persistence/cleanup/prefix
+      contracts. Cover the complete applicable project-native offline inventory on
+      the integrated candidate by applicable prior evidence plus new affected-scope
+      execution; changed inputs invalidate affected proof. Node26.7.0/npm11.19.0,
+      tracked lock dependencies and unset NODE_OPTIONS must reproduce checks from
+      clean checkout; scripts/check.mjs all exits nonzero on setup/build/test failure
+      and success covers controlled offline seams, not live model quality. Required
+      missing tracked benchmark support belongs here. Orchestrator source/contract
+      completion review covers these claims without another gate. No source claim
+      of semantic improvement before the bounded runtime observations.
+    refs:
+    - .scratch/memory-update-rerun-2026-10-12/DEFAULTS-IMPROVEMENT-PROPOSAL.md
+    - docs/CONSTITUTION.md
+    - docs/CAPACITY.md
+    - docs/ENGINE.md
+    - .scratch/memory-update-rerun-2026-10-12/RESULT.md
+    depends_on:
+    - nunc-three-suite.memory-update
+    agent: node-typescript-engineer
