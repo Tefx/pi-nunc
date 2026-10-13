@@ -6529,7 +6529,7 @@ phases:
       Old results/history preserved. No product/Plan worker edits or Telegram.
   - id: nunc-three-suite.beam-rerun
     name: BEAM 整合候选四条件重跑
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6615,3 +6615,19 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T03:20:52.003174Z'
+    done_at: '2026-10-13T03:56:49.167596+00:00'
+    evidence: Accepted exact productc6bc35bd4af0f57cfc3b3db675b31deda446d147 BEAM
+      original2histories×4conditions,48/48answers scored96original-rubric blinded
+      LunaMEDIUM criteria; no missing/retries. Orchestrator inspected RESULT,cost,wire-pressure,provenance/outcome
+      and adapter/scorer evidence; scorer unchanged against old helper. IF.875all,
+      KU.625/.75/.75/1, CR.4375/.40625/.59375/.65625 (Luna native/Nunc,Sol native/Nunc).
+      Original schedule native3 vsNunc5CP perhistory/effective98304 preserved and
+      limits disclosed, not equal-budget/causal superiority.186actual serialized onPayload
+      request captures+settledusage (90generation/maintenance+96judge), MEDIUM, extraction8192,max4concurrent;
+      actual savedM nextQA representative2/2. Build,5adaptertests,exactupstreamscorer
+      and4zero-call loaderpreflights passed; no redundant product matrix. Newknown4.38542153USD
+      (judge.0187388),held0,inflight0,50cap; prior28.384968475 held fully retained;
+      other suites separate. Workers/judge/descendants terminated; reproducible runtime/caches/sessionqueryDB
+      removed. Measuredfree+13479936B concurrent/APFScaveat. Canonical .scratch/memory-update-rerun-2026-10-12/beam/RESULT.md/reports/rawobservations;
+      suiteGitf84a63c36f6b9e3a18125158ba86f6bf6a9cc28d. Historical results unchanged,
+      no worker product/Plan mutation.
