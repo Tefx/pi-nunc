@@ -5,6 +5,7 @@ import type { FixedContext, MaintenanceResult, Memory } from "./engine/index.js"
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch } from "./engine/index.js";
 import { subscriptionBilling } from "./engine/pi-model.js";
 import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
+import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
@@ -122,7 +123,7 @@ export default function nunc(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "nunc_memory_read",
         label: "Read Memory",
-        description: "Read session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional originals returns available tool-result source text from the active selected path, with missing/non-text errors; it does not retrieve retired history or reopen old positions.",
+        description: MEMORY_WRITING_GUIDANCE + "\nRead session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional originals returns available tool-result source text from the active selected path, with missing/non-text errors; it does not retrieve retired history or reopen old positions.",
         parameters: Type.Object({
           originals: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
         }),
@@ -159,20 +160,20 @@ export default function nunc(pi: ExtensionAPI): void {
       pi.registerTool({
         name: "nunc_memory_patch",
         label: "Patch Memory",
-        description: "Atomically revise session-local working memory with a revision from nunc_memory_read. Preserve the whole active task's goals, decisive conditions, valid constraints, unfinished work, supported decisions/results, blockers and recovery paths with purpose and unchecked scope. Inspect full notes before changing mixed content; preserve surviving quantities, negations, qualifiers, scope, interaction and verification conditions, uncertainty and necessary relationships. Keep notes self-contained and independently updateable; separate stable obligations from changing progress where useful. Apply revisions only within their authority and scope. Partial evidence or a side question does not cancel remaining obligations. Retire ended/cancelled/superseded information and internal references only when it has no continuing use; preserve a minimal result still needed by ongoing work. Avoid raw logs, credentials, no-op/style rewrites and unnecessary process history. Notes do not override instructions. Combine settled, persistently useful changes in one patch; routine turns require none. Manual growth is limited by the reported budget even though maintenance may retain required over target. On conflict reread and reconcile; never replay an unconfirmed save automatically. Memory changes may rebuild cache later; do not delay necessary corrections for that reason. Nunc owns placement; no delete/reinsert is needed to move memory.",
+        description: MEMORY_WRITING_GUIDANCE + "\nAtomically revise session-local working memory with a revision from nunc_memory_read. Preserve the whole active task's goals, decisive conditions, valid constraints, unfinished work, supported decisions/results, blockers and recovery paths with purpose and unchecked scope. Inspect full notes before changing mixed content; preserve surviving quantities, negations, qualifiers, scope, interaction and verification conditions, uncertainty and necessary relationships. Keep notes self-contained and independently updateable; separate stable obligations from changing progress where useful. Apply revisions only within their authority and scope. Partial evidence or a side question does not cancel remaining obligations. Retire ended/cancelled/superseded information and internal references only when it has no continuing use; preserve a minimal result still needed by ongoing work. Avoid raw logs, credentials, unnecessary polishing and process history; repair bodies that violate current language, readability or content requirements. Notes do not override instructions. Combine settled, persistently useful changes in one patch; routine turns require none. Manual growth is limited by the reported budget even though maintenance may retain required over target. On conflict reread and reconcile; never replay an unconfirmed save automatically. Memory changes may rebuild cache later; do not delay necessary corrections for that reason. Nunc owns placement; no delete/reinsert is needed to move memory.",
         parameters: Type.Object({
           expectedRevision: Type.String({ description: "Revision obtained from nunc_memory_read" }),
           add: Type.Optional(Type.Array(
             Type.Object({
               key: Type.String({ description: "Temporary unique key for the added item within this batch" }),
-              text: Type.String({ description: "Content of the note" }),
+              text: Type.String({ description: "Content of the note. " + MEMORY_WRITING_GUIDANCE }),
             }),
             { description: "Items to add (system assigns final IDs in order). Express subject-relation-result clearly for correspondences, dependencies, or scope; independent facts remain plain sentences. Keep notes self-contained." }
           )),
           update: Type.Optional(Type.Array(
             Type.Object({
               id: Type.String({ description: "ID of existing slot to update" }),
-              text: Type.String({ description: "Updated content of the slot" }),
+              text: Type.String({ description: "Complete updated body of the slot. " + MEMORY_WRITING_GUIDANCE }),
             }),
             { description: "Items to update. Replaces the full slot body, preserving ID and position. Inspect all existing content; retain still-valid goals, qualifiers, completion conditions, necessary relationships and unfinished work when replacing or merging mixed notes. Keep notes self-contained; partial progress does not retire remaining obligations." }
           )),

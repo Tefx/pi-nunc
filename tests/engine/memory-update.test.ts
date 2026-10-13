@@ -47,6 +47,32 @@ test("selection measures revised bodies, preserves required over target, and nev
   assert.equal(optional.memory.nextId, memory.nextId);
 });
 
+test("omitted add/remove normalize without deletion; multilingual Markdown remains exact", async () => {
+  const text = "## 后续验收\n\n- Keep normal spaces；禁止 push，42 ms 上限。\n- 路径 `/tmp/资料 α.json`，API `sourceRefs`，原文 ‘not ready’。\n\n下一步需沿用已选结果。🙂";
+  const minimal = { update: [{ id: "s1", text }], priority: ["s3", "s1"], required: ["s1", "s3"] };
+  assert.deepEqual(parsePatch(minimal, memory), { ...minimal, add: [], remove: [] });
+  const source = await input(); source.memory = structuredClone(memory);
+  const result = await maintain(source, responder(minimal));
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.deepEqual(result.candidate.memory.slots, [{ id: "s1", text }, memory.slots[1]]);
+  assert.deepEqual(source.memory, memory);
+  const noOperations = applyPatch(memory, { priority: base.priority, required: [] }, 10000, memoryTokens);
+  assert.deepEqual(noOperations.memory, memory);
+  for (const field of ["add", "remove"] as const) for (const bad of [null, {}, "", 0, false, undefined]) {
+    assert.throws(() => parsePatch({ ...minimal, [field]: bad }, memory), new RegExp(`${field}: expected an array`));
+  }
+});
+
+test("malformed omitted-operation maintenance cannot retire source or mutate memory", async () => {
+  const source = await input(); source.memory = structuredClone(memory);
+  const snapshot = structuredClone({ memory: source.memory, active: source.active });
+  const signal = source.signal;
+  const result = await maintain(source, responder({ update: [{ id: "s1", text: "Rewritten" }], priority: ["s1"], required: [] }));
+  assert.equal(result.ok, false);
+  assert.deepEqual({ memory: source.memory, active: source.active }, snapshot);
+  assert.equal(source.signal, signal);
+});
+
 const invalid: Array<[unknown, RegExp]> = [
   [{ ...base, update: null }, /update: expected an array/],
   [{ ...base, update: [{ id: "unknown", text: "New" }] }, /update\[0\]\.id: unknown reference "unknown"/],

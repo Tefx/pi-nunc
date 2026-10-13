@@ -2,6 +2,7 @@ import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { Message } from "@earendil-works/pi-ai";
 import type { Memory, RequiredObservation, Slot, ToolResultEdit } from "./types.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "./validation.js";
+import { MEMORY_WRITING_GUIDANCE } from "./policy.js";
 
 export function emptyMemory(): Memory { return { version: 1, slots: [], nextId: 1 }; }
 export function isMemoryUnchanged(before: Memory, after: Memory): boolean {
@@ -39,15 +40,16 @@ export interface PatchResult {
   retainedKeys: Set<string>;
   patch: Patch;
 }
-export const RESPONSE_CONTRACT = `Return ONLY one JSON object with required add, remove, priority, required fields, and optional update and toolResultEdits:
+export const RESPONSE_CONTRACT = `Return ONLY one complete JSON object with required priority and required arrays, and optional add, remove, update and toolResultEdits:
 {"add":[{"key":"new1","text":"self-contained note"}],"update":[{"id":"surviving-old-id","text":"complete revised note"}],"remove":["old-id"],"priority":["new1","surviving-old-id"],"required":["new1"],"toolResultEdits":[{"entryId":"e1","messageIndex":0,"action":"replace","text":"short continuation note","memoryRefs":["new1"]}]}
-add: zero or more new candidates. Keys must be unique nonempty strings, distinct from ALL existing slot IDs. Text must be nonempty. Markdown is encouraged inside text (lists, paragraphs, inline code, and necessary short code blocks).
+add: optional; omission means no additions. If supplied it must be an array (null is invalid). Zero or more new candidates. Keys must be unique nonempty strings, distinct from ALL existing slot IDs. Text must be nonempty. Markdown is encouraged inside text (lists, paragraphs, inline code, and necessary short code blocks).
 update: optional complete body replacements for existing slots, preserving ID and relative position. Each item has only id and nonempty text; IDs must exist, appear once, and cannot also be removed. Preserve still-valid parts of mixed slots. Omit unchanged bodies. Merge/split may use remove plus add.
-remove: each existing slot explicitly invalidated/retired, exactly once.
+remove: optional; omission means no deletions, never implicit retirement. If supplied it must be an array (null is invalid). Each existing slot explicitly invalidated/retired, exactly once.
 priority: ALL surviving old IDs (including updated IDs) and ALL added keys, each exactly once, most valuable first. Omission is invalid, never silent deletion.
-required: subset of priority identifying the active task focus and all necessary continuation items (surviving old IDs or added keys). Retain all declared required jointly, even over the organizing target; then omit optional items. Only an explicit hard limit can fail capacity. Empty array is valid when no active focus or necessary continuation items exist.
+required: subset of priority identifying all candidates necessary for the whole continuing task, including its actual materials and later-step dependencies (surviving old IDs or added keys). Retain all declared required jointly, even over the organizing target; then omit optional items. Only an explicit hard limit can fail capacity. Empty array is valid when no necessary continuing-task items exist.
 toolResultEdits: optional array of semantic cleanups for completed tool results in candidate scope. Each item specifies entryId, zero-based messageIndex, action ("omit" or "replace"), non-empty text for replace (omit must not include text), and optional memoryRefs (support in this transaction's final M) and sourceRefs (full retained sources). Later M changes do not automatically reverse committed edits. Omit this field if no semantic cleanup is requested.
-Unchanged slots reuse their bodies; do not regenerate them. Priority controls whole-slot capacity selection for optional items, not memory order. Old survivors keep relative order; additions append.
+${MEMORY_WRITING_GUIDANCE}
+Compliant unchanged slots reuse their bodies; do not regenerate them. Priority controls whole-slot capacity selection for optional items, not memory order. Old survivors keep relative order; additions append.
 A removed or unselected updated slot never reverts to its old body. Empty arrays and empty memory are valid. No tools, outer code fences around the JSON, commentary, or rewriting retained history.`;
 
 // Diagnostics name the offending field/ref without disclosing an unbounded reply.
@@ -60,17 +62,19 @@ const describeRefs = (refs: Iterable<string>): string => {
 };
 
 export function parsePatch(value: unknown, memory: Memory): Patch {
-  requireThat(record(value), "RESPONSE", "Expected a patch object with add/remove/priority/required arrays");
+  requireThat(record(value), "RESPONSE", "Expected a patch object with priority/required arrays and optional add/remove arrays");
   const fields = ["add", "update", "remove", "priority", "required", "toolResultEdits"];
   requireThat(keys(value, fields), "RESPONSE", `Unsupported patch fields: ${describeRefs(Object.keys(value).filter(key => !fields.includes(key)))}`);
-  requireThat(Array.isArray(value.add), "RESPONSE", "add: expected an array");
-  requireThat(Array.isArray(value.remove), "RESPONSE", "remove: expected an array");
+  const additions = "add" in value ? value.add : [];
+  const removals = "remove" in value ? value.remove : [];
+  requireThat(Array.isArray(additions), "RESPONSE", "add: expected an array if provided");
+  requireThat(Array.isArray(removals), "RESPONSE", "remove: expected an array if provided");
   requireThat(Array.isArray(value.priority), "RESPONSE", "priority: expected an array");
   requireThat(Array.isArray(value.required), "RESPONSE", "required: expected an array");
   requireThat(value.update === undefined || Array.isArray(value.update), "RESPONSE", "update: expected an array if provided");
   const ids = new Set(memory.slots.map(s => s.id));
   const removed = new Set<string>();
-  for (const [index, id] of value.remove.entries()) {
+  for (const [index, id] of removals.entries()) {
     const field = `remove[${index}]`;
     requireThat(typeof id === "string", "RESPONSE", `${field}: expected a slot ID, received ${describeRef(id)}`);
     requireThat(ids.has(id), "RESPONSE", `${field}: unknown reference ${describeRef(id)}`);
@@ -93,7 +97,7 @@ export function parsePatch(value: unknown, memory: Memory): Patch {
   const candidates = new Set([...ids].filter(id => !removed.has(id)));
   const added = new Set<string>();
   const add: Patch["add"] = [];
-  for (const [index, item] of value.add.entries()) {
+  for (const [index, item] of additions.entries()) {
     const field = `add[${index}]`;
     requireThat(record(item) && keys(item, ["key", "text"]) && nonempty(item.key) && nonempty(item.text), "RESPONSE", `${field}: expected only nonempty key and text fields`);
     requireThat(!ids.has(item.key), "RESPONSE", `${field}.key: collides with existing slot ID ${describeRef(item.key)}`);

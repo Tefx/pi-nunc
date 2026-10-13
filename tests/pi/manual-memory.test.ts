@@ -38,6 +38,30 @@ async function prepared(t: { after: (fn: () => Promise<void>) => void }, options
   return { f, ...captured };
 }
 
+test("multilingual Markdown bodies survive manual save, disk restore and actual main injection verbatim", async t => {
+  const captured = port();
+  const f = await fixture({ extras: captured.extras });
+  t.after(() => f.close());
+  const body = "## 后续验收\n\n- Keep normal spaces；禁止 push，42 ms。🙂\n- 路径 `/tmp/资料 α.json`，API `sourceRefs`，精确引文 ‘not ready’。";
+  const before = captured.surface().read(captured.ctx());
+  const saved = captured.surface().patch(captured.ctx(), { expectedRevision: before.revision, add: [{ key: "task", text: body }] });
+  assert(saved.ok, JSON.stringify(saved));
+  const manager = f.runtime.session.sessionManager;
+  const file = manager.getSessionFile(); assert(file);
+  f.respond(context => {
+    const text = context.messages.flatMap(message => typeof message.content === "string" ? [message.content] : message.content.filter(block => block.type === "text").map(block => block.text)).join("\n");
+    assert(text.includes(JSON.stringify(body).slice(1, -1)), "actual host Context must contain the exact saved text");
+    return fauxAssistantMessage("Recorded.");
+  });
+  await f.runtime.session.prompt("继续执行后续验收。");
+  assert.equal(project(SessionManager.open(file).buildContextEntries()).memory.slots[0]?.text, body);
+  const updated = body + "\n\n验证仍待完成，不能省略否定。";
+  const view = captured.surface().read(captured.ctx());
+  const edited = captured.surface().patch(captured.ctx(), { expectedRevision: view.revision, update: [{ id: view.memory.slots[0]!.id, text: updated }] });
+  assert(edited.ok, JSON.stringify(edited));
+  assert.equal(project(SessionManager.open(file).buildContextEntries()).memory.slots[0]?.text, updated);
+});
+
 test("no-system-history manual M saves grow under the independent hard cap and reach native maintenance", async t => {
   const captured = port();
   const f = await fixture({ config: { memory: { maxTokens: 40, hardMaxTokens: 1200 } }, extras: captured.extras });

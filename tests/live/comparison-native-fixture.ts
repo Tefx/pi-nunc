@@ -36,7 +36,7 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
       // The isolated historical checkout has the earlier three-field response contract.
       // Keep required-item assertions on candidate requests without sending that field
       // to an older engine which correctly rejects unknown response keys.
-      const supportsRequired = JSON.stringify(row.payload).includes("optional toolResultEdits");
+      const supportsRequired = messages.some((m: any) => ["system", "developer"].includes(m.role) && text(m).includes("required: subset of priority"));
       if (options.sameMemory && Array.isArray(source.M) && source.M.length) {
         return JSON.stringify({ add: [], remove: [], priority: source.M.map((s: any) => s.id), ...(supportsRequired ? { required: [] } : {}) });
       }
