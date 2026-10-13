@@ -6769,7 +6769,7 @@ phases:
       temporarily needed by ensuingruntime owner, release at runtimecompletion.
   - id: nunc-three-suite.benchmark-repair
     name: 修复 Arena 原生加载与实际记忆载体证据
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\", \"\
       .scratch/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"\
@@ -6842,3 +6842,20 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T09:31:14.325029Z'
+    done_at: '2026-10-13T10:10:31.195645+00:00'
+    evidence: Integrated exactrevieweda6ecfa602b903e78b84c93d9f936f3fe633bcd93 FF
+      frompostclaim89d2da226069b8e189a8c13fa7f290fd6ec0069c, retainedrefs/vectl/candidates/nunc-three-suite.benchmark-repair.
+      ExactNode/TSowner fixed trackedArena schemas registration/runtimeflags and evidenceactualnativecarrier
+      decode(ID/body/order) withmeaningfulpositive/negative tests; existingpreflight
+      now requiresactualCitySearch response, not justhandled. Parentreadfulldiff/tests/docs,
+      checkedofficialsixschemasagainstretainedcanonical, report/reconciliation/stockprobeproof.
+      LockedNode26.7/npm11.19 buildpass; affected7/7 pass. ActualstockPi1.1RpcClient/CLI
+      full304807007BDB probe sixofficialtools+CitySearchIllinoisRockfordpassed0modelcalls;
+      freshschemamismatchnegativeexpectedexit1,0tool/modelcalls. Reprocessedoriginal4CPnext+80QA
+      payloads directfullnativewirepass no inference, historicalfailure/workaroundintact.
+      Src/policies/manifest/lockunchanged, defaults750all+157affectedobservations
+      and completedFact remainapplicable; no newfullrunclaim. Evidence .scratch/defaults-improvement-2026-10-13/repair/DELIVERY.md,
+      stock-probe-proof.json,reprocessed-wire.json,reconciliation.json. Allservers/descendantsstopped,
+      unknown0/newspend0. ImmediateArena consumer holds repair/toolchain andrepair/prep/{venv,MemoryArena}
+      ~607MiB untilremainingruntimeends; worktreeacceptanceholdreleased. No additional
+      gate.
