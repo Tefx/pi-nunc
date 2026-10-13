@@ -1,0 +1,13 @@
+{
+  "removed": [
+    "query-recovery-support/toolchain",
+    "source beam-query-recovery worktree (Git worktree remove after acceptance)"
+  ],
+  "allConsumersEnded": true,
+  "freeBeforeBytes": 56829632512,
+  "freeAfterBytes": 57069170688,
+  "freeChangeBytes": 239538176,
+  "limit": "Measured toolchain release interval only; APFS/concurrent activity; no sum with worker intervals",
+  "remainingReconstructibleHolds": [],
+  "retainedConsumers": "Canonical observed outcomes/accounting/source-proof and minimum frozen input for parent acceptance and legitimate result reprocessing; no replay authority"
+}

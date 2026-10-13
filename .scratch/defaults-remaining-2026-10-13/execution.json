@@ -6,8 +6,11 @@
     "beam": "/Users/tefx/.pi/larva/child-sessions/2026-10-13T03-22-01-422Z_01a13348-094e-71f7-9775-8affd1b391bf.jsonl",
     "event": "/Users/tefx/.pi/larva/child-sessions/2026-10-13T03-22-01-503Z_01a13348-099f-7514-beb7-cd956ec75ee5.jsonl"
   },
-  "state": "All runtime and source repair children terminal; support/Arena/Event/guard repair accepted, BEAM pending decision, no inflight calls",
+  "state": "All source/runtime work terminal and accepted; entire remaining-default phase DONE; no pending calls/claims",
   "noTelegram": true,
   "correctedSource": "f4e3d33951b181d7af92abe355b4643ff1f3be9e",
-  "finalSummary": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/final/summary.json"
+  "finalSummary": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/final/summary.json",
+  "acceptedSource": "b210b1b2cecf7f7354e55435afc4aea1d0a48d20",
+  "finalAcceptedSummary": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/final-accepted/summary.json",
+  "historicalBlockedSummary": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/final/summary.json"
 }

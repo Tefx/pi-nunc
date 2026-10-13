@@ -1,0 +1,146 @@
+{
+  "status": "ACCEPTED_MEASUREMENT_WITH_EXPLICIT_NEGATIVE_AND_PARTIAL_QUALITY_OUTCOMES",
+  "source": "b210b1b2cecf7f7354e55435afc4aea1d0a48d20",
+  "product": "a6ecfa602b903e78b84c93d9f936f3fe633bcd93",
+  "defaults": "8d03252f5b0158a64cb32cea7fc868fafc282916",
+  "historicalBlockedReport": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/final/RESULT.md",
+  "suiteReports": {
+    "arena": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/arena/RESULT.md",
+    "event": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/event/RESULT.md",
+    "beam": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam/RESULT.md",
+    "beam-recovered": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam-recovered/RESULT.md"
+  },
+  "beamCase1": [
+    {
+      "category": "instruction_following",
+      "requiredAnswers": 2,
+      "observedAnswers": 2,
+      "currentMean": 0.75,
+      "nativeMean": 0.75
+    },
+    {
+      "category": "knowledge_update",
+      "requiredAnswers": 2,
+      "observedAnswers": 2,
+      "currentMean": 1,
+      "nativeMean": 1
+    },
+    {
+      "category": "contradiction_resolution",
+      "requiredAnswers": 2,
+      "observedAnswers": 2,
+      "currentMean": 0.5,
+      "nativeMean": 0.4375
+    }
+  ],
+  "beamCoverage": {
+    "models": [
+      {
+        "label": "Luna",
+        "fullRequiredAnswers": 12,
+        "fullRequiredCriteria": 24,
+        "availableAnswers": 0,
+        "scoredAnswers": 0,
+        "scoredCriteria": 0,
+        "missingAnswers": 12,
+        "missingCriteria": 24
+      },
+      {
+        "label": "Sol",
+        "fullRequiredAnswers": 12,
+        "fullRequiredCriteria": 24,
+        "availableAnswers": 6,
+        "scoredAnswers": 6,
+        "scoredCriteria": 12,
+        "missingAnswers": 6,
+        "missingCriteria": 12
+      }
+    ],
+    "SolCase1": [
+      {
+        "category": "instruction_following",
+        "requiredAnswers": 2,
+        "observedAnswers": 2,
+        "currentMean": 0.75,
+        "nativeMean": 0.75
+      },
+      {
+        "category": "knowledge_update",
+        "requiredAnswers": 2,
+        "observedAnswers": 2,
+        "currentMean": 1,
+        "nativeMean": 1
+      },
+      {
+        "category": "contradiction_resolution",
+        "requiredAnswers": 2,
+        "observedAnswers": 2,
+        "currentMean": 0.5,
+        "nativeMean": 0.4375
+      }
+    ]
+  },
+  "beamFullMeans": {
+    "Luna": null,
+    "Sol": null
+  },
+  "newRecoveryKnownUsd": "0.479758750",
+  "newRecoveryHeldUsd": "0",
+  "phaseKnownUsd": "4.024837200",
+  "phaseHeldUsd": "5.783130000",
+  "phaseInflightUsd": "0",
+  "phaseChargedUsd": "9.807967200",
+  "phaseCapUsd": "30",
+  "globalKnownUsd": "41.181986920",
+  "globalHeldUsd": "26.084250000",
+  "globalInflightUsd": "0",
+  "globalChargedUsd": "67.266236920",
+  "globalStrictCeilingUsd": "200",
+  "beamCost": {
+    "capUsd": 24,
+    "knownUsd": 1.6695783899999999,
+    "heldUsd": 5.78313,
+    "inflightUsd": 0,
+    "chargedUsd": 7.45270839
+  },
+  "prospectivePartitions": [
+    {
+      "name": "Sol",
+      "capUsd": 22,
+      "knownUsd": 1.6018991999999999,
+      "heldUsd": 5.78313,
+      "chargedUsd": 7.3850292
+    },
+    {
+      "name": "Luna",
+      "capUsd": 1,
+      "knownUsd": 0.06494644,
+      "heldUsd": 0,
+      "chargedUsd": 0.06494644,
+      "newRequests": 0
+    },
+    {
+      "name": "judge",
+      "capUsd": 1,
+      "knownUsd": 0.0027327500000000004,
+      "heldUsd": 0,
+      "chargedUsd": 0.0027327500000000004
+    }
+  ],
+  "noHoldsReleased": true,
+  "phaseAcceptance": "All six Plan steps DONE; witnessed Luna/schema and Solcase2/provider negatives retained; original never-dispatched six queries now completed",
+  "qualityLimit": "No full BEAM quality score or universal improvement claim; original historical12/filter gaps remain",
+  "cleanup": {
+    "removed": [
+      "query-recovery-support/toolchain",
+      "source beam-query-recovery worktree (Git worktree remove after acceptance)"
+    ],
+    "allConsumersEnded": true,
+    "freeBeforeBytes": 56829632512,
+    "freeAfterBytes": 57069170688,
+    "freeChangeBytes": 239538176,
+    "limit": "Measured toolchain release interval only; APFS/concurrent activity; no sum with worker intervals",
+    "remainingReconstructibleHolds": [],
+    "retainedConsumers": "Canonical observed outcomes/accounting/source-proof and minimum frozen input for parent acceptance and legitimate result reprocessing; no replay authority"
+  }
+}
