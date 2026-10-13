@@ -7159,6 +7159,7 @@ phases:
     - .scratch/memory-update-rerun-2026-10-12/beam/protocol.json
     depends_on:
     - nunc-defaults-remaining.support
+    - nunc-defaults-remaining.beam-guard-repair
     agent: node-typescript-engineer
   - id: nunc-defaults-remaining.event
     name: 固定 Event 替代行当前默认双模型比较
@@ -7236,3 +7237,84 @@ phases:
       sharedtoolchainunchanged; actualfree+281300992B APFS/concurrencycaveat. Retainedminimumuniqueoriginals+reports
       .scratch/defaults-remaining-2026-10-13/event/{RESULT.md,summary.json,source-memory-next.json,material-inspection.json,paid/event,process-reconciliation.json,cleanup.json,source-binding.json}.
       No remainingEventblocker; Arena/BEAM/globalacceptanceremain. Historicaloriginal12/filteredEventgapsunchanged.
+  - id: nunc-defaults-remaining.beam-guard-repair
+    name: 修复 BEAM 原生主请求 cap 观察与离线序列化验证
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
+      \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
+      .git/**\", \"src/**\", \"policies/**\", \".pi/**\", \".env\", \".env.*\", \"\
+      **/auth.json\", \"package.json\", \"package-lock.json\"]\nbranch: \"feat/relational-memory\"\
+      \nprotected_main: \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nproduct_target:\
+      \ \"a6ecfa602b903e78b84c93d9f936f3fe633bcd93\"\ndefaults_target: \"8d03252f5b0158a64cb32cea7fc868fafc282916\"\
+      \nruntime: {node: \"26.7.0\", npm: \"11.19.0\", pi: \"1.1.0\", dependencies:\
+      \ \"package-lock.json\"}\nresource_limits: {diskReserveGiB: 15}\noffline_environment:\
+      \ {setup: \"npm ci --ignore-scripts\", unset: [\"NODE_OPTIONS\"]}\noffline_inventory:\
+      \ {entrypoint: [\"node\", \"scripts/check.mjs\", \"all\"], build: [\"npm\",\
+      \ \"run\", \"build\"], suites: [\"tests/engine\", \"tests/pi\", \"tests/live\"\
+      ]}\npaid_calls: 0\nDeliver: One tracked BEAM guard correction with meaningful\
+      \ regression tests and operator documentation, consumed by the SAME incomplete\
+      \ nunc-defaults-remaining.beam. Preserve exact resolved raw maintenance/judge\
+      \ cap equality. For native main stream serialization accept only a positive\
+      \ integer cap no greater than its inclusive output reservation, permitting Pi's\
+      \ native context clamp with maxTokens omitted. Preserve MEDIUM, native serialization\
+      \ ownership, conservative catalog accounting, reservations, unknown holds and\
+      \ finite/no-retry admission. Capture the actual serialized payload before its\
+      \ validation assertions so rejected payloads remain observable; do not inject\
+      \ or alter effort or caps.\nAdmit: Accepted support contains a supported counterexample:\
+      \ guard compares every wire cap to reserved output, while Pi1.1 buildBaseOptions\
+      \ clamps native stream output to context minus estimated input minus4096. At\
+      \ effective context98304 the native cap cannot equal the omitted-option Sol\
+      \ reservation128000. Prior loader/support checks missed actual native main serialization.\
+      \ Exercise the actual supported native stream serializer through the guard/provider\
+      \ seam with a controlled zero-paid transport; fake payload-only tests cannot\
+      \ prove this correction. Exact raw maintenance/judge checks remain valid and\
+      \ need regression protection.\nBoundary: node-typescript-engineer owns this\
+      \ ordinary helper/interface correction, its tests/docs and reversible repository\
+      \ transaction; Orchestrator integrates and reviews completion. No product source,\
+      \ policy, settings, memory, manifest/lock or host-internal changes; no inference,\
+      \ provider fallback, window/cap/pressure tuning, retry/resume, ignored material\
+      \ patch, deployment or paid call. Arena's independent live reporting and claim\
+      \ stay untouched; Event and support DONE definitions/evidence/history remain\
+      \ immutable. No dependency on Arena/Event and no new observer/gate.\nRecovery:\
+      \ Repair compatible offline failures here. Keep prior failures, reports and\
+      \ financial records unchanged; never release or recalculate away existing holds.\
+      \ Preserve prior30USD total and10USD suite ceilings and already fixed allocations,\
+      \ including BEAM1/8/1, all known/held charges and stopped single-use targets.\
+      \ Source repair completion does not admit old reports as answered, prove missing\
+      \ main-wire/M-to-NEXT observations, supply missing answers or permit new calls.\
+      \ Missing BEAM observations remain with the same consumer; retain original denominators\
+      \ and null means on missing evidence, and distinguish genuine Luna schema/Sol\
+      \ provider failures from this harness defect. Any fresh paid attempt or change\
+      \ to the no-resume contract requires the responsible parent's architecture decision\
+      \ and separate applicable human authorization before that action; this offline\
+      \ source repair is independently authorized. Keep all existing no-replay/reconciliation\
+      \ conditions and final integrated acceptance obligations. Reconcile local test\
+      \ children before delivery, retain necessary proof, and stop at any protected\
+      \ product/authority boundary."
+    verification: 'Orchestrator completion procedure: inspect the full affected source/test/docs
+      change and accept only after zero-paid behavioral proof through actual Pi1.1
+      native stream serialization with omitted maxTokens, exercising context-clamped
+      cap below the reservation and preserving MEDIUM. Demonstrate rejection of missing/noninteger/nonpositive/over-reservation
+      native caps and raw maintenance/judge cap mismatch; capture rejected payload
+      before failure. Verify equality remains required for exact resolved raw caps,
+      reservations/settlement/unknown holds remain conservative, and no retry/resume
+      or external inference occurred. Use tracked locked Node26.7/npm11.19 build and
+      meaningful affected tests reproducible from clean checkout; native serializer
+      must execute rather than be replaced by a fake payload. Cover complete applicable
+      offline inventory with still-applicable accepted evidence plus affected execution;
+      expand only for changed inputs, no automatic paid/full replay. Completion proves
+      the runner correction only; the same BEAM consumer and final phase acceptance
+      retain missing runtime proof and authorization limits.'
+    refs:
+    - docs/CONSTITUTION.md
+    - docs/DEFAULTS-BENCHMARK.md
+    - scripts/benchmarks/beam/guard.mjs
+    - .scratch/defaults-remaining-2026-10-13/beam/diagnostic.json
+    - .scratch/defaults-remaining-2026-10-13/beam/RESULT.md
+    - .scratch/defaults-remaining-2026-10-13/beam/summary.json
+    - .scratch/defaults-remaining-2026-10-13/beam/ledger.json
+    - .scratch/defaults-remaining-2026-10-13/beam/reconciliation.json
+    depends_on:
+    - nunc-defaults-remaining.support
+    agent: node-typescript-engineer
