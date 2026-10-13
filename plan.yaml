@@ -7424,7 +7424,7 @@ phases:
       pendingresponsibleparentdecision/applicableauthorization.'
   - id: nunc-defaults-remaining.beam-query-recovery
     name: 恢复冻结 BEAM case1 的原始未发送查询支持
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7498,3 +7498,18 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T14:42:16.190233Z'
+    done_at: '2026-10-13T15:24:19.134596+00:00'
+    evidence: Integratedexactcandidateb210b1b2cecf7f7354e55435afc4aea1d0a48d20 incld3c3fbb6fcef340eee4d38e979610ed0e040be14
+      onto8c5f120 unchangedbasis, retainedrefs/vectl/candidates/nunc-defaults-remaining.beam-query-recovery.
+      ParentreadFULL6filesdiff+DELIVERY. PublicSessionManager188messages5CP193mappedfreshIDs
+      restores32K/26Mslots/capturedsystemsections throughactualcreateAgentSession/Nunc/nativeMain;6independentoriginalqueries
+      only, noformation/closedcondition/directAPIshortcut. ActualNode26.7/npm11.19/Pi1.1retained-source
+      controlledzero-paid proof6wirecaps55138/55141/55137/55131/55131/55133 MEDIUM+exactM/K/framing.
+      Lockedbuild0/18affectedtests0failedskip; wrongsource/reference/selection/carry/holds/duplicates
+      rejected, rawguardclamp/equality proofretained, originalblindscoring/12-24coverage
+      tests. Lastsource-Keagercheck afterproof changedvalidationonly actualretainedload188/selection6+cleanbuild18passed,
+      nativepathunchanged. 0paid/provider/newfinancialeffects, nochildren/services.
+      ProspectiveBEAM24/Sol22/Luna1/judge1 oldknown1.18981964/held5.78313andadmissioncounts
+      carried, no reset/release; max6main12judge. Oldtargetsimmutable. Evidence .scratch/defaults-remaining-2026-10-13/query-recovery-support/{DELIVERY.md,native-proof.json,native-proof-final,logs,cleanup.json}.
+      Ownenvremoved; immutabletoolchain heldforimmediateBEAMruntimeconsumer only.
+      SourceproofdoesnotcompletepaidBEAM; proceedexistingconsumer withinparentauthorizedrecovery/budget.
