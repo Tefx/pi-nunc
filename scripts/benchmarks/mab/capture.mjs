@@ -4,6 +4,9 @@
 // requires: Frozen catalog/prices; one process per admission file; native compaction <=2 subcalls; retries disabled.
 import assert from 'node:assert/strict';
 import {appendFileSync,readFileSync,writeFileSync} from 'node:fs';
+export function assertCatalogBinding(s,model){
+ assert.equal(model.maxTokens,s.maxTokens);assert.deepEqual(model.cost,s.cost,'Current native rates differ from frozen reservation rates; rebind before paid work');
+}
 export function reserveState(s,kind,output,calls=1){
  assert(!s.stopped,'Admission stopped');assert.equal(Object.keys(s.pending).length,0,'Unreconciled request');
  assert(Number.isInteger(output)&&output>0&&output<=s.maxTokens,'Invalid actual output bound');
@@ -42,7 +45,7 @@ export default function(pi){
  pi.on('session_start',async(_event,ctx)=>{
   try{
    assert(selected(ctx.model),'Unexpected route');const s=load();assert(!s.stopped,'Admission stopped');assert.equal(Object.keys(s.pending).length,0);
-   const physical=ctx.modelRegistry.find('openrouter',s.modelId);assert(physical);assert.equal(physical.contextWindow,1050000);assert.equal(physical.maxTokens,s.maxTokens);
+   const physical=ctx.modelRegistry.find('openrouter',s.modelId);assert(physical);assert.equal(physical.contextWindow,1050000);assertCatalogBinding(s,physical);
    assert(await pi.setModel({...physical,contextWindow:s.contextWindow}),'Public copied model selection failed');pi.setThinkingLevel('medium');assert.equal(ctx.model.contextWindow,s.contextWindow);assert.equal(ctx.thinkingLevel,'medium');
    const registry=ctx.modelRegistry;
    if(!wrapped.has(registry)){

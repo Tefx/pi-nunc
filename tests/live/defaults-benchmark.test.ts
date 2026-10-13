@@ -18,9 +18,11 @@ test("tracked selection freezes Fact40 and exactly one protocol-relevant ordinar
   const a = allocation(); assertAllocation(a); assert.throws(() => assertAllocation({ ...a, exclusive: { ...a.exclusive, extra: 1 } })); assert.throws(() => assertAllocation({ ...a, priorHeldUsd: 0 }));
 });
 test("guard reserves actual resolved auto cap and retains unknown effects rather than old8192 or zero", async () => {
-  const { reserveState, settleState, reconcileStoppedState } = await import(join(scripts, "mab/capture.mjs"));
+  const { reserveState, settleState, reconcileStoppedState, assertCatalogBinding } = await import(join(scripts, "mab/capture.mjs"));
   const state = () => ({ stopped: false, pending: {}, spentUsd: 0, heldUnknownUsd: 0, admissions: 0, receipts: 0, maxReservedTotalUsd: 0, allowanceUsd: 3, maxTokens: 128000, contextWindow: 272000, cost: { input: .2, output: 1, cacheRead: .1, cacheWrite: .2 } });
-  const s = state(),old = reserveState(s, "maintenance", 8192); settleState(s, "maintenance", { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, cost: { total: .000012 } });
+  const s = state(); assertCatalogBinding(s, { maxTokens: s.maxTokens, cost: s.cost });
+  assert.throws(() => assertCatalogBinding(s, { maxTokens: s.maxTokens, cost: { ...s.cost, output: 10 } }));
+  const old = reserveState(s, "maintenance", 8192); settleState(s, "maintenance", { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, cost: { total: .000012 } });
   const actual = reserveState(s, "maintenance", 32768); assert(actual > old); const t = reconcileStoppedState(s, "fact"); assert.equal(t.heldUnknownUsd, actual); assert.deepEqual(t.pending, {});
   reserveState(t, "next", 17280); assert.equal(t.pending.next.output, 17280); assert.equal(t.heldUnknownUsd, actual);
   assert.throws(() => reserveState(t, "replay", 32768)); const low = state(); low.heldUnknownUsd = 2.99; assert.throws(() => reserveState(low, "maintenance", 32768));

@@ -34,7 +34,7 @@ export default function(pi){
  pi.on('session_start',async(_event,ctx)=>{
   try{assert(selected(ctx.model),'Unexpected route');const catalog=ctx.model;assert(catalog.contextWindow>=272000);assert.equal(catalog.maxTokens,128000);
    rates=catalog.cost;rateTable=[rates,...(rates?.tiers??[])];assert(rates&&rateTable.every(r=>[r.input,r.output,r.cacheRead,r.cacheWrite].every(Number.isFinite)));
-   record({type:'catalog',model:catalog,authConfigured:ctx.modelRegistry.getProviderAuthStatus('openrouter').configured});
+   record({type:'catalog',model:{...meta(catalog),cost:catalog.cost},authConfigured:ctx.modelRegistry.getProviderAuthStatus('openrouter').configured});
    assert(await pi.setModel({...catalog,contextWindow:272000}),'Public session-local model selection failed');pi.setThinkingLevel('medium');assert.equal(ctx.model.contextWindow,272000);assert.equal(ctx.thinkingLevel,'medium');
    // Nunc tools are disabled; extension presence is instead supplied by the profile name.
    native=!ctx.cwd.split('/').at(-1).startsWith('nunc-');
