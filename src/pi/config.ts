@@ -9,7 +9,7 @@ export interface NuncConfig {
   policyFile?: string;
   memory?: { fraction?: number; maxTokens?: number; targetTokens?: number; hardMaxTokens?: number };
   rolling?: { keepRecentFraction?: number };
-  extraction?: { toolResults?: "auto" | "full"; headTailChars?: number; outputTokens?: number };
+  extraction?: { toolResults?: "auto" | "full"; headTailChars?: number; outputTokens?: number | "auto" };
   budget?: { safetyTokens?: number; growthTokens?: number; extraMainInputTokens?: number; extraExtractionInputTokens?: number; inputLimit?: number; imageTokens?: number };
 }
 function object(value: unknown, keys: string[], label: string): Record<string, unknown> {
@@ -28,6 +28,7 @@ export function parseConfig(value: unknown): NuncConfig {
     if (root[section] === undefined) continue;
     for (const [key, v] of Object.entries(object(root[section], keys, section))) {
       const valid = key === "toolResults" ? v === "auto" || v === "full"
+        : key === "outputTokens" && v === "auto" ? true
         : key === "fraction" ? typeof v === "number" && v >= 0 && v < 1
         : key === "keepRecentFraction" ? typeof v === "number" && v > 0 && v < 1
         : typeof v === "number" && Number.isSafeInteger(v) && (key.startsWith("extra") ? v >= 0 : v > 0);
@@ -49,7 +50,7 @@ export function readConfig(flag: unknown, cwd: string): { config: NuncConfig; co
   }
 }
 export interface HostCompactionSettings { reserveTokens: number; keepRecentTokens: number }
-export function engineConfig(config: NuncConfig, model: Model<Api>, settings: HostCompactionSettings): EngineConfig {
+export function engineConfig(config: NuncConfig, model: Model<Api>, settings: HostCompactionSettings, uncapped = omitsSerializedOutputCap(model)): EngineConfig {
   const triggerTokens = model.contextWindow - settings.reserveTokens;
   if (!Number.isSafeInteger(settings.reserveTokens) || settings.reserveTokens <= 0 || triggerTokens <= 0 ||
       !Number.isSafeInteger(settings.keepRecentTokens) || settings.keepRecentTokens < 0 || settings.keepRecentTokens >= triggerTokens) {
@@ -66,7 +67,8 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
   const outputFloor = ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
   const mainReserve = Math.min(mainOutput, Math.max(outputFloor, settings.reserveTokens));
   // Existing explicit values remain effective; /nunc explains legacy full-ceiling reserves.
-  const outputTokens = config.extraction?.outputTokens ?? Math.min(8192, model.maxTokens);
+  const outputAuto = config.extraction?.outputTokens === undefined || config.extraction.outputTokens === "auto";
+  const outputTokens = outputAuto ? Math.min(8192, model.maxTokens) : config.extraction!.outputTokens as number;
   const common = { safetyTokens: config.budget?.safetyTokens ?? 1024, ...(config.budget?.inputLimit === undefined ? {} : { inputLimit: config.budget.inputLimit }) };
   const result: EngineConfig = {
     triggerTokens,
@@ -76,7 +78,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
     keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.5,
     growthTokens: config.budget?.growthTokens ?? 1024,
     main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },
-    extraction: { ...common, outputTokens, extraInputTokens: config.budget?.extraExtractionInputTokens ?? 0, toolResults: config.extraction?.toolResults ?? "auto", headTailChars: config.extraction?.headTailChars ?? 200 },
+    extraction: { ...common, outputTokens, ...(outputAuto ? { outputAuto: true } : {}), ...(uncapped ? { outputUncapped: true } : {}), extraInputTokens: config.budget?.extraExtractionInputTokens ?? 0, toolResults: config.extraction?.toolResults ?? "full", headTailChars: config.extraction?.headTailChars ?? 200 },
     ...(config.budget?.imageTokens === undefined ? {} : { imageTokens: config.budget.imageTokens }),
   };
   validateConfig(result);

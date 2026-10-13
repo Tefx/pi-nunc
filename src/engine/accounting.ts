@@ -167,7 +167,7 @@ export function omitsSerializedOutputCap(model: Model<Api>): boolean {
 /** Shared F/M planning numbers for maintenance and manual M edits. */
 export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: EngineConfig, currentSlots: Slot[] = []) {
   const mainInputLimit = inputLimit(model, config.main);
-  const extractionInputLimit = inputLimit(model, config.extraction);
+  const extractionInputLimit = inputLimit(model, extractionOutputPlan(model, config.extraction).budget);
   const effectiveTrigger = Math.min(config.triggerTokens, mainInputLimit);
   const fixedTokens = requestTokens(mainContext(fixed, [], []), config.imageTokens) + config.main.extraInputTokens;
   const available = effectiveTrigger - fixedTokens;
@@ -177,6 +177,14 @@ export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: Engin
   const memoryReserveTokens = Math.max(memoryLimit, memoryTokens(currentSlots, config.imageTokens));
   const keepTarget = Math.floor(config.keepRecentFraction * Math.max(0, available - memoryReserveTokens));
   return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, memoryReserveTokens, keepTarget };
+}
+export function extractionOutputPlan(model: Model<Api>, extraction: EngineConfig["extraction"]) {
+  const capacity = Math.min(model.maxTokens, extraction.outputLimit ?? model.maxTokens);
+  const uncapped = extraction.outputUncapped === true || omitsSerializedOutputCap(model);
+  const automatic = extraction.outputAuto === true && !uncapped;
+  const floor = automatic ? Math.min(8192, capacity) : extraction.outputTokens;
+  const desired = automatic ? Math.min(32768, capacity) : extraction.outputTokens;
+  return { budget: { ...extraction, outputTokens: floor }, floor, desired, capacity, automatic, uncapped };
 }
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   requireThat(integer(model.contextWindow, 1) && integer(model.maxTokens, 1), "CONFIG", "Invalid effective model capacity");
@@ -204,6 +212,7 @@ export function mainAdmissionLimit(model: Model<Api>, budget: RequestBudget): nu
   requireThat(limit > 0, "CAPACITY", "Model output floor leaves no main input capacity");
   return limit;
 }
+export const retentionRounding = "nearest-feasible" as const;
 export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig, model?: Model<Api>): { cut: number; keptTokens: number } {
   const sizes = active.map(e => model ? historyPlanningEstimate([e], model, config.imageTokens).tokens : e.messages.reduce((sum, m) => sum + messageTokens(m, config.imageTokens), 0));
   const suffix: number[] = new Array(sizes.length + 1).fill(0);
@@ -214,7 +223,12 @@ export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: nu
   // measures the next real provider Context after Pi applies its tool loadout.
   const candidates = feasible.length ? feasible : cuts.map(cut => ({ cut, keptTokens: suffix[cut]! }));
   requireThat(candidates.length > 0, "CAPACITY", "No legal nonempty B/K boundary");
-  return candidates.find(c => c.keptTokens <= keepTarget) ?? candidates[candidates.length - 1]!;
+  const lowerIndex = candidates.findIndex(c => c.keptTokens <= keepTarget);
+  if (lowerIndex < 0) return candidates[candidates.length - 1]!;
+  const lower = candidates[lowerIndex]!;
+  const upper = candidates[lowerIndex - 1];
+  // Only round upward within the feasible growth budget. Ties preserve more original history.
+  return feasible.length && upper && upper.keptTokens - keepTarget <= keepTarget - lower.keptTokens ? upper : lower;
 }
 export function unknownUsage(): UsageObservation {
   return { input: null, cacheRead: null, cacheWrite: null, contextInput: null, output: null, reasoning: null, totalTokens: null, cost: null };

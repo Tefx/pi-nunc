@@ -1,7 +1,7 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, PlanningEstimate, Slot } from "../engine/index.js";
-import { hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
@@ -94,6 +94,8 @@ export interface ContextBudget {
   extractionOutputTokens: number | null;
   extractionOutputCapTokens: number | null;
   extractionOutputCapKnown: boolean;
+  extractionOutputDesiredTokens?: number;
+  extractionOutputAuto?: boolean;
   safetyTokens: number | null;
 }
 export interface CurrentContext {
@@ -408,7 +410,8 @@ export function unknownBudget(occupied: number, unknown: boolean): ContextBudget
 
 function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedContext, occupied: number, memoryUnknown: boolean, slots: Slot[]): ContextBudget {
   const plan = memoryPlan(fixed, model, config, slots);
-  const uncapped = omitsSerializedOutputCap(model);
+  const output = extractionOutputPlan(model, config.extraction);
+  const uncapped = output.uncapped;
   return {
     modelWindow: model.contextWindow,
     triggerTokens: config.triggerTokens,
@@ -424,9 +427,11 @@ function measureBudget(model: Model<Api>, config: EngineConfig, fixed: FixedCont
     outputReserveTokens: config.main.nativeOutputReserve ?? config.main.outputTokens,
     outputCapTokens: null,
     outputCapKnown: uncapped,
-    extractionOutputTokens: config.extraction.outputTokens,
-    extractionOutputCapTokens: uncapped ? null : config.extraction.outputTokens,
-    extractionOutputCapKnown: true,
+    extractionOutputTokens: output.floor,
+    extractionOutputCapTokens: uncapped || output.automatic ? null : output.floor,
+    extractionOutputCapKnown: !output.automatic,
+    extractionOutputDesiredTokens: output.desired,
+    extractionOutputAuto: output.automatic,
     safetyTokens: config.main.safetyTokens,
   };
 }

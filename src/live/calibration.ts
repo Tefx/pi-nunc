@@ -19,7 +19,7 @@ export interface RetentionCalibration {
 export function calibrateRetention(source: MaintenanceInput, control: Control, turnEntries: Record<string, string[]>, turnOrder: string[], range: RetentionCalibrationRange, target?: { firstKeptEntryId: string; accounting: typeof import("../engine/accounting.js"); request: typeof import("../engine/request.js"); validation: typeof import("../engine/validation.js") }): RetentionCalibration {
   const currentAccounting = target?.accounting ?? accounting;
   const { chooseCut, inputLimit, mainContext, messageTokens, requestTokens } = currentAccounting;
-  const { extractionContext, reduceToolBodies } = target?.request ?? request;
+  const { extractionContext, reduceToolBodies, resolveExtractionRequest } = target?.request ?? request;
   const { legalCuts, validateConfig } = target?.validation ?? validation;
   const validateMemory: typeof validation.validateMemory = (target?.validation ?? validation).validateMemory;
   try {
@@ -48,7 +48,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     requireValue([...retained].every(id => ids.has(id) && !retired.has(id)), "CALIBRATION", "Required retained turn is absent or conflicts with retirement");
     let cuts = legalCuts(active);
     if (source.eligibleKeptEntryIds) cuts = cuts.filter(cut => source.eligibleKeptEntryIds!.includes(active[cut]!.entryId));
-    const mainInput = inputLimit(model, config.main), extractionInput = inputLimit(model, config.extraction);
+    const mainInput = inputLimit(model, config.main), extractionInput = currentAccounting.memoryPlan(source.fixed, model, config, source.memory.slots).extractionInputLimit;
     const trigger = Math.min(config.triggerTokens, mainInput);
     const fixed = requestTokens(mainContext(source.fixed, [], []), config.imageTokens) + config.main.extraInputTokens;
     const available = trigger - fixed;
@@ -73,10 +73,11 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     for (const [position, cut] of feasible.entries()) {
       if (target && active[cut]!.entryId !== target.firstKeptEntryId) continue;
       if (active.slice(cut).some(e => retired.has(e.entryId)) || active.slice(0, cut).some(e => retained.has(e.entryId))) continue;
-      // chooseCut selects the first feasible suffix <= floor(q*denominator), or its last feasible suffix if none fit.
-      const lowerTarget = position === feasible.length - 1 ? 0 : suffix[cut]!;
-      const previous = feasible[position - 1];
-      const exclusiveUpper = previous === undefined ? 1 : suffix[previous]! / denominator;
+      // Legacy target builds may still round down. The actual target selector below is decisive.
+      const nearest = currentAccounting.retentionRounding === "nearest-feasible";
+      const next = feasible[position + 1], previous = feasible[position - 1];
+      const lowerTarget = next === undefined ? 0 : nearest ? Math.ceil((suffix[cut]! + suffix[next]!) / 2) : suffix[cut]!;
+      const exclusiveUpper = previous === undefined ? 1 : (nearest ? Math.ceil((suffix[previous]! + suffix[cut]!) / 2) : suffix[previous]!) / denominator;
       const lower = Math.max(range.minFraction, lowerTarget / denominator), upper = Math.min(range.maxFraction, exclusiveUpper);
       if (lower > upper) continue;
       const fraction = lower === upper ? lower : lower + (upper - lower) / 2;
@@ -96,11 +97,13 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
         const reduction = reduceToolBodies(active, config.extraction.headTailChars);
         extraction = requestTokens(extractionContext(source, cut, memoryLimit, reduction.source, reduction.omissions), config.imageTokens) + config.extraction.extraInputTokens;
       }
-      requireValue(extraction <= extractionInput, "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
+      const resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, memoryLimit, fullExtraction > extractionInput && config.extraction.toolResults === "auto" ? reduceToolBodies(active, config.extraction.headTailChars).source : active, fullExtraction > extractionInput && config.extraction.toolResults === "auto" ? reduceToolBodies(active, config.extraction.headTailChars).omissions : [], cap));
+      if (resolved) extraction = resolved.extractionTokens;
+      requireValue(extraction <= (resolved?.extractionInputLimit ?? extractionInput), "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
       return {
         afterTurn: (control.afterTurn ?? control.duringTurn)!, firstKeptEntryId: active[cut]!.entryId, previousFraction: config.keepRecentFraction, selectedFraction: fraction, authorizedRange: { ...range },
         model: { provider: model.provider, id: model.id, contextWindow: model.contextWindow },
-        accounting: { effectiveTrigger: trigger, fixedTokens: fixed, memoryLimit, keepTarget, keptTokens: chosen.keptTokens, mainInputLimit: mainInput, extractionInputLimit: extractionInput, fullExtractionTokens: fullExtraction, extractionTokens: extraction, normalExtractionAtTrigger: normalAtTrigger, growthReserve: config.growthTokens },
+        accounting: { effectiveTrigger: trigger, fixedTokens: fixed, memoryLimit, keepTarget, keptTokens: chosen.keptTokens, mainInputLimit: mainInput, extractionInputLimit: resolved?.extractionInputLimit ?? extractionInput, fullExtractionTokens: fullExtraction, extractionTokens: extraction, normalExtractionAtTrigger: normalAtTrigger, growthReserve: config.growthTokens },
       };
     }
     if (isLegalTargetCut && !targetViolatesPlacement) {

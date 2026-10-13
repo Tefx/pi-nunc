@@ -42,6 +42,8 @@ export function validateConfig(c: EngineConfig): void {
     requireThat(b.outputLimit === undefined || integer(b.outputLimit, 1), "CONFIG", "outputLimit must be positive");
     requireThat(b.nativeOutputReserve === undefined || (integer(b.nativeOutputReserve, 1) && b.nativeOutputReserve <= b.outputTokens), "CONFIG", "Native output reserve must be positive and within the output ceiling");
   }
+  requireThat(c.extraction.outputUncapped === undefined || typeof c.extraction.outputUncapped === "boolean", "CONFIG", "Invalid native output route setting");
+  requireThat(c.extraction.outputAuto === undefined || typeof c.extraction.outputAuto === "boolean", "CONFIG", "Invalid automatic output setting");
   requireThat(c.extraction.nativeOutputReserve === undefined, "CONFIG", "Raw extraction requires a fixed output reserve");
   requireThat(["full", "auto"].includes(c.extraction.toolResults) && integer(c.extraction.headTailChars, 1), "CONFIG", "Invalid extraction reduction settings");
 }

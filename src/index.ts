@@ -2,9 +2,9 @@ import { isDeepStrictEqual } from "node:util";
 import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earendil-works/pi-ai";
 import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceResult, Memory } from "./engine/index.js";
-import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch, requestTokens } from "./engine/index.js";
+import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch } from "./engine/index.js";
 import { subscriptionBilling } from "./engine/pi-model.js";
-import { extractionContext } from "./engine/request.js";
+import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
@@ -99,7 +99,7 @@ export default function nunc(pi: ExtensionAPI): void {
   const admission = new Admission(pi, (ctx, model) => {
     supported(ctx);
     project(ctx.sessionManager.buildContextEntries());
-    return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction);
+    return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsSerializedOutputCap(model) || subscriptionBilling(model, ctx.modelRegistry));
   }, event => observeLayout(event));
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
@@ -230,7 +230,7 @@ export default function nunc(pi: ExtensionAPI): void {
   }
   const contextView = createContextSurface({
     pi, memory, fixed,
-    config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction),
+    config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsSerializedOutputCap(model) || subscriptionBilling(model, ctx.modelRegistry)),
   });
   const prepareUiCleanup = async (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal): Promise<{ edits?: unknown; warning?: string; stale?: boolean }> => {
     if (signal.aborted) return { stale: true };
@@ -260,7 +260,7 @@ export default function nunc(pi: ExtensionAPI): void {
     let callStartedAt: number | undefined;
     let observedResponse = false;
     try {
-      const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction);
+      const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction, omitsSerializedOutputCap(frozen.model) || subscriptionBilling(frozen.model, ctx.modelRegistry));
       config.toolResultCleanup = true;
       const policy = await loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) });
       if (stale()) return { stale: true };
@@ -269,18 +269,18 @@ export default function nunc(pi: ExtensionAPI): void {
         model: frozen.model, fixed: frozen.fixed, memory: proposal, active, cleanupCandidateScope: semanticScope,
         policy, config };
       const plan = memoryPlan(frozen.fixed, frozen.model, config, input.memory.slots);
-      const context = extractionContext(input, 0, plan.memoryLimit, active, []);
-      const request = context.messages[0];
-      if (request && Array.isArray(request.content)) request.content.push({ type: "text", text:
-        `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], update: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });
-      if (requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens > plan.extractionInputLimit) {
-        return { warning: "Cleanup skipped: full source exceeds extraction input limit; memory can still be saved" };
-      }
+      const resolved = resolveExtractionRequest(input, cap => {
+        const context = extractionContext(input, 0, plan.memoryLimit, active, [], cap);
+        const request = context.messages[0];
+        if (request && Array.isArray(request.content)) request.content.push({ type: "text", text:
+          `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], update: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });
+        return context;
+      });
       callStartedAt = Date.now();
-      const response = await admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context, outputTokens: config.extraction.outputTokens, signal: combined });
+      const response = await admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens, signal: combined });
       observedResponse = true;
       try { pi.events.emit("nunc:ui-cleanup-usage", { status: "response", model: { provider: frozen.model.provider, id: frozen.model.id },
-        elapsedMs: Date.now() - callStartedAt, stopReason: record(response) ? response.stopReason : null,
+        elapsedMs: Date.now() - callStartedAt, outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens, outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy, stopReason: record(response) ? response.stopReason : null,
         usage: record(response) ? response.usage : null }); } catch { /* Observation only. */ }
       if (stale()) return { stale: true };
       if (combined.aborted || !record(response) || response.role !== "assistant" || response.stopReason !== "stop" ||
@@ -417,7 +417,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd), host = settings(ctx);
       if (!isDeepStrictEqual(host.compaction, event.preparation.settings)) throw new EngineError("CONFIG", "Host settings differ from preparation; reload settings before maintenance");
       const model = structuredClone(ctx.model), thinking = ctx.thinkingLevel, f = structuredClone(fixed(ctx));
-      const config = engineConfig(selection.config, model, event.preparation.settings);
+      const config = engineConfig(selection.config, model, event.preparation.settings, omitsSerializedOutputCap(model) || subscriptionBilling(model, ctx.modelRegistry));
       const entries = manager.buildContextEntries();
       const projected = project(entries);
       const sourceRevision = memoryRevision(binding.sessionId, manager.getLeafId(), entries);

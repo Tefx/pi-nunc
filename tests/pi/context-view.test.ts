@@ -196,8 +196,9 @@ test("planned and enforced limits stay distinct; plan overrun can still delegate
   assert.notEqual(budget.current.budget.mainAdmissionLimit, null);
   assert.notEqual(budget.current.budget.extractionInputLimit, null);
   assert(budget.current.budget.plannedInputLimit! < budget.current.budget.mainAdmissionLimit!);
-  assert.equal(budget.current.budget.extractionOutputCapTokens, budget.current.budget.extractionOutputTokens);
-  assert.equal(budget.current.budget.extractionOutputCapKnown, true);
+  assert.equal(budget.current.budget.extractionOutputCapTokens, null);
+  assert.equal(budget.current.budget.extractionOutputCapKnown, false);
+  assert.equal(budget.current.budget.extractionOutputAuto, true);
   assert.equal(budget.current.budget.outputCapKnown, false);
   const current = budget.current.layout.heuristic.tokens ?? 0;
   const target = Math.min(budget.current.budget.plannedInputLimit! + 256, budget.current.budget.mainAdmissionLimit! - 256);

@@ -35,6 +35,10 @@ export interface EngineConfig {
   growthTokens: number;
   main: RequestBudget;
   extraction: RequestBudget & {
+    /** Resolve once against the complete frozen request; outputTokens is the minimum reserve. */
+    outputAuto?: boolean;
+    /** Frozen native auth route may omit cap even on a shared API. */
+    outputUncapped?: boolean;
     toolResults: "full" | "auto";
     /** One reduction pass: this many Unicode code points at EACH end per tool text block. */
     headTailChars: number;
@@ -98,6 +102,8 @@ export interface Accounting {
   estimator: "pi-heuristic";
   outputReserveTokens: number;
   outputCapTokens: number | null;
+  outputDesiredTokens?: number;
+  outputLimitedBy?: "window" | "capability" | "ceiling" | "fixed" | "uncapped";
   normalHeadroomSufficient: boolean;
   suggestedReserveTokens: number;
   inputExceededPlan: boolean;

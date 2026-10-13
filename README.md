@@ -91,9 +91,9 @@ Implemented defaults (`src/pi/config.ts`):
 | `memory.targetTokens` | `8192` (soft organizing target) |
 | `memory.hardMaxTokens` | unset (only an explicit value sets the independent saved-M hard cap) |
 | `rolling.keepRecentFraction` | `0.5` (range `(0, 1)`) |
-| `extraction.toolResults` | `"auto"` (`"full"` disables tool-body reduction) |
+| `extraction.toolResults` | `"full"` (explicit `"auto"` enables one bounded tool-body reduction) |
 | `extraction.headTailChars` | `200` |
-| `extraction.outputTokens` | `min(8192, model.maxTokens)` |
+| `extraction.outputTokens` | `"auto"`; accepts `"auto"` or a positive integer |
 | `budget.safetyTokens` | `1024` |
 | `budget.growthTokens` | `1024` |
 | `budget.extraMainInputTokens` | `0` |
@@ -103,7 +103,7 @@ Implemented defaults (`src/pi/config.ts`):
 
 Images work without extra configuration on image-capable models. `budget.imageTokens` optionally overrides the per-image planning estimate; existing explicit values retain priority. Neither the default nor an override guarantees a token upper bound. Main requests, extraction, retained-history planning and the Context panel use the same rule. Compatible request receipts supply actual usage for the historical prefix; new images are estimated. Provider overflow recovery remains Pi-owned, with no extra Nunc retry loop.
 
-Optional integers are positive except the `extra*` fields, which may be zero. Example file (every key optional):
+Automatic capped maintenance reserves at least `min(8192, output capability)` and desires `min(32768, output capability)`. It resolves the actual cap once from the complete frozen request, including policy/schema, tools, M/B/K, images, cleanup controls and configured overhead: `cap <= contextWindow - inputEstimate - safetyTokens`. It checks the minimum first, so the desired 32K does not reject full sources that fit the old floor. Less than the floor returns `CAPACITY` without dispatch. Uncapped native routes keep the old 8192-level planning reserve and serialize no cap. Explicit numbers keep fixed semantics. `/nunc` distinguishes the desired amount, resolved reserve/cap and limiting reason; 32K is never guaranteed. These are heuristic estimates, not tokenizer bounds.\n\n`keepRecentFraction` remains a soft target. Nunc chooses the closest feasible legal suffix on either side (ties retain more history), with growth room, nonempty B/K and intact tool units. Infeasible historical planning remains advisory; no new main guard or post-response cut is introduced.\n\nOptional integers are positive except the `extra*` fields, which may be zero. Example file (every key optional):
 
 ```json
 {
@@ -119,7 +119,7 @@ The example above explicitly specifies `rolling.keepRecentFraction: 0.67` to ill
 
 Pi compaction settings remain Pi’s (`compaction.reserveTokens` default 16384, `keepRecentTokens` default 20000, `enabled` default true). Nunc’s trigger is `H = contextWindow - reserveTokens`. Require a positive reserve and H, and `0 <= keepRecentTokens < H`. Pi uses `keepRecentTokens` for native preparation; Nunc chooses a legal retained suffix from `keepRecentFraction` independently.
 
-An explicit `extraction.outputTokens` equal to `model.maxTokens` is still honored, with a migration warning on APIs that have no serialized output cap. Remove that override to use the 8192 planning default. Nunc never rewrites Pi settings.
+An explicit `extraction.outputTokens` equal to `model.maxTokens` is still honored, with a migration warning on APIs that have no serialized output cap. Remove that override to use automatic capped sizing or the uncapped 8192-level planning default. To preserve legacy source reduction and fixed output, explicitly set `extraction: { "toolResults": "auto", "outputTokens": 8192 }`. Older versions do not accept the string `"auto"`; remove it or replace it with a supported number before rollback. Nunc never rewrites Pi settings.
 
 ## Compaction and maintenance
 

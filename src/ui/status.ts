@@ -96,9 +96,9 @@ export function budgetLines(current: CurrentContext): string[] {
     "Active patches reject growth beyond target/explicit hard limit; automatic maintenance retains required over target.",
     `Current history tools: ${current.layout.tools.unknown ? "partial/unknown" : "persisted declarations"}; last actual request is separate`,
     `Main output reserve: ${quantity(b.outputReserveTokens, noModel)}`,
-    `Maintenance output reserve: ${quantity(b.extractionOutputTokens, noModel)}`,
+    `Maintenance output ${b.extractionOutputAuto ? "minimum reserve" : "reserve"}: ${quantity(b.extractionOutputTokens, noModel)}${b.extractionOutputDesiredTokens !== undefined ? ` · desired ${thousands(b.extractionOutputDesiredTokens)}` : ""}`,
     `Main output cap: ${capLabel(b.outputCapKnown, b.outputCapTokens, noModel, "not observed")}`,
-    `Maintenance output cap: ${capLabel(b.extractionOutputCapKnown, b.extractionOutputCapTokens, noModel)}`,
+    `Maintenance output cap: ${capLabel(b.extractionOutputCapKnown, b.extractionOutputCapTokens, noModel, b.extractionOutputAuto ? "resolved per complete request" : "not observed")}`,
     "Maintenance output includes reasoning and JSON wrapping; a planning reserve is not an uncapped API limit.",
     `Safety: ${quantity(b.safetyTokens, noModel)}`,
     ...(current.layout.planning ? planningLines(current.layout.planning) : []),
@@ -124,7 +124,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
     lines.push(
       `Input estimate: full ${thousands(a.fullExtractionTokens)} → selected ${thousands(a.extractionTokens)}`,
       `Last-maintenance input plan: ${thousands(a.extractionInputLimit)}`,
-      `Maintenance output: planned reserve ${thousands(a.outputReserveTokens)} · serialized cap ${a.outputCapTokens === null ? "none" : thousands(a.outputCapTokens)} (reasoning + JSON included)`,
+      `Maintenance output: planned reserve ${thousands(a.outputReserveTokens)} · serialized cap ${a.outputCapTokens === null ? "none" : thousands(a.outputCapTokens)} (reasoning + JSON included)${a.outputDesiredTokens !== undefined ? ` · desired ${thousands(a.outputDesiredTokens)} · limit ${a.outputLimitedBy}` : ""}`,
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
       `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
     );

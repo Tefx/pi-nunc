@@ -47,6 +47,8 @@ test("uncapped complete output above planning reserve is accepted; serialized ca
   const uncapped = await maintain(source, respond);
   assert(uncapped.ok); assert.equal(uncapped.observations.accounting!.outputExceededPlan, true);
   source.model.api = "openai-responses";
+  source.config.extraction.outputUncapped = false;
+  source.config.extraction.outputAuto = false; // Explicit 8192 preserves the cap-overrun regression.
   const capped = await maintain(source, respond);
   assert(!capped.ok); assert.equal(capped.code, "CAPACITY");
   source.model.api = "openai-codex-responses";

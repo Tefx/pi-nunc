@@ -662,7 +662,8 @@ export class Admission {
         outputTokens = uncapped ? model.maxTokens : scope!.request.outputTokens;
         budgetObservation = { estimator: "pi-heuristic", outputReserveTokens: scope!.request.outputTokens, outputCapTokens: uncapped ? null : scope!.request.outputTokens };
         inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + initialMetadataTokens;
-        limit = inputLimit(model, config.extraction);
+        // The engine/UI resolved this exact request once; authorize that actual reserve.
+        limit = inputLimit(model, { ...config.extraction, outputTokens: scope!.request.outputTokens });
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Maintenance input estimate ${inputTokens} exceeds planned input ${limit}; no recursive recovery`);
       }
       const onPayload = options?.onPayload;

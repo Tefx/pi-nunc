@@ -47,7 +47,8 @@ test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unk
   for (const line of budgetLines(view.current)) assert(reports.at(-1)!.includes(line), line);
   for (const line of maintenanceLines(view.lastMaintenance)) assert(reports.at(-1)!.includes(line), line);
   assert.notEqual(view.current.budget.extractionInputLimit, null);
-  assert.equal(view.current.budget.extractionOutputCapKnown, true);
+  assert.equal(view.current.budget.extractionOutputCapKnown, false);
+  assert.equal(view.current.budget.extractionOutputAuto, true);
   await f.runtime.session.prompt("/nunc status");
   assert.equal(reports.at(-1), "Usage: /nunc [details]");
   assert.equal(f.faux.state.callCount, 0);
@@ -167,8 +168,9 @@ test("ContextSurface uncapped model marks extraction cap none rather than unknow
   const none = capLabel(view.current.budget.extractionOutputCapKnown, view.current.budget.extractionOutputCapTokens, view.current.model === null);
   assert.equal(none, "none");
   const capped = surface.read({ ...ctx, model: { ...model, api: "openai-responses" } });
-  assert.equal(capped.current.budget.extractionOutputCapKnown, true);
-  assert.equal(capped.current.budget.extractionOutputCapTokens, 8192);
+  assert.equal(capped.current.budget.extractionOutputCapKnown, false);
+  assert.equal(capped.current.budget.extractionOutputCapTokens, null);
+  assert.equal(capped.current.budget.extractionOutputDesiredTokens, 8192);
   assert.equal(capped.current.budget.extractionOutputTokens, 8192);
   const compatUncapped = surface.read({ ...ctx, model: { ...model, api: "openai-responses", compat: { supportsMaxOutputTokens: false } } });
   assert.equal(compatUncapped.current.budget.extractionOutputCapTokens, null);
