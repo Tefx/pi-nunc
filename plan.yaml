@@ -7424,7 +7424,7 @@ phases:
       pendingresponsibleparentdecision/applicableauthorization.'
   - id: nunc-defaults-remaining.beam-query-recovery
     name: 恢复冻结 BEAM case1 的原始未发送查询支持
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7496,3 +7496,5 @@ phases:
     depends_on:
     - nunc-defaults-remaining.beam-guard-repair
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T14:42:16.190233Z'
