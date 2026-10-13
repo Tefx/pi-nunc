@@ -22,9 +22,9 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const selection: Selection = { id: scoped ? "g3" : "g4", variant: variant!, config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
     nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40, ...(sourceLoss ? { toolResults: "auto" as const } : {}) }, ...(sourceLoss ? { budget: { // Includes shared writing guidance in F/tool schemas and the maintenance contract.
-      // Observed full requests are 11,255–11,268 Pi-estimated tokens; this limit resolves to ~11,150.
+      // Single-copy guidance: full requests are 10,171–10,184 Pi-estimated tokens; this limit resolves below them.
       // Actual omissions remain mandatory below; production pressure and limits are unchanged.
-      inputLimit: estimateTextTokens("x".repeat(10600 * 4)) } } : {}) },
+      inputLimit: estimateTextTokens("x".repeat(9500 * 4)) } } : {}) },
     retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } };
   const scenario = (await loadScenario(repository, selection)).input;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
