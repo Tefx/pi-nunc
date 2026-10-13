@@ -123,7 +123,7 @@ export default function nunc(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "nunc_memory_read",
         label: "Read Memory",
-        description: MEMORY_WRITING_GUIDANCE + "\nRead session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional originals returns available tool-result source text from the active selected path, with missing/non-text errors; it does not retrieve retired history or reopen old positions.",
+        description: "Read session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional originals returns available tool-result source text from the active selected path, with missing/non-text errors; it does not retrieve retired history or reopen old positions.",
         parameters: Type.Object({
           originals: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
         }),
@@ -166,14 +166,14 @@ export default function nunc(pi: ExtensionAPI): void {
           add: Type.Optional(Type.Array(
             Type.Object({
               key: Type.String({ description: "Temporary unique key for the added item within this batch" }),
-              text: Type.String({ description: "Content of the note. " + MEMORY_WRITING_GUIDANCE }),
+              text: Type.String({ description: "Self-contained note body following the patch tool's language and writing guidance; preserve exact values and qualifiers. Use real newlines." }),
             }),
             { description: "Items to add (system assigns final IDs in order). Express subject-relation-result clearly for correspondences, dependencies, or scope; independent facts remain plain sentences. Keep notes self-contained." }
           )),
           update: Type.Optional(Type.Array(
             Type.Object({
               id: Type.String({ description: "ID of existing slot to update" }),
-              text: Type.String({ description: "Complete updated body of the slot. " + MEMORY_WRITING_GUIDANCE }),
+              text: Type.String({ description: "Complete replacement body following the patch tool's language and writing guidance; preserve all still-valid content. Use real newlines." }),
             }),
             { description: "Items to update. Replaces the full slot body, preserving ID and position. Inspect all existing content; retain still-valid goals, qualifiers, completion conditions, necessary relationships and unfinished work when replacing or merging mixed notes. Keep notes self-contained; partial progress does not retire remaining obligations." }
           )),
