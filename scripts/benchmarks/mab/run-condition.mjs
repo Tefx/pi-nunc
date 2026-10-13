@@ -10,12 +10,15 @@ import { RpcClient } from '@earendil-works/pi-coding-agent';
 import { parseJsonl, assertHidden, assertQueryDelta } from './contracts.mjs';
 import { reconcileStoppedState } from './capture.mjs';
 import { assertFactProtocol } from '../selection.mjs';
+import {assertEventProtocol,scope} from '../remaining-selection.mjs';
 const base=resolve(process.argv[2]),root=join(base,process.argv[3]),preflight=process.argv[4]==='preflight';
 assert(process.argv.length===4||preflight&&process.argv.length===5);
-const protocol=JSON.parse(readFileSync(join(root,'protocol.json'),'utf8'));assertFactProtocol(protocol);
+const protocol=JSON.parse(readFileSync(join(root,'protocol.json'),'utf8'));
+if(protocol.scope===scope){assertEventProtocol(protocol);assert.deepEqual(protocol.cases[0],JSON.parse(readFileSync(protocol.canonicalReplacement,'utf8')).case,'Original replacement unchanged');}
+else assertFactProtocol(protocol);
 const helpers=dirname(fileURLToPath(import.meta.url));
 const records=path=>parseJsonl(readFileSync(path,'utf8'));
-const events=join(root,'events.jsonl');assert(!existsSync(events),'Refuse replay');
+const events=join(root,'events.jsonl');writeFileSync(events,'',{flag:'wx'});
 const started=Date.now(),budget={calls:0,contextInput:0,output:0},completed=[];
 let current={phase:'starting'},active;
 const status=state=>writeFileSync(join(root,'status.json'),JSON.stringify({state,startedAt:new Date(started).toISOString(),elapsedSeconds:(Date.now()-started)/1000,budget,current,completed},null,2)+'\n');
@@ -25,7 +28,7 @@ function usage(u,label){assert(u&&['input','output','cacheRead','cacheWrite'].ev
 async function bounded(fn){check();let timer;try{return await Promise.race([fn(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Operation deadline')),Math.min(protocol.limits.operationSeconds*1000,protocol.limits.runSeconds*1000-(Date.now()-started)));})]);}catch(error){await active?.abort().catch(()=>{});throw error;}finally{clearTimeout(timer);}}
 async function prompt(client,message,label){const begin=Date.now(),ev=await bounded(()=>client.promptAndWait(message,undefined,protocol.limits.operationSeconds*1000));const messages=ev.filter(e=>e.type==='message_end'&&e.message.role==='assistant').map(e=>e.message);assert.equal(messages.length,1);const response=messages[0];usage(response.usage,label);assert.equal(response.stopReason,'stop',response.errorMessage);assert(ev.some(e=>e.type==='agent_settled'&&!e.aborted));assert.equal(response.model,protocol.model.id);assert.equal(response.provider,protocol.model.provider);return {response,elapsedMs:Date.now()-begin};}
 async function compact(client){let off;const terminal=new Promise((res,rej)=>{off=client.onEvent(e=>{if(e.type==='compaction_end')e.result&&!e.aborted&&!e.errorMessage?res(e.result):rej(new Error(e.errorMessage??'Maintenance failed'));});});try{const [,result]=await Promise.all([client.prompt('/bench-compact').then(d=>assert.equal(d,'handled')),terminal]);return result;}finally{off?.();}}
-const [sh,mh]=protocol.cases,label=`nunc-${sh.caseId}`,cwd=join(root,label);assert(!existsSync(cwd));mkdirSync(join(cwd,'.pi'),{recursive:true});mkdirSync(join(cwd,'sessions'));
+const [sh]=protocol.cases,label=`nunc-${sh.caseId}`,cwd=join(root,label);assert(!existsSync(cwd));mkdirSync(join(cwd,'.pi'),{recursive:true});mkdirSync(join(cwd,'sessions'));
 const obs=join(cwd,'observations.jsonl'),capture=join(cwd,'extraction.jsonl');writeFileSync(obs,'');writeFileSync(capture,'');
 writeFileSync(join(cwd,'.pi/settings.json'),JSON.stringify({compaction:{enabled:false,reserveTokens:239232,keepRecentTokens:20000,modelOverrides:{[`${protocol.model.provider}/${protocol.model.id}`]:{reserveTokens:239232,keepRecentTokens:20000}}},retry:{enabled:false,provider:{maxRetries:0,timeoutMs:protocol.limits.operationSeconds*1000}},transport:'sse',defaultTools:[],nunc:{memoryTools:false}})+'\n');
 const client=new RpcClient({cliPath:fileURLToPath(new URL('cli.js',import.meta.resolve('@earendil-works/pi-coding-agent'))),cwd,provider:protocol.model.provider,model:protocol.model.id,env:{PI_SESSION_ID:'',PI_SESSION_FILE:'',PI_PROVIDER:'',PI_MODEL:'',PI_REASONING_LEVEL:'',PI_OFFLINE:'1',PI_TELEMETRY:'0',PI_SKIP_VERSION_CHECK:'1'},args:['--offline','--approve','--no-extensions','--no-mcp','--no-skills','--no-prompt-templates','--no-themes','--no-context-files','--no-tools','--thinking',protocol.readerThinking,'--session-dir',join(cwd,'sessions'),'--system-prompt',sh.systemPrompt,'-e',protocol.nunc.compiledSource,'-e',join(helpers,'observer.mjs'),'--bench-observer-file',obs,'--bench-capture-file',capture,'--bench-budget-file',join(root,'admission.json')]});
@@ -37,7 +40,7 @@ try{
  else{
  const delivered=[];
  for(let i=0;i<sh.chunks.length;i++){
-  current={arm:'nunc',history:sh.caseId,phase:'ingestion',chunk:i+1};const chunk=(i===0?protocol.framing.fact+'\n\n':'')+sh.chunks[i];assertHidden(chunk,protocol.cases);delivered.push(chunk);
+  current={arm:'nunc',history:sh.caseId,phase:'ingestion',chunk:i+1};const chunk=(i===0?(protocol.scope===scope?protocol.framing.event:protocol.framing.fact)+'\n\n':'')+sh.chunks[i];assertHidden(chunk,protocol.cases);delivered.push(chunk);
   const ingestion=await prompt(client,chunk,`${label}:ingest:${i+1}`);log({type:'ingestion',...current,elapsedMs:ingestion.elapsedMs});
   if(!sh.checkpointAfterChunks.includes(i+1))continue;
   current={arm:'nunc',history:sh.caseId,phase:'compaction',afterChunk:i+1};const begin=Date.now(),before=records(obs).length,beforeCapture=records(capture).length;
@@ -49,8 +52,8 @@ try{
  }
  const frozen=await client.getState(),saved=await client.getEntries();assert.equal(saved.entries.filter(e=>e.type==='compaction').length,2);const frozenMessages=await client.getMessages();
  log({type:'frozen',arm:'nunc',history:sh.caseId,sessionFile:frozen.sessionFile,leafId:saved.leafId});
- for(const group of [sh,mh])for(const q of group.questions){current={arm:'nunc',history:sh.caseId,phase:'QA',caseId:group.caseId,id:q.id};assert.equal((await client.switchSession(frozen.sessionFile)).cancelled,false);assert.equal((await client.clone()).cancelled,false);const query=await client.getState();assert.notEqual(query.sessionFile,frozen.sessionFile);assert.deepEqual(await client.getMessages(),frozenMessages);const result=await prompt(client,q.prompt,`nunc:${group.caseId}:QA:${q.id}`),delta=await client.getEntries(saved.leafId);assertQueryDelta(delta.entries,q.prompt);const answer=result.response.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');appendFileSync(join(root,'answers.jsonl'),JSON.stringify({arm:'nunc',caseId:group.caseId,id:q.id,index:q.index,answer,response:result.response,elapsedMs:result.elapsedMs,frozenSessionFile:frozen.sessionFile,frozenLeafId:saved.leafId,querySessionFile:query.sessionFile,querySessionHeader:records(query.sessionFile)[0],queryEntries:delta.entries})+'\n');log({type:'answer',...current,answer,elapsedMs:result.elapsedMs});}
- completed.push({arm:'nunc',history:sh.caseId,answered:40,frozenSessionFile:frozen.sessionFile});status('completed');
+ for(const group of protocol.cases)for(const q of group.questions){current={arm:'nunc',history:sh.caseId,phase:'QA',caseId:group.caseId,id:q.id};assert.equal((await client.switchSession(frozen.sessionFile)).cancelled,false);assert.equal((await client.clone()).cancelled,false);const query=await client.getState();assert.notEqual(query.sessionFile,frozen.sessionFile);assert.deepEqual(await client.getMessages(),frozenMessages);const result=await prompt(client,q.prompt,`nunc:${group.caseId}:QA:${q.id}`),delta=await client.getEntries(saved.leafId);assertQueryDelta(delta.entries,q.prompt);const answer=result.response.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');appendFileSync(join(root,'answers.jsonl'),JSON.stringify({arm:'nunc',caseId:group.caseId,id:q.id,index:q.index,answer,response:result.response,elapsedMs:result.elapsedMs,frozenSessionFile:frozen.sessionFile,frozenLeafId:saved.leafId,querySessionFile:query.sessionFile,querySessionHeader:records(query.sessionFile)[0],queryEntries:delta.entries})+'\n');log({type:'answer',...current,answer,elapsedMs:result.elapsedMs});}
+ completed.push({arm:'nunc',history:sh.caseId,answered:protocol.cases.reduce((n,c)=>n+c.questions.length,0),frozenSessionFile:frozen.sessionFile});status('completed');
  }
 }catch(error){current={...current,error:String(error)};status('failed');console.error(error);process.exitCode=1;}
 finally{await client.stop();writeFileSync(join(cwd,'stderr.log'),client.getStderr());active=undefined;const path=join(root,'admission.json'),state=JSON.parse(readFileSync(path,'utf8'));reconcileStoppedState(state,sh.caseId);writeFileSync(path,JSON.stringify(state,null,2)+'\n');}

@@ -8,21 +8,24 @@ import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {dirname} from 'node:path';
 import {assertArenaProtocol} from '../selection.mjs';
+import {assertArenaProtocol as assertRemainingArena,scope} from '../remaining-selection.mjs';
 import {reconcileStoppedState} from '../mab/capture.mjs';
 import {RpcClient} from '@earendil-works/pi-coding-agent';
+assert(process.argv.length===3||process.argv.length===4,'No retry/resume controls');
 const root=resolve(process.argv[2]),mode=process.argv[3],runRoot=join(root,mode==='run'?'run':'preflight');
-assert(['run','preflight'].includes(mode));mkdirSync(runRoot,{recursive:true});
-const proto=JSON.parse(readFileSync(join(root,'protocol.json'),'utf8'));assertArenaProtocol(proto);
+assert(['run','preflight'].includes(mode));
+const proto=JSON.parse(readFileSync(join(root,'protocol.json'),'utf8'));if(proto.scope===scope)assertRemainingArena(proto);else assertArenaProtocol(proto);
+mkdirSync(runRoot,{recursive:true});
 const templates=JSON.parse(readFileSync(join(root,'runtime/prompts.json'),'utf8'));
 const toolDefs=JSON.parse(readFileSync(join(root,'runtime/tools.json'),'utf8'));
 const toolNames=toolDefs.map(x=>x.function.name);
 const bridge=JSON.parse(readFileSync(join(root,'runtime/tool-service.json'),'utf8'));
 const helpers=dirname(fileURLToPath(import.meta.url));
-const eventsFile=join(runRoot,'events.jsonl');assert(!existsSync(eventsFile),'Refuse replay into previous results');
-const started=Date.now(),completed=[];let current={phase:'start'},active;
+const eventsFile=join(runRoot,'events.jsonl');writeFileSync(eventsFile,'',{flag:'wx'});
+const started=Date.now(),completed=[],failures=[];let current={phase:'start'},active;
 const budget={successfulOperations:0,contextInput:0,output:0,toolCalls:0,catalogEquivalentUsd:0,unknownUsageAttempts:0};
 const lines=p=>existsSync(p)?readFileSync(p,'utf8').split('\n').filter(Boolean).map(JSON.parse):[];
-function status(state='running'){writeFileSync(join(runRoot,'status.json'),JSON.stringify({state,startedAt:new Date(started).toISOString(),elapsedSeconds:(Date.now()-started)/1000,current,budget,completed},null,2)+'\n');}
+function status(state='running'){writeFileSync(join(runRoot,'status.json'),JSON.stringify({state,startedAt:new Date(started).toISOString(),elapsedSeconds:(Date.now()-started)/1000,current,budget,completed,failures},null,2)+'\n');}
 function log(e){appendFileSync(eventsFile,JSON.stringify({at:new Date().toISOString(),...e})+'\n');status();}
 function limits(){const admission=JSON.parse(readFileSync(join(root,'catalog-admission.json'),'utf8'));assert(!admission.stopped,admission.error??'Catalog admission stopped');assert(admission.spentUsd<=proto.catalogAllowanceUsd,'Catalog allowance');assert(Date.now()-started<proto.limits.runSeconds*1000,'Overall time limit');for(const k of ['successfulOperations','contextInput','output','toolCalls'])assert(budget[k]<=proto.limits[k],`Observed ${k} ceiling`);}
 function receipt(u,phase,extra={}){assert(u&&[u.input,u.cacheRead,u.cacheWrite,u.output].every(Number.isFinite),'Missing complete usage');budget.successfulOperations++;budget.contextInput+=u.input+u.cacheRead+u.cacheWrite;budget.output+=u.output;budget.catalogEquivalentUsd+=u.cost?.total??0;log({type:'usage',...current,phase,...extra,usage:u});limits();}
@@ -92,6 +95,9 @@ async function runOne(group,arm){
 try{
  const health=await (await fetch(bridge.url+'/health',{signal:AbortSignal.timeout(30000)})).json();assert.deepEqual(health.tools,[...toolNames].sort());assert.equal(health.flightCsvBytes,304807007,'Full official CSV required; no scorer subset liveDB');
  if(mode==='preflight'){for(const arm of [proto.arm])await runOne(proto.groups[0],arm);assert.equal(budget.successfulOperations,0);}
- else for(const [group,arm] of proto.order)await runOne(group,arm);
- current={phase:'finished'};status('completed');
+ else for(const [group,arm] of proto.order){
+  if(proto.scope!==scope){await runOne(group,arm);continue;}
+  try{await runOne(group,arm);}catch(error){failures.push({group,arm,current,error:String(error)});log({type:'group_failed',...failures.at(-1)});}
+ }
+ current={phase:'finished'};status(failures.length?'partial_or_failed':'completed');if(failures.length)process.exitCode=1;
 }catch(error){current={...current,error:String(error)};status('failed');console.error(error);process.exitCode=1;}

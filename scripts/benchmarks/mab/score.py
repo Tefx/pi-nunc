@@ -22,13 +22,14 @@ def read(p):return json.loads(p.read_text())
 def lines(p):return [json.loads(s) for s in p.read_text().split('\n') if s.strip()] if p.exists() else []
 protocol=read(root/'protocol.json');scores=[];groups=[];costs=[];checkpoints=[];runtime=[];punctuation=[]
 gold={}
-original_cases=protocol['cases']
+remaining_event=protocol.get('scope')=='remaining-defaults-v1'
+original_cases=[] if remaining_event else protocol['cases']
 replacement_path=root/'event-replacement-protocol.json'
-all_cases=original_cases+([read(replacement_path)['case']] if replacement_path.exists() else [])
+all_cases=protocol['cases'] if remaining_event else original_cases+([read(replacement_path)['case']] if replacement_path.exists() else [])
 for c in all_cases:
  for q in read(root/'inputs/cases'/c['caseId']/'gold.json'):gold[(c['caseId'],q['id'])]=q['answers']
 for condition in protocol['conditions']:
- key=condition['key'];cwd=root/key;answers=lines(cwd/'answers.jsonl');state=read(cwd/'status.json');admission=read(cwd/'admission.json')
+ key=condition['key'];cwd=root/key;answers=lines(cwd/'answers.jsonl');state=read(cwd/'status.json') if (cwd/'status.json').exists() else {'state':'not_started','completed':[]};admission=read(cwd/'admission.json')
  seen=set();expected={(c['caseId'],q['id']) for c in all_cases for q in c['questions']}
  for a in answers:
   identity=(a['caseId'],a['id']);assert identity in expected and identity not in seen;seen.add(identity)
@@ -45,11 +46,11 @@ for condition in protocol['conditions']:
  if state['state']=='completed':assert seen==expected
  for c in all_cases:
   items=[s for s in scores if s['condition']==key and s['caseId']==c['caseId']]
-  groups.append({'condition':key,'caseId':c['caseId'],'correct':sum(s['correct'] for s in items) if items else None,'answered':len(items),'required':20,'complete':len(items)==20,'accuracy':sum(s['correct'] for s in items)/len(items) if items else None,'missing':20-len(items)})
+  groups.append({'condition':key,'caseId':c['caseId'],'correct':sum(s['correct'] for s in items) if items else None,'answered':len(items),'required':len(c['questions']),'complete':len(items)==len(c['questions']),'accuracy':sum(s['correct'] for s in items)/len(items) if items else None,'missing':len(c['questions'])-len(items)})
  cost={'condition':key,**admission,'state':state['state'],'pendingUsd':sum(p['usd'] for p in admission['pending'].values())};costs.append(cost)
  events=lines(cwd/'events.jsonl');checkpoints.extend({'condition':key,**e} for e in events if e['type']=='checkpoint')
  records=[]
- for h in ['factconsolidation_sh_64k','eventqa_65536']+([read(replacement_path)['case']['caseId']] if replacement_path.exists() else []):
+ for h in dict.fromkeys(c['caseId'] for c in all_cases):
   records+=lines(cwd/f"{condition['arm']}-{h}"/'extraction.jsonl')
  main=[e for e in records if e['type']=='serialized_session'];req=[e for e in records if e['type']=='request'];wire=[e for e in records if e['type']=='serialized_maintenance']
  for e in main+wire:assert e['payload']['reasoning']['effort']=='medium'
@@ -64,7 +65,10 @@ status='completed' if all(g['complete'] for g in groups) and all(c['state']=='co
 original_groups=[g for g in groups if g['caseId'] in {c['caseId'] for c in original_cases}]
 replacement_groups=[g for g in groups if g not in original_groups]
 missing=[{'condition':c['key'],'caseId':case['caseId'],'id':q['id']} for c in protocol['conditions'] for case in all_cases for q in case['questions'] if not any(s['condition']==c['key'] and s['caseId']==case['caseId'] and s['id']==q['id'] for s in scores)]
-report={'status':status,'groups':groups,'originalGroups':original_groups,'replacementGroups':replacement_groups,'originalRequired':sum(len(c['questions']) for c in original_cases)*len(protocol['conditions']),'originalAnswered':sum(g['answered'] for g in original_groups),'replacementRequired':80 if replacement_groups else 0,'replacementAnswered':sum(g['answered'] for g in replacement_groups),'missingAnswers':missing,'cost':{'catalogReportedUsd':sum(c['spentUsd'] for c in costs),'heldUnknownUsd':sum(c['heldUnknownUsd'] for c in costs),'pendingUsd':sum(c['pendingUsd'] for c in costs),'exclusiveCapUsd':protocol['budgetUsd'],'actualBillUnknown':True,'conditions':costs},'runtime':runtime,'punctuationSensitivity':punctuation,'knownGoldCaveats':['SH no18 gold Tom Clancy conflicts with latest fact1219 Torquato Tasso.','MH no5 gold London conflicts with later3498 Washington,D.C. along inspected chain.','MH no6 gold South America conflicts with later4004 Asia along inspected chain.','MH no19 country question has a person-name gold; interpretation ambiguous.'],'interpretation':['Single frozen first20 SH/MH subsets, one Fact formation shared per condition; no Event or native rerun.','Manual compaction after chunks8/17 and effective272K pressure; not default1.05M behavior.','Actual retained K and M unequal; scores are official gold compatibility, no retrospective adjustments.','Main and maintenance MEDIUM paired; observer forwards no reasoning effort. Native unchanged installed flow plus MEDIUM state is bounded proof, native wire not directly intercepted.']}
+report={'status':status,'groups':groups,'originalGroups':original_groups,'replacementGroups':replacement_groups,'originalRequired':sum(len(c['questions']) for c in original_cases)*len(protocol['conditions']),'originalAnswered':sum(g['answered'] for g in original_groups),'replacementRequired':sum(len(c['questions']) for c in all_cases if c not in original_cases)*len(protocol['conditions']),'replacementAnswered':sum(g['answered'] for g in replacement_groups),'missingAnswers':missing,'cost':{'catalogReportedUsd':sum(c['spentUsd'] for c in costs),'heldUnknownUsd':sum(c['heldUnknownUsd'] for c in costs),'pendingUsd':sum(c['pendingUsd'] for c in costs),'exclusiveCapUsd':protocol['budgetUsd'],'actualBillUnknown':True,'conditions':costs},'runtime':runtime,'punctuationSensitivity':punctuation,'knownGoldCaveats':['SH no18 gold Tom Clancy conflicts with latest fact1219 Torquato Tasso.','MH no5 gold London conflicts with later3498 Washington,D.C. along inspected chain.','MH no6 gold South America conflicts with later4004 Asia along inspected chain.','MH no19 country question has a person-name gold; interpretation ambiguous.'],'interpretation':['Single frozen first20 SH/MH subsets, one Fact formation shared per condition; no Event or native rerun.','Manual compaction after chunks8/17 and effective272K pressure; not default1.05M behavior.','Actual retained K and M unequal; scores are official gold compatibility, no retrospective adjustments.','Main and maintenance MEDIUM paired; observer forwards no reasoning effort. Native unchanged installed flow plus MEDIUM state is bounded proof, native wire not directly intercepted.']}
+if remaining_event:
+ report['knownGoldCaveats']=[]
+ report['interpretation']=['Fixed canonical Event row8 only, two Nunc conditions and20 questions each. No original filtered row7 or Fact replay.','Manual CP8/17, effective272K, omitted auto/full; no retries or retrospective gold adjustments.','Incomplete answers retain missing denominators; absence is not a zero score or observed saving.','Native MEDIUM maintenance wire limitation remains; actual new wire is captured.']
 (root/'scores.json').write_text(json.dumps({'groups':groups,'scores':scores},ensure_ascii=False,indent=2)+'\n')
 (root/'summary.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 (root/'checkpoints.json').write_text(json.dumps(checkpoints,ensure_ascii=False,indent=2)+'\n')

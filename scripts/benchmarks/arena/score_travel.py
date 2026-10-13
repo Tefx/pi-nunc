@@ -98,12 +98,14 @@ def parse_plans(text):
   out[parts[i].strip()]=ds
  return out
 
-def evaluate_group(g,plans):
+def evaluate_group(g,plans,answered_names=None):
  inp=load(ROOT/f'cases/{g}/input.json');gold=load(ROOT/f'cases/{g}/gold.json');base=inp['base_person'];full={base['name']:base['daily_plans'],**plans}
  gt={(g,a['round_idx']):a['daily_plans'] for a in gold['answers']};base_plans={g:base['daily_plans']}
  people=[]
  for q in inp['questions']:
-  n=q['name'];p=plans.get(n,[]);expected=gt[(g,q['round_idx'])]
+  n=q['name']
+  if answered_names is not None and n not in answered_names:continue
+  p=plans.get(n,[]);expected=gt[(g,q['round_idx'])]
   exact_days=sorted(x.get('day') or x.get('days') for x in p)==sorted(x.get('day') or x.get('days') for x in expected)
   complete=exact_days and all(all(k in day(p,d.get('day') or d.get('days')) for k in ALL) for d in expected)
   fuzzy=scope['check_person_full_pass'](expected,p)
@@ -120,15 +122,17 @@ def evaluate_group(g,plans):
     catalog.append({'day':d,'slot':slot,'valid':ok})
   rules=[{'rule':r,'checks':check_rule(r,n,full,base['daily_plans'])} for r in RULES[(g,n)]]
   people.append({'name':n,'round':q['round_idx'],'complete':complete,'catalogSlots':catalog,'invariantInventory':invariants,'officialPersonPass':bool(fuzzy),'officialConstraintRate':constraint_rate,'strictGoldSlots':strict,'goldSlots':len(expected)*len(SLOTS),'explicitRules':rules,'explicitPass':complete and all(x['valid'] for x in catalog+invariants) and all(all(x['checks'].values()) for x in rules)})
- return {'group':g,'people':people,'officialGroupPass':all(p['officialPersonPass'] for p in people)}
+ complete_observation=answered_names is None or len(people)==len(inp['questions'])
+ return {'group':g,'people':people,'officialGroupPass':all(p['officialPersonPass'] for p in people) if complete_observation else None,'expectedPeople':len(inp['questions']),'missingPeople':[q['name'] for q in inp['questions'] if answered_names is not None and q['name'] not in answered_names]}
 
 def aggregate(groups):
  people=[p for g in groups for p in g['people']];rules=[r for p in people for r in p['explicitRules']]
  sps=[sum(v)/len(v) for g in groups if (v:=[p['officialConstraintRate'] for p in g['people'] if p['officialConstraintRate'] is not None])]
- return {'expectedPeople':len(people),'completePeople':sum(p['complete'] for p in people),'PS':100*sum(p['officialPersonPass'] for p in people)/len(people),'SPS':100*sum(sps)/len(sps),'SR':100*sum(g['officialGroupPass'] for g in groups)/len(groups),'strictGoldSlots':sum(p['strictGoldSlots'] for p in people),'goldSlots':sum(p['goldSlots'] for p in people),'validMealAccommodationSlots':sum(x['valid'] for p in people for x in p['catalogSlots']),'mealAccommodationSlots':sum(len(p['catalogSlots']) for p in people),'validInvariantSlots':sum(x['valid'] for p in people for x in p['invariantInventory']),'invariantSlots':sum(len(p['invariantInventory']) for p in people),'explicitPassingRules':sum(all(r['checks'].values()) for r in rules),'explicitRules':len(rules),'explicitPassingPeople':sum(p['explicitPass'] for p in people)}
+ observed_groups=[g for g in groups if g['officialGroupPass'] is not None]
+ return {'expectedPeople':sum(g.get('expectedPeople',len(g['people'])) for g in groups),'evaluatedPeople':len(people),'completePeople':sum(p['complete'] for p in people),'PS':100*sum(p['officialPersonPass'] for p in people)/len(people) if people else None,'SPS':100*sum(sps)/len(sps) if sps else None,'SR':100*sum(g['officialGroupPass'] for g in observed_groups)/len(observed_groups) if observed_groups else None,'strictGoldSlots':sum(p['strictGoldSlots'] for p in people),'goldSlots':sum(p['goldSlots'] for p in people),'validMealAccommodationSlots':sum(x['valid'] for p in people for x in p['catalogSlots']),'mealAccommodationSlots':sum(len(p['catalogSlots']) for p in people),'validInvariantSlots':sum(x['valid'] for p in people for x in p['invariantInventory']),'invariantSlots':sum(len(p['invariantInventory']) for p in people),'explicitPassingRules':sum(all(r['checks'].values()) for r in rules),'explicitRules':len(rules),'explicitPassingPeople':sum(p['explicitPass'] for p in people)}
 
 assert scope['similarity']('Hotel A','Hotel B')>=.7 and norm('Hotel A')!=norm('Hotel B')
-assert not evaluate_group(4,{})['people'][0]['complete']
+assert not evaluate_group(load(ROOT/'protocol.json')['groups'][0],{})['people'][0]['complete']
 mode=sys.argv[2]
 if mode=='preflight':
  groups=[]
@@ -137,23 +141,29 @@ if mode=='preflight':
   assert all((g,q['name']) in RULES for q in inp['questions'])
   groups.append(evaluate_group(g,{q['name']:a['daily_plans'] for q,a in zip(inp['questions'],gold['answers'])}))
  # Meaningful negative check: an existing in-city restaurant with the wrong price must fail the actual explicit price predicate.
- first=load(ROOT/'cases/4/input.json');gold1=load(ROOT/'cases/4/gold.json');bad={q['name']:json.loads(json.dumps(a['daily_plans'])) for q,a in zip(first['questions'],gold1['answers'])}
- city=first['base_person']['daily_plans'][0]['dinner'].rsplit(',',1)[-1].strip()
- wrong=next(a for a in CAT if a['kind']=='restaurant' and a['city']==city and a['price']>38.8)
- day(bad['Monica'],1)['dinner']=wrong['name']+', '+wrong['city']
- negative=evaluate_group(4,bad)['people'][0]['explicitRules'][0]['checks'];assert negative['exact_catalog_entity_in_trip_city'] and negative['price'] is False
+ selected=load(ROOT/'protocol.json')['groups']
+ g,n,rule=next((g,q['name'],r) for g in selected for q in load(ROOT/f'cases/{g}/input.json')['questions'] for r in RULES[(g,q['name'])] if 'price' in r and r['slot']!='accommodation')
+ first=load(ROOT/f'cases/{g}/input.json');gold1=load(ROOT/f'cases/{g}/gold.json');bad={q['name']:json.loads(json.dumps(a['daily_plans'])) for q,a in zip(first['questions'],gold1['answers'])}
+ city=day(first['base_person']['daily_plans'],rule['day'])[rule['slot']].rsplit(',',1)[-1].strip()
+ wrong=next(a for a in CAT if a['kind']=='restaurant' and a['city']==city and not rule['price'][0]<=a['price']<=rule['price'][1])
+ day(bad[n],rule['day'])[rule['slot']]=wrong['name']+', '+wrong['city']
+ negative=check_rule(rule,n,bad,first['base_person']['daily_plans']);assert negative['exact_catalog_entity_in_trip_city'] and negative['price'] is False
  report={'mode':'hidden-gold preflight, no candidate call','mechanicalChecks':{'officialFuzzyAcceptsDifferentEntity':True,'missingPersonRejected':True,'realCatalogWrongPriceRejected':negative['price'] is False},'aggregate':aggregate(groups),'groups':groups}
  (ROOT/'gold-preflight.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
  print(json.dumps({'aggregate':report['aggregate'],'failedRules':[{'group':g['group'],'name':p['name'],**r} for g in groups for p in g['people'] for r in p['explicitRules'] if not all(r['checks'].values())]},ensure_ascii=False))
 elif mode=='score':
- records=[json.loads(l) for l in (ROOT/'run/answers.jsonl').read_text().splitlines()]
+ records=[json.loads(l) for l in (ROOT/'run/answers.jsonl').read_text().splitlines()] if (ROOT/'run/answers.jsonl').exists() else []
+ remaining=load(ROOT/'protocol.json').get('scope')=='remaining-defaults-v1'
  report={}
  for arm in [load(ROOT/'protocol.json')['arm']]:
   groups=[]
   for g in load(ROOT/'protocol.json')['groups']:
    answers=[a for a in records if a['arm']==arm and a['group']==g];expected=load(ROOT/f'cases/{g}/input.json')['questions']
-   assert len(answers)==len(expected) and [a['round'] for a in answers]==[q['round_idx'] for q in expected], 'Missing/duplicate executed round'
-   plans=parse_plans('\n\n'.join(a['answer'] for a in answers));groups.append(evaluate_group(g,plans))
+   if remaining:
+    observed=[(a['round'],a['name']) for a in answers];allowed=[(q['round_idx'],q['name']) for q in expected]
+    assert len(set(observed))==len(observed) and all(x in allowed for x in observed),'Duplicate or unselected answer'
+   else:assert len(answers)==len(expected) and [a['round'] for a in answers]==[q['round_idx'] for q in expected], 'Missing/duplicate executed round'
+   plans=parse_plans('\n\n'.join(a['answer'] for a in answers));groups.append(evaluate_group(g,plans,{a['name'] for a in answers} if remaining else None))
   report[arm]={'aggregate':aggregate(groups),'groups':groups}
  (ROOT/'scores.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps({a:r['aggregate'] for a,r in report.items()}))
 else:raise AssertionError(mode)

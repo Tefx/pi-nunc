@@ -25,7 +25,7 @@ export default function(pi){
   }catch(e){fail(ctx,e);}
  }
  function settle(ctx,kind,u){
-  try{const s=load(),p=s.pending[kind];assert(p,`Missing ${kind} reservation`);assert(u&&[u.input,u.output,u.cacheRead,u.cacheWrite].every(Number.isFinite),'Missing usage');
+  try{const s=load(),p=s.pending[kind];assert(p,`Missing ${kind} reservation`);assert(u&&[u.input,u.output,u.cacheRead,u.cacheWrite].every(n=>Number.isFinite(n)&&n>=0)&&u.input+u.output+u.cacheRead+u.cacheWrite>0,'Missing or zero usage; reservation remains unknown');
    const used=u.input+u.cacheRead+u.cacheWrite;
    const actualRates=[...rateTable].reverse().find(r=>used>(r.inputTokensAbove??-1))??rates;
    const usd=(u.input*actualRates.input+u.output*actualRates.output+u.cacheRead*actualRates.cacheRead+u.cacheWrite*actualRates.cacheWrite)/1e6;assert(usd<=p.usd+1e-8,'Observed cost exceeds reservation');s.spentUsd+=usd;assert(s.spentUsd+(s.heldUnknownUsd??0)<s.allowanceUsd);delete s.pending[kind];s.receipts++;save(s);record({type:'catalog_settled',kind,computedCatalogUsd:usd,sdkCatalogUsd:u.cost?.total??null,spentUsd:s.spentUsd});

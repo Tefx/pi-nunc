@@ -1,5 +1,7 @@
 # Bounded defaults benchmark handoff
 
+The initial sections below describe the **closed20USD** delivery and its reusable evidence. Do not replay it. The newly authorized30USD scope and current operator entrypoints are in [Remaining defaults comparison](#remaining-defaults-comparison).
+
 This source delivery makes no paid calls and does not claim semantic improvement. Runtime acceptance remains a separate consumer. Use the tracked `scripts/benchmarks/` sources, promoted from the retained 2026-10-12 adapters; ignored helper copies no longer decide scope, payload, cost admission or scoring.
 
 ## Frozen scope and comparator applicability
@@ -36,3 +38,58 @@ MAB and Arena load the installed dependency's stock CLI via package resolution, 
 New total cap is20USD including spent, unknown holds and in-flight worst-case reservations. Exclusive serial partitions are LunaFact3USD, SolFact14USD and ordinaryArena3USD, totaling20; an exhausted partition stops instead of borrowing or replaying. Maximum concurrent request count is1. The retained prior known30.784718350 + held20.30112 = charged51.085838350 remains charged and immutable; no hold release is authorized. Native main output capability, cache/input rates and tier maxima remain budgeted; small extraction caps do not reduce main authorization. Catalog accounting is an estimate, not final billing proof.
 
 The source step runs only offline tests. Runtime owners still must bind the accepted commit, verify native effective model/prices/window/thinking before paid work without probing, prepare fresh single-use targets, reconcile processes and unknown reservations, and stay within the20USD aggregate cap. Preflight targets are single-use too; create new targets for execution. Do not run a native arm, Event, BEAM or broader matrix. Finish with retained minimal original observations and remove reconstructible environments/database copies after their consumer ends.
+
+## Remaining defaults comparison
+
+This support delivery makes zero paid calls. Its separate selector admits only:
+
+| Suite | Fresh conditions | Original denominators and adaptation |
+| --- | --- | --- |
+| Arena | Luna/Nunc5,6; Sol/Nunc4,5,6 |12 and20 travelers; automatic rolling, MEDIUM/effective272K/reserve255616/keep8000. Reuse current Luna4/eight once and matching native20 without replay. |
+| BEAM | Luna/Nunc and Sol/Nunc |12 answers and24 criteria each across IF/KU/CR and two retained histories; effective98304. Original native3 versus Nunc5 checkpoints per history; split batches2/3 only at the original natural mid-batch user boundary. |
+| Event | Luna/Nunc and Sol/Nunc, fixed `eventqa_65536_replacement_row8` |20 questions each,17 original chunks, CP8/17; revision `7ea066982b140a19337e17e60d45d4076e042faf`. No filtered row7, replacement search or Fact replay. |
+
+`remaining-selection.mjs` preserves the old selector, canonical inputs and original scorer. Preflight and paid roots are different fresh single-use trees. Atomic started/event files reject repeated or concurrent use of a condition target; deleting them does not authorize replay. Native conditions, Luna4, Fact, other Event rows and execution recovery/resume/schema-retry arguments are rejected. Reopening an ongoing native SDK session and independent query branching remain necessary session operations. Formation failures stop that history; other independently admitted histories/groups/queries can proceed without replaying failed requests.
+
+### New allocation and guards
+
+NEW30USD has exclusive10USD per suite, including all main, maintenance and judge requests, unknown holds and possible in-flight subcalls. The tracked partition is Arena Luna1/Sol9; BEAM Luna1/Sol8/judge1; Event Luna1/Sol9. Different models use separate serial ledgers and private sessions. Their fixed sums enforce suite and phase caps without a shared guard service or implicit borrowing. Different suites can run concurrently with isolated environments. Prior known37.157149720 + held20.30112 = charged57.458269720/inflight0 remains unchanged; old20 is closed. Full charged exposure must stay strictly below200USD.
+
+Guards reserve the actual output cap and worst catalog input/cache/output tier rates for the frozen effective model window. Main128K capability remains separately reserved; maintenance/judge do not borrow an8192 assumption. Serialized maintenance cap must equal the resolved cap, including window-limited values; omitted product settings preserve auto/full. Request, wire and receipt captures retain MEDIUM forwarding without an injected effort or transport replacement. Pending and zero/missing/error usage remains conservatively held after stopped operations; absence never settles to zero or releases old holds. Aggregate unknown/in-flight exposure and catalog estimates remain separate from provider billing proof. No budget/cap/window tuning, JSON repair, retries or provider fallback is authorized by an exhausted partition.
+
+### Preparation and entrypoints
+
+Use accepted tracked source, Node26.7.0/npm11.19.0/Pi1.1.0, locked `npm ci --ignore-scripts`, `NODE_OPTIONS` unset and private HOME/npm/UV caches. Build before selection. `RETAINED` below is the canonical2026-10-12 root, not a newly sampled dataset. Freeze before any paid requests:
+
+```sh
+node scripts/benchmarks/remaining-selection.mjs RETAINED NEW_ROOT ABSOLUTE_DIST_SRC_INDEX_JS COMMIT
+# Same command for a separate fresh preflight root.
+node scripts/benchmarks/arena/run-arena-medium.mjs NEW_ROOT/arena/luna-nunc preflight
+node scripts/benchmarks/arena/run-arena-medium.mjs NEW_ROOT/arena/sol-nunc preflight
+node scripts/benchmarks/mab/run-condition.mjs NEW_ROOT/event luna-nunc preflight
+node scripts/benchmarks/mab/run-condition.mjs NEW_ROOT/event sol-nunc preflight
+node scripts/benchmarks/beam/run-condition.mjs NEW_ROOT/beam Luna preflight
+node scripts/benchmarks/beam/run-condition.mjs NEW_ROOT/beam Sol preflight
+node scripts/benchmarks/beam/score.mjs NEW_ROOT/beam preflight
+```
+
+For independently authorized paid work use a newly selected/prepared tree: Arena mode `run`, MAB omit `preflight`, BEAM mode `run`, judge omit `preflight`. Judge only after formation/query processes have stopped and original new answers are reconciled. It reads exclusively `run/{Luna,Sol}-nunc`, grades only produced new answers and sends only the original rubric criterion plus answer; the original scorer does not include the probing question in its judge prompt. Its4096 cap is the unchanged judge cap, distinct from auto maintenance. It never resumes old judgment files. Each criterion is attempted once, preserving raw parse/error receipts. Missing answers/judgments retain12-answer/24-criterion per-model denominators rather than fabricated zero scores.
+
+Thin setup supplies only immutable canonical inputs and local environment/services:
+
+- Arena condition roots need selected `cases/G/input.json` and `gold.json`, original `flight-inventory.json`, `runtime/prompts.json`, tracked exact `arena/tools.json` copied to `runtime/tools.json`, and pinned MemoryArena6cd9de14 under `runtime/MemoryArena`. Restore the full304807007B flight CSV and all official database files. Run `travel_tools.py CONDITION_ROOT` in an isolated pandas2.3.3/numpy2.5.4/requests2.34.2 environment; its `runtime/tool-service.json` loopback readiness/config receipt is required. A read-only full database may be shared; mutable venv/node_modules and writer targets must remain private. Preflight must record actual official CitySearch Illinois/Rockford with all six registered tool schemas. Stop services after the last live tool consumer.
+- Event root needs retained `mab/inputs/official-scorer.py` and original row8 gold at `inputs/cases/eventqa_65536_replacement_row8/gold.json`. Selector copies the exact replacement history/questions/framing into protocols and runtime rechecks the canonical case. Concrete probes/gold never enter formation input.
+- BEAM root needs exact retained `beam/{queries.json,inputs/1,inputs/2,upstream/judge-prompt.json}`. The selector records its canonical root, and the runner/judge compare original histories, probes, rubrics and prompt before opening the host. No ignored executable helper copy decides selection, retries, guards or scoring.
+
+Offline scoring:
+
+```sh
+python3 scripts/benchmarks/arena/score_travel.py NEW_ROOT/arena/luna-nunc score PINNED_OFFLINE_SCORER_SOURCE
+python3 scripts/benchmarks/arena/score_travel.py NEW_ROOT/arena/sol-nunc score PINNED_OFFLINE_SCORER_SOURCE
+python3 scripts/benchmarks/mab/score.py NEW_ROOT/event
+python3 scripts/benchmarks/beam/check-official-scoring.py RETAINED/beam
+```
+
+The Arena scorer subset is offline-only. Its new partial-selection path grades only observed travelers, reports original expected counts/missing people and leaves incomplete-group SR or wholly unobserved PS/SPS null. Observed invalid answers still fail original criteria; absent answers receive no invented grade. The Event replacement denominator derives from selected conditions/questions:2×20=40. Original parser/metrics/gold remain unchanged; all original selected native Arena metric values and published BEAM parser/three criterion scorers can be checked offline without generating answers or judgments.
+
+Use the existing `evidence.mjs` actual savedM→actualNEXT decoder; exact carriage and material strings supply bounded evidence, not semantic completeness. Reuse applicable prior Fact80, current Luna4, native both-model and official-tool/carrier observations. Inspect new necessary-content outcomes and preserve template, gold, native-wire and BEAM adaptation limitations. Never report the incomplete historical12-condition matrix as completed. Retain original unique observations and minimal provenance; remove caches, fixtures, environments/builds and fullDB copies when their named consumers finish. Source support keeps preparation only for an immediate named runtime consumer and stops every probe child/service before handoff.

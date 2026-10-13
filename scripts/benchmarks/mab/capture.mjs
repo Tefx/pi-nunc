@@ -10,6 +10,7 @@ export function assertCatalogBinding(s,model){
 export function reserveState(s,kind,output,calls=1){
  assert(!s.stopped,'Admission stopped');assert.equal(Object.keys(s.pending).length,0,'Unreconciled request');
  assert(Number.isInteger(output)&&output>0&&output<=s.maxTokens,'Invalid actual output bound');
+ assert(Number.isInteger(calls)&&calls>=1&&calls<=2,'Invalid subcall count');
  assert(s.admissions<210,'Finite call-envelope ceiling');
  const rates=[s.cost,...(s.cost.tiers??[])];
  const input=Math.max(...rates.flatMap(r=>[r.input,r.cacheRead,r.cacheWrite]));
@@ -20,6 +21,7 @@ export function reserveState(s,kind,output,calls=1){
 }
 export function settleState(s,kind,u){
  const p=s.pending[kind];assert(p,'Missing reservation');assert(u&&['input','output','cacheRead','cacheWrite'].every(k=>Number.isFinite(u[k])&&u[k]>=0),'Missing usage');
+ assert(u.input+u.output+u.cacheRead+u.cacheWrite>0,'Zero usage does not prove absence of billing');
  assert(Number.isFinite(u.cost?.total)&&u.cost.total>=0,'Missing catalog USD');
  // Native aggregate usage contains exact per-subcall catalog USD already calculated by installed Pi.
  const usd=u.cost.total;assert(usd<=p.usd+1e-8,'Receipt exceeds reservation');
