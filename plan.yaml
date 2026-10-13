@@ -6886,7 +6886,7 @@ phases:
       gate.
 - id: nunc-defaults-remaining
   name: 当前默认的剩余 Arena、BEAM 与 Event 比较
-  status: pending
+  status: in_progress
   gate: Orchestrator owns one final integrated acceptance for nunc-defaults-remaining
     support/arena/beam/event, consuming completed nunc-three-suite current-default
     source and applicable current Fact80/Luna Arena group4/native suite observations.
@@ -6964,7 +6964,7 @@ phases:
   steps:
   - id: nunc-defaults-remaining.support
     name: 扩展现有跟踪 runner 支持剩余默认比较
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7027,6 +7027,8 @@ phases:
     - .scratch/memory-update-rerun-2026-10-12/beam/protocol.json
     - .scratch/memory-update-rerun-2026-10-12/mab/event-replacement-protocol.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T11:55:18.917920Z'
   - id: nunc-defaults-remaining.arena
     name: Arena 剩余组与复用基线比较
     status: pending
