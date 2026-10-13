@@ -7257,7 +7257,7 @@ phases:
       No remainingEventblocker; Arena/BEAM/globalacceptanceremain. Historicaloriginal12/filteredEventgapsunchanged.
   - id: nunc-defaults-remaining.beam-guard-repair
     name: 修复 BEAM 原生主请求 cap 观察与离线序列化验证
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7338,3 +7338,20 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T13:46:59.296059Z'
+    done_at: '2026-10-13T14:04:04.636000+00:00'
+    evidence: 'Accepted/integrated f4e3d33951b181d7af92abe355b4643ff1f3be9e rebasedcandidate6c945f2586132848d50e2d9e4f1c893cc6b7379f
+      onto552bad72100bcb3933bc5ab46db3c355afc920aa; interveningchangeonlyArenaDONEplan.yaml,
+      unchangedsource/checkinputs permitreuse; retainedrefs/vectl/candidates/nunc-defaults-remaining.beam-guard-repair.
+      Parentreadfull3filediff andDELIVERY. Native-streampositiveintegercap<=reservation
+      permitsactualPi1.1clamp; rawmaintenance/judgeexactresolvedcapequalityunchanged;
+      actualwire recordedbeforevalidation, no effort/cap injection. Lockedbuild0,15affectedtests0fail/skip.
+      NewactualpublicModelRuntime/provider/nativeserializercontrolledfetch tests10cases:
+      omittedcapnormalrealclampMEDIUM1response,6badmaincapcasesrejectpreHTTP/captured/held,2rawexactresponses,1rawmismatchheld;3fixturefetchresponses7preHTTPrejections0paid/providerrequests.
+      Source tests/data no external credentials, no bogusfakepayloadpositive proof.
+      Existingreserve/settle/unknownhold/noretrychecks retained. Prior750/157overlap/helper7/support12scopevalid;
+      no freshfull orcountsadded. No process/server/pendingnewfinancialeffects. Ownenv/cache/distremoved;
+      accidentalworktreehistoricalscratchdeletionsrestoredfromunchangedHEAD, candidateclean,
+      integrationcanonicaluntouched. Evidence .scratch/defaults-remaining-2026-10-13/beam-guard-repair/{DELIVERY.md,reconciliation.json,logs}.
+      BEAMoldknown1.18981964 held5.78313 unchanged, oldrawfailureunmodified. CorrectiondoesNOTsupply24missinganswers/48criteria/mainwire
+      or authorizefreshpaid/resume/holdrelease. SameBEAMconsumerremainsincomplete
+      pendingresponsibleparentdecision/applicableauthorization.'
