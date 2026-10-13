@@ -6886,7 +6886,7 @@ phases:
       gate.
 - id: nunc-defaults-remaining
   name: 当前默认的剩余 Arena、BEAM 与 Event 比较
-  status: in_progress
+  status: done
   gate: Orchestrator owns one final integrated acceptance for nunc-defaults-remaining
     support/arena/beam/event, consuming completed nunc-three-suite current-default
     source and applicable current Fact80/Luna Arena group4/native suite observations.
@@ -7157,7 +7157,7 @@ phases:
       separately, finalphaseacceptanceremains.
   - id: nunc-defaults-remaining.beam
     name: BEAM 当前默认双模型与原有盲评比较
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/defaults-remaining-2026-10-13/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7248,6 +7248,28 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T15:24:37.456432Z'
+    done_at: '2026-10-13T16:49:38.015755+00:00'
+    evidence: Accepted currentmeasurement with historicalnegativeconditions + recoveredall6originalundispatchedSolcase1queries
+      once. Productunchanged; acceptedtrackedrecoveryb210b1b2cecf7f7354e55435afc4aea1d0a48d20,
+      Node26.7/npm11.19/Pi1.1privatebuild; prior18affected/actual6nativezero-paidproofapplicable/reused.
+      ParentreadcompleteRESULT and actualcoverage/scores/ledgers/serializedMlink+semanticobservations/reconciliation/cleanup.6answers12originalblindMEDIUMLunacriteria
+      allscored; readerexit0; scorerexit1solelyhistoricalLuna/case2missing. MatchingnativeSolcase1
+      IF.75 KU1 CR.4375 vs current.75/1/.5. FullLuna0/12answers0/24criteria/Sol6/12answers12/24criteria;
+      full-modelmeansnull notfullBEAMquality. Luna2schemafailures/Solcase2 502 remainwitnessedterminalnegatives/noformationreplay.
+      Publicrestoration188messages5CP193freshmappedIDs preserved26Mslots32K/systemsections
+      andsixindependentqueries throughactualcreateAgentSession/Nunc/nativeMain. Actualsixwirecaps55138/55141/55137/55131/55131/55133
+      MEDIUM reserved128000, sixactualM→NEXTlinks exact;12judgeMEDIUM4096. Contentreview
+      preserveslatest165commit/250msqualifiers andauthintegrationstatus butmissingroutecontradiction
+      receivesoriginal.5; no semanticcompletenessclaim. New18settledreceipts known.479758750
+      (.477026main+.002732750judge),newheld0pending0; carriedBEAMheld5.78313 unchanged.
+      BEAMknown1.669578390/held5.78313=7.452708390<24, Solcharged7.3850292<22, Luna.06494644<1,
+      judge.00273275<1; phaseknown4.0248372/held5.78313=9.8079672<30; globalknown41.18198692/held26.08425=67.26623692<200,inflight0,noholdrelease/nooverlap.
+      Allcontrollers/children/servicesabsent, reader36703absent. Ownenv/build/cache/sessionduplicatesdeleted;
+      canonicalactual193recordfrozenstate+mapping/rawwires/answers/judgments preserved.
+      Cleanup+266051584B actualfreeAPFS/hostcaveat; sharedtoolchainlastconsumerended
+      parentrelease. Childreporttransportinterruptionquiescedwithnoactiveeffects thenSAMEownerfinishedhandoff,no
+      rerun. Canonical .scratch/defaults-remaining-2026-10-13/beam-recovered/{RESULT.md,summary.json,ledger.json,source-memory-next.json,source-binding.json,context-fidelity.json,paid,canonical/frozen-session.jsonl,reconciliation.json,cleanup.json};
+      initialblockedreportsunchanged. Finalphaseaggregate/cleanup/Git follows.
   - id: nunc-defaults-remaining.event
     name: 固定 Event 替代行当前默认双模型比较
     status: done
