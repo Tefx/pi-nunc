@@ -6906,7 +6906,15 @@ phases:
     task environments/builds/fullDB copies and worktrees after their consumers end,
     and report actual free-space change if claiming reclamation. Final report/aggregation
     and cleanup are the Orchestrator completion procedure, no new acceptance node
-    and no external adoption.
+    and no external adoption. Include completed beam-guard-repair and new beam-query-recovery
+    source proof. BEAM acceptance consumes retained terminal Luna/case2 negatives
+    plus Sol case1's six once-only queries and up to twelve original judgments, with
+    faithful-restoration/native execution evidence. Any partial comparison uses matching
+    native case1 only and discloses full original12-answer/24-criterion per-model
+    denominators; six answers never establish full BEAM coverage. No fresh formation
+    requirement or resampling follows from negative observations. Preserve and carry
+    all old holds under the prospective24USD BEAM allocation within unchanged30USD
+    phase and strict<200USD global limits.
   context: 'Human authorized remaining current-default measurements after asking about
     other benchmarks and accepting continuation. This new scope supersedes only the
     previous bounded run''s exclusion of new Arena/BEAM/Event work; it does not reopen
@@ -6920,12 +6928,20 @@ phases:
     every possible in-flight/subcall reservation. Prior cumulative known37.157149720
     plus held20.30112 equals57.458269720, prior in-flight0; preserve all old holds
     and observations. Previous20USD allocation is CLOSED; unused funds are not added
-    authority. Exclusive suite caps Arena10/BEAM10/Event10 USD include both models
-    and BEAM judge. A bounded alternative allocation may be fixed before calls within30USD;
-    never implicit borrowing or retry grants. Global charged total must stay strictly
-    below200USD. Auth only through existing approved native OpenRouter runtime; no
-    new providers, credentials, credential locations in artifacts, account/billing
-    administration or provider fallback. No child Telegram.
+    authority. The completed Arena/Event transactions retain their historical10USD
+    cap definitions and original ledgers unchanged. Their unused allocations are prospectively
+    closed; charged Arena0.755325840 and Event1.599932970, with no in-flight effects,
+    remain carried. Parent authorized prospective BEAM total24USD with internal Sol22/Luna1/judge1,
+    entirely within the unchanged phase30USD and global strict<200 ceilings. Include
+    existing BEAM known1.189819640 plus held5.78313 (charged6.972949640; Sol6.908003200)
+    in new admission, not as a fresh allowance. Luna and Sol case2 are closed to new
+    calls; all their cost/holds remain. No hold release, spend reset, borrowing from
+    active work or output-cap increase. Closed Arena/Event charges plus full prospective
+    BEAM cap total26.355258810<30. Record prospective allocation separately from immutable
+    historical caps/ledgers. Global charged total must stay strictly below200USD.
+    Auth only through existing approved native OpenRouter runtime; no new providers,
+    credentials, credential locations in artifacts, account/billing administration
+    or provider fallback. No child Telegram.
 
     Only supporting runner preparation/compatibility repairs are writable. Keep product
     src/policies/defaults/prompts frozen; no main merge, push, deployment, adoption/reload,
@@ -6958,7 +6974,25 @@ phases:
 
     Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/beam/helpers
 
-    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/mab/helpers'
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/mab/helpers
+
+    Parent''s scope-preserving recovery decision: deliver only Sol case1''s original
+    six questions proved never provider-dispatched and their original twelve criterion
+    judgments if answers are available. Preserve Luna''s two schema failures and Sol
+    case2''s provider502 as terminal negative measurements; no formation rerun, native
+    replay or new conditions. A fresh single-use query-only target may consume faithfully
+    reconstructed frozen case1 state through the actual native host/Nunc path. The
+    deleted original session and pointer-only frozen.json do not constitute restorable
+    complete JSONL metadata; prove required state/framing from retained canonical
+    messages, source maps, five complete checkpoints and captured SDK context without
+    fabricated IDs/history/outputs or direct-context API bypass. Read-only Node26.10
+    feasibility does not supply required Node26.7 native execution proof. Existing
+    guard repair''s positive main cap<=reservation and exact raw maintenance/judge
+    cap remain unchanged. Final measurement acceptance requires these six queries
+    to execute or meet genuine observed terminal failure; historical invalid-guard
+    absence alone is insufficient.
+
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam/helpers'
   depends_on:
   - nunc-three-suite
   steps:
@@ -7149,35 +7183,68 @@ phases:
       \ admitted remaining conditions within allocation, never replay. Shut down all\
       \ children/services and delete reconstructible task resources after last consumer;\
       \ retain minimal original observations for final Orchestrator acceptance.\n\
-      suite_cap_usd: 10\nselection: {arm: nunc, models: [Luna, Sol], answersPerModel:\
-      \ 12, criteriaPerModel: 24, effectiveContext: 98304, nativeCheckpoints: 3, nuncCheckpoints:\
-      \ 5}\nDeliver: Current-default BEAM IF/KU/CR on the same two retained histories/queries,12\
-      \ answers/24 criteria per model if formation succeeds. Keep canonical native3/Nunc5\
-      \ checkpoint adaptation unchanged, same original history/roles and independent\
-      \ frozen-state query branches. Reuse retained corresponding native12 answers\
-      \ and original judgments; preserve adaptation and gold/scorer limitations.\n\
-      Deliver: Existing blind MEDIUM Luna judge grades ONLY newly produced answers\
-      \ with original rubric/prompt and original scorer. Guard/record judge spend\
-      \ inside the10USD suite cap and30USD total, preserve raw judgments/parse failures,\
-      \ no new rubric, gold correction or judge retries. Report coverage/missing denominators\
-      \ if capacity/JSON/formation/judging fails, and source→M→NEXT/necessary materials\
-      \ and comparable resources separately."
-    verification: Completion requires canonical observed outcomes for every authorized
-      selected condition or its witnessed terminal failure, actual default/cap/MEDIUM/source
-      evidence where a request occurred, original-scoring coverage with missing denominators,
-      source-target/comparator applicability, full catalog/held/in-flight reconciliation
-      and stopped owned processes. No zero-filled absence, automatic retries or score-gain
-      threshold. Orchestrator independently inspects evidence and performs final phase
-      acceptance using all three outcomes plus reused Fact/current Luna4/native proof.
+      suite_cap_usd: 24\nexclusive_caps_usd: {Sol: 22, Luna: 1, judge: 1}\nselection:\
+      \ {arm: nunc, freshReader: Sol, case: 1, queries: 6, criteria: 12, effectiveContext:\
+      \ 98304, freshFormationCalls: 0, freshLunaCalls: 0, freshCase2Calls: 0}\nDeliver:\
+      \ Finish only the six original Sol case1 independent queries that never reached\
+      \ the provider. Consume integrated beam-query-recovery support to create a fresh\
+      \ single-use query-only effect target from retained canonical case1 messages/source\
+      \ maps/five checkpoints and captured framing, preserving actual saved M, projected\
+      \ K, system sections, model, MEDIUM, effective98304 and original independent\
+      \ frozen-state query branching through createAgentSession, Nunc extension and\
+      \ native main transport. Do not rerun formation, overwrite/reuse consumed targets,\
+      \ fabricate old history/IDs/model output or bypass the native path with a captured-context\
+      \ API call.\nDeliver: Use the existing blind MEDIUM Luna judge with original\
+      \ rubric/prompt/scorer for only newly available case1 answers, up to twelve\
+      \ criteria once. Reuse original matching native case1 answers/judgments. Keep\
+      \ Luna both-case schema failures and Sol case2 provider502 terminal and all\
+      \ older observations immutable. Any remaining query/judge real failure stays\
+      \ visible with missing denominators, no retry, cap boost, JSON repair, new sample,\
+      \ or full12-answer BEAM claim from6. Report partial case1 quality separately\
+      \ from original full per-model12/24 coverage.\nAdmit: Producer's Node26.7/npm11.19/Pi1.1\
+      \ zero-paid native restoration/framing/admission proof must apply to the integrated\
+      \ candidate before any paid request. Prospective24USD suite and Sol22/Luna1/judge1\
+      \ partitions include historical BEAM known1.189819640 and held5.78313; Sol carried6.908003200.\
+      \ Preserve local-main holds4.82304 plus provider hold0.96009 without release.\
+      \ Record new allocation/carry separately; Luna/case2 admit no new calls. Worst\
+      \ remaining six main reservations14.46912 plus twelve judge reservations0.331776\
+      \ total14.800896; projected BEAM21.773845640<24, Sol21.377123200<22, phase24.129104450<30\
+      \ and global81.587374170<200. These conservative projections do not authorize\
+      \ cost reset or invented failed-wire cap. Actual new admission still checks\
+      \ current known+holds+all possible in-flight/subcalls.\nRecovery: Genuine new\
+      \ query/judge failures are terminal observations with no automatic retry. Preserve\
+      \ raw source, reconstructed-state provenance, actual next wire, responses and\
+      \ scoring/cost failures for acceptance; historical guard-only absence cannot\
+      \ complete the six-query obligation. Reconcile effects and minimal retention/cleanup\
+      \ under phase rules.\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/beam/helpers"
+    verification: Completion consumes retained terminal Luna schema failures and Sol
+      case2 provider502 plus each of the six original never-dispatched Sol case1 queries
+      executed once or genuinely failing after faithful validated recovery; historical
+      guard-only absence is insufficient. Require applicable producer zero-paid native
+      proof, actual main wire/M→NEXT and MEDIUM/cap/source observations where emitted,
+      original up-to12 blinded judgments for available answers, matching native case1
+      comparison and explicit full12-answer/24-criterion per-model missing denominators.
+      No formation reruns, zero-fill, fresh full matrix, retry or required quality
+      gain. Reconcile all carried/new known+held+inflight across prospective BEAM24
+      (Sol22/Luna1/judge1), unchanged phase30 and global strict<200, preserve old
+      ledgers/holds and stop all owned processes. Orchestrator performs final integrated
+      acceptance/report/cleanup under existing phase gate; negative observed outcomes
+      can complete measurement, unresolved restoration/harness defects or missing
+      required observations cannot.
     refs:
     - docs/CONSTITUTION.md
     - docs/DEFAULTS-BENCHMARK.md
     - .scratch/defaults-improvement-2026-10-13/final/RESULT.md
     - .scratch/defaults-improvement-2026-10-13/final/summary.json
     - .scratch/memory-update-rerun-2026-10-12/beam/protocol.json
+    - .scratch/defaults-remaining-2026-10-13/beam/RESULT.md
+    - .scratch/defaults-remaining-2026-10-13/beam/diagnostic.json
+    - .scratch/defaults-remaining-2026-10-13/final/RESULT.md
     depends_on:
     - nunc-defaults-remaining.support
     - nunc-defaults-remaining.beam-guard-repair
+    - nunc-defaults-remaining.beam-query-recovery
     agent: node-typescript-engineer
   - id: nunc-defaults-remaining.event
     name: 固定 Event 替代行当前默认双模型比较
@@ -7355,3 +7422,77 @@ phases:
       BEAMoldknown1.18981964 held5.78313 unchanged, oldrawfailureunmodified. CorrectiondoesNOTsupply24missinganswers/48criteria/mainwire
       or authorizefreshpaid/resume/holdrelease. SameBEAMconsumerremainsincomplete
       pendingresponsibleparentdecision/applicableauthorization.'
+  - id: nunc-defaults-remaining.beam-query-recovery
+    name: 恢复冻结 BEAM case1 的原始未发送查询支持
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
+      \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
+      src/**\", \"policies/**\", \"package.json\", \"package-lock.json\", \".pi/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\
+      \nprotected_main: \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nproduct_target:\
+      \ \"a6ecfa602b903e78b84c93d9f936f3fe633bcd93\"\nguard_target: \"f4e3d33951b181d7af92abe355b4643ff1f3be9e\"\
+      \noffline_environment: {node: \"26.7.0\", npm: \"11.19.0\", pi: \"1.1.0\", dependencies:\
+      \ \"package-lock.json\", setup: \"npm ci --ignore-scripts\", unset: [\"NODE_OPTIONS\"\
+      ]}\noffline_inventory: {entrypoint: [\"node\", \"scripts/check.mjs\", \"all\"\
+      ], build: [\"npm\", \"run\", \"build\"], suites: [\"tests/engine\", \"tests/pi\"\
+      , \"tests/live\"]}\nresource_limits: {paidCalls: 0, diskReserveGiB: 15}\nretained_case:\
+      \ \".scratch/defaults-remaining-2026-10-13/beam/paid-selection/beam/run/Sol-nunc/case-1\"\
+      \nDeliver: Minimal tracked frozen-case query recovery/admission/scoring support\
+      \ for the existing unfinished BEAM runtime consumer. Reuse existing reader,\
+      \ guard, scorer and public SessionManager mechanisms; no generic resume platform.\
+      \ Restore only semantically required frozen case1 state from canonical188 messages\
+      \ with source maps, five saved compactions, original system sections and captured\
+      \ SDK context. Fresh generated host IDs with reference mapping are viable; implementation\
+      \ details remain owner-local. Prove saved M, projected K and framing fidelity,\
+      \ preserve cleanup[] and checkpoint reference meaning; do not invent original\
+      \ IDs/history/model output or claim full deleted JSONL metadata recovery.\n\
+      Deliver: Fresh single-use, query-only selection admits only original six never-provider-dispatched\
+      \ Sol case1 queries and up to twelve original blinded judgments for produced\
+      \ answers. No formation/Luna/case2/native calls, completed-target reuse or duplicate\
+      \ dispatch. Use actual createAgentSession/Nunc/native main, not direct captured-context\
+      \ provider calls. Extend only necessary existing selection/admission/scoring\
+      \ logic to carry old spend and holds under prospective BEAM24/Sol22/Luna1/judge1.\
+      \ Preserve repaired native main positive serialized cap<=reservation and exact\
+      \ raw maintenance/judge equality. Missing answers remain missing with full original\
+      \ denominators and matching case1 comparison; no scorer/rubric/gold change.\n\
+      Boundary: Existing node-typescript-engineer owns this scoped Node host-runner\
+      \ repair, tests/docs and local source candidate; Orchestrator integrates and\
+      \ later executes the original beam consumer. No paid calls, product/policy/package\
+      \ changes, global settings/adoption/install/reload, main merge/push, provider/credential/billing\
+      \ administration or ignored-scratch material repair.\nAdmit: Parent independently\
+      \ checked the retained reconstruction inputs and read-only public-API feasibility;\
+      \ that Node26.10 observation supplies no Node26.7 native execution proof. Original\
+      \ request6/7 callbacks failed before provider dispatch and other four queries\
+      \ failed before stream admission; actual failed-wire numeric cap is unrecorded.\
+      \ All historical reservations remain charged. Consume retained evidence read-only\
+      \ and implement reproducible zero-paid native checks before runtime use.\nRecovery:\
+      \ Keep compatible source/test failures here; stop at missing indispensable source/framing\
+      \ proof without fabricating state or expanding formation scope. Reconcile local\
+      \ processes and retain required canonical inputs/observations until runtime\
+      \ and final acceptance consumers end. Preserve all completed history and old\
+      \ ledgers, and remove reproducible preparation when no consumer remains.\nReusable\
+      \ helpers: /Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam/helpers\n\
+      Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/beam/helpers"
+    verification: Orchestrator completion review requires locked Node26.7/npm11.19
+      build, meaningful affected tests and zero-paid actual Pi1.1 createAgentSession/Nunc/native-main
+      execution proving reconstructed saved M/projected K/system framing and isolated
+      original queries against retained source/checkpoints/captured SDK context. Controlled
+      edge responses are fixtures, never restored historical output or paid evidence.
+      Test wrong source/reference/query selection, insufficient or omitted carried-budget/holds,
+      duplicate execution and consumed-target rejection; prove only six case1 queries
+      and original twelve criteria can be selected, with no formation or closed-condition
+      effects. Verify original scoring/missing denominators, carried inclusive reservations
+      and unchanged repaired serializer cap contracts. Reuse applicable prior complete
+      offline inventory and execute affected gaps; no automatic full suite replay.
+      Material recovery/admission/scoring logic must be tracked/tested and integrated
+      before paid consumption.
+    refs:
+    - docs/CONSTITUTION.md
+    - docs/DEFAULTS-BENCHMARK.md
+    - .scratch/defaults-remaining-2026-10-13/beam/RESULT.md
+    - .scratch/defaults-remaining-2026-10-13/beam/diagnostic.json
+    - .scratch/defaults-remaining-2026-10-13/final/RESULT.md
+    depends_on:
+    - nunc-defaults-remaining.beam-guard-repair
+    agent: node-typescript-engineer
