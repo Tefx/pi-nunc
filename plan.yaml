@@ -5957,7 +5957,7 @@ phases:
       authority; completedsource/historyimmutable.
 - id: nunc-three-suite
   name: OpenRouter Luna/Sol 三套件并行比较
-  status: in_progress
+  status: done
   gate: Orchestrator owns the single final integrated acceptance of this accepted
     defaults-improvement source plus bounded benchmark outcome in nunc-three-suite,
     consuming defaults source proof, benchmark-repair proof and mab runtime evidence,
@@ -6223,7 +6223,7 @@ phases:
       still incomplete/blockedevidence; campaign not fullycomplete.'
   - id: nunc-three-suite.mab
     name: 新默认 Fact 与一次普通滚动有界比较
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \".vectl/**\", \"src/**\", \"tests/**\", \"docs/**\"\
@@ -6342,6 +6342,29 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T10:10:52.058150Z'
+    done_at: '2026-10-13T11:15:41.863111+00:00'
+    evidence: Final integrated bounded acceptance complete. Defaults8d03252 + helperrepaira6ecfa602b903e78b84c93d9f936f3fe633bcd93
+      accepted; durable finalRESULT.md andsummary.json committed0e3354d onfeat/relational-memory
+      under .scratch/defaults-improvement-2026-10-13/final/. Recovered afterchildtransportfailure
+      using canonical artifacts; registry empty/exactordinaryPIDs60515,60929,60535
+      absent, no duplicatewriter/effect/replay. Parent inspected actualcompletedstatus,
+      ledgers, summary, ordinary savedM/sourceexcerpts/NEXTusage and earlierfullFactproof.
+      RequiredFact80/80 answeredonce118calls; LunaSH9/MH3 vsnative13/9, Sol19/17 matchesnative,
+      originalgoldunchanged. FrozenLunaArenaGroup4 completed8/8,2actualthresholdmaint,18calls+40tools;
+      PS25/SPS95.8333/SR0 vsnative12.5/100/0; explicit26/28vs27/28, meal/lodging88/96vs64/96.
+      All6maintenance full/noomissions/MEDIUMactualwire cap32768stop; actualNEXTcarriage
+      includes2ordinary and reusedrepaired4Factlinks+80QA. ConcreteViolet/Maryrelations
+      retained withunresolvedconstraints, LunaFactmaterialomissionspersist; boundednegativequalityvalid,
+      no universalbenefitclaim. Source750/90fileall +affected157(overlap)/4nativeguardproof
+      andhelper7tests/build/realstockfullDBsix-toolpositive+negativeprobe applicable;
+      no907/freshfinalfullclaim. Productsrc/policy/lockunchangedbyhelperrepair, Fact/native
+      reuse explicitlybound tofinaltarget. Newknown6.372431370 held0inflight0; cumulativeknown37.157149720+priorheld20.30112=57.458269720<200,
+      new<20, Arena.019022590<3, allpendingempty. Catalognotbill, noholdrelease. Allrequiredpaidworkconsumed;
+      no morecalls. Worktrees/ordinaryruntime/fullDB/env/toolchainremoved; latestdelta640340KiB
+      withAPFS/concurrencycaveat, no reproducibleholds. Minimaloriginalraw/evidence
+      preserved final/ordinary, benchmark/retained, repairproof/source logs. No source/global/adoption/push/main
+      changes. Historicaloriginal12condition/8192Sol/Eventgapsremainincomplete; thisacceptance
+      ONLYacceptednewboundedoutcome.
   - id: nunc-three-suite.memory-update
     name: 通用维护 update、清理依赖与诊断完整交付
     status: done
