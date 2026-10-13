@@ -1,0 +1,13 @@
+{
+  "product": "6d0cc0a9ebb6b923ffd818da790f8363daa3ff2f",
+  "integrationPostClaim": "dd9b8245174e7ff6b046bd71fd7e4985b60ec43b",
+  "tasks": {
+    "arena": "/Users/tefx/.pi/larva/child-sessions/2026-10-13T03-22-01-362Z_01a13348-0912-73a4-b19a-07dc3b8ae5d1.jsonl",
+    "beam": "/Users/tefx/.pi/larva/child-sessions/2026-10-13T03-22-01-422Z_01a13348-094e-71f7-9775-8affd1b391bf.jsonl",
+    "event": "/Users/tefx/.pi/larva/child-sessions/2026-10-13T03-22-01-503Z_01a13348-099f-7514-beb7-cd956ec75ee5.jsonl"
+  },
+  "state": "All runtime and source repair children terminal; support/Arena/Event/guard repair accepted, BEAM pending decision, no inflight calls",
+  "noTelegram": true,
+  "correctedSource": "f4e3d33951b181d7af92abe355b4643ff1f3be9e",
+  "finalSummary": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/final/summary.json"
+}

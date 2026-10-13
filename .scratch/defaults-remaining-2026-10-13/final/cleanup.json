@@ -1,0 +1,14 @@
+{
+  "released": "All runtime and offline guard repair consumers ended; no owned processes remained",
+  "removed": [
+    "support/toolchain",
+    "support/home (empty)",
+    "support/prep (empty)"
+  ],
+  "freeBeforeBytes": 53306552320,
+  "freeAfterBytes": 53546594304,
+  "freeChangeBytes": 240041984,
+  "caveat": "Concurrent host/APFS activity; no summation with earlier cleanup measurements",
+  "remainingReconstructibleHolds": [],
+  "retained": "Canonical original observed results, diagnostics, source/repair checks and minimum raw inputs for unresolved BEAM decision and parent comparison inspection"
+}

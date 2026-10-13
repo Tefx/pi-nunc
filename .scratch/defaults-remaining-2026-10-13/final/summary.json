@@ -1,0 +1,88 @@
+{
+  "status": "BLOCKED_MISSING_BEAM_RUNTIME_ACCEPTANCE",
+  "runtimeSource": "6d0cc0a9ebb6b923ffd818da790f8363daa3ff2f",
+  "correctedSource": "f4e3d33951b181d7af92abe355b4643ff1f3be9e",
+  "productDefaults": "8d03252f5b0158a64cb32cea7fc868fafc282916",
+  "suiteReports": {
+    "arena": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/arena/RESULT.md",
+    "beam": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam/RESULT.md",
+    "event": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/event/RESULT.md"
+  },
+  "suiteSummaries": {
+    "arena": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/arena/summary.json",
+    "beam": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam/summary.json",
+    "event": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/event/summary.json"
+  },
+  "reusedFactReport": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/final/RESULT.md",
+  "sourceRepairReport": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-remaining-2026-10-13/beam-guard-repair/DELIVERY.md",
+  "newCosts": {
+    "arena": {
+      "known": "0.755325840",
+      "held": "0"
+    },
+    "beam": {
+      "known": "1.189819640",
+      "held": "5.783130000"
+    },
+    "event": {
+      "known": "1.599932970",
+      "held": "0"
+    }
+  },
+  "newKnownUsd": "3.545078450",
+  "newHeldUsd": "5.783130000",
+  "newInflightUsd": "0",
+  "newChargedUsd": "9.328208450",
+  "newCapUsd": "30",
+  "priorKnownUsd": "37.157149720",
+  "priorHeldUsd": "20.30112",
+  "cumulativeKnownUsd": "40.702228170",
+  "cumulativeHeldUsd": "26.084250000",
+  "cumulativeInflightUsd": "0",
+  "cumulativeChargedUsd": "66.786478170",
+  "globalMaximumUsd": "200",
+  "holdsReleased": false,
+  "providerBillKnown": false,
+  "freshCoverage": {
+    "arena": {
+      "answers": 32,
+      "required": 32,
+      "reusedCurrentLuna4": 8
+    },
+    "event": {
+      "answers": 40,
+      "required": 40
+    },
+    "beam": {
+      "answers": 0,
+      "required": 24,
+      "criteria": 0,
+      "requiredCriteria": 48,
+      "means": null
+    }
+  },
+  "acceptance": {
+    "support": "DONE",
+    "arena": "DONE",
+    "event": "DONE",
+    "beamGuardRepair": "DONE",
+    "beam": "PENDING",
+    "phase": "NOT_ACCEPTED"
+  },
+  "decision": "No further paid calls, replay, resume or hold release authorized by this report. Responsible parent must decide separately scoped BEAM follow-up or retain explicitly missing comparison; existing failed targets and observations remain immutable.",
+  "historical12Conditions": "Still incomplete; original filtered Event remains historical",
+  "cleanup": {
+    "released": "All runtime and offline guard repair consumers ended; no owned processes remained",
+    "removed": [
+      "support/toolchain",
+      "support/home (empty)",
+      "support/prep (empty)"
+    ],
+    "freeBeforeBytes": 53306552320,
+    "freeAfterBytes": 53546594304,
+    "freeChangeBytes": 240041984,
+    "caveat": "Concurrent host/APFS activity; no summation with earlier cleanup measurements",
+    "remainingReconstructibleHolds": [],
+    "retained": "Canonical original observed results, diagnostics, source/repair checks and minimum raw inputs for unresolved BEAM decision and parent comparison inspection"
+  }
+}
