@@ -6299,7 +6299,7 @@ phases:
     agent: node-typescript-engineer
   - id: nunc-three-suite.memory-update
     name: 通用维护 update、清理依赖与诊断完整交付
-    status: claimed
+    status: pending
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"policies/**\", \"docs/**\", \"\
       README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\"\
@@ -6359,8 +6359,6 @@ phases:
     - package.json
     - scripts/check.mjs
     agent: senior-engineer
-    claimed_by: senior-engineer
-    claimed_at: '2026-10-12T17:58:46.233058Z'
   - id: nunc-three-suite.arena-rerun
     name: MemoryArena 整合候选四条件重跑
     status: pending
