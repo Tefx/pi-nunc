@@ -6641,7 +6641,7 @@ phases:
       no worker product/Plan mutation.
   - id: nunc-three-suite.defaults
     name: 默认维护额度、完整来源与内容保留改进
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"policies/**\", \"docs/**\", \"\
       README.md\", \"scripts/**\", \".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -6730,3 +6730,23 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T06:29:41.619926Z'
+    done_at: '2026-10-13T08:05:29.404974+00:00'
+    evidence: Integrated exact reviewed8d03252f5b0158a64cb32cea7fc868fafc282916 compare-and-FF
+      frompostclaim8c60015; retainedrefs/vectl/candidates/nunc-three-suite.defaults.
+      Exactnode-typescript-engineer source delivered auto/full/nearestfeasibleK/materialpolicy
+      and consumer/UI/calibration/docs/trackedsuitehelpers. Orchestrator inspected
+      fullsource/policy/test/docs changes, capguards/selection/runtime entrypoints
+      and evidence; caught actual limited-auto native admission bug (absentmetadata
+      charged{}1token), sameowner fixed without changing main/suppliedmetadata/growth
+      guards. Actual native loader/guard/serializer/SSE fourcases now pass at constrainedauto
+      cap12065 vsinput36911, explicit8192 compatibility and suppliedmetadata failclosed.
+      Node26.7.0/npm11.19.0 locksetup/buildpass; complete750/90file offline run valid
+      plus finalbenchmark4checks and changed-scope157/157(native,UI,metadata/payload,uncapped,oldmemory/persistence),
+      new4nativecases; applicable union not fresh fullrun finalcommit. Docs-only finalfix
+      no runtimeinvalidations. Sourceproof .scratch/defaults-improvement-2026-10-13/source/DELIVERY.md
+      and logs including retained initialfailures. No paidcalls/Planworkerwrites,
+      allprocessesstopped. Productscope limits unchanged, no semanticqualityclaim.
+      Runtime frozen choiceLunaArenaGroup4 + Luna/SolFact40, trackedhelpers scripts/benchmarks;
+      validretainednative applicability and3/14/3newUSDpartitions in docs/DEFAULTS-BENCHMARK.md.
+      Parent benchmark pending. Worktree acceptancehold released; externaltoolchain
+      temporarily needed by ensuingruntime owner, release at runtimecompletion.
