@@ -131,12 +131,14 @@ Pi decides when compaction runs: automatic threshold (`contextTokens > contextWi
 
 Each opportunity makes **at most one** maintenance request on the **current** model. There is no repair retry and no second summarizer model. Optional `/compact` instructions append to user policy for that call only. Maintenance forwards the frozen session thinking level on `openai-completions`, `openai-responses`, `openai-codex-responses` and `azure-openai-responses`, with native capability validation; `off` sends no explicit reasoning effort. Other APIs retain their existing raw-call behavior, so this is not an all-provider thinking guarantee. Its output planning reserve remains separate from the main turn and from the API's actual serialized cap (absent on uncapped routes).
 
-The model returns one JSON object with required `add`, `remove`, `priority`, `required`, and optional `update` and `toolResultEdits`:
+The model returns one complete JSON object with required `priority` and `required` arrays, and optional `add`, `remove`, `update` and `toolResultEdits`. Omitted `add`/`remove` mean no additions/deletions; supplied null or wrong types fail. Omission never silently deletes a survivor:
 
 - `update: [{id,text}]` replaces a whole body under its existing ID, relative position and nextId. Missing `update` keeps old responses compatible. Merge/split can still use remove plus add.
 
-- `required` is a unique subset of `priority` (surviving slot IDs and addition keys). All declared required items are retained jointly. If an explicit `memory.hardMaxTokens` is configured and they cannot fit together, maintenance fails with `CAPACITY`; the advisory target may be exceeded to preserve required facts. Saved M and K stay unchanged. Required is for this maintenance, not a permanent pin.
+- `required` is a unique subset of `priority` identifying candidates needed for the whole continuing task, including actual materials and later-step dependencies (surviving slot IDs and addition keys). All declared required items are retained jointly. If an explicit `memory.hardMaxTokens` is configured and they cannot fit together, maintenance fails with `CAPACITY`; the advisory target may be exceeded to preserve required facts. Saved M and K stay unchanged. Required is for this maintenance, not a permanent pin.
 - `priority` lists every survivor and addition exactly once. Optional items use remaining budget in that order. Surviving slots keep their relative order; unchanged bodies are reused exactly and updates use the complete revised body. Additions append. Priority does not reorder ordinary memory.
+
+Slot prose follows the user's communication language, unless an explicit memory-language preference says otherwise. Keep normal spaces, readable sentences and precise paths/identifiers. Existing maintenance repairs noncompliant active bodies without rewriting compliant ones or historical evidence; user-confirmed UI bodies remain verbatim. Automatic maintenance and direct Agent writes share the same guidance. Details: [expression and operation contract](docs/EXTRACTION.md#42-json-操作协议与-markdown-正文).
 
 Code validates references, whole-slot rendered budgets, and the retained-history cut. Policy text cannot keep an item that failed those checks. Empty memory and empty `required` are valid when nothing must continue.
 
