@@ -6315,7 +6315,7 @@ phases:
     agent: node-typescript-engineer
   - id: nunc-three-suite.memory-update
     name: 通用维护 update、清理依赖与诊断完整交付
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"policies/**\", \"docs/**\", \"\
       README.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".pi/**\"\
@@ -6402,6 +6402,24 @@ phases:
     agent: senior-engineer
     claimed_by: senior-engineer
     claimed_at: '2026-10-13T02:22:06.679336Z'
+    done_at: '2026-10-13T03:20:09.154487+00:00'
+    evidence: Integrated exact reviewed candidate c6bc35bd4af0f57cfc3b3db675b31deda446d147
+      via compare-and-FF from6db4185; original8d0467d and corrected refs retained.
+      Same senior-engineer implemented accepted revision withdrawing cross-time carryCleanup,
+      approval-time memoryRefs and stable prefix retained; optional update/consumers/UI
+      guards, stopReason/ref errors/budget descriptions, policy consolidation/docs
+      delivered. Parent-authored constitution/README navigation included in base a08f0c3.
+      Orchestrator inspected full source/policy, tests and documentation diff, corrected
+      report and relevant logs. Node26.7.0/npm11.19.0 build passes; latest applicable98
+      distinct deterministic-test evidence union (35current, applicable prior, excluding5
+      superseded reversal assertions), not full historical rerun. Current36 executions35pass/1legacy
+      fixture error corrected by exact failed-case rerun. No paid source calls. Original
+      information-loss/prefix observations preserved, no semantic-loss repair or benefit
+      claim. Evidence .scratch/parallel-memory-campaign-2026-10-12/analysis/memory-update-correction-evidence/{REPORT.md,candidate.diff,logs};
+      historical directory unchanged. All writer/test commands ended. Source acceptance
+      releases worktree verification hold; remove disposable source worktree/environment
+      after reconciliation. Benchmark outcomes remain pending on this immutable candidate;
+      main unchanged, no push/install/adoption.
   - id: nunc-three-suite.arena-rerun
     name: MemoryArena 整合候选四条件重跑
     status: pending
