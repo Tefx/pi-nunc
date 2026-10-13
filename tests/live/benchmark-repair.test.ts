@@ -69,6 +69,10 @@ test("Arena registers unchanged declarations before flags, binds configuration a
   loading = false;
   assert.throws(() => callbacks.get("session_start")!(), /Missing travel-config/);
   selected = configPath; callbacks.get("session_start")!();
+  const execute = tools[5]!.execute; assert(typeof execute === "function");
+  selected = join(dir, "different-config.json");
+  await assert.rejects(async () => Reflect.apply(execute, undefined, ["probe", { state: "Illinois" }, undefined]), /configuration path changed/);
+  selected = configPath;
   const changed = structuredClone(official); changed[0].function.description += "changed";
   await writeFile(toolFile, JSON.stringify(changed));
   assert.throws(() => callbacks.get("session_start")!(), /Runtime tools differ/);
