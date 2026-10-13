@@ -5960,13 +5960,14 @@ phases:
   status: in_progress
   gate: Orchestrator owns the single final integrated acceptance of this accepted
     defaults-improvement source plus bounded benchmark outcome in nunc-three-suite,
-    consuming defaults source proof and mab runtime evidence, with applicable completed
-    memory-update/arena-rerun/beam-rerun and native observations as provenance rather
-    than required reruns. Bind source/complete applicable offline regression inventory
-    and required runtime observations to the integrated candidate; reuse unchanged
-    valid evidence and execute affected gaps. Required observations are two new Nunc
-    Fact formation/SH+MH attempts (40/model when formation succeeds) and one frozen
-    ordinary rolling case with applicable native comparison, full coverage/failure/resource/semantic
+    consuming defaults source proof, benchmark-repair proof and mab runtime evidence,
+    with applicable completed memory-update/arena-rerun/beam-rerun and native observations
+    as provenance rather than required reruns. Bind source/complete applicable offline
+    regression inventory and required runtime observations to the integrated candidate;
+    reuse unchanged valid evidence and execute affected gaps. Required observations
+    are the retained two Nunc Fact formation/SH+MH runs (40/model), reused without
+    replay with explicit final-target applicability, and the frozen Luna/Nunc Arena
+    group4 ordinary rolling case with applicable native comparison, full coverage/failure/resource/semantic
     reporting and reconciled spend/effects/cleanup. A witnessed formation failure
     is a valid negative measurement; missing necessary observation, unproven product
     contract, failed necessary deterministic check or blocking product defect prevents
@@ -6228,7 +6229,7 @@ phases:
       , \"plan-dashboard.html\", \".vectl/**\", \"src/**\", \"tests/**\", \"docs/**\"\
       , \"policies/**\", \"package.json\", \"package-lock.json\", \".pi/**\", \".env\"\
       , \".env.*\", \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\nproduct_target:\
-      \ \"Orchestrator-integrated nunc-three-suite.defaults candidate\"\nprotected_main:\
+      \ \"Orchestrator-integrated defaults plus benchmark-repair candidate\"\nprotected_main:\
       \ \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nconditions: [\"Luna/Nunc Fact\
       \ SH+MH\", \"Sol/Nunc Fact SH+MH\", \"one ordinary automatic-rolling Nunc case\
       \ with retained native counterpart\"]\nmodels: [\"openai/gpt-6-luna\", \"openai/gpt-6.1-sol\"\
@@ -6238,26 +6239,28 @@ phases:
       \ unchanged retained evidence\"}\nbudget: {strictCumulativeLessThanUSD: 200,\
       \ priorKnownUSD: 30.784718350, priorUnknownHeldUSD: 20.30112, priorEnvelopeUSD:\
       \ 51.085838350, initialInflightUSD: 0, maximumNewUSD: 20, diskReserveGiB: 15}\n\
-      Deliver: Bounded fresh-candidate benchmark of Luna/Nunc and Sol/Nunc Fact SH+MH\
-      \ on retained canonical inputs/protocol, 40 questions each if formation succeeds,\
-      \ plus exactly one existing ordinary automatic-rolling Nunc case with a relevant\
-      \ retained native counterpart (an Arena group is suitable). Freeze the ordinary\
-      \ case/model and applicability before model calls using protocol relevance,\
-      \ never scores. Preserve MAB shared Fact formation, independent frozen-state\
-      \ query clones, original first20 SH/MH, original scorer/gold/framing and disclosed\
-      \ chunks8/17 pressure. No Event original/filter/replacement replay, BEAM rerun,\
-      \ all-three-suite matrix or extra model matrix. Completed Event replacement\
-      \ requires no renewed authorization. Old default8192 missing scores and original12-condition\
-      \ incompleteness remain historical facts, not a replay gate.\nBoundary: Existing\
-      \ node-typescript-engineer owns this separately consumed paid-runtime evidence\
-      \ and cleanup transaction; source remains frozen after integration and offline\
-      \ acceptance. Use existing runner/helper mechanisms and producer-delivered tracked/tested\
-      \ material logic; only thin task-local selection/delegation may be new. No product\
-      \ edits, main merge/push, host/global configuration writes, adoption/install/reload,\
-      \ provider/bot fallback or credential/billing administration. Use supported\
-      \ native OpenRouter authorization through existing runtime handoff; no secrets\
-      \ or credential locations in artifacts.\nAdmit: Source delivery and offline\
-      \ checks precede calls. Demonstrate actual product omitted/auto output and full-source\
+      Deliver: Complete the same bounded defaults benchmark using retained Luna/Nunc\
+      \ and Sol/Nunc Fact formation/SH+MH observations without replay, plus the still-unexecuted\
+      \ frozen Luna/Nunc Arena group4 ordinary automatic-rolling case (eight travelers)\
+      \ with its retained native counterpart. Preserve original17 chunks, CP8/17,\
+      \ original first20 SH/MH per model, shared Fact formation, independent frozen\
+      \ query clones, original scorer/gold/framing and scores. Reprocess captured\
+      \ wire locally with the repaired tracked evidence helper; no additional inference.\
+      \ No Event original/filter/replacement replay, BEAM rerun, native replay, Fact\
+      \ replay, all-three-suite matrix or extra model matrix. Old default8192 missing\
+      \ scores and original12-condition incompleteness remain historical facts, not\
+      \ a replay gate.\nBoundary: Existing node-typescript-engineer owns this separately\
+      \ consumed paid-runtime evidence and cleanup transaction; source remains frozen\
+      \ after integration and offline acceptance. Use existing runner/helper mechanisms\
+      \ and producer-delivered tracked/tested material logic; only thin task-local\
+      \ selection/delegation may be new. No product edits, main merge/push, host/global\
+      \ configuration writes, adoption/install/reload, provider/bot fallback or credential/billing\
+      \ administration. Use supported native OpenRouter authorization through existing\
+      \ runtime handoff; no secrets or credential locations in artifacts.\nAdmit:\
+      \ Integrated benchmark-repair delivery, offline acceptance and its real zero-model\
+      \ stock Pi loader/six-official-tool/full-database probe proof precede calls.\
+      \ Prepare fresh single-use preflight and paid Arena targets, never reuse a consumed\
+      \ preflight target. Demonstrate actual product omitted/auto output and full-source\
       \ defaults in effective configuration and wire observations; helpers must not\
       \ pin legacy8192. Preserve all other canonical inputs, model routes, MEDIUM\
       \ main/maintenance, effective pressure and protocols; disclose changed product/defaults/retention\
@@ -6265,45 +6268,54 @@ phases:
       \ decision; do not replay it to create artificial freshness. Restore full source-native\
       \ DB for a live Arena case; tiny offline scorer subsets are not live inputs.\
       \ Use canonical source/probe/gold isolation and unchanged official scoring.\n\
-      Money: New USD20 is a maximum inclusive envelope for ALL new main/maintenance/judge/error\
-      \ calls, reservations, in-flight and unknown holds, within the existing cumulative\
-      \ strict <USD200 campaign limit. Carry known30.784718350 + unknown held20.30112\
-      \ =51.085838350 forward without release/reset; historical45/50/50 or earlier\
-      \ allocations are not new grants. Pre-call conservatively reserve all possible\
-      \ subcalls at supported catalog prices with existing guards; reconcile completion\
-      \ before reserving again. Unknown usage remains held, never zero. Stop before\
-      \ exceeding either envelope; a budget stop is a disclosed missing observation,\
-      \ not authority to expand spend.\nEvidence: Preserve original reports/raw provenance\
-      \ and failures unchanged. New target-bound comparison includes coverage/failures,\
-      \ actual source→saved M→next payload, necessary semantic contents/relationships\
-      \ (not just larger M/valid JSON/self-report), complete source, cap/reserve/M/K,\
-      \ output/reasoning, maintenance counts, usage/cost/cache, subsequent input,\
-      \ latency and fairness limits. Compare native versus new candidate using applicable\
-      \ native evidence; distinguish changed defaults from old8192 outcomes and avoid\
-      \ isolated-cause/universal-benefit claims. Catalog usage observations are not\
-      \ provider bills. Formation failure permits no invented answers or zero-filled\
-      \ scores; keep truncated output uncommitted. Negative quality/formation results\
-      \ are valid measurements, never permission for repeated sampling.\nRecovery:\
-      \ No automatic retry, JSON repair, postfailure cap increase, fallback or retry-until-green.\
-      \ Reconcile processes/descendants, actual effects and reservations after failure\
-      \ or stop. Before heavy allocation compare all concurrent additional peaks against\
-      \ current free space with15GiB reserve; reduce concurrency or scope of preparation\
-      \ if needed, without reducing contracted observations silently. Reconstructible\
-      \ runtimes/fullDB/build environments are removable after consumers end and effects\
-      \ reconcile; retain minimal unique raw observations, canonical scoring/protocol\
-      \ inputs and source. Report actual filesystem free-space change when claiming\
-      \ reclamation.\nReusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/arena/helpers\n\
+      Money: Preserve existing Fact spending and all holds from the referenced runtime\
+      \ accounting; continuation never resets the envelope. Exclusive partitions remain\
+      \ LunaFact3USD, SolFact14USD, Arena3USD, no borrowing; only Arena has authorized\
+      \ remaining model work. New USD20 is a maximum inclusive envelope for ALL new\
+      \ main/maintenance/judge/error calls, reservations, in-flight and unknown holds,\
+      \ within the existing cumulative strict <USD200 campaign limit. Carry known30.784718350\
+      \ + unknown held20.30112 =51.085838350 forward without release/reset; historical45/50/50\
+      \ or earlier allocations are not new grants. Pre-call conservatively reserve\
+      \ all possible subcalls at supported catalog prices with existing guards; reconcile\
+      \ completion before reserving again. Unknown usage remains held, never zero.\
+      \ Stop before exceeding either envelope; a budget stop is a disclosed missing\
+      \ observation, not authority to expand spend.\nEvidence: Preserve original reports/raw\
+      \ provenance and failures unchanged, including the failed raw-payload helper\
+      \ invocation and disclosed decoding workaround. Bind the final comparison to\
+      \ the integrated defaults plus benchmark-repair target with explicit applicability\
+      \ of unchanged defaults-source, Fact and native observations. Helper-only changes\
+      \ and report rebinding do not require unaffected product-test or inference repeats.\
+      \ New target-bound comparison includes coverage/failures, actual source→saved\
+      \ M→next payload, necessary semantic contents/relationships (not just larger\
+      \ M/valid JSON/self-report), complete source, cap/reserve/M/K, output/reasoning,\
+      \ maintenance counts, usage/cost/cache, subsequent input, latency and fairness\
+      \ limits. Compare native versus new candidate using applicable native evidence;\
+      \ distinguish changed defaults from old8192 outcomes and avoid isolated-cause/universal-benefit\
+      \ claims. Catalog usage observations are not provider bills. Formation failure\
+      \ permits no invented answers or zero-filled scores; keep truncated output uncommitted.\
+      \ Negative quality/formation results are valid measurements, never permission\
+      \ for repeated sampling.\nRecovery: No automatic retry, JSON repair, postfailure\
+      \ cap increase, fallback or retry-until-green. Reconcile processes/descendants,\
+      \ actual effects and reservations after failure or stop. Before heavy allocation\
+      \ compare all concurrent additional peaks against current free space with15GiB\
+      \ reserve; reduce concurrency or scope of preparation if needed, without reducing\
+      \ contracted observations silently. Reconstructible runtimes/fullDB/build environments\
+      \ are removable after consumers end and effects reconcile; retain minimal unique\
+      \ raw observations, canonical scoring/protocol inputs and source. Report actual\
+      \ filesystem free-space change when claiming reclamation.\nReusable helpers:\
+      \ /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/arena/helpers\n\
       Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/beam/helpers\n\
       Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/mab/helpers"
     verification: Orchestrator owns the single final integrated acceptance of this
       accepted defaults-improvement source plus bounded benchmark outcome in nunc-three-suite,
-      consuming defaults source proof and mab runtime evidence, with applicable completed
-      memory-update/arena-rerun/beam-rerun and native observations as provenance rather
-      than required reruns. Bind source/complete applicable offline regression inventory
-      and required runtime observations to the integrated candidate; reuse unchanged
-      valid evidence and execute affected gaps. Required observations are two new
-      Nunc Fact formation/SH+MH attempts (40/model when formation succeeds) and one
-      frozen ordinary rolling case with applicable native comparison, full coverage/failure/resource/semantic
+      consuming defaults source proof, benchmark-repair proof and mab runtime evidence,
+      with applicable completed memory-update/arena-rerun/beam-rerun and native observations
+      as provenance rather than required reruns. Bind source/complete applicable offline
+      regression inventory and required runtime observations to the integrated candidate;
+      reuse unchanged valid evidence and execute affected gaps. Required observations
+      are the retained two Nunc Fact formation/SH+MH runs (40/model), reused without
+      replay with explicit final-target applicability, and the frozen Luna/Nunc Arena
+      group4 ordinary rolling case with applicable native comparison, full coverage/failure/resource/semantic
       reporting and reconciled spend/effects/cleanup. A witnessed formation failure
       is a valid negative measurement; missing necessary observation, unproven product
       contract, failed necessary deterministic check or blocking product defect prevents
@@ -6320,8 +6332,13 @@ phases:
     - .scratch/memory-update-rerun-2026-10-12/allocation.json
     - .scratch/memory-update-rerun-2026-10-12/NATIVE-COMPARISON.md
     - .scratch/parallel-memory-campaign-2026-10-12/mab/protocol.json
+    - .scratch/defaults-improvement-2026-10-13/benchmark/ARENA-BLOCKER.md
+    - .scratch/defaults-improvement-2026-10-13/benchmark/RESULT.md
+    - .scratch/defaults-improvement-2026-10-13/benchmark/summary.json
+    - .scratch/defaults-improvement-2026-10-13/benchmark/source-memory-next.json
+    - docs/DEFAULTS-BENCHMARK.md
     depends_on:
-    - nunc-three-suite.defaults
+    - nunc-three-suite.benchmark-repair
     agent: node-typescript-engineer
   - id: nunc-three-suite.memory-update
     name: 通用维护 update、清理依赖与诊断完整交付
@@ -6750,3 +6767,76 @@ phases:
       validretainednative applicability and3/14/3newUSDpartitions in docs/DEFAULTS-BENCHMARK.md.
       Parent benchmark pending. Worktree acceptancehold released; externaltoolchain
       temporarily needed by ensuingruntime owner, release at runtimecompletion.
+  - id: nunc-three-suite.benchmark-repair
+    name: 修复 Arena 原生加载与实际记忆载体证据
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\", \"\
+      .scratch/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"\
+      .vectl/**\", \"src/**\", \"policies/**\", \".pi/**\", \".env\", \".env.*\",\
+      \ \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\nprotected_main: \"\
+      7654720277ee7b2a388b543ef973db1a279d5f7e\"\noffline_environment: {node: \"26.7.0\"\
+      , npm: \"11.19.0\", pi: \"1.1.0\", dependencies: \"package-lock.json\", setup:\
+      \ \"npm ci --ignore-scripts\", unset: [\"NODE_OPTIONS\"]}\noffline_inventory:\
+      \ {entrypoint: [\"node\", \"scripts/check.mjs\", \"all\"], build: [\"npm\",\
+      \ \"run\", \"build\"], suites: [\"tests/engine\", \"tests/pi\", \"tests/live\"\
+      ]}\nrepair_targets: [\"scripts/benchmarks/arena/pi-travel-tools.mjs\", \"scripts/benchmarks/evidence.mjs\"\
+      ]\nresource_limits: {paidCalls: 0, diskReserveGiB: 15}\nDeliver: One cohesive\
+      \ tracked benchmark-support repair consumed by the same incomplete mab runtime\
+      \ step. Correct stock Pi extension schema registration versus parsed runtime\
+      \ flag lifecycle so the unchanged six official Arena tools load through the\
+      \ real stock RpcClient/CLI, with runtime configuration/path binding resolved\
+      \ at the supported lifecycle point. Prove a real zero-model loader and official\
+      \ CitySearch probe with the full official database; environment flag-parser\
+      \ substitutes or tiny scorer subsets cannot establish this seam.\nDeliver: Correct\
+      \ source-to-saved-M-to-actual-next-payload evidence for JSON-encoded memory\
+      \ inside native text carriers. Decode the actual carrier and verify saved slot\
+      \ identity and content rather than matching raw substrings anywhere in outer\
+      \ JSON; reject missing, wrong-ID, changed or unrelated-carrier matches. Include\
+      \ positive escaped/nested-body and negative behavioral tests. Reprocess retained\
+      \ original captures for all four checkpoint-to-next links and all80 independent\
+      \ QA payloads without inference; preserve original raw-helper failure and disclosed\
+      \ workaround as historical evidence, never relabel them passed. Carriage equality\
+      \ supplies no semantic completeness judgment.\nBoundary: node-typescript-engineer\
+      \ owns this ordinary Node CLI/host-interface and reporting-helper repair, including\
+      \ relevant tests/docs and a local source commit; Orchestrator integrates it\
+      \ and retains final acceptance. Source defaults DONE and all completed history\
+      \ remain immutable. Keep product src/policies/core behavior unchanged; any supported\
+      \ need to cross that protected boundary requires escalation before edits. No\
+      \ paid calls, product policy changes, adoption/install/reload, global install/settings,\
+      \ main merge/push, credentials or billing administration. No new execution framework\
+      \ or gate.\nAdmit: Start from integrated defaults and the referenced concrete\
+      \ blocker/captured-wire evidence. Reconstructible isolated locked toolchain,\
+      \ full official DB and task-local loopback service preparation are authorized;\
+      \ compare all concurrent peak allocations against free space with15GiB reserve.\
+      \ Keep tracked/tested material logic in existing benchmark mechanisms. Unchanged\
+      \ product/native/Fact observations remain usable with explicit applicability;\
+      \ no Fact, native, BEAM, Event or matrix replay.\nRecovery: Failed checks remain\
+      \ on this producer for scoped correction; do not alter the runtime consumer's\
+      \ paid budget or weaken proof. Reconcile all local child/service effects before\
+      \ handoff and remove reconstructible prep after its concrete consumer ends,\
+      \ preserving minimal unique observations and recoverable source. Required repair\
+      \ outside the accepted boundary stays blocked pending decision.\nReusable helpers:\
+      \ /Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/benchmark/helpers"
+    verification: Orchestrator completion review accepts the local tracked candidate
+      only after meaningful affected benchmark tests, locked build and real stock
+      Pi1.1.0 zero-model loader registration of all six unchanged official tools plus
+      full-database CitySearch probe pass. No mocked CLI parsing seam. Positive/negative
+      evidence tests distinguish actual decoded carrier slot identity/content from
+      unrelated substrings, wrong IDs, missing or altered slots; reprocess four retained
+      checkpoint links and80 QA payloads with original record provenance and zero
+      inference. Cover the complete applicable native offline inventory through valid
+      prior defaults proof plus affected-scope execution; rerun only invalidated checks,
+      not unchanged product tests merely for rebinding. Reuse source and Fact observations
+      only with explicit unchanged-input applicability to integrated defaults plus
+      repair. Missing necessary proof keeps this source step unfinished; paid ordinary
+      observation and terminal integrated acceptance belong to the same mab consumer.
+    refs:
+    - .scratch/defaults-improvement-2026-10-13/benchmark/ARENA-BLOCKER.md
+    - .scratch/defaults-improvement-2026-10-13/benchmark/RESULT.md
+    - .scratch/defaults-improvement-2026-10-13/benchmark/summary.json
+    - .scratch/defaults-improvement-2026-10-13/benchmark/source-memory-next.json
+    - docs/DEFAULTS-BENCHMARK.md
+    depends_on:
+    - nunc-three-suite.defaults
+    agent: node-typescript-engineer
