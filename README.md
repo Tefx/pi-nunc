@@ -160,6 +160,7 @@ See also [bounded observations](docs/LIVE.md).
 
 ## Further documentation
 
+- [Project constitution: scope, ownership, and limits](docs/CONSTITUTION.md)
 - [Core design](docs/DESIGN.md)
 - [Extraction, required items, and comparison scope](docs/EXTRACTION.md)
 - [Pi extension loading, commands, and persistence](docs/PI.md)
