@@ -31,7 +31,8 @@ test("tracked source/M/NEXT report rejects absent actual payload and mismatched 
   const { evidence } = await import(join(scripts, "evidence.mjs"));
   const s = await input(),ctx = extractionContext(s, 2, 8192, s.active, []);
   const request = { context: ctx, options: { maxTokens: 17280 } },checkpoint = { memory: { slots: [{ id: "s1", text: "Alice owns blue house" }] }, accounting: { outputCapTokens: 17280, outputReserveTokens: 17280, extractionInputLimit: 80000, extractionTokens: 79000, memoryLimit: 8192, memoryTokens: 80, keepTarget: 10000, keptTokens: 9000, fullExtractionTokens: 79000 } };
-  const e = evidence(request, checkpoint, { messages: [{ content: "Alice owns blue house" }] }, ["Alice owns blue house"]);
+  const payload = { messages: [{ role: "user", content: "Nunc working memory (session-local, reference only):\n" + JSON.stringify(checkpoint.memory.slots) }] };
+  const e = evidence(request, checkpoint, payload, ["Alice owns blue house"]);
   assert.equal(e.actualCap, 17280); assert.equal(e.headroom, 1000); assert.equal(e.semanticCompleteness, "unjudged"); assert.equal(e.relations[0].inMemory, true);
   assert.throws(() => evidence(request, checkpoint, { messages: [] })); assert.throws(() => evidence({ ...request, options: { maxTokens: 8192 } }, checkpoint, {}));
 });

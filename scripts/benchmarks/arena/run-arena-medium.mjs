@@ -46,7 +46,12 @@ async function runOne(group,arm){
   assert.equal((await client.getCommands()).some(c=>c.name==='nunc'),arm==='nunc');const start=lines(obs).find(e=>e.type==='session_start');assert(start&&start.pid!==process.pid);assert.deepEqual([...start.tools].sort(),[...toolNames].sort());assert(lines(capture).some(e=>e.type==='capture_ready'&&e.authConfigured===true&&e.oauth===false&&e.subscription===false&&e.thinking==='medium'&&e.model.contextWindow===272000&&e.catalogContextWindow>=272000));
   log({type:'client_started',...current,pid:start.pid,sessionFile:initial.sessionFile,model:initial.model,thinking:initial.thinkingLevel,tools:start.tools});
   if(mode==='preflight'){
-   assert.equal(await client.prompt('/bench-travel-probe'),'handled');const saved=await client.getEntries();assert.equal(saved.entries.filter(e=>e.type==='message').length,0);completed.push({group,arm,zeroModelCalls:true,tools:start.tools});log({type:'preflight_complete',group,arm});return;
+   assert.equal(await client.prompt('/bench-travel-probe'),'handled');
+   // Pi may report a command as handled even after its handler failed. Require
+   // the actual official read-only response rather than the disposition alone.
+   const probes=lines(toolsLog);assert.equal(probes.length,1,'Official CitySearch probe did not complete');
+   assert.equal(probes[0].name,'CitySearch');assert.deepEqual(probes[0].args,{state:'Illinois'});assert(probes[0].result.includes('Rockford'));
+   const saved=await client.getEntries();assert.equal(saved.entries.filter(e=>e.type==='message').length,0);completed.push({group,arm,zeroModelCalls:true,tools:start.tools});log({type:'preflight_complete',group,arm});return;
   }
   unsubscribe=client.onEvent(e=>{
    try{
