@@ -7157,7 +7157,7 @@ phases:
       separately, finalphaseacceptanceremains.
   - id: nunc-defaults-remaining.beam
     name: BEAM 当前默认双模型与原有盲评比较
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/defaults-remaining-2026-10-13/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7246,6 +7246,8 @@ phases:
     - nunc-defaults-remaining.beam-guard-repair
     - nunc-defaults-remaining.beam-query-recovery
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T15:24:37.456432Z'
   - id: nunc-defaults-remaining.event
     name: 固定 Event 替代行当前默认双模型比较
     status: done
