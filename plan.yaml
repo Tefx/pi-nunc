@@ -6216,7 +6216,7 @@ phases:
       still incomplete/blockedevidence; campaign not fullycomplete.'
   - id: nunc-three-suite.mab
     name: MAB 整合候选重跑与原未完成范围
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6313,6 +6313,8 @@ phases:
     depends_on:
     - nunc-three-suite.memory-update
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T03:20:52.003199Z'
   - id: nunc-three-suite.memory-update
     name: 通用维护 update、清理依赖与诊断完整交付
     status: done
@@ -6422,7 +6424,7 @@ phases:
       main unchanged, no push/install/adoption.
   - id: nunc-three-suite.arena-rerun
     name: MemoryArena 整合候选四条件重跑
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6507,9 +6509,11 @@ phases:
     depends_on:
     - nunc-three-suite.memory-update
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T03:20:52.003119Z'
   - id: nunc-three-suite.beam-rerun
     name: BEAM 整合候选四条件重跑
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \"src/**\", \"tests/**\", \"docs/**\", \"policies/**\"\
@@ -6593,3 +6597,5 @@ phases:
     depends_on:
     - nunc-three-suite.memory-update
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T03:20:52.003174Z'
