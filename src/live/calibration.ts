@@ -1,7 +1,7 @@
 import * as accounting from "../engine/accounting.js";
 import * as request from "../engine/request.js";
 import * as validation from "../engine/validation.js";
-import type { MaintenanceInput } from "../engine/types.js";
+import type { MaintenanceInput, Omission } from "../engine/types.js";
 import { requireValue, RunnerError, type RetentionCalibrationRange } from "./contract.js";
 import { validateControl, type Control } from "./scenarios.js";
 
@@ -93,7 +93,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       const normalAtTrigger = fullExtraction - mainBefore + trigger;
       // Trigger headroom is advisory. Calibrate against the actual extraction below.
       let extraction = fullExtraction, selectedSource = active;
-      let omissions: typeof source extends never ? never : import("../engine/types.js").Omission[] = [];
+      let omissions: Omission[] = [];
       if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
         const reduction = reduceToolBodies(active, config.extraction.headTailChars);
         selectedSource = reduction.source; omissions = reduction.omissions;
