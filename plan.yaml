@@ -6964,7 +6964,7 @@ phases:
   steps:
   - id: nunc-defaults-remaining.support
     name: 扩展现有跟踪 runner 支持剩余默认比较
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7029,6 +7029,21 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T11:55:18.917920Z'
+    done_at: '2026-10-13T13:00:29.659190+00:00'
+    evidence: Accepted/integrated exact6d0cc0a9ebb6b923ffd818da790f8363daa3ff2f fromfd354d5;
+      retainedrefs/vectl/candidates/nunc-defaults-remaining.support, no-oprebase andcomparedFF.
+      Parentreadfull14filedelta includingselector/BEAMguardrunnerjudge/contracts/scorer/tests/ArenaMABdiff/docs,
+      support/DELIVERY.md andzero-paidreconciliation. Exactcondition/row/group/CPadaptation,
+      originalquery/rubricbinding, defaultsomittedactualwireMEDIUM/capguard, serialinclusiveallocationArena1+9/BEAM1+8+1/Event1+9,
+      no retries/resume/native/Fact/Luna4, originalscorersselecteddenominators/absence-null
+      reviewed. LockedNode26.7/npm11.19build and12affectedtestspass. ActualchangedBEAMSDK+Event/ArenastockCLIzero-paidbothmodels
+      preflightpassed, full304807007BDBsixschemasCitySearch, forbiddencontrolsfailedbeforeeffect;
+      publishedBEAMscorer andselectedArenaoriginalmetricsequivalencepassed. Reuseprior750/90all+157affected(overlap)+helper7withinunchangedproductscope,
+      no907/freshfullclaim. Evidence .scratch/defaults-remaining-2026-10-13/support/{DELIVERY.md,scorer-equivalence.json,zero-paid-reconciliation.json,retention.json,logs}.
+      0paid/newholds/pending/unknown, probeservices/childrenstopped. Protectedcore/policy/manifest/lock/Planunchangedbycandidate.
+      Nodeimmutabletoolchain heldforall3immediateruntimeconsumers; fullDB/arena-venv
+      exclusivelyArena untilconsumerends. Worktreedepsacceptanceholdreleased. NoextraGate;
+      runtimeproofremainsdownstream.
   - id: nunc-defaults-remaining.arena
     name: Arena 剩余组与复用基线比较
     status: pending
