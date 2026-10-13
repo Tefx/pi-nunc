@@ -92,12 +92,14 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
         : requestTokens(mainContext(source.fixed, source.memory.slots, active), config.imageTokens) + config.main.extraInputTokens;
       const normalAtTrigger = fullExtraction - mainBefore + trigger;
       // Trigger headroom is advisory. Calibrate against the actual extraction below.
-      let extraction = fullExtraction;
+      let extraction = fullExtraction, selectedSource = active;
+      let omissions: typeof source extends never ? never : import("../engine/types.js").Omission[] = [];
       if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
         const reduction = reduceToolBodies(active, config.extraction.headTailChars);
-        extraction = requestTokens(extractionContext(source, cut, memoryLimit, reduction.source, reduction.omissions), config.imageTokens) + config.extraction.extraInputTokens;
+        selectedSource = reduction.source; omissions = reduction.omissions;
+        extraction = requestTokens(extractionContext(source, cut, memoryLimit, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
       }
-      const resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, memoryLimit, fullExtraction > extractionInput && config.extraction.toolResults === "auto" ? reduceToolBodies(active, config.extraction.headTailChars).source : active, fullExtraction > extractionInput && config.extraction.toolResults === "auto" ? reduceToolBodies(active, config.extraction.headTailChars).omissions : [], cap));
+      const resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, memoryLimit, selectedSource, omissions, cap));
       if (resolved) extraction = resolved.extractionTokens;
       requireValue(extraction <= (resolved?.extractionInputLimit ?? extractionInput), "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
       return {
