@@ -6223,7 +6223,7 @@ phases:
       still incomplete/blockedevidence; campaign not fullycomplete.'
   - id: nunc-three-suite.mab
     name: 新默认 Fact 与一次普通滚动有界比较
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
       , \"plan-dashboard.html\", \".vectl/**\", \"src/**\", \"tests/**\", \"docs/**\"\
@@ -6340,6 +6340,8 @@ phases:
     depends_on:
     - nunc-three-suite.benchmark-repair
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T10:10:52.058150Z'
   - id: nunc-three-suite.memory-update
     name: 通用维护 update、清理依赖与诊断完整交付
     status: done
