@@ -553,7 +553,12 @@ export class Admission {
         return simple ? delegate.streamSimple(model, normalized, options as SimpleStreamOptions) : delegate.stream(model, normalized, options);
       }
       options?.signal?.throwIfAborted();
-      initialMetadataTokens = textTokens(JSON.stringify(options?.metadata ?? {}));
+      // piComplete supplies no metadata. Do not invent an empty serialized object
+      // on maintenance calls whose resolved cap already uses all available room.
+      // Supplied metadata and subsequent payload growth still consume capacity;
+      // retain the existing main-request accounting unchanged.
+      initialMetadataTokens = kind === "maintenance" && options?.metadata === undefined
+        ? 0 : textTokens(JSON.stringify(options?.metadata ?? {}));
       if (ctx.modelRegistry.getRegisteredNativeProvider(model.provider) !== wrapper) throw new EngineError("CONFIG", "Provider changed after request preparation; reload before continuing");
       if (legacyStream) throw new EngineError("CONFIG", "Legacy stream overrides are unsupported; select a native Provider without a legacy stream override");
       if (model.samplingParams && Object.keys(model.samplingParams).length || options?.samplingParams && Object.keys(options.samplingParams).length) throw new EngineError("CONFIG", "Raw sampling payload overrides are unsupported");

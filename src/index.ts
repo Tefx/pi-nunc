@@ -443,7 +443,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const accounting = result.observations.accounting;
       if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
         headroomWarned = true;
-        notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds planned input ${accounting.extractionInputLimit}; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance is checked separately; settings were not changed.`);
+        notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} lacks headroom for desired maintenance output ${accounting.outputDesiredTokens ?? accounting.outputReserveTokens}; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
       }
       if (!result.ok) { notify(ctx, `${result.code}: ${result.message}`); return { cancel: true }; }
       const currentEntries = manager.buildContextEntries();
