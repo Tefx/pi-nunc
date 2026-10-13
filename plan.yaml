@@ -6769,7 +6769,7 @@ phases:
       temporarily needed by ensuingruntime owner, release at runtimecompletion.
   - id: nunc-three-suite.benchmark-repair
     name: 修复 Arena 原生加载与实际记忆载体证据
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\", \"\
       .scratch/**\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \"\
@@ -6840,3 +6840,5 @@ phases:
     depends_on:
     - nunc-three-suite.defaults
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T09:31:14.325029Z'
