@@ -58,7 +58,9 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
   const tool = (name: string, input: any, stepIndex: number) => {
     let inp = 18000;
     if (lowUsage === true || lowUsage === "infeasible") inp = 100;
-    else if (lowUsage === "reachable") inp = 5000;
+    // Shared tool guidance raises F to ~4,470 estimated tokens; 7K still
+    // exercises low native usage while covering F + the unchanged 1,024 growth + genuine K.
+    else if (lowUsage === "reachable") inp = 7000;
     else if (lowUsage === "defer-then-progress") inp = stepIndex === 0 ? 2929 : 18000;
     return { tool: { name, input }, input: inp };
   };
