@@ -7239,7 +7239,7 @@ phases:
       No remainingEventblocker; Arena/BEAM/globalacceptanceremain. Historicaloriginal12/filteredEventgapsunchanged.
   - id: nunc-defaults-remaining.beam-guard-repair
     name: 修复 BEAM 原生主请求 cap 观察与离线序列化验证
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7318,3 +7318,5 @@ phases:
     depends_on:
     - nunc-defaults-remaining.support
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T13:46:59.296059Z'
