@@ -6641,7 +6641,7 @@ phases:
       no worker product/Plan mutation.
   - id: nunc-three-suite.defaults
     name: 默认维护额度、完整来源与内容保留改进
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"tests/**\", \"policies/**\", \"docs/**\", \"\
       README.md\", \"scripts/**\", \".scratch/**\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -6728,3 +6728,5 @@ phases:
     depends_on:
     - nunc-three-suite.memory-update
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-13T06:29:41.619926Z'
