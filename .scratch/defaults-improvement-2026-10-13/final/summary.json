@@ -1,0 +1,934 @@
+{
+  "product": "a6ecfa602b903e78b84c93d9f936f3fe633bcd93",
+  "integrationPostClaim": "1be978381c7f4e5069e2fc44dce14148563f8260",
+  "status": "COMPLETED_BOUNDED_MEASUREMENT",
+  "mechanical": "passed observed automatic/full/auto/MEDIUM/save/NEXT contracts plus applicable accepted offline evidence",
+  "quality": "mixed; necessary-material omissions and relationship/output failures remain valid negative measurements",
+  "historical12Conditions": "incomplete; no retrospective completion",
+  "fact": {
+    "luna-nunc": {
+      "formationChunks": 17,
+      "manualCheckpoints": [
+        8,
+        17
+      ],
+      "answered": 40,
+      "required": 40,
+      "maintenanceCount": 2,
+      "calls": 59,
+      "latencySeconds": 550.931,
+      "factStartedToFinalAnswerSeconds": 550.364,
+      "usage": {
+        "input": 177,
+        "cacheRead": 391123,
+        "cacheWrite": 758402,
+        "output": 18696,
+        "reasoning": 17842
+      },
+      "knownUsd": "0.108077180",
+      "heldUsd": 0,
+      "inflightUsd": 0,
+      "allowanceUsd": 3,
+      "maxReservedTotalUsd": 0.270086005,
+      "rawObservedKnownUsd": 0.10807718,
+      "scores": [
+        {
+          "condition": "luna-nunc",
+          "caseId": "factconsolidation_sh_64k",
+          "correct": 9,
+          "answered": 20,
+          "required": 20,
+          "complete": true,
+          "accuracy": 0.45,
+          "missing": 0
+        },
+        {
+          "condition": "luna-nunc",
+          "caseId": "factconsolidation_mh_64k",
+          "correct": 3,
+          "answered": 20,
+          "required": 20,
+          "complete": true,
+          "accuracy": 0.15,
+          "missing": 0
+        }
+      ],
+      "maintenance": [
+        {
+          "afterChunk": 8,
+          "slotIds": [
+            "s1"
+          ],
+          "slots": 1,
+          "keptChunks": [
+            6,
+            7,
+            8
+          ],
+          "accounting": {
+            "estimator": "pi-heuristic",
+            "outputReserveTokens": 32768,
+            "outputCapTokens": 32768,
+            "outputDesiredTokens": 32768,
+            "normalHeadroomSufficient": true,
+            "suggestedReserveTokens": 38551,
+            "inputExceededPlan": false,
+            "outputExceededPlan": false,
+            "fixedTokens": 129,
+            "mainBeforeTokens": 40786,
+            "mainInputLimit": 142976,
+            "extractionInputLimit": 238208,
+            "effectiveTrigger": 32768,
+            "memoryLimit": 3263,
+            "memoryReserveTokens": 3263,
+            "memoryHardLimit": null,
+            "memoryTargetExceeded": false,
+            "keepTarget": 14688,
+            "keptTokens": 14848,
+            "planning": {
+              "before": {
+                "tokens": 40786,
+                "visibleTokens": 40786,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "kept": {
+                "tokens": 14848,
+                "visibleTokens": 14848,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "after": {
+                "tokens": 15275,
+                "visibleTokens": 15275,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              }
+            },
+            "fullExtractionTokens": 45545,
+            "extractionTokens": 45545,
+            "normalExtractionAtTrigger": 37527,
+            "mainAfterTokens": 15275,
+            "memoryTokens": 298,
+            "growthTokens": 17493,
+            "outputLimitedBy": "ceiling"
+          },
+          "usage": {
+            "input": 3,
+            "output": 3239,
+            "cacheRead": 0,
+            "cacheWrite": 38943,
+            "reasoning": 3051,
+            "totalTokens": 42185,
+            "cost": {
+              "input": 3.0000000000000004e-07,
+              "output": 0.0016194999999999998,
+              "cacheRead": 0,
+              "cacheWrite": 0.004867875,
+              "total": 0.006487675
+            }
+          },
+          "outputTextChars": 914,
+          "stopReason": "stop",
+          "elapsedMs": 32610
+        },
+        {
+          "afterChunk": 17,
+          "slotIds": [
+            "s1"
+          ],
+          "slots": 1,
+          "keptChunks": [
+            14,
+            15,
+            16,
+            17
+          ],
+          "accounting": {
+            "estimator": "pi-heuristic",
+            "outputReserveTokens": 32768,
+            "outputCapTokens": 32768,
+            "outputDesiredTokens": 32768,
+            "normalHeadroomSufficient": true,
+            "suggestedReserveTokens": 38731,
+            "inputExceededPlan": false,
+            "outputExceededPlan": false,
+            "fixedTokens": 129,
+            "mainBeforeTokens": 56061,
+            "mainInputLimit": 142976,
+            "extractionInputLimit": 238208,
+            "effectiveTrigger": 32768,
+            "memoryLimit": 3263,
+            "memoryReserveTokens": 3263,
+            "memoryHardLimit": null,
+            "memoryTargetExceeded": false,
+            "keepTarget": 14688,
+            "keptTokens": 16090,
+            "planning": {
+              "before": {
+                "tokens": 56061,
+                "visibleTokens": 56061,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "kept": {
+                "tokens": 16090,
+                "visibleTokens": 16090,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "after": {
+                "tokens": 16487,
+                "visibleTokens": 16487,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              }
+            },
+            "fullExtractionTokens": 61000,
+            "extractionTokens": 61000,
+            "normalExtractionAtTrigger": 37707,
+            "mainAfterTokens": 16487,
+            "memoryTokens": 268,
+            "growthTokens": 16281,
+            "outputLimitedBy": "ceiling"
+          },
+          "usage": {
+            "input": 3,
+            "output": 879,
+            "cacheRead": 2579,
+            "cacheWrite": 51114,
+            "reasoning": 704,
+            "totalTokens": 54575,
+            "cost": {
+              "input": 3.0000000000000004e-07,
+              "output": 0.0004395,
+              "cacheRead": 2.5790000000000002e-05,
+              "cacheWrite": 0.00638925,
+              "total": 0.00685484
+            }
+          },
+          "outputTextChars": 776,
+          "stopReason": "stop",
+          "elapsedMs": 12667
+        }
+      ],
+      "nativeComparator": {
+        "condition": "luna-native",
+        "calls": 59,
+        "answered": 40,
+        "factStartedToFinalAnswerSeconds": 473.098,
+        "knownUsd": "0.1512868349999999990",
+        "usage": {
+          "input": 177,
+          "cacheRead": 464401,
+          "cacheWrite": 1109069,
+          "output": 15983,
+          "reasoning": 13747
+        },
+        "scores": [
+          {
+            "condition": "luna-native",
+            "caseId": "factconsolidation_sh_64k",
+            "correct": 13,
+            "answered": 20,
+            "required": 20,
+            "complete": true,
+            "accuracy": 0.65,
+            "missing": 0
+          },
+          {
+            "condition": "luna-native",
+            "caseId": "factconsolidation_mh_64k",
+            "correct": 9,
+            "answered": 20,
+            "required": 20,
+            "complete": true,
+            "accuracy": 0.45,
+            "missing": 0
+          }
+        ],
+        "maintenance": [
+          {
+            "afterChunk": 8,
+            "summaryChars": 3552,
+            "elapsedMs": 26658,
+            "keptChunks": [
+              4,
+              5,
+              6,
+              7,
+              8
+            ]
+          },
+          {
+            "afterChunk": 17,
+            "summaryChars": 4155,
+            "elapsedMs": 25776,
+            "keptChunks": [
+              12,
+              13,
+              14,
+              15,
+              16,
+              17
+            ]
+          }
+        ]
+      },
+      "catalogCostDeltaUsd": "-0.0432096549999999990"
+    },
+    "sol-nunc": {
+      "formationChunks": 17,
+      "manualCheckpoints": [
+        8,
+        17
+      ],
+      "answered": 40,
+      "required": 40,
+      "maintenanceCount": 2,
+      "calls": 59,
+      "latencySeconds": 1212.952,
+      "factStartedToFinalAnswerSeconds": 1212.477,
+      "usage": {
+        "input": 177,
+        "cacheRead": 513351,
+        "cacheWrite": 2282505,
+        "output": 48738,
+        "reasoning": 1609
+      },
+      "knownUsd": "6.245331600",
+      "heldUsd": 0,
+      "inflightUsd": 0,
+      "allowanceUsd": 14,
+      "maxReservedTotalUsd": 9.3937281,
+      "rawObservedKnownUsd": 6.245331600000001,
+      "scores": [
+        {
+          "condition": "sol-nunc",
+          "caseId": "factconsolidation_sh_64k",
+          "correct": 19,
+          "answered": 20,
+          "required": 20,
+          "complete": true,
+          "accuracy": 0.95,
+          "missing": 0
+        },
+        {
+          "condition": "sol-nunc",
+          "caseId": "factconsolidation_mh_64k",
+          "correct": 17,
+          "answered": 20,
+          "required": 20,
+          "complete": true,
+          "accuracy": 0.85,
+          "missing": 0
+        }
+      ],
+      "maintenance": [
+        {
+          "afterChunk": 8,
+          "slotIds": [
+            "s1",
+            "s2",
+            "s3",
+            "s4",
+            "s5",
+            "s6"
+          ],
+          "slots": 6,
+          "keptChunks": [
+            6,
+            7,
+            8
+          ],
+          "accounting": {
+            "estimator": "pi-heuristic",
+            "outputReserveTokens": 32768,
+            "outputCapTokens": 32768,
+            "outputDesiredTokens": 32768,
+            "normalHeadroomSufficient": true,
+            "suggestedReserveTokens": 38567,
+            "inputExceededPlan": false,
+            "outputExceededPlan": false,
+            "fixedTokens": 129,
+            "mainBeforeTokens": 40658,
+            "mainInputLimit": 142976,
+            "extractionInputLimit": 238208,
+            "effectiveTrigger": 32768,
+            "memoryLimit": 3263,
+            "memoryReserveTokens": 3263,
+            "memoryHardLimit": null,
+            "memoryTargetExceeded": true,
+            "keepTarget": 14688,
+            "keptTokens": 14800,
+            "planning": {
+              "before": {
+                "tokens": 40658,
+                "visibleTokens": 40658,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "kept": {
+                "tokens": 14800,
+                "visibleTokens": 14800,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "after": {
+                "tokens": 34928,
+                "visibleTokens": 34928,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              }
+            },
+            "fullExtractionTokens": 45433,
+            "extractionTokens": 45433,
+            "normalExtractionAtTrigger": 37543,
+            "mainAfterTokens": 34928,
+            "memoryTokens": 19999,
+            "growthTokens": -2160,
+            "outputLimitedBy": "ceiling"
+          },
+          "usage": {
+            "input": 3,
+            "output": 15989,
+            "cacheRead": 0,
+            "cacheWrite": 38814,
+            "reasoning": 349,
+            "totalTokens": 54806,
+            "cost": {
+              "input": 6e-06,
+              "output": 0.15989,
+              "cacheRead": 0,
+              "cacheWrite": 0.097035,
+              "total": 0.256931
+            }
+          },
+          "outputTextChars": 69956,
+          "stopReason": "stop",
+          "elapsedMs": 273350
+        },
+        {
+          "afterChunk": 17,
+          "slotIds": [
+            "s1",
+            "s2",
+            "s3",
+            "s4",
+            "s5",
+            "s6",
+            "s7",
+            "s8",
+            "s9",
+            "s10",
+            "s11",
+            "s12",
+            "s13",
+            "s14",
+            "s15",
+            "s16"
+          ],
+          "slots": 16,
+          "keptChunks": [
+            16,
+            17
+          ],
+          "accounting": {
+            "estimator": "pi-heuristic",
+            "outputReserveTokens": 32768,
+            "outputCapTokens": 32768,
+            "outputDesiredTokens": 32768,
+            "normalHeadroomSufficient": true,
+            "suggestedReserveTokens": 38753,
+            "inputExceededPlan": false,
+            "outputExceededPlan": false,
+            "fixedTokens": 129,
+            "mainBeforeTokens": 75452,
+            "mainInputLimit": 142976,
+            "extractionInputLimit": 238208,
+            "effectiveTrigger": 32768,
+            "memoryLimit": 3263,
+            "memoryReserveTokens": 19999,
+            "memoryHardLimit": null,
+            "memoryTargetExceeded": true,
+            "keepTarget": 6320,
+            "keptTokens": 6262,
+            "planning": {
+              "before": {
+                "tokens": 75452,
+                "visibleTokens": 75452,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "kept": {
+                "tokens": 6262,
+                "visibleTokens": 6262,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              },
+              "after": {
+                "tokens": 63303,
+                "visibleTokens": 63303,
+                "additionalTokens": 0,
+                "basis": "visible-heuristic",
+                "partial": false,
+                "uncertainties": []
+              }
+            },
+            "fullExtractionTokens": 80413,
+            "extractionTokens": 80413,
+            "normalExtractionAtTrigger": 37729,
+            "mainAfterTokens": 63303,
+            "memoryTokens": 56912,
+            "growthTokens": -30535,
+            "outputLimitedBy": "ceiling"
+          },
+          "usage": {
+            "input": 3,
+            "output": 31368,
+            "cacheRead": 2579,
+            "cacheWrite": 66245,
+            "reasoning": 297,
+            "totalTokens": 100195,
+            "cost": {
+              "input": 6e-06,
+              "output": 0.31368,
+              "cacheRead": 0.00025790000000000003,
+              "cacheWrite": 0.1656125,
+              "total": 0.4795564
+            }
+          },
+          "outputTextChars": 130953,
+          "stopReason": "stop",
+          "elapsedMs": 492591
+        }
+      ],
+      "nativeComparator": {
+        "condition": "sol-native",
+        "calls": 59,
+        "answered": 40,
+        "factStartedToFinalAnswerSeconds": 1002.99,
+        "knownUsd": "5.132609200000000012",
+        "usage": {
+          "input": 177,
+          "cacheRead": 517652,
+          "cacheWrite": 1909952,
+          "output": 30561,
+          "reasoning": 1758
+        },
+        "scores": [
+          {
+            "condition": "sol-native",
+            "caseId": "factconsolidation_sh_64k",
+            "correct": 19,
+            "answered": 20,
+            "required": 20,
+            "complete": true,
+            "accuracy": 0.95,
+            "missing": 0
+          },
+          {
+            "condition": "sol-native",
+            "caseId": "factconsolidation_mh_64k",
+            "correct": 17,
+            "answered": 20,
+            "required": 20,
+            "complete": true,
+            "accuracy": 0.85,
+            "missing": 0
+          }
+        ],
+        "maintenance": [
+          {
+            "afterChunk": 8,
+            "summaryChars": 31597,
+            "elapsedMs": 119890,
+            "keptChunks": [
+              4,
+              5,
+              6,
+              7,
+              8
+            ]
+          },
+          {
+            "afterChunk": 17,
+            "summaryChars": 84361,
+            "elapsedMs": 327968,
+            "keptChunks": [
+              12,
+              13,
+              14,
+              15,
+              16,
+              17
+            ]
+          }
+        ]
+      },
+      "catalogCostDeltaUsd": "1.112722399999999988"
+    }
+  },
+  "factOriginalProduct": "8d03252f5b0158a64cb32cea7fc868fafc282916",
+  "factCarriageEvidence": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/repair/reprocessed-wire.json",
+  "ordinary": {
+    "group": 4,
+    "arm": "nunc",
+    "model": "Luna",
+    "completedTravelers": 8,
+    "current": {
+      "expectedPeople": 8,
+      "completePeople": 8,
+      "PS": 25.0,
+      "SPS": 95.83333333333334,
+      "SR": 0.0,
+      "strictGoldSlots": 100,
+      "goldSlots": 144,
+      "validMealAccommodationSlots": 88,
+      "mealAccommodationSlots": 96,
+      "validInvariantSlots": 48,
+      "invariantSlots": 72,
+      "explicitPassingRules": 26,
+      "explicitRules": 28,
+      "explicitPassingPeople": 0
+    },
+    "native": {
+      "expectedPeople": 8,
+      "completePeople": 8,
+      "PS": 12.5,
+      "SPS": 100.0,
+      "SR": 0.0,
+      "strictGoldSlots": 74,
+      "goldSlots": 144,
+      "validMealAccommodationSlots": 64,
+      "mealAccommodationSlots": 96,
+      "validInvariantSlots": 48,
+      "invariantSlots": 72,
+      "explicitPassingRules": 27,
+      "explicitRules": 28,
+      "explicitPassingPeople": 0
+    },
+    "currentUsage": {
+      "input": 54,
+      "cacheRead": 120894,
+      "cacheWrite": 78838,
+      "output": 15907,
+      "reasoning": 11801
+    },
+    "nativeUsage": {
+      "input": 60,
+      "cacheRead": 122166,
+      "cacheWrite": 51439,
+      "output": 10989,
+      "reasoning": 5873
+    },
+    "calls": 18,
+    "nativeCalls": 18,
+    "mainCalls": 16,
+    "maintenanceCalls": 2,
+    "toolCalls": 40,
+    "nativeToolCalls": 40,
+    "currentCatalogUsd": "0.01902259",
+    "nativeCatalogUsd": "0.01315203500000000014",
+    "maxReservedTotalUsd": 0.181800915,
+    "elapsedSeconds": 305.489,
+    "matchedClientToGroupSeconds": 305.015,
+    "nativeMatchedClientToGroupSeconds": 161.989,
+    "maintenance": [
+      {
+        "round": 5,
+        "name": "Violet",
+        "elapsedMs": 35823,
+        "accounting": {
+          "estimator": "pi-heuristic",
+          "outputReserveTokens": 32768,
+          "outputCapTokens": 32768,
+          "outputDesiredTokens": 32768,
+          "normalHeadroomSufficient": true,
+          "suggestedReserveTokens": 39310,
+          "inputExceededPlan": false,
+          "outputExceededPlan": false,
+          "fixedTokens": 1402,
+          "mainBeforeTokens": 22313,
+          "mainInputLimit": 142976,
+          "extractionInputLimit": 238208,
+          "effectiveTrigger": 16384,
+          "memoryLimit": 1498,
+          "memoryReserveTokens": 1498,
+          "memoryHardLimit": null,
+          "memoryTargetExceeded": false,
+          "keepTarget": 6742,
+          "keptTokens": 7554,
+          "planning": {
+            "before": {
+              "tokens": 22313,
+              "visibleTokens": 22313,
+              "additionalTokens": 0,
+              "basis": "visible-heuristic",
+              "partial": false,
+              "uncertainties": []
+            },
+            "kept": {
+              "tokens": 7554,
+              "visibleTokens": 7554,
+              "additionalTokens": 0,
+              "basis": "visible-heuristic",
+              "partial": false,
+              "uncertainties": []
+            },
+            "after": {
+              "tokens": 9577,
+              "visibleTokens": 9577,
+              "additionalTokens": 0,
+              "basis": "visible-heuristic",
+              "partial": false,
+              "uncertainties": []
+            }
+          },
+          "fullExtractionTokens": 27831,
+          "extractionTokens": 27831,
+          "normalExtractionAtTrigger": 21902,
+          "mainAfterTokens": 9577,
+          "memoryTokens": 621,
+          "growthTokens": 6807,
+          "outputLimitedBy": "ceiling"
+        },
+        "required": {
+          "declared": [
+            "violet-plan"
+          ],
+          "retainedSlotIds": [
+            "s1"
+          ],
+          "failed": false
+        }
+      },
+      {
+        "round": 8,
+        "name": "Mary",
+        "elapsedMs": 32364,
+        "accounting": {
+          "estimator": "pi-heuristic",
+          "outputReserveTokens": 32768,
+          "outputCapTokens": 32768,
+          "outputDesiredTokens": 32768,
+          "normalHeadroomSufficient": true,
+          "suggestedReserveTokens": 39451,
+          "inputExceededPlan": false,
+          "outputExceededPlan": false,
+          "fixedTokens": 1402,
+          "mainBeforeTokens": 22226,
+          "mainInputLimit": 142976,
+          "extractionInputLimit": 238208,
+          "effectiveTrigger": 16384,
+          "memoryLimit": 1498,
+          "memoryReserveTokens": 1498,
+          "memoryHardLimit": null,
+          "memoryTargetExceeded": false,
+          "keepTarget": 6742,
+          "keptTokens": 7605,
+          "planning": {
+            "before": {
+              "tokens": 22226,
+              "visibleTokens": 22226,
+              "additionalTokens": 0,
+              "basis": "visible-heuristic",
+              "partial": false,
+              "uncertainties": []
+            },
+            "kept": {
+              "tokens": 7605,
+              "visibleTokens": 7605,
+              "additionalTokens": 0,
+              "basis": "visible-heuristic",
+              "partial": false,
+              "uncertainties": []
+            },
+            "after": {
+              "tokens": 9731,
+              "visibleTokens": 9731,
+              "additionalTokens": 0,
+              "basis": "visible-heuristic",
+              "partial": false,
+              "uncertainties": []
+            }
+          },
+          "fullExtractionTokens": 27885,
+          "extractionTokens": 27885,
+          "normalExtractionAtTrigger": 22043,
+          "mainAfterTokens": 9731,
+          "memoryTokens": 724,
+          "growthTokens": 6653,
+          "outputLimitedBy": "ceiling"
+        },
+        "required": {
+          "declared": [
+            "s1"
+          ],
+          "retainedSlotIds": [
+            "s1"
+          ],
+          "failed": false
+        }
+      }
+    ],
+    "nativeMaintenance": [
+      {
+        "round": 5,
+        "elapsedMs": 13706,
+        "summaryChars": 3414
+      },
+      {
+        "round": 8,
+        "elapsedMs": 24864,
+        "summaryChars": 5271
+      }
+    ],
+    "explicitFailedRules": [
+      {
+        "name": "Violet",
+        "rule": {
+          "day": 2,
+          "slot": "accommodation",
+          "reference": [
+            "Jennifer",
+            2,
+            "accommodation"
+          ],
+          "price_within_ratio": 0.2,
+          "shared_any_rule": true,
+          "room_relation": "same",
+          "rating_relation": "gt"
+        },
+        "checks": {
+          "exact_catalog_entity_in_trip_city": true,
+          "reference_entity_available": true,
+          "price_within_ratio": true,
+          "shared_any_rule": false,
+          "room_relation": true,
+          "rating_relation": true
+        }
+      },
+      {
+        "name": "Yasmine",
+        "rule": {
+          "day": 2,
+          "slot": "breakfast",
+          "same": [
+            "Adam",
+            2,
+            "breakfast"
+          ]
+        },
+        "checks": {
+          "exact_catalog_entity_in_trip_city": true,
+          "reference_entity_available": true,
+          "same_entity": false
+        }
+      }
+    ],
+    "carriageEvidence": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/final/ordinary-source-memory-next.json",
+    "attractionPresenceDiagnostics": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/final/attraction-format-observations.json",
+    "nativeWireLimitation": "Maintenance transport was not intercepted; MEDIUM based on original session setting and unchanged native Pi1.1 flow.",
+    "rawCanonical": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/final/ordinary"
+  },
+  "cost": {
+    "newKnownUsd": "6.372431370",
+    "newHeldUsd": "0",
+    "newInflightUsd": "0",
+    "newMaximumUsd": "20",
+    "factKnownUsd": "6.353408780",
+    "arenaKnownUsd": "0.01902259",
+    "arenaExclusiveUsd": "3",
+    "priorKnownUsd": "30.784718350",
+    "priorHeldUsd": "20.30112",
+    "cumulativeKnownUsd": "37.157149720",
+    "cumulativeHeldUsd": "20.30112",
+    "cumulativeInflightUsd": "0",
+    "cumulativeChargedUsd": "57.458269720",
+    "strictCampaignMaximumUsd": "200",
+    "observedNewCalls": 136,
+    "providerBillKnown": false
+  },
+  "fairness": [
+    "Same frozen questions/gold/protocol and8 linked travelers; no native/Fact replay.",
+    "Canonical ambiguous three-day base/gold and five-day framing retained; both ordinary conditions produce complete three-day plans.",
+    "Different default/output/full source/policy/retention/model variation; K and native summary differ. No isolated-cause or universal-benefit claim.",
+    "Official fuzzy PS/SPS do not establish exact entities, referenced candidate relationship validity, invariants or deployable bookings; explicit metrics are separate.",
+    "All24 attraction invariant text checks fail; bounded entity diagnostics find13 changed sets and11 same sets with formatting differences; scores unchanged."
+  ],
+  "cleanup": {
+    "removed": [
+      "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/ordinary-runtime",
+      "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/repair/toolchain",
+      "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/repair/prep",
+      "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/repair/home"
+    ],
+    "freeBeforeKiB": 44403084,
+    "freeAfterKiB": 45043424,
+    "freeDeltaKiB": 640340,
+    "freeDeltaBytes": 655708160,
+    "remainingGiB": 42.956756591796875,
+    "caveat": "Concurrent host activity/APFS sharing; measured filesystem delta is not a claim of exact exclusive physical reclamation.",
+    "reconstructibleHolds": [],
+    "retainedConsumer": "Parent final acceptance and original-data reprocessing; final ordinary original JSONL/captures/answers/ledgers/protocol/official score + old canonical Fact and repair proof."
+  },
+  "reconciliation": {
+    "pidsConfirmedExited": [
+      60515,
+      60929,
+      60535
+    ],
+    "ownedProcesses": [],
+    "ledgers": {
+      "preflight": {
+        "spentUsd": 0,
+        "heldUnknownUsd": 0,
+        "pending": {},
+        "admissions": 0,
+        "maxReservedTotalUsd": 0
+      },
+      "paid": {
+        "spentUsd": 0.01902259,
+        "heldUnknownUsd": 0,
+        "pending": {},
+        "admissions": 18,
+        "maxReservedTotalUsd": 0.181800915
+      }
+    },
+    "unknownEffects": []
+  },
+  "integrationState": {
+    "head": "1be978381c7f4e5069e2fc44dce14148563f8260",
+    "status": "?? .vectl/",
+    "trackedChanges": false
+  },
+  "retainedReferences": {
+    "originalFactAndFailureHistory": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/benchmark",
+    "repairedFactCarriage": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/repair/reprocessed-wire.json",
+    "ordinaryPathMigration": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/final/path-migration.json",
+    "repairPrepRelease": "/Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/repair/prep-retention.json"
+  }
+}
