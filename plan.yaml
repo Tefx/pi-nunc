@@ -7164,7 +7164,7 @@ phases:
     claimed_at: '2026-10-13T13:01:02.940221Z'
   - id: nunc-defaults-remaining.event
     name: 固定 Event 替代行当前默认双模型比较
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
       scope:\n  allowed_paths: [\".scratch/defaults-remaining-2026-10-13/**\"]\n \
       \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
@@ -7221,3 +7221,20 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-13T13:01:02.940247Z'
+    done_at: '2026-10-13T13:27:12.736450+00:00'
+    evidence: Accepted fixedrow8 currentdefaultmeasurement product/support6d0cc0a9ebb6b923ffd818da790f8363daa3ff2f.
+      Original17chunksCP8/17first20 each,40/40answers, Luna19/20/Sol20/20 matches
+      retainednative19/20+20/20, unchangedscorer/row/gold andno native/Fact/filteredrow7replay.
+      Parentreadcomplete event/RESULT.md, actualledgers/processreconciliation and
+      source-memory-next caps/fullselected/savedslots; independentlyinspectactualLunaNapoleonhostility+s3wording
+      andSolorderedfountains/townhall/inns9/s10. Broadcarriagepass notsemanticcompleteness;
+      Lunaincorrectno0distinguishingglacialwordinglost, unresolvedretentionlimitsdisclosed.
+      Fouractualauto/fullMEDIUMmaintenancecap32768 serialized/reservedmatch/noomissions/stop
+      andallactualNEXTsavedslotsmatch. 78admissions/receipts, newknown1.599932970
+      (Luna.068737570 Sol1.531195400), held0inflight0 pending{}, fixed1+9partition
+      respected. Prior57.458269720carryunchanged; noothersuiteaggregationyet. Privatebuild+realzero-paidpreflights
+      passed; acceptedofflineproofreused nofullrerun. AllrecordedPIDs99044/99043/99069/99071/99070/99072
+      independentlyabsent, no server/unknown effects. Ownproduct/build/env/caches/40queryduplicatesremoved,
+      sharedtoolchainunchanged; actualfree+281300992B APFS/concurrencycaveat. Retainedminimumuniqueoriginals+reports
+      .scratch/defaults-remaining-2026-10-13/event/{RESULT.md,summary.json,source-memory-next.json,material-inspection.json,paid/event,process-reconciliation.json,cleanup.json,source-binding.json}.
+      No remainingEventblocker; Arena/BEAM/globalacceptanceremain. Historicaloriginal12/filteredEventgapsunchanged.
