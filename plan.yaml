@@ -6884,3 +6884,317 @@ phases:
       unknown0/newspend0. ImmediateArena consumer holds repair/toolchain andrepair/prep/{venv,MemoryArena}
       ~607MiB untilremainingruntimeends; worktreeacceptanceholdreleased. No additional
       gate.
+- id: nunc-defaults-remaining
+  name: 当前默认的剩余 Arena、BEAM 与 Event 比较
+  status: pending
+  gate: Orchestrator owns one final integrated acceptance for nunc-defaults-remaining
+    support/arena/beam/event, consuming completed nunc-three-suite current-default
+    source and applicable current Fact80/Luna Arena group4/native suite observations.
+    Bind the complete same-model current-default comparison across Arena, BEAM, Fact
+    and fixed Event replacement to the integrated source/support candidate; cover
+    the complete applicable project-native offline inventory through valid prior observations
+    plus affected checks, without automatic full replay. Report each suite's quality
+    and coverage, input/output/cache tokens, catalog cost with held/in-flight exposure,
+    latency, maintenance and actual source→M→NEXT/necessary-material evidence; separate
+    mechanical proof, semantic outcomes and measurement completion. Aggregate Luna
+    Arena group4 once with fresh5/6; retain all old limits/failures and native judgments.
+    Negative observed formation outcomes can complete measurement with honest missing
+    denominators; absent necessary observation, failed necessary deterministic checks
+    or unresolved harness defects prevent acceptance. Do not claim universal improvement
+    or count unavailable work as savings. Reconcile controllers/children/services/reservations,
+    retain minimal canonical unique input/observations/provenance, delete reproducible
+    task environments/builds/fullDB copies and worktrees after their consumers end,
+    and report actual free-space change if claiming reclamation. Final report/aggregation
+    and cleanup are the Orchestrator completion procedure, no new acceptance node
+    and no external adoption.
+  context: 'Human authorized remaining current-default measurements after asking about
+    other benchmarks and accepting continuation. This new scope supersedes only the
+    previous bounded run''s exclusion of new Arena/BEAM/Event work; it does not reopen
+    completed history or the old 12-condition matrix. Frozen product behavior, canonical
+    input, MEDIUM routes, effective pressure and original scoring remain unchanged.
+    One tracked support producer precedes three independently consumable suite evidence
+    outcomes; Orchestrator owns integration and final comparison/cleanup, without
+    an additional gate step.
+
+    Financial authority: at most NEW30USD inclusive known spend, unknown holds and
+    every possible in-flight/subcall reservation. Prior cumulative known37.157149720
+    plus held20.30112 equals57.458269720, prior in-flight0; preserve all old holds
+    and observations. Previous20USD allocation is CLOSED; unused funds are not added
+    authority. Exclusive suite caps Arena10/BEAM10/Event10 USD include both models
+    and BEAM judge. A bounded alternative allocation may be fixed before calls within30USD;
+    never implicit borrowing or retry grants. Global charged total must stay strictly
+    below200USD. Auth only through existing approved native OpenRouter runtime; no
+    new providers, credentials, credential locations in artifacts, account/billing
+    administration or provider fallback. No child Telegram.
+
+    Only supporting runner preparation/compatibility repairs are writable. Keep product
+    src/policies/defaults/prompts frozen; no main merge, push, deployment, adoption/reload,
+    global settings changes or protected-main mutation. Check all concurrent peak
+    allocations against free space retaining15GiB reserve; reconstruct only needed
+    task-owned resources. Use tracked/tested material selection, guard, payload and
+    scorer logic before any paid consumption; thin task-local setup may only delegate.
+    No new framework where existing mechanisms suffice.
+
+    Current-default auto/full must be observed with settings omitted, not pinned8192
+    or forced32768; record resolved desired/actual cap and serialized equality, limiting
+    reason, complete source, reasoning/JSON, M/K target/occupancy and actual M→NEXT
+    carrier. Never inject hidden effort, enlarge effective window/catalog, tune pressure,
+    repair JSON, add cap boosts, replay failures or repeat until green. Preserve original
+    input roles and query/gold isolation. A witnessed formation/capacity/JSON failure
+    is valid negative measurement; disclose missing answers/criteria with original
+    denominators rather than zero-fill or savings claims. Do not force all questions
+    answered after real formation failure.
+
+    Reuse native both-model observations, current Fact80 and current Luna Arena group4
+    without paid replay; explicitly distinguish fresh versus reused evidence and its
+    source-target applicability. Preserve original filtered Event and fixed8192 history,
+    native wire-capture limitations, Arena template/gold/semantic/format limits and
+    BEAM adaptation limits. Source/support defects are distinct from product negative
+    observations.
+
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/defaults-improvement-2026-10-13/final/helpers
+
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/arena/helpers
+
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/beam/helpers
+
+    Reusable helpers: /Users/tefx/Projects/pi-nunc/.scratch/parallel-memory-campaign-2026-10-12/mab/helpers'
+  depends_on:
+  - nunc-three-suite
+  steps:
+  - id: nunc-defaults-remaining.support
+    name: 扩展现有跟踪 runner 支持剩余默认比较
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"scripts/benchmarks/**\", \"tests/**\", \"docs/**\"]\n \
+      \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
+      src/**\", \"policies/**\", \".pi/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      , \"package.json\", \"package-lock.json\"]\nbranch: \"feat/relational-memory\"\
+      \nprotected_main: \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nproduct_target:\
+      \ \"a6ecfa602b903e78b84c93d9f936f3fe633bcd93\"\ndefaults_target: \"8d03252f5b0158a64cb32cea7fc868fafc282916\"\
+      \nruntime: {node: \"26.7.0\", npm: \"11.19.0\", pi: \"1.1.0\", dependencies:\
+      \ \"package-lock.json\"}\nresource_limits: {diskReserveGiB: 15}\noffline_environment:\
+      \ {setup: \"npm ci --ignore-scripts\", unset: [\"NODE_OPTIONS\"]}\noffline_inventory:\
+      \ {entrypoint: [\"node\", \"scripts/check.mjs\", \"all\"], build: [\"npm\",\
+      \ \"run\", \"build\"], suites: [\"tests/engine\", \"tests/pi\", \"tests/live\"\
+      ]}\npaid_calls: 0\nDeliver: Cohesive tracked support extension for the three\
+      \ new runtime consumers, with meaningful tests and updated operator documentation.\
+      \ Existing selection.mjs admits only Fact and Luna Arena group4 with the closed20USD\
+      \ allocation; MAB runner assumes the two Fact cases; tracked BEAM support is\
+      \ absent. Reuse those mechanisms and retained BEAM runner/guard/scorer, promoting\
+      \ only required material logic rather than introducing another framework. The\
+      \ new selector admits exactly Arena Luna5/6, Sol4/5/6, BEAM two Nunc conditions,\
+      \ and fixed MAB Event row8 two Nunc conditions; old selectors and history remain\
+      \ intact.\nDeliver: Preserve canonical suite templates/checkpoints/scoring while\
+      \ supporting actual omitted auto/full defaults and actual-cap worst-case reservations\
+      \ including judge and possible subcalls. Fresh single-use targets and condition\
+      \ filters must reject reused targets, native/Fact/repeated Luna4, other Event\
+      \ rows and retry/recovery controls. BEAM legacy helper contains recovery/schema-retry/resume\
+      \ paths: new scope must not enable retries, and must preserve the already accepted\
+      \ native3/Nunc5 adaptation explicitly. Retain originalInput/full-source and\
+      \ question/gold isolation. Event scoring/reporting denominators must derive\
+      \ from the selected two20-question conditions instead of legacy four-condition\
+      \ constants. Arena live execution continues to require full official DB and\
+      \ all six official tools, never the retained scorer subset.\nBoundary: node-typescript-engineer\
+      \ owns ordinary existing Node CLI/host-runner adaptation plus supporting Python\
+      \ scoring, tests/docs; Orchestrator integrates the candidate. Existing material\
+      \ admission and lifecycle mechanisms suffice; no product redesign, new guard\
+      \ service or paid proof. All source correction remains on this producer before\
+      \ runtime consumption.\nAdmit: Phase scope and budgets govern. Consumers need\
+      \ reproducible tracked entrypoints, frozen condition selection, explicit budget\
+      \ partition and offline preparation/probe instructions from this delivery. Reuse\
+      \ existing stock Pi loader/fullDB proof where applicable; test changed real\
+      \ seams without paid calls.\nRecovery: Repair offline defects here, retain original\
+      \ observations and stop on protected product-boundary needs. Reconcile any local\
+      \ prep/service writers before handoff and keep only resources with an immediate\
+      \ named consumer."
+    verification: Orchestrator completion review requires clean locked Node26.7/npm11.19
+      build and meaningful positive/negative behavior tests for exact selection/fresh-target
+      rejection, unchanged query/gold isolation, omission-based defaults, actual resolved/serialized
+      cap equality and inclusive reservations including judge/subcalls/unknown holds.
+      Exercise changed real host seams with zero paid calls; reject retry/resume controls
+      and forbidden conditions. Verify original scorer equivalence and selected denominators,
+      especially Event two-condition and Arena partial-group aggregation. Cover complete
+      applicable offline inventory with applicable prior source/helper proof plus
+      affected execution; no automatic full replay. Tracked material helpers and updated
+      docs must be integrated before paid consumers.
+    refs:
+    - docs/CONSTITUTION.md
+    - docs/DEFAULTS-BENCHMARK.md
+    - .scratch/defaults-improvement-2026-10-13/final/RESULT.md
+    - .scratch/defaults-improvement-2026-10-13/final/summary.json
+    - scripts/benchmarks/selection.mjs
+    - .scratch/memory-update-rerun-2026-10-12/beam/protocol.json
+    - .scratch/memory-update-rerun-2026-10-12/mab/event-replacement-protocol.json
+    agent: node-typescript-engineer
+  - id: nunc-defaults-remaining.arena
+    name: Arena 剩余组与复用基线比较
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/defaults-remaining-2026-10-13/**\"]\n \
+      \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
+      src/**\", \"policies/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \".pi/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\
+      \nprotected_main: \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nproduct_target:\
+      \ \"a6ecfa602b903e78b84c93d9f936f3fe633bcd93\"\ndefaults_target: \"8d03252f5b0158a64cb32cea7fc868fafc282916\"\
+      \nruntime: {node: \"26.7.0\", npm: \"11.19.0\", pi: \"1.1.0\", dependencies:\
+      \ \"package-lock.json\"}\nresource_limits: {diskReserveGiB: 15}\nBoundary: node-typescript-engineer\
+      \ continues the existing suite runtime ownership; use only accepted tracked\
+      \ support and task-owned sessions/evidence. Phase financial/protected-state/no-retry\
+      \ constraints apply. No repository/product edits or new material executable\
+      \ logic in scratch; a needed tracked repair returns to a writable producer under\
+      \ the normal immutable-history rule.\nAdmit: Integrated support delivery, applicable\
+      \ offline proof and actual zero-paid preflight of the selected native host interfaces.\
+      \ Freeze routes/catalog/pressure and bounded allocation before paid requests;\
+      \ guard main, maintenance, judge and possible subcalls against inclusive exposure.\
+      \ Preflight and paid targets are separate single-use targets. Native OpenRouter\
+      \ auth handoff only.\nRecovery: On real failure preserve the actual outcome\
+      \ and missing coverage, stop affected work without retry/cap/window changes,\
+      \ reconcile all possible pending calls into actual receipts or conservative\
+      \ held exposure. No hold release or absence-as-zero. Continue only independently\
+      \ admitted remaining conditions within allocation, never replay. Shut down all\
+      \ children/services and delete reconstructible task resources after last consumer;\
+      \ retain minimal original observations for final Orchestrator acceptance.\n\
+      suite_cap_usd: 10\nselection: {arm: nunc, Luna: [5, 6], Sol: [4, 5, 6], freshTravelers:\
+      \ {Luna: 12, Sol: 20}}\nDeliver: Fresh remaining Arena current-default observations\
+      \ and same-model20-traveler comparisons. Reuse completed Luna group4/eight travelers\
+      \ exactly once from current final/ordinary; reuse matching retained native both20.\
+      \ Preserve original templates, effective pressures per model, official tools/scoring\
+      \ and constraints, automatic rolling rather than imposed checkpoints. Restore\
+      \ full pinned source-native DB for live tools; small scorer DB is offline-only.\
+      \ Do not rerun Luna4/native or enlarge groups.\nDeliver: Original answers/captures/status/costs\
+      \ plus score, coverage and semantic report including relationship omissions,\
+      \ known template conflict and attraction entity-versus-format distinctions.\
+      \ Bind each actual saved M to actual next native request using tracked carrier\
+      \ decoder; exact carriage and string presence do not prove necessary-content\
+      \ completeness."
+    verification: Completion requires canonical observed outcomes for every authorized
+      selected condition or its witnessed terminal failure, actual default/cap/MEDIUM/source
+      evidence where a request occurred, original-scoring coverage with missing denominators,
+      source-target/comparator applicability, full catalog/held/in-flight reconciliation
+      and stopped owned processes. No zero-filled absence, automatic retries or score-gain
+      threshold. Orchestrator independently inspects evidence and performs final phase
+      acceptance using all three outcomes plus reused Fact/current Luna4/native proof.
+    refs:
+    - docs/CONSTITUTION.md
+    - docs/DEFAULTS-BENCHMARK.md
+    - .scratch/defaults-improvement-2026-10-13/final/RESULT.md
+    - .scratch/defaults-improvement-2026-10-13/final/summary.json
+    - .scratch/memory-update-rerun-2026-10-12/arena/protocol.json
+    depends_on:
+    - nunc-defaults-remaining.support
+    agent: node-typescript-engineer
+  - id: nunc-defaults-remaining.beam
+    name: BEAM 当前默认双模型与原有盲评比较
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/defaults-remaining-2026-10-13/**\"]\n \
+      \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
+      src/**\", \"policies/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \".pi/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\
+      \nprotected_main: \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nproduct_target:\
+      \ \"a6ecfa602b903e78b84c93d9f936f3fe633bcd93\"\ndefaults_target: \"8d03252f5b0158a64cb32cea7fc868fafc282916\"\
+      \nruntime: {node: \"26.7.0\", npm: \"11.19.0\", pi: \"1.1.0\", dependencies:\
+      \ \"package-lock.json\"}\nresource_limits: {diskReserveGiB: 15}\nBoundary: node-typescript-engineer\
+      \ continues the existing suite runtime ownership; use only accepted tracked\
+      \ support and task-owned sessions/evidence. Phase financial/protected-state/no-retry\
+      \ constraints apply. No repository/product edits or new material executable\
+      \ logic in scratch; a needed tracked repair returns to a writable producer under\
+      \ the normal immutable-history rule.\nAdmit: Integrated support delivery, applicable\
+      \ offline proof and actual zero-paid preflight of the selected native host interfaces.\
+      \ Freeze routes/catalog/pressure and bounded allocation before paid requests;\
+      \ guard main, maintenance, judge and possible subcalls against inclusive exposure.\
+      \ Preflight and paid targets are separate single-use targets. Native OpenRouter\
+      \ auth handoff only.\nRecovery: On real failure preserve the actual outcome\
+      \ and missing coverage, stop affected work without retry/cap/window changes,\
+      \ reconcile all possible pending calls into actual receipts or conservative\
+      \ held exposure. No hold release or absence-as-zero. Continue only independently\
+      \ admitted remaining conditions within allocation, never replay. Shut down all\
+      \ children/services and delete reconstructible task resources after last consumer;\
+      \ retain minimal original observations for final Orchestrator acceptance.\n\
+      suite_cap_usd: 10\nselection: {arm: nunc, models: [Luna, Sol], answersPerModel:\
+      \ 12, criteriaPerModel: 24, effectiveContext: 98304, nativeCheckpoints: 3, nuncCheckpoints:\
+      \ 5}\nDeliver: Current-default BEAM IF/KU/CR on the same two retained histories/queries,12\
+      \ answers/24 criteria per model if formation succeeds. Keep canonical native3/Nunc5\
+      \ checkpoint adaptation unchanged, same original history/roles and independent\
+      \ frozen-state query branches. Reuse retained corresponding native12 answers\
+      \ and original judgments; preserve adaptation and gold/scorer limitations.\n\
+      Deliver: Existing blind MEDIUM Luna judge grades ONLY newly produced answers\
+      \ with original rubric/prompt and original scorer. Guard/record judge spend\
+      \ inside the10USD suite cap and30USD total, preserve raw judgments/parse failures,\
+      \ no new rubric, gold correction or judge retries. Report coverage/missing denominators\
+      \ if capacity/JSON/formation/judging fails, and source→M→NEXT/necessary materials\
+      \ and comparable resources separately."
+    verification: Completion requires canonical observed outcomes for every authorized
+      selected condition or its witnessed terminal failure, actual default/cap/MEDIUM/source
+      evidence where a request occurred, original-scoring coverage with missing denominators,
+      source-target/comparator applicability, full catalog/held/in-flight reconciliation
+      and stopped owned processes. No zero-filled absence, automatic retries or score-gain
+      threshold. Orchestrator independently inspects evidence and performs final phase
+      acceptance using all three outcomes plus reused Fact/current Luna4/native proof.
+    refs:
+    - docs/CONSTITUTION.md
+    - docs/DEFAULTS-BENCHMARK.md
+    - .scratch/defaults-improvement-2026-10-13/final/RESULT.md
+    - .scratch/defaults-improvement-2026-10-13/final/summary.json
+    - .scratch/memory-update-rerun-2026-10-12/beam/protocol.json
+    depends_on:
+    - nunc-defaults-remaining.support
+    agent: node-typescript-engineer
+  - id: nunc-defaults-remaining.event
+    name: 固定 Event 替代行当前默认双模型比较
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: runtime_state_only\n\
+      scope:\n  allowed_paths: [\".scratch/defaults-remaining-2026-10-13/**\"]\n \
+      \ blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
+      src/**\", \"policies/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \".pi/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\"]\nbranch: \"feat/relational-memory\"\
+      \nprotected_main: \"7654720277ee7b2a388b543ef973db1a279d5f7e\"\nproduct_target:\
+      \ \"a6ecfa602b903e78b84c93d9f936f3fe633bcd93\"\ndefaults_target: \"8d03252f5b0158a64cb32cea7fc868fafc282916\"\
+      \nruntime: {node: \"26.7.0\", npm: \"11.19.0\", pi: \"1.1.0\", dependencies:\
+      \ \"package-lock.json\"}\nresource_limits: {diskReserveGiB: 15}\nBoundary: node-typescript-engineer\
+      \ continues the existing suite runtime ownership; use only accepted tracked\
+      \ support and task-owned sessions/evidence. Phase financial/protected-state/no-retry\
+      \ constraints apply. No repository/product edits or new material executable\
+      \ logic in scratch; a needed tracked repair returns to a writable producer under\
+      \ the normal immutable-history rule.\nAdmit: Integrated support delivery, applicable\
+      \ offline proof and actual zero-paid preflight of the selected native host interfaces.\
+      \ Freeze routes/catalog/pressure and bounded allocation before paid requests;\
+      \ guard main, maintenance, judge and possible subcalls against inclusive exposure.\
+      \ Preflight and paid targets are separate single-use targets. Native OpenRouter\
+      \ auth handoff only.\nRecovery: On real failure preserve the actual outcome\
+      \ and missing coverage, stop affected work without retry/cap/window changes,\
+      \ reconcile all possible pending calls into actual receipts or conservative\
+      \ held exposure. No hold release or absence-as-zero. Continue only independently\
+      \ admitted remaining conditions within allocation, never replay. Shut down all\
+      \ children/services and delete reconstructible task resources after last consumer;\
+      \ retain minimal original observations for final Orchestrator acceptance.\n\
+      suite_cap_usd: 10\nselection: {arm: nunc, models: [Luna, Sol], datasetRevision:\
+      \ \"7ea066982b140a19337e17e60d45d4076e042faf\", row: 8, caseId: \"eventqa_65536_replacement_row8\"\
+      , chunks: 17, questionsPerModel: 20, checkpointAfterChunks: [8, 17]}\nDeliver:\
+      \ Current-default Event measurements on the already-authorized fixed canonical\
+      \ replacement only,17 original chunks and first20 questions per model, CP8/17\
+      \ and original scorer. Reuse matching replacement native Luna19/20 and Sol20/20.\
+      \ Never replay original filtered row7, screen content, select another replacement\
+      \ or rerun Fact. Formation and independent query clones preserve original inputs\
+      \ and gold isolation.\nDeliver: Replacement-specific coverage/scores and comparable\
+      \ resources, actual auto/full maintenance/cap/carrier observations and necessary\
+      \ content analysis. Keep original filtered Event outcomes and older fixed8192\
+      \ gaps visible and separate; formation failure preserves missing denominators\
+      \ and does not require forcing20 answers."
+    verification: Completion requires canonical observed outcomes for every authorized
+      selected condition or its witnessed terminal failure, actual default/cap/MEDIUM/source
+      evidence where a request occurred, original-scoring coverage with missing denominators,
+      source-target/comparator applicability, full catalog/held/in-flight reconciliation
+      and stopped owned processes. No zero-filled absence, automatic retries or score-gain
+      threshold. Orchestrator independently inspects evidence and performs final phase
+      acceptance using all three outcomes plus reused Fact/current Luna4/native proof.
+    refs:
+    - docs/CONSTITUTION.md
+    - docs/DEFAULTS-BENCHMARK.md
+    - .scratch/defaults-improvement-2026-10-13/final/RESULT.md
+    - .scratch/defaults-improvement-2026-10-13/final/summary.json
+    - .scratch/memory-update-rerun-2026-10-12/mab/event-replacement-protocol.json
+    depends_on:
+    - nunc-defaults-remaining.support
+    agent: node-typescript-engineer
