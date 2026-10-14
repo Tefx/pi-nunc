@@ -183,7 +183,7 @@ export function extractionOutputPlan(model: Model<Api>, extraction: EngineConfig
   const uncapped = extraction.outputUncapped === true || omitsSerializedOutputCap(model);
   const automatic = extraction.outputAuto === true && !uncapped;
   const floor = automatic ? Math.min(8192, capacity) : extraction.outputTokens;
-  const desired = automatic ? Math.min(32768, capacity) : extraction.outputTokens;
+  const desired = automatic ? capacity : extraction.outputTokens;
   return { budget: { ...extraction, outputTokens: floor }, floor, desired, capacity, automatic, uncapped };
 }
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {

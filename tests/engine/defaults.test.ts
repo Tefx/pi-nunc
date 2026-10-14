@@ -30,7 +30,7 @@ test("complete frozen source, IDs, tools, media, wrapping and extras determine a
     s.config.extraction.extraInputTokens = 411; s.config.imageTokens = 2048;
     s.config.triggerTokens = 10000; s.config.main.nativeOutputReserve = 1;
     const plan = memoryPlan(s.fixed, s.model, s.config, s.memory.slots);
-    const context = extractionContext(s, 2, plan.memoryLimit, s.active, [], 32768);
+    const context = extractionContext(s, 2, plan.memoryLimit, s.active, [], s.model.maxTokens);
     const completeInput = requestTokens(context, 2048) + 411;
     s.model.contextWindow = completeInput + 1024 + headroom;
     s.config.triggerTokens = Math.min(s.config.triggerTokens, s.model.contextWindow - 2048);
@@ -38,19 +38,23 @@ test("complete frozen source, IDs, tools, media, wrapping and extras determine a
     const result = await maintain(s, async request => {
       calls++;
       const tokens = requestTokens(request.context, 2048) + 411;
-      assert.equal(request.outputTokens, Math.min(32768, s.model.contextWindow - tokens - 1024));
+      assert.equal(request.outputTokens, Math.min(s.model.maxTokens, s.model.contextWindow - tokens - 1024));
       assert.match(request.context.systemPrompt!, new RegExp(`Serialized output cap: ${String(request.outputTokens).padStart(5, "0")}`));
       return answer({ add: [], remove: [], priority: ["s1"], required: ["s1"] }, request.model);
     });
     if (headroom < 8192) { assert(!result.ok); assert.equal(result.code, "CAPACITY"); assert.equal(calls, 0); }
-    else { assert(result.ok, result.ok ? "" : result.message); assert.equal(calls, 1); assert.equal(result.observations.accounting!.outputReserveTokens, Math.min(32768, headroom)); assert.equal(result.observations.omissions.length, 0); }
+    else { assert(result.ok, result.ok ? "" : result.message); assert.equal(calls, 1); assert.equal(result.observations.accounting!.outputReserveTokens, Math.min(s.model.maxTokens, headroom)); assert.equal(result.observations.omissions.length, 0); }
   }
 });
 test("capability, independent input/output limits, explicit numbers and uncapped native route retain their meanings", async () => {
   const s = await automatic();
   const build = (cap: number) => extractionContext(s, 2, 8192, s.active, [], cap);
+  let r = resolveExtractionRequest(s, build);
+  assert.equal(r.outputTokens, 64000); assert.equal(r.outputDesiredTokens, 64000); assert.equal(r.outputLimitedBy, "capability");
+  s.config.extraction.outputLimit = 48000;
+  r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 48000); assert.equal(r.outputLimitedBy, "capability");
   s.config.extraction.outputLimit = 4000;
-  let r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 4000);
+  r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 4000);
   delete s.config.extraction.outputLimit; s.config.extraction.outputAuto = false; s.config.extraction.outputTokens = 16000;
   r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 16000);
   s.config.extraction.inputLimit = 10; assert.throws(() => resolveExtractionRequest(s, build), (e: unknown) => e instanceof Error && "code" in e && e.code === "CAPACITY");
@@ -61,6 +65,17 @@ test("capability, independent input/output limits, explicit numbers and uncapped
     s.config.extraction.outputUncapped = native === "subscription";
     r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 8192); assert.equal(r.outputCapTokens, null);
   }
+});
+test("six-digit model capability is reduced only by complete input headroom and final request is checked", async () => {
+  const s = await automatic(); s.model.maxTokens = 128000; s.model.contextWindow = 100000;
+  s.config.extraction.extraInputTokens = 300;
+  const build = (cap: number) => extractionContext(s, 2, 8192, s.active, [], cap);
+  const before = structuredClone(s.active), r = resolveExtractionRequest(s, build);
+  assert.equal(r.outputDesiredTokens, 128000); assert.equal(r.outputLimitedBy, "window");
+  assert(r.outputTokens > 32768); assert(r.outputTokens < 128000);
+  assert.equal(r.extractionTokens, requestTokens(r.context) + 300);
+  assert(r.extractionTokens + r.outputTokens + s.config.extraction.safetyTokens <= s.model.contextWindow);
+  assert.deepEqual(s.active, before);
 });
 test("caller-added UI cleanup instruction is counted before resolving cap", async () => {
   const s = await automatic(); const normal = resolveExtractionRequest(s, cap => extractionContext(s, 2, 8192, s.active, [], cap));
@@ -82,12 +97,12 @@ test("nearest legal neighbor retains a larger contiguous suffix only with growth
 });
 test("auto length/partial JSON or cancellation never retries or produces a candidate", async () => {
   for (const kind of ["length", "partial", "cancel"]) {
-    const s = await automatic(); let calls = 0; const controller = new AbortController(); s.signal = controller.signal;
+    const s = await automatic(); const before = structuredClone({ memory: s.memory, active: s.active }); let calls = 0; const controller = new AbortController(); s.signal = controller.signal;
     const result = await maintain(s, async request => {
       calls++; if (kind === "cancel") controller.abort();
       return { ...answer(undefined, request.model), ...(kind === "length" ? { stopReason: "length" } : {}), ...(kind === "partial" ? { content: [{ type: "text", text: '{"add":[' }] } : {}) };
     });
     assert(!result.ok); assert.equal(calls, 1); assert.equal(result.observations.requests, 1);
-    assert.equal(s.memory.slots.length, 0);
+    assert.deepEqual({ memory: s.memory, active: s.active }, before);
   }
 });

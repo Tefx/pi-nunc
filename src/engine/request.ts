@@ -184,7 +184,7 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
 
 /** Resolve before dispatch, including every caller-added block. No model calls or source changes. */
 export function resolveExtractionRequest(input: Omit<MaintenanceInput, "signal">, build: (outputTokens: number) => Context) {
-  const { budget, automatic, capacity, desired, uncapped } = extractionOutputPlan(input.model, input.config.extraction);
+  const { budget, automatic, desired, uncapped } = extractionOutputPlan(input.model, input.config.extraction);
   let context = build(desired);
   const tokens = requestTokens(context, input.config.imageTokens) + budget.extraInputTokens;
   // Check the minimum first: a source that fits the old floor remains admissible.
@@ -197,7 +197,7 @@ export function resolveExtractionRequest(input: Omit<MaintenanceInput, "signal">
   requireThat(finalTokens <= extractionInputLimit, "CAPACITY", "Final extraction request and resolved cap do not fit");
   return { context, outputTokens, extractionTokens: finalTokens, extractionInputLimit,
     outputCapTokens: uncapped ? null : outputTokens, outputDesiredTokens: desired,
-    outputLimitedBy: uncapped ? "uncapped" as const : !automatic ? "fixed" as const : outputTokens < desired ? "window" as const : capacity < 32768 ? "capability" as const : "ceiling" as const };
+    outputLimitedBy: uncapped ? "uncapped" as const : !automatic ? "fixed" as const : outputTokens < desired ? "window" as const : "capability" as const };
 }
 
 /** One bounded pass over TOOL TEXT only. All user/assistant text, arguments and images stay intact. */
