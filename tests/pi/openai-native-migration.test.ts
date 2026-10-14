@@ -60,11 +60,12 @@ for (const oauth of [true, false]) test(`real loader / native openai serializer 
   assert.equal(result.observations.usage.cost === null, oauth);
   const maintenance = admissions.findLast(o => o.kind === "maintenance");
   assert.equal(maintenance?.outcome, "delegate");
-  assert.equal(maintenance?.outputCapTokens, oauth ? null : 32768);
+  assert.equal(maintenance?.outputCapTokens, oauth ? null : model.maxTokens);
+  assert.equal(bodies[1]!.max_output_tokens, oauth ? undefined : model.maxTokens);
   const boundedMaintenance = requests.find(r => r.kind === "maintenance"); assert(boundedMaintenance);
-  assert.equal(boundedMaintenance.outputPlanning, oauth ? 8192 : 32768);
+  assert.equal(boundedMaintenance.outputPlanning, oauth ? 8192 : model.maxTokens);
   const reservation = readLedger(boundedLedger.path).find(r => r.kind === "reserve" && r.id === boundedMaintenance.callId);
-  assert(reservation?.kind === "reserve"); assert.equal(reservation.outputCeiling, oauth ? 128000 : 32768);
+  assert(reservation?.kind === "reserve"); assert.equal(reservation.outputCeiling, model.maxTokens);
   assert.equal(caps.find(r => r.callId === boundedMaintenance.callId)?.cap.kind, oauth ? "missing" : "value");
   const cp = f.runtime.session.sessionManager.getBranch().findLast(e => e.type === "compaction");
   assert(cp?.type === "compaction"); assert.match(cp.summary, /Continue verification/);
