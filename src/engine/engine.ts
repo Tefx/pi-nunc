@@ -67,12 +67,11 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     // Sustainable-trigger advice must never veto an executable current request.
     const normalExtractionAtTrigger = fullExtractionTokens - mainBeforeTokens + effectiveTrigger;
     const outputPlan = extractionOutputPlan(frozen.model, config.extraction);
-    const desiredInputLimit = Math.min(frozen.model.contextWindow - outputPlan.desired, config.extraction.inputLimit ?? frozen.model.contextWindow) - config.extraction.safetyTokens;
     const outputCapTokens = outputPlan.uncapped ? null : outputPlan.floor;
     observations.accounting = {
       estimator: "pi-heuristic", outputReserveTokens: outputPlan.floor, outputCapTokens, outputDesiredTokens: outputPlan.desired,
-      normalHeadroomSufficient: normalExtractionAtTrigger <= desiredInputLimit,
-      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - desiredInputLimit + fullExtractionTokens - mainBeforeTokens)),
+      normalHeadroomSufficient: normalExtractionAtTrigger <= extractionInputLimit,
+      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens - mainBeforeTokens)),
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
       effectiveTrigger, memoryLimit, memoryReserveTokens, memoryHardLimit: hardMemoryLimit(config), memoryTargetExceeded: false, keepTarget, keptTokens,

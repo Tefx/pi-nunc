@@ -1,7 +1,7 @@
 import type { Context, ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { ActiveEntry, MaintenanceInput, Omission } from "./types.js";
 import { RESPONSE_CONTRACT } from "./memory.js";
-import { extractionOutputPlan, hardMemoryLimit, inputLimit, memoryTokens, requestTokens } from "./accounting.js";
+import { extractionOutputPlan, hardMemoryLimit, inputLimit, requestTokens } from "./accounting.js";
 import { record, requireThat } from "./validation.js";
 
 function transcript(entries: ActiveEntry[], region: "B" | "K"): (TextContent | ImageContent)[] {
@@ -158,9 +158,6 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
 
   // Varying candidates and tail instruction are placed AFTER the existing transcript
   const trailingBlocks: (TextContent | ImageContent)[] = [];
-  if (input.memory.slots.length > 8 || (input.memory.slots.length >= 4 && memoryTokens(input.memory.slots) > memoryLimit)) {
-    trailingBlocks.push({ type: "text", text: "Consolidation recommended this maintenance. Completed Process / Milestones: merge finished steps into one completed-baseline-and-artifacts slot and remove obsolete process details, preserving adopted results and unfinished obligations. Supplied Fact Pools / Active Reference Data: when retiring B contains new numbered facts or attribute revisions, update the corresponding relation-topic slots with ALL new valid facts and revisions, or add new topic slots. Required fact slots may freely exceed the memoryLimit soft organizing target; 3–8 topic slots is a normal range, not a hard cap on necessary facts. Never replace extracting currently visible B facts with a note that a numbered range was not included. Existing M size does not excuse skipping B. Refresh descriptions of the actual current K range. Never strip word spaces or change narration language to save tokens." });
-  }
   if (hasCleanup) {
     trailingBlocks.push({
       type: "text",
@@ -169,7 +166,7 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
   }
   trailingBlocks.push({
     type: "text",
-    text: `Submit incremental memory changes with complete priority and required references under the contract.${hasCleanup ? " Actively dehydrate supplied cleanupCandidates with textLength >= 1500 when their contents have been consumed: use toolResultEdits replace with 1–2 conclusion sentences plus memoryRefs to final M support, or omit when dispensable. Preserve outstanding work and unique evidence; do not edit unsupplied results or remove necessary facts." : ""} Return only the JSON object. Current M slot IDs: ${JSON.stringify(input.memory.slots.map(s => s.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`,
+    text: `Submit incremental memory changes with complete priority and required references under the contract.${hasCleanup ? " You may include toolResultEdits for the supplied eligible candidates." : ""} Return only the JSON object. Current M slot IDs: ${JSON.stringify(input.memory.slots.map(s => s.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`,
   });
 
   return {

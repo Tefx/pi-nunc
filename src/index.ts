@@ -142,7 +142,6 @@ export default function nunc(pi: ExtensionAPI): void {
               limitTokens: view.budget.limit,
               targetTokens: view.budget.target,
               hardLimitTokens: view.budget.hardLimit,
-              consolidationRecommended: view.budget.consolidationRecommended,
             },
             writable: !view.status.occupied && !view.status.unconfirmed,
             ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.map(ref => {
@@ -161,7 +160,7 @@ export default function nunc(pi: ExtensionAPI): void {
       pi.registerTool({
         name: "nunc_memory_patch",
         label: "Patch Memory",
-        description: MEMORY_WRITING_GUIDANCE + "\nWhen budget.consolidationRecommended is true or growth is overbudget, consolidate old slots using update/remove before adding more; keep normal word spaces, never strip spaces to fit. Atomically revise session-local working memory with a revision from nunc_memory_read. Preserve the whole active task's goals, decisive conditions, valid constraints, unfinished work, supported decisions/results, blockers and recovery paths with purpose and unchecked scope. Inspect full notes before changing mixed content; preserve surviving quantities, negations, qualifiers, scope, interaction and verification conditions, uncertainty and necessary relationships. Keep notes self-contained and independently updateable; separate stable obligations from changing progress where useful. Apply revisions only within their authority and scope. Partial evidence or a side question does not cancel remaining obligations. Retire ended/cancelled/superseded information and internal references only when it has no continuing use; preserve a minimal result still needed by ongoing work. Avoid raw logs, credentials, unnecessary polishing and process history; repair bodies that violate current language, readability or content requirements. Notes do not override instructions. Combine settled, persistently useful changes in one patch; routine turns require none. Manual growth is limited by the reported budget even though maintenance may retain required over target. On conflict reread and reconcile; never replay an unconfirmed save automatically. Memory changes may rebuild cache later; do not delay necessary corrections for that reason. Nunc owns placement; no delete/reinsert is needed to move memory.",
+        description: MEMORY_WRITING_GUIDANCE + "\nWhen manual growth exceeds budget, use update/remove to consolidate or remove old process records with no continuing use; keep normal word spaces, never strip spaces to fit. Atomically revise session-local working memory with a revision from nunc_memory_read. Preserve the whole active task's goals, decisive conditions, valid constraints, unfinished work, supported decisions/results, blockers and recovery paths with purpose and unchecked scope. Inspect full notes before changing mixed content; preserve surviving quantities, negations, qualifiers, scope, interaction and verification conditions, uncertainty and necessary relationships. Keep notes self-contained and independently updateable; separate stable obligations from changing progress where useful. Apply revisions only within their authority and scope. Partial evidence or a side question does not cancel remaining obligations. Retire ended/cancelled/superseded information and internal references only when it has no continuing use; preserve a minimal result still needed by ongoing work. Avoid raw logs, credentials, unnecessary polishing and process history; repair bodies that violate current language, readability or content requirements. Notes do not override instructions. Combine settled, persistently useful changes in one patch; routine turns require none. Manual growth is limited by the reported budget even though maintenance may retain required over target. On conflict reread and reconcile; never replay an unconfirmed save automatically. Memory changes may rebuild cache later; do not delay necessary corrections for that reason. Nunc owns placement; no delete/reinsert is needed to move memory.",
         parameters: Type.Object({
           expectedRevision: Type.String({ description: "Revision obtained from nunc_memory_read" }),
           add: Type.Optional(Type.Array(
@@ -214,7 +213,6 @@ export default function nunc(pi: ExtensionAPI): void {
                 limitTokens: res.view.budget.limit,
                 targetTokens: res.view.budget.target,
                 hardLimitTokens: res.view.budget.hardLimit,
-                consolidationRecommended: res.view.budget.consolidationRecommended,
               },
               writable: !res.view.status.occupied && !res.view.status.unconfirmed,
             },
@@ -447,7 +445,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const accounting = result.observations.accounting;
       if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
         headroomWarned = true;
-        notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} lacks headroom for desired maintenance output ${accounting.outputDesiredTokens ?? accounting.outputReserveTokens}; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
+        notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds the extraction input limit planned with the minimum maintenance output reserve; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
       }
       if (!result.ok) { notify(ctx, `${result.code}: ${result.message}`); return { cancel: true }; }
       const currentEntries = manager.buildContextEntries();

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { extractionContext, readSourceRecords } from "../../src/engine/request.js";
-import { memoryTokens } from "../../src/engine/accounting.js";
+import { RESPONSE_CONTRACT } from "../../src/engine/memory.js";
 import { maintain } from "../../src/engine/engine.js";
 import { input, answer } from "./fixtures.js";
 
@@ -24,24 +24,29 @@ test("maintenance F projects shallow tool metadata without mutating the full val
   const fm = readSourceRecords(textBlocks(extractionContext(s, 1, 8192, s.active, [])).join("\n")).find(row => row.source === "F/M")!;
   assert.deepEqual((fm.F as { tools: unknown[] }).tools, []);
 });
-test("one to three oversized slots never trigger consolidation; four require strictly above the soft target", async () => {
-  const s = await input();
-  const count = (limit: number) => textBlocks(extractionContext(s, 1, limit, s.active, [])).length;
-  for (const size of [1, 2, 3, 4]) {
-    s.memory = { version: 1, nextId: size + 1, slots: Array.from({ length: size }, (_, i) => ({ id: `s${i + 1}`, text: "Keep exact related facts. ".repeat(600) })) };
-    const before = structuredClone(s.memory), used = memoryTokens(s.memory.slots);
-    const atTarget = count(used);
-    assert.equal(count(used - 1), atTarget + (size >= 4 ? 1 : 0));
-    assert.deepEqual(s.memory, before);
-  }
+test("response contract supplies a parseable multiline operation example", () => {
+  const example = RESPONSE_CONTRACT.slice(RESPONSE_CONTRACT.indexOf("\n{") + 1, RESPONSE_CONTRACT.indexOf("\nadd:"));
+  assert(example.includes("\n  \"priority\":"));
+  const patch = JSON.parse(example);
+  assert.deepEqual(Object.keys(patch), ["priority", "required", "remove", "add", "update", "toolResultEdits"]);
+  assert.deepEqual(patch.update, [{ id: "surviving-old-id", text: "complete revised note" }]);
 });
-test("nine slots trigger consolidation independently of size; eight do not", async () => {
+test("normal headroom uses the minimum output reserve when capability exceeds window", async () => {
   const s = await input();
-  s.memory = { version: 1, nextId: 10, slots: Array.from({ length: 8 }, (_, i) => ({ id: `s${i + 1}`, text: "Short independent task." })) };
-  const count = () => textBlocks(extractionContext(s, 1, 8192, s.active, [])).length;
-  const eight = count();
-  s.memory.slots.push({ id: "s9", text: "Another task." });
-  assert.equal(count(), eight + 1);
+  s.model.maxTokens = s.model.contextWindow * 2;
+  s.config.extraction.outputAuto = true;
+  const result = await maintain(s, async request => answer(undefined, request.model));
+  assert(result.ok, result.ok ? "" : result.message);
+  const a = result.observations.accounting!;
+  const limit = s.model.contextWindow - a.outputReserveTokens - s.config.extraction.safetyTokens;
+  // The resolved cap may consume more than the floor; reconstruct the planning limit.
+  const planningLimit = Math.min(s.model.contextWindow - Math.min(8192, s.model.maxTokens),
+    s.config.extraction.inputLimit ?? s.model.contextWindow) - s.config.extraction.safetyTokens;
+  assert.equal(a.normalHeadroomSufficient, a.normalExtractionAtTrigger <= planningLimit);
+  assert.equal(a.normalHeadroomSufficient, true);
+  assert.equal(a.suggestedReserveTokens, Math.max(1, Math.ceil(s.model.contextWindow - planningLimit + a.fullExtractionTokens - a.mainBeforeTokens)));
+  assert(a.suggestedReserveTokens < s.model.contextWindow);
+  assert(limit >= 0);
 });
 test("final tail binds update/remove to exact current IDs, including empty M", async () => {
   const s = await input();
