@@ -41,7 +41,21 @@ export interface PatchResult {
   patch: Patch;
 }
 export const RESPONSE_CONTRACT = `Return ONLY one complete JSON object with required priority and required arrays, and optional add, remove, update and toolResultEdits:
-Each add, update or toolResultEdits array element ends with exactly one }; the array ends with ]. After closing a text string, close only its element with } and the array with ]; do not append an extra } as in \\"}]}, which prematurely closes the outer JSON object. Keep the outer object open until all fields are complete.\n{"add":[{"key":"new1","text":"self-contained note"}],"update":[{"id":"surviving-old-id","text":"complete revised note"}],"remove":["old-id"],"priority":["new1","surviving-old-id"],"required":["new1"],"toolResultEdits":[{"entryId":"e1","messageIndex":0,"action":"replace","text":"short continuation note","memoryRefs":["new1"]}]}
+Prefer multiline indented JSON. First output priority, required and remove to settle the slot plan, then add, update and toolResultEdits. Close each array element with one }, close each array on a new line indented two spaces as shown below, and close the top-level object with } only after all fields are complete.
+{
+  "priority": ["new1", "surviving-old-id"],
+  "required": ["new1"],
+  "remove": ["old-id"],
+  "add": [
+    {"key": "new1", "text": "self-contained note"}
+  ],
+  "update": [
+    {"id": "surviving-old-id", "text": "complete revised note"}
+  ],
+  "toolResultEdits": [
+    {"entryId": "e1", "messageIndex": 0, "action": "replace", "text": "short continuation note", "memoryRefs": ["new1"]}
+  ]
+}
 add: optional; omission means no additions. If supplied it must be an array (null is invalid). Zero or more new candidates. Keys must be unique nonempty strings, distinct from ALL existing slot IDs. Text must be nonempty. Markdown is encouraged inside text (lists, paragraphs, inline code, and necessary short code blocks).
 update: optional complete body replacements for existing slots, preserving ID and relative position. Each item has only id and nonempty text; IDs must exist, appear once, and cannot also be removed. Preserve still-valid parts of mixed slots. Omit unchanged bodies. Merge/split may use remove plus add.
 remove: optional; omission means no deletions, never implicit retirement. If supplied it must be an array (null is invalid). Each existing slot explicitly invalidated/retired, exactly once.

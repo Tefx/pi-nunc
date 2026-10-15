@@ -24,24 +24,24 @@ test("maintenance F projects shallow tool metadata without mutating the full val
   const fm = readSourceRecords(textBlocks(extractionContext(s, 1, 8192, s.active, [])).join("\n")).find(row => row.source === "F/M")!;
   assert.deepEqual((fm.F as { tools: unknown[] }).tools, []);
 });
-test("one or two oversized slots never trigger consolidation; three require strictly above 85 percent", async () => {
+test("one to three oversized slots never trigger consolidation; four require strictly above the soft target", async () => {
   const s = await input();
   const count = (limit: number) => textBlocks(extractionContext(s, 1, limit, s.active, [])).length;
-  for (const size of [1, 2, 3]) {
+  for (const size of [1, 2, 3, 4]) {
     s.memory = { version: 1, nextId: size + 1, slots: Array.from({ length: size }, (_, i) => ({ id: `s${i + 1}`, text: "Keep exact related facts. ".repeat(600) })) };
     const before = structuredClone(s.memory), used = memoryTokens(s.memory.slots);
-    const below = count(Math.ceil(used / .85));
-    assert.equal(count(Math.floor((used - 1) / .85)), below + (size >= 3 ? 1 : 0));
+    const atTarget = count(used);
+    assert.equal(count(used - 1), atTarget + (size >= 4 ? 1 : 0));
     assert.deepEqual(s.memory, before);
   }
 });
-test("seven slots trigger consolidation independently of size; six do not", async () => {
+test("nine slots trigger consolidation independently of size; eight do not", async () => {
   const s = await input();
-  s.memory = { version: 1, nextId: 8, slots: Array.from({ length: 6 }, (_, i) => ({ id: `s${i + 1}`, text: "Short independent task." })) };
+  s.memory = { version: 1, nextId: 10, slots: Array.from({ length: 8 }, (_, i) => ({ id: `s${i + 1}`, text: "Short independent task." })) };
   const count = () => textBlocks(extractionContext(s, 1, 8192, s.active, [])).length;
-  const six = count();
-  s.memory.slots.push({ id: "s7", text: "Another task." });
-  assert.equal(count(), six + 1);
+  const eight = count();
+  s.memory.slots.push({ id: "s9", text: "Another task." });
+  assert.equal(count(), eight + 1);
 });
 test("final tail binds update/remove to exact current IDs, including empty M", async () => {
   const s = await input();
