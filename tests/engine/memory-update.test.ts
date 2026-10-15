@@ -114,6 +114,7 @@ test("new semantic cleanup uses final selected updated M; dropping an updated de
   for (const required of [[], ["s1"]]) {
     const source = await input(); source.memory = structuredClone(memory);
     source.config.memory.fraction = 0;
+    source.config.memory.targetTokens = 1; // Force optional eviction independently of the fractional planning reserve.
     source.config.keepRecentFraction = 0.5;
     source.active = [user("old", "Retiring old source.".repeat(300)),
       assistant("invoke", [{ type: "toolCall", id: "call", name: "read", arguments: {} }]),

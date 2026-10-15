@@ -6,7 +6,7 @@ import { getCurrentSystemPrompt } from "@earendil-works/pi-ai";
 import { parseConfig, engineConfig, readConfig } from "../../src/pi/config.js";
 import { model, user, assistant, tool } from "../engine/fixtures.js";
 import { chooseCut, inputLimit, memoryPlan } from "../../src/engine/accounting.js";
-import { legalCuts } from "../../src/engine/validation.js";
+import { legalCuts, validateConfig } from "../../src/engine/validation.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 
 for (const config of [null, [], { unknown: 1 }, { policyFile: "" }, { memory: { fraction: 1 } }, { memory: { fraction: -1 } }, { memory: { maxTokens: 0 } }, { memory: { targetTokens: 0 } }, { memory: { targetTokens: -1 } }, { memory: { targetTokens: 1.5 } }, { rolling: { keepRecentFraction: 0 } }, { rolling: { keepRecentFraction: 1 } }, { rolling: { keepRecentFraction: -0.1 } }, { rolling: { keepRecentFraction: 1.5 } }, { rolling: { keepRecentFraction: "0.5" } }, { extraction: { toolResults: "never" } }, { extraction: { outputTokens: 1.5 } }, { budget: { inputLimit: -1 } }, { budget: { extraMainInputTokens: -1 } }]) {
@@ -70,6 +70,47 @@ test("retention budget formula computes keepTarget = floor(q * (available - memo
   assert.equal(planDefault.keepTarget, Math.floor(0.5 * (planDefault.available - planDefault.memoryLimit)));
   assert.equal(planExplicit.keepTarget, Math.floor(0.67 * (planExplicit.available - planExplicit.memoryLimit)));
   assert(planDefault.keepTarget < planExplicit.keepTarget);
+});
+
+test("default retention honors host recent tokens within feasible space; explicit fraction opts out", () => {
+  const fixed = { systemPrompt: "Task prompt.", tools: [] };
+  const settings = { reserveTokens: 27000, keepRecentTokens: 20000 };
+  const cfg = engineConfig({}, model, settings);
+  const plan = memoryPlan(fixed, model, cfg);
+  assert.equal(cfg.keepRecentTokens, settings.keepRecentTokens);
+  assert(plan.keepTarget > Math.floor(cfg.keepRecentFraction * (plan.available - plan.memoryReserveTokens)));
+  assert.equal(plan.keepTarget, settings.keepRecentTokens);
+  const largeMemory = [{ id: "s1", text: "Current necessary state. ".repeat(2000) }];
+  const constrained = memoryPlan(fixed, model, cfg, largeMemory);
+  const feasible = Math.max(0, constrained.available - constrained.memoryReserveTokens - cfg.growthTokens);
+  assert(feasible < settings.keepRecentTokens);
+  assert.equal(constrained.keepTarget, Math.max(
+    Math.floor(cfg.keepRecentFraction * Math.max(0, constrained.available - constrained.memoryReserveTokens)), feasible));
+  for (const fraction of [0.5, 0.67]) {
+    const explicit = engineConfig({ rolling: { keepRecentFraction: fraction } }, model, settings);
+    assert.equal(explicit.keepRecentTokens, undefined);
+    const planned = memoryPlan(fixed, model, explicit);
+    assert.equal(planned.keepTarget, Math.floor(fraction * (planned.available - planned.memoryReserveTokens)));
+  }
+  for (const invalid of [-1, 0.5, NaN, Infinity]) {
+    assert.throws(() => validateConfig({ ...cfg, keepRecentTokens: invalid }), /keepRecentTokens/);
+  }
+  validateConfig({ ...cfg, keepRecentTokens: 0 });
+});
+
+test("organizing target is independent of fractional reserve and constrained by growth and explicit ceiling", () => {
+  const fixed = { systemPrompt: "Task prompt.", tools: [] };
+  const settings = { reserveTokens: 27000, keepRecentTokens: 20000 };
+  const cfg = engineConfig({}, model, settings);
+  const plan = memoryPlan(fixed, model, cfg);
+  assert.equal(plan.organizingTarget, 8192);
+  assert.equal(plan.memoryLimit, Math.floor(cfg.memory.fraction * plan.available));
+  assert(plan.memoryLimit < plan.organizingTarget);
+  assert.equal(memoryPlan(fixed, model, { ...cfg, memory: { ...cfg.memory, maxTokens: 400 } }).organizingTarget, 400);
+  const narrow = memoryPlan(fixed, model, { ...cfg, triggerTokens: 5000, growthTokens: 2000 });
+  assert.equal(narrow.organizingTarget, Math.max(0, narrow.available - 2000));
+  const fullGrowth = memoryPlan(fixed, model, { ...cfg, growthTokens: cfg.triggerTokens });
+  assert.equal(fullGrowth.organizingTarget, 0);
 });
 
 test("chooseCut with legal cuts preserves full tool/message units and chooses minimal viable over-target suffix when needed", () => {

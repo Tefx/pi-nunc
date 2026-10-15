@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { extractionContext, readSourceRecords } from "../../src/engine/request.js";
+import { memoryPlan, memoryTokens } from "../../src/engine/accounting.js";
 import { RESPONSE_CONTRACT } from "../../src/engine/memory.js";
 import { maintain } from "../../src/engine/engine.js";
 import { input, answer } from "./fixtures.js";
@@ -48,6 +49,22 @@ test("normal headroom uses the minimum output reserve when capability exceeds wi
   assert(a.suggestedReserveTokens < s.model.contextWindow);
   assert(limit >= 0);
 });
+test("maintenance prompts and optional slot selection use organizing target rather than fractional reserve", async () => {
+  const s = await input();
+  const plan = memoryPlan(s.fixed, s.model, s.config);
+  const text = "Useful optional context. ".repeat(700);
+  const used = memoryTokens([{ id: "s1", text }]);
+  assert(used > plan.memoryLimit && used < plan.organizingTarget);
+  const result = await maintain(s, async request => {
+    assert(request.context.systemPrompt?.includes(`Rendered memory organizing target: ${plan.organizingTarget} estimated tokens`));
+    return answer({ add: [{ key: "context", text }], priority: ["context"], required: [] }, request.model);
+  });
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(result.candidate.memory.slots[0]?.text, text);
+  assert.equal(result.observations.accounting!.memoryLimit, plan.memoryLimit);
+  assert.equal(result.observations.accounting!.memoryTargetExceeded, false);
+});
+
 test("final tail binds update/remove to exact current IDs, including empty M", async () => {
   const s = await input();
   for (const slots of [[], [{ id: "s3", text: "First current task." }, { id: "s7", text: "Second current task." }]]) {

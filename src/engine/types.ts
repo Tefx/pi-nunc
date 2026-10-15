@@ -32,6 +32,8 @@ export interface EngineConfig {
   triggerTokens: number;
   memory: { fraction: number; maxTokens?: number; /** Soft organizing target, default8192. */ targetTokens?: number; /** Explicit standalone hard cap; absent means elastic maintenance. */ hardMaxTokens?: number };
   keepRecentFraction: number;
+  /** Host recent-history floor when no explicit retention fraction overrides it. */
+  keepRecentTokens?: number;
   growthTokens: number;
   main: RequestBudget;
   extraction: RequestBudget & {

@@ -271,7 +271,7 @@ export default function nunc(pi: ExtensionAPI): void {
         policy, config };
       const plan = memoryPlan(frozen.fixed, frozen.model, config, input.memory.slots);
       const resolved = resolveExtractionRequest(input, cap => {
-        const context = extractionContext(input, 0, plan.memoryLimit, active, [], cap);
+        const context = extractionContext(input, 0, plan.organizingTarget, active, [], cap);
         const request = context.messages[0];
         if (request && Array.isArray(request.content)) request.content.push({ type: "text", text:
           `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], update: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });

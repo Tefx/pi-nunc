@@ -175,8 +175,13 @@ export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: Engin
   // These are advisory placement numbers; request admission measures actual Context.
   const memoryLimit = Math.floor(Math.min(config.memory.fraction * Math.max(0, available), config.memory.maxTokens ?? Infinity, memoryTarget(config)));
   const memoryReserveTokens = Math.max(memoryLimit, memoryTokens(currentSlots, config.imageTokens));
-  const keepTarget = Math.floor(config.keepRecentFraction * Math.max(0, available - memoryReserveTokens));
-  return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, memoryReserveTokens, keepTarget };
+  const organizingTarget = Math.floor(Math.min(Math.max(0, available - config.growthTokens), config.memory.maxTokens ?? Infinity, memoryTarget(config)));
+  const fractionalKeep = Math.floor(config.keepRecentFraction * Math.max(0, available - memoryReserveTokens));
+  const maxFeasibleKeep = Math.max(0, available - memoryReserveTokens - config.growthTokens);
+  const keepTarget = config.keepRecentTokens !== undefined
+    ? Math.max(fractionalKeep, Math.min(config.keepRecentTokens, maxFeasibleKeep))
+    : fractionalKeep;
+  return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, memoryReserveTokens, organizingTarget, keepTarget };
 }
 export function extractionOutputPlan(model: Model<Api>, extraction: EngineConfig["extraction"]) {
   const capacity = Math.min(model.maxTokens, extraction.outputLimit ?? model.maxTokens);

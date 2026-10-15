@@ -373,6 +373,10 @@ for (const change of ["update", "delete", "unrelated", "legacy-update", "mainten
   const before = surface.read(ctx);
   const previousRequest = f.calls.at(-1)!;
   if (change.startsWith("maintenance")) {
+    if (change === "maintenance-evict") {
+      // Seed and approve cleanup under a writable manual budget, then force optional selection eviction.
+      await writeFile(f.configFile, JSON.stringify({ ...f.config, memory: { fraction: 0, targetTokens: 1 } }));
+    }
     const remove = change === "maintenance-delete" ? [evidenceId] : [];
     f.respond(() => fauxAssistantMessage(JSON.stringify({ add: [], remove,
       update: remove.length || change === "maintenance-evict" ? [] : [{ id: evidenceId, text: "Revised task note." }],
