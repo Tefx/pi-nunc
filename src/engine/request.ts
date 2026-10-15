@@ -158,8 +158,8 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
 
   // Varying candidates and tail instruction are placed AFTER the existing transcript
   const trailingBlocks: (TextContent | ImageContent)[] = [];
-  if (memoryTokens(input.memory.slots) > Math.floor(0.75 * memoryLimit) || input.memory.slots.length > 8) {
-    trailingBlocks.push({ type: "text", text: "Consolidation recommended this maintenance: actively merge finished old slots into a completed-baseline-and-artifacts slot and remove obsolete process detail. Use update/remove even for previously unchanged slots. Preserve adopted named results, exact facts and unfinished obligations; normally converge to 3–8 cohesive topic slots, without a hard slot cap. Never strip word spaces or change narration language to save tokens." });
+  if (input.memory.slots.length > 6 || (input.memory.slots.length >= 3 && memoryTokens(input.memory.slots) > Math.floor(0.85 * memoryLimit))) {
+    trailingBlocks.push({ type: "text", text: "Consolidation recommended this maintenance: actively merge finished old slots into a completed-baseline-and-artifacts slot and remove obsolete process detail. Use update/remove even for previously unchanged slots. Preserve adopted named results, exact facts and unfinished obligations; normally converge to 3–8 cohesive topic slots, without a hard slot cap. For multidomain or bulk facts, use 3–8 independent topic slots, each focused on 1–3 related relation types; never pack all facts into one slot exceeding 3,000 estimated tokens. Never skip extracting new facts from retiring B because existing M is large: add new relation/batch topic slots or update by topic, and update descriptions of the actual current K range. Never strip word spaces or change narration language to save tokens." });
   }
   if (hasCleanup) {
     trailingBlocks.push({
@@ -169,7 +169,7 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
   }
   trailingBlocks.push({
     type: "text",
-    text: `Submit incremental memory changes with complete priority and required references under the contract.${hasCleanup ? " Actively dehydrate supplied cleanupCandidates with textLength >= 1500 when their contents have been consumed: use toolResultEdits replace with 1–2 conclusion sentences plus memoryRefs to final M support, or omit when dispensable. Preserve outstanding work and unique evidence; do not edit unsupplied results or remove necessary facts." : ""} Return only the JSON object.`,
+    text: `Submit incremental memory changes with complete priority and required references under the contract.${hasCleanup ? " Actively dehydrate supplied cleanupCandidates with textLength >= 1500 when their contents have been consumed: use toolResultEdits replace with 1–2 conclusion sentences plus memoryRefs to final M support, or omit when dispensable. Preserve outstanding work and unique evidence; do not edit unsupplied results or remove necessary facts." : ""} Return only the JSON object. Current M slot IDs: ${JSON.stringify(input.memory.slots.map(s => s.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`,
   });
 
   return {

@@ -24,15 +24,30 @@ test("maintenance F projects shallow tool metadata without mutating the full val
   const fm = readSourceRecords(textBlocks(extractionContext(s, 1, 8192, s.active, [])).join("\n")).find(row => row.source === "F/M")!;
   assert.deepEqual((fm.F as { tools: unknown[] }).tools, []);
 });
-test("consolidation tail activates strictly above 75 percent or eight slots without changing source M", async () => {
-  const s = await input(); s.memory = { version: 1, nextId: 2, slots: [{ id: "s1", text: "Keep the current exact task constraints." }] };
-  const before = structuredClone(s.memory), used = memoryTokens(s.memory.slots);
+test("one or two oversized slots never trigger consolidation; three require strictly above 85 percent", async () => {
+  const s = await input();
   const count = (limit: number) => textBlocks(extractionContext(s, 1, limit, s.active, [])).length;
-  assert.equal(count(Math.ceil(used / .75)) + 1, count(Math.floor((used - 1) / .75)));
-  assert.deepEqual(s.memory, before);
-  s.memory.slots = Array.from({ length: 8 }, (_, i) => ({ id: `s${i + 1}`, text: "Short independent task." }));
-  const eight = count(8192);
-  s.memory.slots.push({ id: "s9", text: "Another task." });
-  // One extra source slot stays inside the same F/M block; only the consolidation control adds a block.
-  assert.equal(count(8192), eight + 1);
+  for (const size of [1, 2, 3]) {
+    s.memory = { version: 1, nextId: size + 1, slots: Array.from({ length: size }, (_, i) => ({ id: `s${i + 1}`, text: "Keep exact related facts. ".repeat(600) })) };
+    const before = structuredClone(s.memory), used = memoryTokens(s.memory.slots);
+    const below = count(Math.ceil(used / .85));
+    assert.equal(count(Math.floor((used - 1) / .85)), below + (size >= 3 ? 1 : 0));
+    assert.deepEqual(s.memory, before);
+  }
+});
+test("seven slots trigger consolidation independently of size; six do not", async () => {
+  const s = await input();
+  s.memory = { version: 1, nextId: 8, slots: Array.from({ length: 6 }, (_, i) => ({ id: `s${i + 1}`, text: "Short independent task." })) };
+  const count = () => textBlocks(extractionContext(s, 1, 8192, s.active, [])).length;
+  const six = count();
+  s.memory.slots.push({ id: "s7", text: "Another task." });
+  assert.equal(count(), six + 1);
+});
+test("final tail binds update/remove to exact current IDs, including empty M", async () => {
+  const s = await input();
+  for (const slots of [[], [{ id: "s3", text: "First current task." }, { id: "s7", text: "Second current task." }]]) {
+    s.memory = { version: 1, nextId: 8, slots };
+    const tail = textBlocks(extractionContext(s, 1, 8192, s.active, [])).at(-1)!;
+    assert(tail.endsWith(`Current M slot IDs: ${JSON.stringify(slots.map(slot => slot.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`));
+  }
 });
