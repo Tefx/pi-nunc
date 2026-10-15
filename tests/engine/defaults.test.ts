@@ -14,7 +14,7 @@ async function automatic() {
 test("omitted and explicit auto preserve defaults, explicit numeric remains fixed", async () => {
   const s = await automatic();
   assert.deepEqual(engineConfig(parseConfig({ extraction: { outputTokens: "auto" } }), s.model, { reserveTokens: 16384, keepRecentTokens: 8000 }), s.config);
-  assert.equal(s.config.extraction.toolResults, "full"); assert.equal(s.config.memory.targetTokens, 8192);
+  assert.equal(s.config.extraction.toolResults, "auto"); assert.equal(s.config.memory.targetTokens, 8192);
   assert.equal(s.config.memory.fraction, .1); assert.equal(s.config.memory.hardMaxTokens, undefined);
   assert.equal(s.config.keepRecentFraction, .5); assert.equal(s.config.growthTokens, 1024);
   const fixed = engineConfig(parseConfig({ extraction: { outputTokens: 8192, toolResults: "auto" } }), s.model, { reserveTokens: 16384, keepRecentTokens: 8000 });

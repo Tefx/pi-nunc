@@ -177,6 +177,16 @@ export function effectiveActive(projected: ReturnType<typeof project>, enabled: 
 export function eligibleCleanupScope(active: ActiveEntry[], prefixEntryIds: readonly string[], saved: readonly ToolResultDecision[]): ToolResultRef[] {
   if (!prefixEntryIds.length || active.length <= prefixEntryIds.length ||
       !prefixEntryIds.every((id, index) => active[index]?.entryId === id)) return [];
+  return completedCleanupScope(active, prefixEntryIds.length, saved);
+}
+
+/** Compaction rebuilds K | M; unlike live edits it needs no previous sent-M anchor.
+ * The engine intersects these candidates with the selected retained K. */
+export function compactionCleanupScope(active: ActiveEntry[], saved: readonly ToolResultDecision[]): ToolResultRef[] {
+  return completedCleanupScope(active, 0, saved);
+}
+
+function completedCleanupScope(active: ActiveEntry[], startIndex: number, saved: readonly ToolResultDecision[]): ToolResultRef[] {
   const groups: { index: number; business: boolean; pending: Set<string>; results: ToolResultRef[] }[] = [];
   const open = new Map<string, { group: typeof groups[number]; name: string }>();
   for (const [index, entry] of active.entries()) {
@@ -204,7 +214,7 @@ export function eligibleCleanupScope(active: ActiveEntry[], prefixEntryIds: read
   const savedKeys = new Set(saved.map(d => `${d.entryId}:${d.messageIndex}`));
   const allowed = new Set(groups.filter(group => group.business && group.pending.size === 0 && group !== newestBusiness)
     .flatMap(group => group.results).map(ref => `${ref.entryId}:${ref.messageIndex}`));
-  return active.slice(prefixEntryIds.length).flatMap(entry => entry.messages.flatMap((message, messageIndex) => {
+  return active.slice(startIndex).flatMap(entry => entry.messages.flatMap((message, messageIndex) => {
     const key = `${entry.entryId}:${messageIndex}`;
     return message.role === "toolResult" && allowed.has(key) && !savedKeys.has(key) ? [{ entryId: entry.entryId, messageIndex }] : [];
   }));

@@ -78,7 +78,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
     keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.5,
     growthTokens: config.budget?.growthTokens ?? 1024,
     main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },
-    extraction: { ...common, outputTokens, ...(outputAuto ? { outputAuto: true } : {}), ...(uncapped ? { outputUncapped: true } : {}), extraInputTokens: config.budget?.extraExtractionInputTokens ?? 0, toolResults: config.extraction?.toolResults ?? "full", headTailChars: config.extraction?.headTailChars ?? 200 },
+    extraction: { ...common, outputTokens, ...(outputAuto ? { outputAuto: true } : {}), ...(uncapped ? { outputUncapped: true } : {}), extraInputTokens: config.budget?.extraExtractionInputTokens ?? 0, toolResults: config.extraction?.toolResults ?? "auto", headTailChars: config.extraction?.headTailChars ?? 200 },
     ...(config.budget?.imageTokens === undefined ? {} : { imageTokens: config.budget.imageTokens }),
   };
   validateConfig(result);

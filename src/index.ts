@@ -9,7 +9,7 @@ import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
-import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, eligibleStarts, originalResults, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
+import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, originalResults, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
@@ -425,7 +425,8 @@ export default function nunc(pi: ExtensionAPI): void {
       const sourceEntryIds = new Set(entries.map(entry => entry.id));
       const frozenProjection = structuredClone(projected);
       const eligible = eligibleStarts(event.branchEntries, projected.active, projected.latestId);
-      const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
+      const enabled = cleanupEnabled(ctx);
+      const opportunity = { enabled, scope: enabled ? compactionCleanupScope(projected.active, projected.cleanup) : [] };
       const active = effectiveActive(projected, opportunity.enabled);
       // Freeze delivered R only. Pending/future D is neither observed nor consumed.
       const loaded = await loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) });

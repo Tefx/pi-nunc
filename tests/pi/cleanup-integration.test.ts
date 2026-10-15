@@ -7,7 +7,7 @@ import { memorySurface } from "../../src/pi/index.js";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { answer, assistant, tool, user } from "../engine/fixtures.js";
 import { parseNuncSettings, resolveMemoryTools, resolveToolResultCleanup } from "../../src/pi/config.js";
-import { eligibleCleanupScope, project, originalResults, effectiveActive } from "../../src/pi/projection.js";
+import { compactionCleanupScope, eligibleCleanupScope, project, originalResults, effectiveActive } from "../../src/pi/projection.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 
 test("trusted settings resolve cleanup independently of memory tools and reject invalid types", () => {
@@ -25,8 +25,82 @@ test("eligibility requires a sent-M source prefix and excludes newest complete, 
     tool("r2", "c2", "b".repeat(500)), assistant("a3", [{ type: "toolCall", id: "c3", name: "read", arguments: { path: "c" } }])];
   assert.deepEqual(eligibleCleanupScope(active, ["old"], []), [{ entryId: "r1", messageIndex: 0 }]);
   assert.deepEqual(eligibleCleanupScope(active, [], []), []);
+  assert.deepEqual(compactionCleanupScope(active, []), [{ entryId: "r1", messageIndex: 0 }]);
+  assert.deepEqual(compactionCleanupScope(active, [{ entryId: "r1", messageIndex: 0 } as any]), []);
   assert.deepEqual(eligibleCleanupScope(active, ["unknown"], []), []);
   assert.deepEqual(eligibleCleanupScope(active, ["old"], [{ entryId: "r1", messageIndex: 0 } as any]), []);
+});
+
+for (const reopen of [false, true]) test(`compaction cleanup without a sent-M anchor: ${reopen ? "SessionManager.open before another main" : "first compact with empty M"}`, async t => {
+  let ctx: ExtensionContext | undefined;
+  const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } },
+    extras: [{ name: "capture-anchorless-compaction", factory(pi) {
+      pi.on("session_start", (_event, current) => { ctx = current; });
+    } }] });
+  t.after(() => f.close());
+  f.seed();
+  if (reopen) {
+    f.respond(memoryPatch);
+    await f.runtime.session.compact();
+    assert.equal(f.events.at(-1)?.result.ok, true);
+  }
+  const original = "Older completed diagnostic with recoverable detail. ".repeat(25);
+  const newest = "Newest completed diagnostic must remain full. ".repeat(25);
+  const managerBefore = f.runtime.session.sessionManager;
+  const refs = [original, newest].map((body, index) => {
+    const id = `anchorless-${index}`;
+    managerBefore.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path: id } }] });
+    return managerBefore.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", isError: false,
+      content: [{ type: "text", text: body }], timestamp: 2 });
+  });
+  f.runtime.session.agent.state.messages = managerBefore.buildSessionContext().messages;
+  const callsBefore = f.calls.length;
+  if (reopen) {
+    const file = f.runtime.session.sessionFile!;
+    const reopened = SessionManager.open(file, f.sessionDir);
+    await f.runtime.switchSession(file);
+    assert.notEqual(f.runtime.session.sessionManager, managerBefore);
+    assert.equal(f.runtime.session.sessionManager.getSessionId(), reopened.getSessionId());
+  }
+  assert(ctx);
+  const manager = f.runtime.session.sessionManager;
+  const before = project(manager.buildContextEntries());
+  assert.equal(before.memory.slots.length > 0, reopen);
+  const read = (f.runtime.session as any).getToolDefinition("nunc_memory_read");
+  const manualView = JSON.parse((await read.execute("no-anchor", {}, undefined, undefined, ctx)).content[0].text);
+  assert.equal(manualView.cleanupCandidates, undefined, "live read/patch still require a sent-M prefix");
+  assert.equal(f.calls.length, callsBefore, "no main request may establish an anchor before this compact");
+  f.respond(context => {
+    const records = context.messages.flatMap(message => typeof message.content === "string" ? [] : message.content.flatMap(block => {
+      if (block.type !== "text") return [];
+      try { return [JSON.parse(block.text) as { cleanupCandidates?: { entryId: string; messageIndex: number }[] }]; } catch { return []; }
+    }));
+    assert.deepEqual(records.find(row => row.cleanupCandidates)?.cleanupCandidates?.map(ref => ref.entryId), [refs[0]],
+      "actual maintenance supplies only the older retained completed result");
+    const patch = memoryPatch(context).content.find(block => block.type === "text");
+    assert(patch?.type === "text");
+    return fauxAssistantMessage(JSON.stringify({ ...JSON.parse(patch.text),
+      ...(reopen ? { update: [{ id: before.memory.slots[0]!.id, text: "Task continues after consuming the earlier completed diagnostic." }] } : {}), toolResultEdits: [
+      { entryId: refs[0], messageIndex: 0, action: "replace", text: "Earlier diagnostic consumed; original remains recoverable." },
+    ] }));
+  });
+  await f.runtime.session.compact();
+  assert.equal(f.events.at(-1)?.result.ok, true, JSON.stringify(f.events.at(-1)));
+  const after = project(manager.buildContextEntries());
+  assert.deepEqual(after.cleanup.map(ref => ref.entryId), [refs[0]]);
+  assert(after.active.some(entry => entry.entryId === refs[0]), "edited result must be retained K, not retired B");
+  assert.equal(originalResults(after, [{ entryId: refs[0]!, messageIndex: 0 }])[0]?.text, original);
+  assert(!JSON.stringify(effectiveActive(after, true)).includes(original));
+  assert(JSON.stringify(effectiveActive(after, true)).includes(newest));
+  assert.deepEqual(project(SessionManager.open(f.runtime.session.sessionFile!, f.sessionDir).buildContextEntries()).cleanup, after.cleanup);
+  f.respond(() => fauxAssistantMessage("Continue after compaction cleanup."));
+  await f.runtime.session.prompt("Continue the established task");
+  const sent = JSON.stringify(f.calls.at(-1)!.messages);
+  assert(!sent.includes(original)); assert(sent.includes(newest));
+  const sentResult = f.calls.at(-1)!.messages.find(message => message.role === "toolResult" && message.toolCallId === "anchorless-0");
+  assert(sentResult?.role === "toolResult");
+  assert.deepEqual(sentResult.content, [{ type: "text", text: after.cleanup[0]!.text }]);
 });
 
 test("disabling cleanup restores raw capacity accounting and refuses an oversized native request", async t => {

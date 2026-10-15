@@ -91,7 +91,7 @@ Implemented defaults (`src/pi/config.ts`):
 | `memory.targetTokens` | `8192` (soft organizing target) |
 | `memory.hardMaxTokens` | unset (only an explicit value sets the independent saved-M hard cap) |
 | `rolling.keepRecentFraction` | `0.5` (range `(0, 1)`) |
-| `extraction.toolResults` | `"full"` (explicit `"auto"` enables one bounded tool-body reduction) |
+| `extraction.toolResults` | `"auto"` (full tool bodies unless complete extraction exceeds the input limit; then one bounded reduction) |
 | `extraction.headTailChars` | `200` |
 | `extraction.outputTokens` | `"auto"`; accepts `"auto"` or a positive integer |
 | `budget.safetyTokens` | `1024` |
@@ -151,7 +151,7 @@ Main requests are checked separately. Crossing Nunc’s softer memory-planning t
 - Same-session memory only. `/new` starts empty; `/tree`, `/fork`, and `/clone` follow Pi’s selected path.
 - No cross-session memory database, proactive search, or document-writing service.
 - Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests inject one current M carrier at a stable legal boundary. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
-- Tool-result cleanup is implemented and independently configurable. `memoryRefs` validates support in the approving commit's final M; later M revisions do not automatically reverse saved semantic cleanup. Source identity, full retained sources and tool associations remain checked. An enabled `nunc_memory_read` can return available active originals at the new tail; stored provenance alone does not guarantee current-model access, and retired history is not retrieved. Explicitly disabling cleanup restores active raw bodies through the existing admission checks.
+- Tool-result cleanup is implemented and independently configurable. Compaction can clean eligible completed business-tool results in retained K even on first maintenance or immediately after reopening, without a prior sent-M anchor; the newest completed group, pending groups and saved decisions stay protected. Non-compaction read/patch/UI cleanup still requires the sent-M source prefix. `memoryRefs` validates support in the approving commit's final M; later M revisions do not automatically reverse saved semantic cleanup. Source identity, full retained sources and tool associations remain checked. An enabled `nunc_memory_read` can return available active originals at the new tail; stored provenance alone does not guarantee current-model access, and retired history is not retrieved. Explicitly disabling cleanup restores active raw bodies through the existing admission checks.
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
 - Host support policy is stable stock Pi **1.x from 1.0.3**, with persistent sessions and the required public APIs. Verified releases have their recorded coverage; accepting a future minor version does not imply it has been individually tested. No all-provider claim.
