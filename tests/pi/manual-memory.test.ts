@@ -38,6 +38,37 @@ async function prepared(t: { after: (fn: () => Promise<void>) => void }, options
   return { f, ...captured };
 }
 
+test("read budget recommends consolidation above 85 percent or eight slots and permits update/remove recovery", async t => {
+  const captured = port();
+  const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } }, extras: captured.extras });
+  t.after(() => f.close());
+  const surface = captured.surface(), ctx = captured.ctx();
+  const read = (f.runtime.session as any).getToolDefinition("nunc_memory_read");
+  const budget = async () => JSON.parse((await read.execute("budget", {}, undefined, undefined, ctx)).content[0].text).budget;
+  assert.equal((await budget()).consolidationRecommended, false);
+  const added = surface.patch(ctx, { expectedRevision: surface.read(ctx).revision,
+    add: Array.from({ length: 9 }, (_, i) => ({ key: `topic-${i}`, text: `Independent useful task ${i}.` })) });
+  assert(added.ok, JSON.stringify(added));
+  assert.equal((await budget()).consolidationRecommended, true);
+  const slots = surface.read(ctx).memory.slots;
+  const combined = surface.patch(ctx, { expectedRevision: surface.read(ctx).revision,
+    remove: slots.slice(1).map(slot => slot.id), update: [{ id: slots[0]!.id, text: "Combined current task obligations." }] });
+  assert(combined.ok, JSON.stringify(combined));
+  assert.equal((await budget()).consolidationRecommended, false);
+  const grown = surface.patch(ctx, { expectedRevision: surface.read(ctx).revision,
+    update: [{ id: slots[0]!.id, text: "Retained fact. ".repeat(1750) }] });
+  assert(grown.ok, JSON.stringify(grown));
+  const high = await budget(); assert(high.usedTokens > Math.floor(.85 * high.targetTokens));
+  assert.equal(high.consolidationRecommended, true);
+  const before = surface.read(ctx);
+  const rejected = surface.patch(ctx, { expectedRevision: before.revision, add: [{ key: "too-large", text: "Necessary detail with spaces. ".repeat(3000) }] });
+  assert(!rejected.ok); assert.equal(rejected.code, "overbudget");
+  assert.match(rejected.message, /update\/remove/); assert.match(rejected.message, /never strip spaces/);
+  assert.deepEqual(surface.read(ctx).memory, before.memory);
+  assert(surface.patch(ctx, { expectedRevision: before.revision, update: [{ id: slots[0]!.id, text: "Current obligations consolidated without losing word spaces." }] }).ok);
+  assert.equal((await budget()).consolidationRecommended, false);
+});
+
 test("multilingual Markdown bodies survive manual save, disk restore and actual main injection verbatim", async t => {
   const captured = port();
   const f = await fixture({ extras: captured.extras });

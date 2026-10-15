@@ -17,6 +17,7 @@ export interface MemoryBudgetView {
   hardLimit?: number | null;
   unknown: boolean;
   overLimit: boolean;
+  consolidationRecommended?: boolean;
 }
 export interface MemoryView {
   cleanup?: { enabled: boolean; saved: number; applied: number; unavailable: string[] };
@@ -223,7 +224,7 @@ export function createMemorySurface(options: {
         return fail("unknown-budget", "Memory budget cannot be computed; growing edit was not saved", current);
       }
       if (grew && budget.limit !== null && budget.tokens > budget.limit) {
-        return fail("overbudget", `Growing edit estimate ${budget.tokens} exceeds M budget ${budget.limit}`, { ...current, budget });
+        return fail("overbudget", `Growing edit estimate ${budget.tokens} exceeds M budget ${budget.limit}. Consolidate old slots with update/remove to release space; preserve necessary state and normal word spaces, never strip spaces to fit.`, { ...current, budget });
       }
 
       // No-op check
@@ -343,8 +344,9 @@ function measureBudget(ctx: ExtensionContext, options: Parameters<typeof createM
     const target = memoryTarget(config), hardLimit = hardMemoryLimit(config);
     const limit = Math.min(target, hardLimit ?? Infinity);
     const used = memoryTokens(slots, config.budget?.imageTokens);
-    return { tokens: used, limit, target, hardLimit, unknown: false, overLimit: used > limit };
+    return { tokens: used, limit, target, hardLimit, unknown: false, overLimit: used > limit,
+      consolidationRecommended: used > Math.floor(0.85 * target) || slots.length > 8 };
   } catch {
-    return { tokens, limit: null, unknown: true, overLimit: false };
+    return { tokens, limit: null, unknown: true, overLimit: false, consolidationRecommended: slots.length > 8 };
   }
 }
