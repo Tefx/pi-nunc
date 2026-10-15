@@ -60,6 +60,8 @@ export interface MaintenanceInput {
   eligibleKeptEntryIds?: string[];
   /** Optional caller-supplied candidate scope for tool result cleanup. */
   cleanupCandidateScope?: ToolResultRef[];
+  /** Selected-branch maintenance evidence only; never main-response usage. Old/inapplicable records are ignored. */
+  calibration?: MaintenanceCalibrationRecord[];
   policy: PolicySnapshot;
   config: EngineConfig;
   signal: AbortSignal;
@@ -72,6 +74,41 @@ export interface Omission {
   omittedCodePoints: number;
   headChars: number;
   tailChars: number;
+}
+export interface ProviderOverflow {
+  provider: string;
+  api: string;
+  modelId: string;
+  mode: "full" | "reduced";
+  sourceEntryIds: string[];
+  /** Uncalibrated request estimate, so subsequent measurements never subtract a prior correction twice. */
+  estimatedInputTokens: number;
+  extractionInputLimit: number;
+  outputReserveTokens: number;
+  reportedInputTokens: number | null;
+  errorMessage: string | undefined;
+}
+export interface MaintenanceMeasurement {
+  /** Provenance of the measured request, even after a successful checkpoint rebinds the active prefix. */
+  sourceEntryIds: string[];
+  estimatedInputTokens: number;
+  actualInputTokens: number;
+  undercountTokens: number;
+}
+/** Private versioned session data. Digests bind evidence without storing a second transcript. */
+export interface MaintenanceCalibrationRecord {
+  version: 1;
+  provider: string;
+  api: string;
+  modelId: string;
+  sourceEntryIds: string[];
+  sourceDigest: string;
+  limitsDigest: string;
+  /** Refusals additionally bind F/M, policy and placement/cleanup options. */
+  contextDigest?: string;
+  headTailChars?: number;
+  providerOverflow?: ProviderOverflow;
+  measurement?: MaintenanceMeasurement;
 }
 export interface RequiredObservation {
   declared: string[];
@@ -126,6 +163,10 @@ export interface Accounting {
   planning?: { before: PlanningEstimate; kept: PlanningEstimate; after: PlanningEstimate | null };
   fullExtractionTokens: number;
   extractionTokens: number;
+  /** Maintenance-only additive planning correction; extractionTokens remains the raw heuristic. */
+  calibratedUndercountTokens?: number;
+  extractionPlanningTokens?: number;
+  extractionUncertainties?: "maintenance-usage-undercount"[];
   normalExtractionAtTrigger: number;
   mainAfterTokens: number | null;
   memoryTokens: number | null;
@@ -140,6 +181,8 @@ export interface Observations {
   accounting: Accounting | null;
   omissions: Omission[];
   droppedSlotIds: string[];
+  providerOverflow?: ProviderOverflow;
+  maintenanceCalibration?: MaintenanceMeasurement;
   required?: RequiredObservation;
   toolResultCleanup?: ToolResultCleanupResult;
 }
@@ -226,6 +269,8 @@ export interface ModelRequest {
   model: Model<Api>;
   context: Context;
   outputTokens: number;
+  /** Maintenance-only planning correction carried into native payload-growth admission; never serialized as an option. */
+  calibratedUndercountTokens?: number;
   signal: AbortSignal;
 }
 /** The only effect seam. Implementations must propagate signal; responses remain untrusted. */

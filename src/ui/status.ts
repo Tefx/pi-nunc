@@ -123,6 +123,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
     const a = last.accounting;
     lines.push(
       `Input estimate: full ${thousands(a.fullExtractionTokens)} → selected ${thousands(a.extractionTokens)}`,
+      ...((a.calibratedUndercountTokens ?? 0) > 0 ? [`Maintenance calibration: +${thousands(a.calibratedUndercountTokens!)} → planned ${thousands(a.extractionPlanningTokens ?? a.extractionTokens + a.calibratedUndercountTokens!)} (prior maintenance usage; uncertain)`] : []),
       `Last-maintenance input plan: ${thousands(a.extractionInputLimit)}`,
       `Maintenance output: planned reserve ${thousands(a.outputReserveTokens)} · serialized cap ${a.outputCapTokens === null ? "none" : thousands(a.outputCapTokens)} (reasoning + JSON included)${a.outputDesiredTokens !== undefined ? ` · desired ${thousands(a.outputDesiredTokens)} · limit ${a.outputLimitedBy}` : ""}`,
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,

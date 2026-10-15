@@ -9,7 +9,7 @@ import { budgetLines, capLabel, detailsLines, DIAGNOSTIC_LIMIT, maintenanceLines
 import { NuncUi } from "../../src/ui/index.js";
 import { model } from "../engine/fixtures.js";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { assertOnlyCalibrationAppend, fixture, memoryPatch } from "./fixtures.js";
 
 function port(): {
   extras: InlineExtension[];
@@ -92,11 +92,12 @@ test("provider rejection reaches maintenance events and /nunc details without an
   assert(!result.ok);
   assert(result.message.includes(providerError));
   assert(reports.some(message => message.includes(providerError)));
-  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+  assertOnlyCalibrationAppend(before, f.runtime.session.sessionManager.getEntries(), result);
+  const withEvidence = f.runtime.session.sessionManager.getEntries();
   await f.runtime.session.prompt("/nunc details");
   assert(reports.at(-1)!.includes(providerError));
   assert.equal(f.faux.state.callCount, 1);
-  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), withEvidence);
 });
 
 test("complete reports do not enter diagnostic history or echo themselves", async t => {

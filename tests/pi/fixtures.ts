@@ -3,15 +3,19 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fauxProvider, fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, InMemoryCredentialStore, type FauxResponseFactory, type TranscriptContext } from "@earendil-works/pi-ai";
-import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices, createEventBus, SessionManager, SettingsManager, ModelRegistry, ModelRuntime, type CreateAgentSessionRuntimeFactory, type ToolDefinition, type InlineExtension, type EventBus } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices, createEventBus, SessionManager, SettingsManager, ModelRegistry, ModelRuntime, type CreateAgentSessionRuntimeFactory, type ToolDefinition, type InlineExtension, type EventBus, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import nunc from "pi-nunc";
 import { bindHostSettings, type MaintenanceEvent, type NuncConfig } from "pi-nunc/pi";
 import { sourceRecords, answer } from "../engine/fixtures.js";
+import type { MaintenanceResult } from "../../src/engine/types.js";
+import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/calibration.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url)); // emitted dist/tests/pi -> worktree
 export const extensionPath = resolve(root, "dist/src/index.js");
 export async function fixture(options: {
   config?: NuncConfig;
+  /** Exercise native defaults without a --nunc-config flag, including on a fresh runtime. */
+  configFlag?: boolean;
   enabled?: boolean;
   tools?: ToolDefinition[];
   extras?: InlineExtension[];
@@ -71,11 +75,12 @@ export async function fixture(options: {
     }));
     return responder(context, opts, state, model);
   }));
+  let useConfigFlag = options.configFlag !== false;
   const factory: CreateAgentSessionRuntimeFactory = async target => {
     const bus = createEventBus();
     bus.on("nunc:maintenance", data => events.push(data as MaintenanceEvent));
     options.bus?.(bus);
-    const services = await createAgentSessionServices({ ...target, settingsManager: settings, modelRuntime, extensionFlagValues: new Map([["nunc-config", configFile], ...(options.flagValues ?? [])]), resourceLoaderOptions: {
+    const services = await createAgentSessionServices({ ...target, settingsManager: settings, modelRuntime, extensionFlagValues: new Map([...(useConfigFlag ? [["nunc-config", configFile] as [string, string]] : []), ...(options.flagValues ?? [])]), resourceLoaderOptions: {
       eventBus: bus, additionalExtensionPaths: options.publicFactory ? [] : [...(options.beforeNunc ?? []), extensionPath, ...(options.extensions ?? [])], noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
       systemPrompt: "Perform the current task.", extensionFactories: [...(options.publicFactory ? [{ name: "nunc-public", factory: nunc }] : []), ...(options.extras ?? [])],
     } });
@@ -94,8 +99,16 @@ export async function fixture(options: {
     await created.session.bindExtensions({ mode: "json", onError: error => errors.push(error.error) });
     return { ...created, services, diagnostics: services.diagnostics };
   };
-  const runtime = await createAgentSessionRuntime(factory, { cwd, agentDir, sessionManager: options.ephemeral ? SessionManager.inMemory(cwd) : SessionManager.create(cwd, sessionDir) });
-  return { dir, cwd, agentDir, sessionDir, configFile, config, settings, faux, runtime, modelRuntime, credentials, events, calls, errors,
+  let runtime = await createAgentSessionRuntime(factory, { cwd, agentDir, sessionManager: options.ephemeral ? SessionManager.inMemory(cwd) : SessionManager.create(cwd, sessionDir) });
+  return { dir, cwd, agentDir, sessionDir, configFile, config, settings, faux, get runtime() { return runtime; }, modelRuntime, credentials, events, calls, errors,
+    async reopenWithoutConfig() {
+      const file = runtime.session.sessionFile;
+      assert(file, "restart requires a real persistent session file");
+      await runtime.dispose();
+      useConfigFlag = false;
+      runtime = await createAgentSessionRuntime(factory, { cwd, agentDir, sessionManager: SessionManager.open(file, sessionDir),
+        sessionStartEvent: { type: "session_start", reason: "resume", previousSessionFile: file } });
+    },
     respond(fn: (context: TranscriptContext & { systemPrompt?: string; tools?: any[] }, opts?: any, state?: any, model?: any) => any) { responder = fn as any; },
     seed(label = "old") {
       const manager = runtime.session.sessionManager;
@@ -118,6 +131,25 @@ export async function fixture(options: {
     },
   };
 }
+/** Failures may now append one non-context evidence entry, while every pre-existing byte and checkpoint stays unchanged. */
+export function assertOnlyCalibrationAppend(before: SessionEntry[], after: SessionEntry[], result: MaintenanceResult) {
+  assert.deepEqual(after.slice(0, before.length), before);
+  assert.equal(after.length, before.length + 1);
+  const appended = after.at(-1)!;
+  assert.equal(appended.type, "custom");
+  assert(appended.type === "custom");
+  assert.equal(appended.customType, MAINTENANCE_CALIBRATION_TYPE);
+  const data = appended.data as Record<string, unknown>;
+  assert.equal(data.version, 1);
+  assert.match(String(data.sourceDigest), /^[a-f0-9]{64}$/);
+  assert.match(String(data.limitsDigest), /^[a-f0-9]{64}$/);
+  assert.deepEqual(data.sourceEntryIds, result.observations.maintenanceCalibration?.sourceEntryIds ?? result.observations.providerOverflow?.sourceEntryIds);
+  assert.deepEqual(data.measurement, result.observations.maintenanceCalibration);
+  assert.deepEqual(data.providerOverflow, result.observations.providerOverflow);
+  assert(!("nunc" in data), "failure evidence never impersonates saved M");
+  return appended;
+}
+
 export function memoryPatch(context: Parameters<FauxResponseFactory>[0]) {
   const text = "Preserved test constraint.";
   const records = context.messages.flatMap(m => typeof m.content === "string" ? [] : m.content.flatMap(b => {

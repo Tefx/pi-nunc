@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { writeFile, rename, mkdir, rm } from "node:fs/promises";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { sourceRecords, answer } from "../engine/fixtures.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { assertOnlyCalibrationAppend, fixture, memoryPatch } from "./fixtures.js";
 import { project } from "../../src/pi/projection.js";
 
 for (const reason of ["length", "error", "aborted", "toolUse"] as const) test(`nonterminal ${reason} response cancels real hook with no saved candidate/default fallback`, async t => {
@@ -12,14 +12,15 @@ for (const reason of ["length", "error", "aborted", "toolUse"] as const) test(`n
   const before = f.runtime.session.sessionManager.getEntries();
   await assert.rejects(f.runtime.session.compact(), /cancel/i);
   assert.equal(f.faux.state.callCount, 1);
-  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+  if (reason === "aborted") assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+  else assertOnlyCalibrationAppend(before, f.runtime.session.sessionManager.getEntries(), f.events[0]!.result);
   assert.equal(f.events[0]?.result.ok, false);
 });
 for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"required":[]}', '{"add":[],"remove":[],"priority":[]}', '{"add":[],"remove":[],"priority":[],"required":["unknown"]}', '{"add":[{"key":"k","text":"note"}],"remove":[],"priority":[],"required":[]}']) test(`invalid patch cancels once: ${bad}`, async t => {
   const f = await fixture(); t.after(() => f.close()); f.seed(); f.respond(() => fauxAssistantMessage(bad));
   const before = f.runtime.session.sessionManager.getEntries();
   await assert.rejects(f.runtime.session.compact(), /cancel/i);
-  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+  assertOnlyCalibrationAppend(before, f.runtime.session.sessionManager.getEntries(), f.events[0]!.result);
   assert.equal(f.faux.state.callCount, 1);
 });
 

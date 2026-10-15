@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { assertOnlyCalibrationAppend, fixture, memoryPatch } from "./fixtures.js";
 import { answer, sourceRecords } from "../engine/fixtures.js";
 import { project } from "../../src/pi/projection.js";
 import { Type } from "typebox";
@@ -137,7 +137,7 @@ test("required-capacity failure on manual compact: cancels, no default compactio
   assert.deepEqual(f.events[0]?.result.observations.required?.declared, ["oversizedReq"]);
   // No compaction entry persisted (proves no fallback to default compaction)
   assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
-  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), beforeEntries);
+  assertOnlyCalibrationAppend(beforeEntries, f.runtime.session.sessionManager.getEntries(), f.events[0]!.result);
 
   // Subsequent user prompt continues against preserved history without repeating maintenance or duplicating input
   await f.runtime.session.prompt("Next instruction after failed manual compact");

@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeContext, type AssistantMessage, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Admission } from "../../src/pi/admission.js";
 import { engineConfig } from "../../src/pi/config.js";
+import { piComplete } from "../../src/engine/pi-model.js";
 
 async function env() {
   const faux = fauxProvider({ api: "openai-completions", provider: "synthetic-review", models: [{ id: "synthetic", contextWindow: 60000, maxTokens: 8192 }] });
@@ -42,6 +43,22 @@ async function env() {
   };
   return { faux, runtime, registry, model, ctx, admission, held, options, context, huge, observations, rewrap };
 }
+
+test("maintenance admission carries its measured correction through native input checks without charging main requests", async t => {
+  const e = await env(); t.after(() => e.admission.close(e.ctx));
+  const complete = e.admission.complete(piComplete(e.registry));
+  const request = { model: e.model, context: e.context, outputTokens: 8192, signal: e.options.signal };
+  const allowed = await complete({ ...request, calibratedUndercountTokens: 500 }) as AssistantMessage;
+  assert.equal(allowed.stopReason, "stop"); assert.equal(e.faux.state.callCount, 1);
+  const blocked = await complete({ ...request, calibratedUndercountTokens: 1900 }) as AssistantMessage;
+  assert.equal(blocked.stopReason, "error"); assert.match(blocked.errorMessage ?? "", /Maintenance input estimate/);
+  assert.equal(e.faux.state.callCount, 1, "measured extra input cannot consume capacity behind the engine's preflight");
+  const invalid = await complete({ ...request, calibratedUndercountTokens: -1 }) as AssistantMessage;
+  assert.equal(invalid.stopReason, "error"); assert.match(invalid.errorMessage ?? "", /Invalid maintenance input calibration/);
+  assert.equal(e.faux.state.callCount, 1);
+  const main = await e.registry.streamSimple(e.model, e.context, e.options).result();
+  assert.equal(main.stopReason, "stop"); assert.equal(e.faux.state.callCount, 2, "main uses its own unchanged admission estimate");
+});
 
 test("closing admission restores the complete native-registry legacy configuration", async () => {
   const e = await env();

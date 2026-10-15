@@ -5,6 +5,8 @@ import type { FixedContext, MaintenanceResult, Memory } from "./engine/index.js"
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch } from "./engine/index.js";
 import { subscriptionBilling } from "./engine/pi-model.js";
 import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
+import { maintenanceCalibrationRecord } from "./engine/calibration.js";
+import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration } from "./pi/calibration.js";
 import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
@@ -442,8 +444,11 @@ export default function nunc(pi: ExtensionAPI): void {
       config.toolResultCleanup = opportunity.enabled;
       contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config });
       ui.refresh(ctx);
-      const result = await maintain({ binding, model, fixed: f, memory: projected.memory, active,
-        eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal }, admission.complete(piComplete(ctx.modelRegistry, thinking)));
+      const input = { binding, model, fixed: f, memory: projected.memory, active,
+        eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
+      const calibration = projectMaintenanceCalibration(manager.getBranch(), input);
+      const maintenanceInput = { ...input, calibration };
+      const result = await maintain(maintenanceInput, admission.complete(piComplete(ctx.modelRegistry, thinking)));
       contextView.noteEngine(result);
       ui.refresh(ctx);
       // Native subscription receipts/catalog estimates are not an observed USD bill.
@@ -454,7 +459,6 @@ export default function nunc(pi: ExtensionAPI): void {
         headroomWarned = true;
         notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds the extraction input limit planned with the minimum maintenance output reserve; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
       }
-      if (!result.ok) { notify(ctx, `${result.code}: ${result.message}`); return { cancel: true }; }
       const currentEntries = manager.buildContextEntries();
       const current = project(currentEntries);
       const branch = manager.getBranch();
@@ -473,12 +477,19 @@ export default function nunc(pi: ExtensionAPI): void {
           cleanupEnabled(ctx) !== opportunity.enabled) {
         throw new EngineError("CANCELLED", "Session, path, model, tools or configuration changed during maintenance; candidate discarded");
       }
+      const savedCalibration = maintenanceCalibrationRecord(maintenanceInput, result);
+      if (!result.ok) {
+        if (savedCalibration) pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE, savedCalibration);
+        notify(ctx, `${result.code}: ${result.message}`);
+        return { cancel: true };
+      }
       if (!eligibleStarts(branch, current.active, current.latestId).includes(result.candidate.firstKeptEntryId)) throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
       const retained = new Set(result.candidate.kept.map(e => e.entryId));
       const nextDecisions = [...projected.cleanup, ...(result.candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
         !d.sourceRefs?.some(ref => !retained.has(ref.entryId)));
       return { compaction: { summary: result.candidate.summary, firstKeptEntryId: result.candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
-        details: { nunc: result.candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions) } } };
+        details: { nunc: result.candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions),
+          ...(savedCalibration ? { maintenanceCalibration: savedCalibration } : {}) } } };
     } catch (error) {
       contextView.noteInvalidated();
       notify(ctx, `${error instanceof EngineError ? error.code + ": " : ""}${error instanceof Error ? error.message : "Maintenance failed"}`);

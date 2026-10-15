@@ -1,10 +1,12 @@
 import { performance } from "node:perf_hooks";
+import { isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
+import { maintenanceFeedback, sameRejectedRequest } from "./calibration.js";
 import type { Complete, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
 import { decideToolResultCleanup, applyToolResultCleanup } from "./cleanup.js";
 import { chooseCut, extractionOutputPlan, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies, resolveExtractionRequest } from "./request.js";
-import { EngineError, freezeCopy, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
+import { EngineError, freezeCopy, integer, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
 
 function cancelled(signal: AbortSignal): void {
   requireThat(!signal.aborted, "CANCELLED", "Maintenance cancelled before candidate handoff");
@@ -64,37 +66,49 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     let selectedSource = frozen.active;
     let context = extractionContext(frozen, cut, organizingTarget, selectedSource, []);
     const fullExtractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
+    const feedback = maintenanceFeedback(frozen);
+    const calibratedUndercountTokens = feedback.calibratedUndercountTokens;
     // Sustainable-trigger advice must never veto an executable current request.
-    const normalExtractionAtTrigger = fullExtractionTokens - mainBeforeTokens + effectiveTrigger;
+    const normalExtractionAtTrigger = fullExtractionTokens + calibratedUndercountTokens - mainBeforeTokens + effectiveTrigger;
     const outputPlan = extractionOutputPlan(frozen.model, config.extraction);
     const outputCapTokens = outputPlan.uncapped ? null : outputPlan.floor;
     observations.accounting = {
       estimator: "pi-heuristic", outputReserveTokens: outputPlan.floor, outputCapTokens, outputDesiredTokens: outputPlan.desired,
       normalHeadroomSufficient: normalExtractionAtTrigger <= extractionInputLimit,
-      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens - mainBeforeTokens)),
+      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens + calibratedUndercountTokens - mainBeforeTokens)),
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
       effectiveTrigger, memoryLimit, memoryReserveTokens, memoryHardLimit: hardMemoryLimit(config), memoryTargetExceeded: false, keepTarget, keptTokens,
       planning: { before: beforePlan, kept: historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens), after: null },
       fullExtractionTokens, extractionTokens: fullExtractionTokens,
+      calibratedUndercountTokens, extractionPlanningTokens: fullExtractionTokens + calibratedUndercountTokens,
+      extractionUncertainties: calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [],
       normalExtractionAtTrigger, mainAfterTokens: null, memoryTokens: null, growthTokens: null,
     };
-    if (fullExtractionTokens > extractionInputLimit && config.extraction.toolResults === "auto") {
+    const knownOverflow = feedback.full !== undefined || feedback.reduced !== undefined;
+    if ((fullExtractionTokens + calibratedUndercountTokens > extractionInputLimit || knownOverflow) && config.extraction.toolResults === "auto") {
       const reduced = reduceToolBodies(frozen.active, config.extraction.headTailChars);
       observations.omissions = reduced.omissions;
       selectedSource = reduced.source;
       context = extractionContext(frozen, cut, organizingTarget, selectedSource, reduced.omissions);
       observations.accounting.extractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
+      observations.accounting.extractionPlanningTokens = observations.accounting.extractionTokens + calibratedUndercountTokens;
+      requireThat(!knownOverflow || reduced.omissions.length > 0, "CAPACITY", "Provider already rejected this source; the single tool-body reduction made no omissions. Change source or capacity before explicit maintenance");
     }
-    requireThat(observations.accounting.extractionTokens <= extractionInputLimit, "CAPACITY", "Full extraction cannot fit; selected bounded handling is disabled or insufficient. No candidate is handed off");
+    requireThat(observations.accounting.extractionPlanningTokens! <= extractionInputLimit, "CAPACITY", "Full extraction cannot fit; selected bounded handling is disabled or insufficient. No candidate is handed off");
     const resolved = resolveExtractionRequest(frozen, cap => extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, cap));
     context = resolved.context;
     Object.assign(observations.accounting, { outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens,
       outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy,
-      extractionTokens: resolved.extractionTokens, extractionInputLimit: resolved.extractionInputLimit });
+      extractionTokens: resolved.extractionTokens, extractionInputLimit: resolved.extractionInputLimit,
+      extractionPlanningTokens: resolved.extractionPlanningTokens });
+    const mode = observations.omissions.length > 0 ? "reduced" : "full";
+    requireThat(!sameRejectedRequest(mode === "reduced" ? feedback.reduced : feedback.full, frozen.active, resolved), "CAPACITY",
+      `Provider already rejected the same ${mode} maintenance source and effective limits; no request dispatched. Change source, reduction or capacity before explicit maintenance`);
     cancelled(signal);
     observations.requests = 1;
-    const response = await withCancellation(() => complete({ model: frozen.model, context: freezeCopy(context), outputTokens: resolved.outputTokens, signal }), signal);
+    const response = await withCancellation(() => complete({ model: frozen.model, context: freezeCopy(context), outputTokens: resolved.outputTokens,
+      ...(calibratedUndercountTokens > 0 ? { calibratedUndercountTokens } : {}), signal }), signal);
     if (record(response)) {
       observations.usage = observeUsage(response.usage);
       observations.stopReason = typeof response.stopReason === "string" ? response.stopReason : null;
@@ -102,6 +116,23 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     cancelled(signal);
     requireThat(record(response) && response.role === "assistant", "RESPONSE", "Expected an assistant response");
     requireThat(response.model === frozen.model.id && response.provider === frozen.model.provider && response.api === frozen.model.api && (!response.responseModel || response.responseModel === frozen.model.id), "RESPONSE", "Maintenance response changed model/provider/API");
+    const actualInputTokens = observations.usage.contextInput;
+    if (actualInputTokens !== null && actualInputTokens > 0 && response.stopReason !== "aborted") {
+      observations.maintenanceCalibration = { sourceEntryIds: frozen.active.map(entry => entry.entryId),
+        estimatedInputTokens: resolved.extractionTokens, actualInputTokens,
+        undercountTokens: Math.max(0, actualInputTokens - resolved.extractionTokens) };
+    }
+    // The SDK also recognizes usage/length overflow. Guard its usage reads at this untrusted seam;
+    // cancelled responses and HTTP 429 must never become a capacity refusal.
+    const usableOverflowResponse = response.stopReason === "error" || record(response.usage) &&
+      integer(response.usage.input) && integer(response.usage.cacheRead) && integer(response.usage.output);
+    const rateLimited = typeof response.errorMessage === "string" && /(?:^|\b(?:http(?:\/[\d.]+)?|status(?: code)?|error(?: code)?)[\s:]+)429\b/i.test(response.errorMessage);
+    if (response.stopReason !== "aborted" && !rateLimited && usableOverflowResponse && isContextOverflow(response as unknown as AssistantMessage, frozen.model.contextWindow)) {
+      observations.providerOverflow = { provider: frozen.model.provider, api: frozen.model.api, modelId: frozen.model.id, mode,
+        sourceEntryIds: frozen.active.map(entry => entry.entryId), estimatedInputTokens: resolved.extractionTokens,
+        extractionInputLimit: resolved.extractionInputLimit, outputReserveTokens: resolved.outputTokens,
+        reportedInputTokens: observations.usage.contextInput, errorMessage: typeof response.errorMessage === "string" ? response.errorMessage : undefined };
+    }
     const responseError = typeof response.errorMessage === "string" && response.errorMessage ? `: ${response.errorMessage}` : "";
     requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}${responseError}`);
     const usage = observations.usage;

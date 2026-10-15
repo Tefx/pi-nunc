@@ -666,7 +666,10 @@ export class Admission {
         const uncapped = omitsSerializedOutputCap(model) || (model.api === "openai-responses" && subscriptionBilling(model, ctx.modelRegistry));
         outputTokens = uncapped ? model.maxTokens : scope!.request.outputTokens;
         budgetObservation = { estimator: "pi-heuristic", outputReserveTokens: scope!.request.outputTokens, outputCapTokens: uncapped ? null : scope!.request.outputTokens };
-        inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + initialMetadataTokens;
+        const calibration = scope!.request.calibratedUndercountTokens ?? 0;
+        if (!integer(calibration)) throw new EngineError("INPUT", "Invalid maintenance input calibration");
+        inputTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens + initialMetadataTokens + calibration;
+        // Keep the same correction through subsequent metadata/payload-growth checks, without charging main requests.
         // The engine/UI resolved this exact request once; authorize that actual reserve.
         limit = inputLimit(model, { ...config.extraction, outputTokens: scope!.request.outputTokens });
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Maintenance input estimate ${inputTokens} exceeds planned input ${limit}; no recursive recovery`);

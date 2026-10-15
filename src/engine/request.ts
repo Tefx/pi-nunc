@@ -3,6 +3,7 @@ import type { ActiveEntry, MaintenanceInput, Omission } from "./types.js";
 import { RESPONSE_CONTRACT } from "./memory.js";
 import { extractionOutputPlan, hardMemoryLimit, inputLimit, requestTokens } from "./accounting.js";
 import { record, requireThat } from "./validation.js";
+import { maintenanceFeedback } from "./calibration.js";
 
 function transcript(entries: ActiveEntry[], region: "B" | "K"): (TextContent | ImageContent)[] {
   const blocks: (TextContent | ImageContent)[] = [];
@@ -188,16 +189,18 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
 export function resolveExtractionRequest(input: Omit<MaintenanceInput, "signal">, build: (outputTokens: number) => Context) {
   const { budget, automatic, desired, uncapped } = extractionOutputPlan(input.model, input.config.extraction);
   let context = build(desired);
-  const tokens = requestTokens(context, input.config.imageTokens) + budget.extraInputTokens;
-  // Check the minimum first: a source that fits the old floor remains admissible.
-  requireThat(tokens <= inputLimit(input.model, budget), "CAPACITY", "Complete extraction cannot fit its minimum output reserve and safety");
+  const calibratedUndercountTokens = maintenanceFeedback(input).calibratedUndercountTokens;
+  const tokens = requestTokens(context, input.config.imageTokens) + budget.extraInputTokens + calibratedUndercountTokens;
+  // Check the minimum first, including only applicable maintenance measurements.
+  requireThat(tokens <= inputLimit(input.model, budget), "CAPACITY", "Complete extraction cannot fit its minimum output reserve, safety and maintenance calibration");
   const outputTokens = automatic ? Math.min(desired, Math.floor(input.model.contextWindow - tokens - budget.safetyTokens)) : budget.outputTokens;
   requireThat(outputTokens >= budget.outputTokens, "CAPACITY", "Insufficient automatic output headroom; no request dispatched");
   if (automatic) context = build(outputTokens);
   const finalTokens = requestTokens(context, input.config.imageTokens) + budget.extraInputTokens;
   const extractionInputLimit = inputLimit(input.model, { ...budget, outputTokens });
-  requireThat(finalTokens <= extractionInputLimit, "CAPACITY", "Final extraction request and resolved cap do not fit");
-  return { context, outputTokens, extractionTokens: finalTokens, extractionInputLimit,
+  const extractionPlanningTokens = finalTokens + calibratedUndercountTokens;
+  requireThat(extractionPlanningTokens <= extractionInputLimit, "CAPACITY", "Final extraction request, maintenance calibration and resolved cap do not fit");
+  return { context, outputTokens, extractionTokens: finalTokens, extractionInputLimit, calibratedUndercountTokens, extractionPlanningTokens,
     outputCapTokens: uncapped ? null : outputTokens, outputDesiredTokens: desired,
     outputLimitedBy: uncapped ? "uncapped" as const : !automatic ? "fixed" as const : outputTokens < desired ? "window" as const : "capability" as const };
 }
