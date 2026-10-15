@@ -87,6 +87,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
 }
 
 export interface NuncSettings {
+  /** Enables both memory tools, including selected-branch read-only history lookup; default false. */
   memoryTools?: boolean;
   toolResultCleanup?: boolean;
 }

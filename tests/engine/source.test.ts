@@ -98,6 +98,38 @@ test("actual oversized extraction can reduce tool text once with exact omission 
   assert.deepEqual(result.candidate.kept, original.slice(3));
 });
 
+test("explicit extraction overhead activates auto reduction even when the raw heuristic fits", async () => {
+  const source = await input();
+  source.active = [user("u", "original requirement"), assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: { required: "intact" } }]), tool("body", "x", "HEAD" + "x".repeat(20000) + "TAIL"), user("latest", "latest correction")];
+  const original = structuredClone(source.active);
+  const baseline = await maintain(source, responder());
+  assert(baseline.ok);
+  assert.deepEqual(baseline.observations.omissions, []);
+  const accounting = baseline.observations.accounting!;
+  source.config.extraction.extraInputTokens = accounting.extractionInputLimit - accounting.fullExtractionTokens + 1;
+  let calls = 0;
+  const recovered = await maintain(source, async request => {
+    calls++;
+    const records = sourceRecords(request.context);
+    const body = records.find(r => r.entryId === "body")!.messages[0]!;
+    assert(body.role === "toolResult");
+    assert(body.content[0]?.type === "text");
+    assert.match(body.content[0].text, /Nunc omitted/);
+    for (const id of ["u", "call", "latest"]) assert.deepEqual(records.find(r => r.entryId === id)!.messages, original.find(e => e.entryId === id)!.messages.map(semanticEvidence));
+    return answer(noChange, request.model);
+  });
+  assert(recovered.ok, recovered.ok ? "" : recovered.message);
+  assert.equal(calls, 1);
+  assert.equal(recovered.observations.omissions.length, 1);
+  assert(recovered.observations.accounting!.fullExtractionTokens > recovered.observations.accounting!.extractionInputLimit);
+  assert.deepEqual(source.active, original);
+  source.config.extraction.toolResults = "full";
+  const strict = await maintain(source, async () => { assert.fail("explicit full mode cannot reduce or dispatch"); });
+  assert(!strict.ok);
+  assert.equal(strict.code, "CAPACITY");
+  assert.equal(strict.observations.requests, 0);
+});
+
 test("full mode refuses oversized tool source; auto cannot truncate user instructions or tool arguments", async () => {
   for (const mode of ["full", "auto"] as const) {
     const source = await input(); source.config.extraction.toolResults = mode;

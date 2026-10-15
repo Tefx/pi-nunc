@@ -2,7 +2,7 @@
 
 **A bounded, rolling present for Pi.**
 
-Nunc is a [Pi](https://pi.dev) extension for continuing one session inside a finite context. It supports **stable 1.x from 1.0.3**; development dependencies and current reproducible checks are pinned to **1.1.0**. Recent work stays as verbatim history. Information still needed after that window leaves is kept in a small set of working-memory slots. Pi keeps the full JSONL log; Nunc does not search memory, write documents, or carry state across sessions.
+Nunc is a [Pi](https://pi.dev) extension for continuing one session inside a finite context. It supports **stable 1.x from 1.0.3**; development dependencies and current reproducible checks are pinned to **1.1.0**. Recent work stays as verbatim history. Information still needed after that window leaves is kept in a small set of working-memory slots. Pi keeps the full JSONL log. With memory tools enabled, Nunc can read retired visible text from the current session's selected branch on demand; it does not proactively search, write documents, or carry state across sessions.
 
 ```text
 Before compaction: host instructions/tools F | retiring B | retained K | working memory M
@@ -107,6 +107,8 @@ Images work without extra configuration on image-capable models. `budget.imageTo
 
 Automatic capped maintenance reserves at least `min(8192, output capability)` and desires the model's output capability, bounded by any explicit `outputLimit`. It has no fixed 32K ceiling. It resolves the actual cap once from the complete frozen request, including policy/schema, tools, M/B/K, images, cleanup controls and configured overhead: `cap <= contextWindow - inputEstimate - safetyTokens`. It checks the minimum first, so a larger desired amount does not reject full sources that fit the existing floor. Less than the floor returns `CAPACITY` without dispatch. Uncapped native routes keep the old 8192-level planning reserve and serialize no cap. Explicit numbers keep fixed semantics. `/nunc` distinguishes the desired amount, resolved reserve/cap and limiting reason. A larger cap permits more output without promising a complete response. These are heuristic estimates, not tokenizer bounds.
 
+If maintenance fails with a provider context-window error even though local preflight passed, stop repeating the unchanged request. Nunc reports the provider's `errorMessage` (or a thrown provider error) alongside the failure status; no candidate is committed and no internal retry runs. The heuristic can underestimate serialized extraction input. Use an explicit `budget.extraExtractionInputTokens` allowance in a `--nunc-config` file to account for the observed discrepancy. With `extraction.toolResults: "auto"`, that allowance can activate the existing one-pass head/tail reduction before dispatch; omissions are reported, while user/assistant text, arguments and images stay intact. Recheck capacity and make one native `/compact` attempt after changing the configuration. Increasing Pi's `reserveTokens` can trigger future maintenance earlier, but does not shrink an already oversized extraction; lowering `keepRecentTokens` only changes B/K and does not remove either region from extraction input.
+
 Memory retains established results, parameters and inputs while continuing work needs them, and consolidates obsolete process with `update`/`remove`. New necessary material can be added or merged by topic without rewriting unchanged slots. Shared headings or lists may group facts with the same relation or qualifier; explicit source revisions replace invalid old values within the same scope unless comparison or rollback still needs them. Manual growth beyond budget requires consolidating or removing old process records with no continuing use; preserve necessary state and normal word spaces. Narration follows user communication; incompatible old prose is repaired under its existing IDs.
 
 Maintenance F reports tool names, descriptions and top-level parameter keys instead of deep parameter schemas; full native tool definitions remain validated and unchanged for main requests. Supplied eligible large consumed K results are candidates for short supported summaries or omission, without discarding outstanding obligations or adopted facts.
@@ -152,12 +154,30 @@ On success Nunc hands Pi one compaction result: `summary`, `firstKeptEntryId`, `
 
 Main requests are checked separately. Crossing Nunc’s softer memory-planning target does not reject a send. Oversized indivisible input still fails before HTTP. Details: [engine](docs/ENGINE.md), [capacity](docs/CAPACITY.md), [policy](docs/POLICY.md).
 
+## Read-only branch history
+
+Working memory M remains the resident continuation state. Optional L2 lookup uses the selected session branch already in memory; it never scans files, opens another session or restores old messages into their former positions. Enable it with the existing `nunc.memoryTools: true` setting or `--nunc-memory-tools`. The default remains false, and read/patch stay enabled or disabled together.
+
+```ts
+nunc_memory_read({ query: "storage retry", limit: 5 })
+nunc_memory_read({ entryIds: ["entry-id-from-a-match"] })
+nunc_memory_read({ originals: [{ entryId: "tool-result-entry-id", messageIndex: 0 }] })
+```
+
+- `history.matches` searches retired visible user/assistant text, tool results, visible shell executions, custom messages and branch summaries. It also searches original active tool results hidden by enabled Nunc cleanup. Unchanged active messages, thinking, tool arguments, images, system instructions and hidden metadata are excluded.
+- Query words match literal case-insensitive substrings. More distinct matched words rank first; ties prefer newer branch messages. `limit` defaults to 5 and accepts 1–10. Each snippet includes up to 400 characters around the matching text, bounded to 1200 characters.
+- `history.entries` reads exact eligible IDs, at most 10 per request. Each result contains `messages: [{ messageIndex, role, toolName?, text }]`, sharing a 4000-character text allowance per entry, plus `truncated`. Missing or ineligible IDs return an error; an empty query does not list the archive.
+- Existing `originals` can return full pure-text tool-result originals from active or retired entries on the selected branch. Mixed/non-text or unavailable sources return errors. This explicit full-original path keeps its previous output semantics; the 4000-character bound applies to `entryIds`.
+- Reads leave saved M, cleanup decisions and the selected leaf unchanged. Retrieved material is historical reference, without current instruction authority. Maintenance itself still works only from its frozen M/B/K and cannot call retrieval tools.
+
+Maintenance often runs between turns. An answered current question does not end the session or justify deleting valid state, decisions, outputs or reference materials while the topic remains in effect. Obsolete intermediate process can still retire.
+
 ## Limits
 
 - Same-session memory only. `/new` starts empty; `/tree`, `/fork`, and `/clone` follow Pi’s selected path.
 - No cross-session memory database, proactive search, or document-writing service.
 - Memory tools are optional via `--nunc-memory-tools` or Pi settings (`{"nunc": {"memoryTools": true}}` in global `~/.pi/agent/settings.json` or trusted project `.pi/settings.json`); default off leaves the model toolset untouched while main requests inject one current M carrier at a stable legal boundary. Refined tool and extraction policy guidance texts are documented in [MEMORY-GUIDANCE.md](docs/MEMORY-GUIDANCE.md) (text modifications implemented; Gemini behavioral validation pending).
-- Tool-result cleanup is implemented and independently configurable. Compaction can clean eligible completed business-tool results in retained K even on first maintenance or immediately after reopening, without a prior sent-M anchor; the newest completed group, pending groups and saved decisions stay protected. Non-compaction read/patch/UI cleanup still requires the sent-M source prefix. `memoryRefs` validates support in the approving commit's final M; later M revisions do not automatically reverse saved semantic cleanup. Source identity, full retained sources and tool associations remain checked. An enabled `nunc_memory_read` can return available active originals at the new tail; stored provenance alone does not guarantee current-model access, and retired history is not retrieved. Explicitly disabling cleanup restores active raw bodies through the existing admission checks.
+- Tool-result cleanup is implemented and independently configurable. Compaction can clean eligible completed business-tool results in retained K even on first maintenance or immediately after reopening, without a prior sent-M anchor; the newest completed group, pending groups and saved decisions stay protected. Non-compaction read/patch/UI cleanup still requires the sent-M source prefix. `memoryRefs` validates support in the approving commit's final M; later M revisions do not automatically reverse saved semantic cleanup. Source identity, full retained sources and tool associations remain checked. An enabled `nunc_memory_read` can return available active or retired selected-branch originals at the new tail; stored provenance alone does not guarantee current-model access when the tool is disabled or the source is outside that branch. Explicitly disabling cleanup restores active raw bodies through the existing admission checks.
 - Ordinary turns do not require memory tools or usage counters.
 - Token figures are planning estimates, not tokenizer proofs, cache guarantees, or cost proofs.
 - Host support policy is stable stock Pi **1.x from 1.0.3**, with persistent sessions and the required public APIs. Verified releases have their recorded coverage; accepting a future minor version does not imply it has been individually tested. No all-provider claim.

@@ -9,7 +9,7 @@ import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
-import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, originalResults, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
+import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
@@ -123,17 +123,23 @@ export default function nunc(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "nunc_memory_read",
         label: "Read Memory",
-        description: "Read session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional originals returns available tool-result source text from the active selected path, with missing/non-text errors; it does not retrieve retired history or reopen old positions.",
+        description: "Read session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional query searches retired visible text on this session's selected branch, plus original active tool results hidden by cleanup; entryIds reads exact eligible entries. No disk search or other sessions/branches. Query matches are case-insensitive substrings ranked by distinct matching words, then newest first; limit defaults to 5 and must be at most 10. history.matches contains bounded snippets; history.entries returns at most 10 IDs with at most 4000 text characters each and a truncated flag. Optional originals returns pure-text tool-result originals from the active or retired selected path, with missing/non-text errors. Reads do not change M, restore old positions or grant historical instructions current authority.",
         parameters: Type.Object({
           originals: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
+          query: Type.Optional(Type.String({ description: "Case-insensitive words or substrings to find in selected-branch retired visible text" })),
+          entryIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 10, description: "Exact eligible history IDs to read; each entry is bounded to 4000 text characters" })),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, default: 5, description: "Maximum query matches" })),
         }),
         execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
           const view = memory.read(ctx);
           const projected = project(ctx.sessionManager.buildContextEntries());
           const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
           const requested = params?.originals;
+          const wantsHistory = params.query !== undefined || params.entryIds !== undefined;
+          const branch = requested !== undefined || wantsHistory ? ctx.sessionManager.getBranch() : [];
           const originals = requested === undefined ? undefined : Array.isArray(requested)
-            ? originalResults(projected, requested) : [{ error: "Invalid originals reference list" }];
+            ? originalResults(projected, requested, branch) : [{ error: "Invalid originals reference list" }];
+          const history = wantsHistory ? searchBranchHistory(branch, effectiveActive(projected, opportunity.enabled), params) : undefined;
           const result = {
             revision: view.revision,
             slots: view.memory.slots.map(s => ({ id: s.id, text: s.text })),
@@ -150,6 +156,7 @@ export default function nunc(pi: ExtensionAPI): void {
                 textLength: message?.role === "toolResult" && Array.isArray(message.content) ? message.content.filter(b => b.type === "text").reduce((n, b) => n + b.text.length, 0) : 0 };
             }) } : {}),
             ...(originals === undefined ? {} : { originals }),
+            ...(history === undefined ? {} : { history }),
           };
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result) }],

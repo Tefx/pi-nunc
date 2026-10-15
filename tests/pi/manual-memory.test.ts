@@ -5,7 +5,7 @@ import { SessionManager, type ExtensionAPI, type ExtensionContext, type InlineEx
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { bindHostSettings, MANUAL_MEMORY_TYPE, memorySurface, type MemorySurface } from "pi-nunc/pi";
-import { isManualMemoryEntry, project } from "../../src/pi/projection.js";
+import { isManualMemoryEntry, project, type BranchHistoryResult } from "../../src/pi/projection.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 
@@ -37,6 +37,48 @@ async function prepared(t: { after: (fn: () => Promise<void>) => void }, options
   await f.runtime.session.compact();
   return { f, ...captured };
 }
+
+test("registered read tool retrieves retired source bodies after native compaction without changing memory", async t => {
+  const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } } });
+  t.after(() => f.close());
+  const manager = f.runtime.session.sessionManager;
+  const oldUser = manager.appendMessage({ role: "user", content: "archived-material user source " + "u".repeat(48000), timestamp: 0 });
+  const oldAssistant = manager.appendMessage(fauxAssistantMessage("archived-material assistant decision"));
+  const call = fauxToolCall("read", { path: "source.txt" });
+  manager.appendMessage(fauxAssistantMessage(call, { stopReason: "toolUse" }));
+  const original = "archived-material tool source " + "t".repeat(30000);
+  const oldTool = manager.appendMessage({ role: "toolResult", toolCallId: call.id,
+    toolName: "read", content: [{ type: "text", text: original }], isError: false, timestamp: 0 });
+  manager.appendMessage(fauxAssistantMessage("Source read complete."));
+  manager.appendMessage({ role: "user", content: "Current work " + "r".repeat(8800), timestamp: 1 });
+  manager.appendMessage(fauxAssistantMessage("Current response"));
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const saved = project(manager.buildContextEntries());
+  for (const id of [oldUser, oldAssistant, oldTool]) assert(!saved.active.some(entry => entry.entryId === id), "source must really be retired B");
+  assert.equal(manager.getBranch().filter(entry => entry.type === "compaction").length, 1);
+  let issued = false;
+  f.respond(() => !issued ? (issued = true, fauxAssistantMessage(fauxToolCall("nunc_memory_read", {
+    query: "ARCHIVED-MATERIAL", entryIds: [oldUser, oldAssistant, oldTool], limit: 10,
+    originals: [{ entryId: oldTool, messageIndex: 0 }],
+  }), { stopReason: "toolUse" })) : fauxAssistantMessage("Read completed."));
+  await f.runtime.session.prompt("Inspect the earlier source material.");
+  const result = f.runtime.session.messages.findLast(message => message.role === "toolResult" && message.toolName === "nunc_memory_read");
+  assert(result?.role === "toolResult");
+  assert.equal(result.isError, false);
+  const output = JSON.parse(result.content.filter(block => block.type === "text").map(block => block.text).join("")) as {
+    history: BranchHistoryResult; originals: { text: string }[];
+  };
+  assert.deepEqual(new Set(output.history.matches.map(hit => hit.role)), new Set(["user", "assistant", "toolResult"]));
+  assert(output.history.matches.every(hit => hit.snippet.length <= 1200));
+  assert.equal(output.history.entries[0]?.messages[0]?.text.length, 4000);
+  assert.equal(output.history.entries[0]?.truncated, true);
+  assert.equal(output.history.entries[1]?.messages[0]?.text, "archived-material assistant decision");
+  assert.equal(output.originals[0]?.text, original);
+  assert.deepEqual(project(manager.buildContextEntries()).memory, saved.memory);
+  assert.equal(manager.getBranch().filter(isManualMemoryEntry).length, 0, "read never appends manual M");
+});
 
 test("overbudget growth keeps saved memory and permits update/remove recovery", async t => {
   const captured = port();

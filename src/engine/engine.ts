@@ -102,7 +102,8 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     cancelled(signal);
     requireThat(record(response) && response.role === "assistant", "RESPONSE", "Expected an assistant response");
     requireThat(response.model === frozen.model.id && response.provider === frozen.model.provider && response.api === frozen.model.api && (!response.responseModel || response.responseModel === frozen.model.id), "RESPONSE", "Maintenance response changed model/provider/API");
-    requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}`);
+    const responseError = typeof response.errorMessage === "string" && response.errorMessage ? `: ${response.errorMessage}` : "";
+    requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}${responseError}`);
     const usage = observations.usage;
     observations.accounting.inputExceededPlan = usage.contextInput !== null && usage.contextInput > resolved.extractionInputLimit;
     observations.accounting.outputExceededPlan = usage.output !== null && usage.output > resolved.outputTokens;
@@ -165,7 +166,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       observations.required.failed = true;
       observations.required.retainedSlotIds = [];
     }
-    const error = cause instanceof EngineError ? cause : new EngineError("MODEL", "Maintenance failed before candidate handoff", { cause });
+    const error = cause instanceof EngineError ? cause : new EngineError("MODEL", `Maintenance failed before candidate handoff${cause instanceof Error ? `: ${cause.message}` : ""}`, { cause });
     return { ok: false, code: signal.aborted ? "CANCELLED" : error.code, message: error.message, observations, cause };
   }
 }

@@ -12,6 +12,25 @@ for (const stopReason of ["length", "pending", "error", "aborted", "toolUse", "d
   assert.equal(result.observations.usage.output, usage.output);
 });
 
+test("provider context rejection survives the public failure without retry or memory mutation", async () => {
+  const source = await input();
+  const before = structuredClone(source.memory);
+  const providerError = '400 INVALID_ARGUMENT: The input token count exceeds the maximum number of tokens allowed 1048576.';
+  let calls = 0;
+  const result = await maintain(source, async request => {
+    calls++;
+    return { ...answer(undefined, request.model), stopReason: "error", errorMessage: providerError };
+  });
+  assert(!result.ok);
+  assert.equal(result.code, "RESPONSE");
+  assert.equal(result.message, `Non-complete maintenance response: error: ${providerError}`);
+  assert.equal(result.observations.stopReason, "error");
+  assert.equal(calls, 1);
+  assert.equal(result.observations.requests, 1);
+  assert(!("candidate" in result));
+  assert.deepEqual(source.memory, before);
+});
+
 test("tool calls, false endTurn, deferred handles, malformed JSON and different response model fail without tool execution/repair", async () => {
   const responses = [
     { ...answer(), content: [{ type: "toolCall", id: "x", name: "delete", arguments: {} }] },
@@ -88,6 +107,8 @@ test("model rejection preserves cause and original memory; listener removed on s
   const source = await input(); const sentinel = new Error("controlled provider failed");
   const result = await maintain(source, async () => { throw sentinel; });
   assert(!result.ok); assert.equal(result.code, "MODEL"); assert.equal(result.cause, sentinel);
+  assert.match(result.message, /controlled provider failed/);
+  assert.equal(result.observations.requests, 1);
   assert.equal(getEventListeners(source.signal, "abort").length, 0);
   const success = await maintain(source, responder()); assert(success.ok);
   assert.equal(getEventListeners(source.signal, "abort").length, 0);

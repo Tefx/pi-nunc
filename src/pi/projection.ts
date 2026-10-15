@@ -4,7 +4,7 @@ import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "
 import type { ActiveEntry, Memory, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { applyToolResultCleanup, emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
 import { isSystemMessage } from "../engine/accounting.js";
-import { EngineError, integer, record, validateMemory } from "../engine/validation.js";
+import { EngineError, integer, record, requireThat, validateMemory } from "../engine/validation.js";
 
 /** Private CustomEntry type. Replaceable encoding; not a public SDK. */
 export const MANUAL_MEMORY_TYPE = "nunc.memory";
@@ -220,9 +220,119 @@ function completedCleanupScope(active: ActiveEntry[], startIndex: number, saved:
   }));
 }
 
-export function originalResults(projected: ReturnType<typeof project>, refs: ToolResultRef[]): { ref: ToolResultRef; text?: string; error?: string; toolName?: string; isError?: boolean }[] {
+export interface BranchHistoryOptions {
+  query?: string;
+  entryIds?: string[];
+  limit?: number;
+}
+interface HistoryMessage {
+  entryId: string;
+  messageIndex: number;
+  role: string;
+  toolName?: string;
+  text: string;
+}
+export interface BranchHistoryResult {
+  matches: (Omit<HistoryMessage, "text"> & { snippet: string })[];
+  entries: { entryId: string; messages: Omit<HistoryMessage, "entryId">[]; truncated: boolean; error?: string }[];
+}
+
+/** Only visible bodies are searchable: never system state, thinking, arguments or hidden entry data. */
+function historyBody(message: { content: string | readonly { type: string; text?: string }[] }): string {
+  return typeof message.content === "string" ? message.content
+    : message.content.filter(block => block.type === "text").map(block => block.text ?? "").join("");
+}
+
+function branchHistoryCandidates(branch: readonly SessionEntry[], active: readonly ActiveEntry[]): HistoryMessage[] {
+  const activeById = new Map(active.map(entry => [entry.entryId, entry]));
+  const firstActive = branch.findIndex(entry => activeById.has(entry.id));
+  const lastCheckpoint = branch.findLastIndex(entry => entry.type === "compaction");
+  const boundary = firstActive >= 0 ? firstActive : Math.max(0, lastCheckpoint);
+  const edits = new Map(branch.flatMap(entry => entry.type === "context_edit" ? [[entry.targetId, entry] as const] : []));
+  const candidates: HistoryMessage[] = [];
+  for (const [index, entry] of branch.entries()) {
+    if (entry.type === "compaction") continue;
+    const current = activeById.get(entry.id);
+    if (index >= boundary && !current) continue;
+    const edit = edits.get(entry.id);
+    if (edit?.replacement === null) continue;
+    const raw = sessionEntryToContextMessages(entry).filter(message =>
+      message.role !== "system" && message.role !== "compactionSummary" &&
+      !(message.role === "assistant" && ["error", "aborted"].includes(message.stopReason)));
+    const sourceRole = raw[0]?.role;
+    // Match the host's role-preserving context edit semantics before looking at visible text.
+    const visible = raw.map(message => {
+      if (!edit?.replacement || !["user", "assistant", "toolResult", "custom"].includes(message.role)) return message;
+      const body = edit.replacement.content;
+      const content = (message.role === "assistant" || message.role === "toolResult") && typeof body === "string"
+        ? [{ type: "text" as const, text: body }] : body;
+      // The host validates replacements for the target role; TS cannot correlate this union with the role check.
+      return { ...message, content } as typeof message;
+    });
+    for (const [messageIndex, message] of convertToLlm(visible).entries()) {
+      if (message.role === "system") continue;
+      const text = historyBody(message);
+      if (current) {
+        // Only Nunc-cleaned active tool bodies qualify; native context edits do not expose their old bodies.
+        const effective = current.messages[messageIndex];
+        if (edit || message.role !== "toolResult" || effective?.role !== "toolResult" ||
+            historyBody(effective) === text) continue;
+      }
+      candidates.push({ entryId: entry.id, messageIndex, role: sourceRole ?? message.role,
+        ...(message.role === "toolResult" ? { toolName: message.toolName } : {}), text });
+    }
+  }
+  return candidates;
+}
+
+/** In-memory selected-branch lookup. Pass effectiveActive() so active cleanup originals can be identified. */
+export function searchBranchHistory(branch: readonly SessionEntry[], active: readonly ActiveEntry[], options: BranchHistoryOptions): BranchHistoryResult {
+  requireThat(options.query === undefined || typeof options.query === "string", "INPUT", "query must be a string");
+  requireThat(options.limit === undefined || integer(options.limit, 1) && options.limit <= 10, "INPUT", "limit must be an integer from 1 through 10");
+  requireThat(options.entryIds === undefined || Array.isArray(options.entryIds) && options.entryIds.length <= 10 &&
+    options.entryIds.every(id => typeof id === "string" && id.length > 0), "INPUT", "entryIds must contain at most 10 nonempty IDs");
+  const candidates = branchHistoryCandidates(branch, active);
+  const terms = [...new Map((options.query ?? "").trim().split(/\s+/u).filter(Boolean).map(term => [term.toLowerCase(), term])).values()];
+  // Escaped literal patterns keep match offsets in the original text, including Unicode case mappings.
+  const patterns = terms.map(term => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "iu"));
+  const ranked = patterns.length ? candidates.flatMap((candidate, index) => {
+    const hits = patterns.map(pattern => pattern.exec(candidate.text)).filter(hit => hit !== null);
+    const first = hits.sort((a, b) => a.index - b.index)[0];
+    return first ? [{ candidate, index, score: hits.length, position: first.index, length: first[0].length }] : [];
+  }).sort((a, b) => b.score - a.score || b.index - a.index) : [];
+  const matches = ranked.slice(0, options.limit ?? 5).map(({ candidate, position, length }) => {
+    const { text, ...ref } = candidate;
+    const start = Math.max(0, position - 400);
+    return { ...ref, snippet: text.slice(start, Math.min(text.length, position + length + 400, start + 1200)) };
+  });
+  const entries = [...new Set(options.entryIds ?? [])].map(entryId => {
+    let remaining = 4000;
+    const source = candidates.filter(candidate => candidate.entryId === entryId);
+    const messages = source.map(({ entryId: _entryId, text, ...ref }) => {
+      const body = text.slice(0, remaining);
+      remaining -= body.length;
+      return { ...ref, text: body };
+    });
+    return { entryId, messages, truncated: source.reduce((sum, message) => sum + message.text.length, 0) > 4000,
+      ...(!source.length ? { error: "Entry unavailable in selected branch history" } : {}) };
+  });
+  return { matches, entries };
+}
+
+export function originalResults(projected: ReturnType<typeof project>, refs: ToolResultRef[], branch?: readonly SessionEntry[]): { ref: ToolResultRef; text?: string; error?: string; toolName?: string; isError?: boolean }[] {
+  // The raw active projection retains cleanup originals. Historical fallback obeys the same retired boundary.
+  let retired: HistoryMessage[] | undefined;
   return refs.map(ref => {
     const message = projected.active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
+    if (!message && branch) {
+      retired ??= branchHistoryCandidates(branch, projected.active);
+      const original = retired.find(entry => entry.entryId === ref.entryId && entry.messageIndex === ref.messageIndex && entry.role === "toolResult");
+      const raw = branch.find(entry => entry.id === ref.entryId);
+      if (original && raw?.type === "message" && raw.message.role === "toolResult") {
+        if (!Array.isArray(raw.message.content) || !raw.message.content.every(block => block.type === "text")) return { ref, error: "Original contains non-text blocks" };
+        return { ref, text: original.text, toolName: raw.message.toolName, isError: raw.message.isError };
+      }
+    }
     if (message?.role !== "toolResult") return { ref, error: "Original unavailable on selected path" };
     if (!Array.isArray(message.content) || !message.content.every(b => b.type === "text")) return { ref, error: "Original contains non-text blocks" };
     return { ref, text: message.content.map(b => b.text).join(""), toolName: message.toolName, isError: message.isError };

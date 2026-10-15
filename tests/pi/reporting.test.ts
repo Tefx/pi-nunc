@@ -73,6 +73,32 @@ test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unk
   assert.equal(reports.length, beforeReports + 2);
 });
 
+test("provider rejection reaches maintenance events and /nunc details without another model call", async t => {
+  const reports: string[] = [];
+  const f = await fixture({ extras: [{ name: "capture-provider-diagnostic", factory(pi) {
+    pi.events.on("nunc:diagnostic", value => {
+      if (value && typeof value === "object" && "message" in value && typeof value.message === "string") reports.push(value.message);
+    });
+  } }] });
+  t.after(() => f.close());
+  f.seed();
+  const before = f.runtime.session.sessionManager.getEntries();
+  const providerError = "400 INVALID_ARGUMENT: The input token count exceeds the maximum number of tokens allowed 1048576.";
+  f.respond(() => fauxAssistantMessage("", { stopReason: "error", errorMessage: providerError }));
+  await assert.rejects(f.runtime.session.compact(), /Compaction cancelled/);
+  assert.equal(f.faux.state.callCount, 1);
+  assert.equal(f.events.length, 1);
+  const result = f.events[0]!.result;
+  assert(!result.ok);
+  assert(result.message.includes(providerError));
+  assert(reports.some(message => message.includes(providerError)));
+  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+  await f.runtime.session.prompt("/nunc details");
+  assert(reports.at(-1)!.includes(providerError));
+  assert.equal(f.faux.state.callCount, 1);
+  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+});
+
 test("complete reports do not enter diagnostic history or echo themselves", async t => {
   const reports: string[] = [];
   const f = await fixture({ extras: [{ name: "capture-nunc-report", factory(pi) {
