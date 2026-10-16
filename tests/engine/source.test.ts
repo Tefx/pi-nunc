@@ -67,12 +67,29 @@ test("an unfinished later turn retains its user when a turn-aligned boundary is 
   const keepTarget = active.slice(lastUserIndex + 1).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
   const trigger = active.flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0) + source.config.growthTokens;
   assert(keepTarget < active.slice(lastUserIndex).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0));
-  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, lastUserIndex);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, lastUserIndex - 1);
   const infeasibleTrigger = keepTarget + source.config.growthTokens;
   assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, infeasibleTrigger, source.config).cut, lastUserIndex + 1);
   active.push(assistant("final", [{ type: "text", text: "completed" }]));
   const completedTarget = active.slice(lastUserIndex + 1).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
   assert.equal(chooseCut(active, legalCuts(active), 0, 0, completedTarget, trigger + completedTarget, source.config).cut, lastUserIndex + 1);
+});
+
+test("an oversized unfinished turn retains its preceding completed response only within feasible headroom", async () => {
+  const source = await input();
+  const active = [user("previous", "previous request"), assistant("completed", [{ type: "text", text: "completed response" }]),
+    user("current", "current requirements".repeat(100)),
+    assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("result", "x", "observation")];
+  const size = (cut: number) => active.slice(cut).flatMap(e => e.messages).reduce((n, m) => n + messageTokens(m), 0);
+  const keepTarget = size(3);
+  const trigger = size(1) + source.config.growthTokens;
+  assert(size(2) > keepTarget);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, 1);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger - 1, source.config).cut, 2);
+  const smallIncrement = size(1) - size(2);
+  const roomyTarget = size(2);
+  assert.equal(chooseCut(active, legalCuts(active), 0, smallIncrement, roomyTarget, trigger + smallIncrement, source.config).cut, 1);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, roomyTarget, trigger, source.config).cut, 2);
 });
 
 const invalidSources: ActiveEntry[][] = [

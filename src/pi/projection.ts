@@ -491,7 +491,7 @@ function legalTail(messages: readonly LayoutMessage[]): number {
   const pending = new Set<string>();
   for (let i = 0; i < messages.length; i++) {
     applyToolBoundary(pending, messages[i]!);
-    if (pending.size === 0) last = i + 1;
+    if (pending.size === 0 && messages[i]!.role !== "toolResult") last = i + 1;
   }
   return last;
 }

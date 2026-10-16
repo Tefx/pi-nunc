@@ -227,11 +227,18 @@ export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: nu
   // The complete extraction is measured separately before transport; main admission
   // measures the next real provider Context after Pi applies its tool loadout.
   const lastUserIndex = active.findLastIndex(entry => entry.sourceRole === "user" || entry.messages.some(message => message.role === "user"));
-  const turnUnfinished = lastUserIndex > 0 && !active.slice(lastUserIndex + 1).some(entry =>
-    entry.messages.some(message => message.role === "assistant" && message.stopReason === "stop" &&
-      (!Array.isArray(message.content) || !message.content.some(block => block.type === "toolCall"))));
+  const assistantStop = (entry: ActiveEntry): boolean => entry.messages.some(message =>
+    message.role === "assistant" && message.stopReason === "stop" &&
+      (!Array.isArray(message.content) || !message.content.some(block => block.type === "toolCall")));
+  const turnUnfinished = lastUserIndex > 0 && !active.slice(lastUserIndex + 1).some(assistantStop);
   const alignedFeasible = turnUnfinished ? feasible.filter(candidate => candidate.cut <= lastUserIndex) : [];
-  const activeFeasible = alignedFeasible.length ? alignedFeasible : feasible;
+  const prevCompletedIndex = turnUnfinished ? active.slice(0, lastUserIndex).findLastIndex(assistantStop) : -1;
+  // Preserve a completed response as a structural example only within feasible
+  // headroom, when the current turn is already oversized or the increment is small.
+  const completedFeasible = prevCompletedIndex > 0 &&
+    (suffix[lastUserIndex]! > keepTarget || suffix[prevCompletedIndex]! - suffix[lastUserIndex]! <= memoryLimit)
+    ? alignedFeasible.filter(candidate => candidate.cut <= prevCompletedIndex) : [];
+  const activeFeasible = completedFeasible.length ? completedFeasible : alignedFeasible.length ? alignedFeasible : feasible;
   const candidates = activeFeasible.length ? activeFeasible : cuts.map(cut => ({ cut, keptTokens: suffix[cut]! }));
   requireThat(candidates.length > 0, "CAPACITY", "No legal nonempty B/K boundary");
   const lowerIndex = candidates.findIndex(c => c.keptTokens <= keepTarget);

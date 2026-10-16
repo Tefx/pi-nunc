@@ -68,12 +68,13 @@ test("own cleanup replacement is restored when disabled and applied again withou
   const decision: ToolResultDecision = { entryId: "result", messageIndex: 0, toolCallId: "call", toolName: "read", kind: "semantic", action: "replace", text: "short", originalLength: 18, cleanedLength: 5, netSavings: 13 };
   const session = { sessionId: "cleanup-index", entries: [source("result", original)], decisions: [decision], enabled: true };
   const cleaned = withEffectiveMemory([original], memory, session);
-  assert.deepEqual(cleaned[0]?.content, [{ type: "text", text: "short" }]);
+  const result = (messages: typeof cleaned) => messages.find(message => message.role === "toolResult");
+  assert.deepEqual(result(cleaned)?.content, [{ type: "text", text: "short" }]);
   const restored = withEffectiveMemory(cleaned, memory, { ...session, enabled: false });
-  assert.deepEqual(restored[0], original);
+  assert.deepEqual(result(restored), original);
   const reapplied = withEffectiveMemory(restored, memory, session);
-  assert.deepEqual(reapplied[0], cleaned[0]);
+  assert.deepEqual(result(reapplied), result(cleaned));
   const foreign = { ...original, content: [{ type: "text" as const, text: "foreign rewrite" }] };
   const retained = withEffectiveMemory([foreign], memory, session);
-  assert.equal(retained[0], foreign);
+  assert.equal(result(retained), foreign);
 });

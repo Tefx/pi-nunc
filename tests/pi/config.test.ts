@@ -156,12 +156,11 @@ test("chooseCut with legal cuts preserves full tool/message units and chooses mi
   assert.equal(cutMidLow.cut, cutMidHigh.cut);
   assert.equal(cutMidLow.keptTokens, cutMidHigh.keptTokens);
 
-  // Case 3: Minimal viable over-target suffix when no complete unit is <= keepTarget
-  // If keepTarget is smaller than the smallest legal suffix (cut 5), chooseCut falls back to
-  // the smallest feasible suffix above target (feasible[feasible.length - 1]!).
+  // Case 3: An unfinished oversized turn keeps the preceding completed response
+  // when both fit, even though the current user alone would be closer to target.
   const tinyTarget = 100;
   const cutOver = chooseCut(active, cuts, fixedTokens, memoryLimit, tinyTarget, trigger, cfgDefault);
-  assert.equal(cutOver.cut, 5); // smallest legal suffix
+  assert.equal(cutOver.cut, 4); // preceding completed response and current user
   assert(cutOver.keptTokens > tinyTarget);
 });
 

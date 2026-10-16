@@ -46,6 +46,21 @@ test("withEffectiveMemory: first construction uses the legal tail; later history
   clearMemoryAnchors();
 });
 
+test("withEffectiveMemory: initial and updated carriers precede an unanswered tool loop", () => {
+  clearMemoryAnchors();
+  const session = sourceSession("s-unanswered", "q");
+  const call = { role: "assistant" as const, content: [{ type: "toolCall" as const, id: "a", name: "read", arguments: {} }], timestamp: 2, stopReason: "toolUse" };
+  const result = { role: "toolResult" as const, toolCallId: "a", toolName: "read", content: [{ type: "text" as const, text: "observation" }], isError: false, timestamp: 3 };
+  const source = [user("q"), call, result];
+  for (const text of ["initial note", "updated note"]) {
+    const placed = withEffectiveMemory(source, memory([{ id: "s1", text }]), session);
+    assert.equal(injectedCarrierIndex(placed), 1);
+    assert.equal(placed[2], call);
+    assert.equal(placed.at(-1), result);
+  }
+  clearMemoryAnchors();
+});
+
 test("withEffectiveMemory: same timestamp with replaced prefix content rebuilds at the legal tail", () => {
   clearMemoryAnchors();
   const session = sourceSession("s-collide", "original");
