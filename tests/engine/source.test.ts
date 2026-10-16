@@ -3,6 +3,7 @@ import { semanticEvidence } from "../../src/live/scenarios.js";
 import assert from "node:assert/strict";
 import { legalCuts, mainContext, maintain } from "../../src/engine/index.js";
 import { reduceToolBodies } from "../../src/engine/request.js";
+import { chooseCut, messageTokens } from "../../src/engine/accounting.js";
 import type { ActiveEntry } from "../../src/engine/index.js";
 import { answer, assistant, input, noChange, responder, sourceRecords, tool, user } from "./fixtures.js";
 
@@ -55,6 +56,23 @@ test("engine rounds the retained target to a whole tool unit and permits long-ta
   assert.equal(result.candidate.firstKeptEntryId, "call");
   assert.deepEqual(result.candidate.retiredEntryIds, ["start"]);
   assert.deepEqual(result.candidate.kept, source.active.slice(1));
+});
+
+test("an unfinished later turn retains its user when a turn-aligned boundary is feasible", async () => {
+  const source = await input();
+  const active = [user("previous", "previous request"), assistant("finished", [{ type: "text", text: "done" }]),
+    user("current", "current requirements".repeat(100)),
+    assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("result", "x", "observation")];
+  const lastUserIndex = 2;
+  const keepTarget = active.slice(lastUserIndex + 1).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
+  const trigger = active.flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0) + source.config.growthTokens;
+  assert(keepTarget < active.slice(lastUserIndex).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0));
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, lastUserIndex);
+  const infeasibleTrigger = keepTarget + source.config.growthTokens;
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, infeasibleTrigger, source.config).cut, lastUserIndex + 1);
+  active.push(assistant("final", [{ type: "text", text: "completed" }]));
+  const completedTarget = active.slice(lastUserIndex + 1).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, completedTarget, trigger + completedTarget, source.config).cut, lastUserIndex + 1);
 });
 
 const invalidSources: ActiveEntry[][] = [

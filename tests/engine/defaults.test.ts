@@ -30,7 +30,7 @@ test("complete frozen source, IDs, tools, media, wrapping and extras determine a
     s.config.extraction.extraInputTokens = 411; s.config.imageTokens = 2048;
     s.config.triggerTokens = 10000; s.config.main.nativeOutputReserve = 1;
     const plan = memoryPlan(s.fixed, s.model, s.config, s.memory.slots);
-    const context = extractionContext(s, 2, plan.memoryLimit, s.active, [], s.model.maxTokens);
+    const context = extractionContext(s, 2, plan.organizingTarget, s.active, [], s.model.maxTokens);
     const completeInput = requestTokens(context, 2048) + 411;
     s.model.contextWindow = completeInput + 1024 + headroom;
     s.config.triggerTokens = Math.min(s.config.triggerTokens, s.model.contextWindow - 2048);

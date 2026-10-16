@@ -226,14 +226,20 @@ export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: nu
   // A stale historical F cannot veto an otherwise valid maintenance extraction.
   // The complete extraction is measured separately before transport; main admission
   // measures the next real provider Context after Pi applies its tool loadout.
-  const candidates = feasible.length ? feasible : cuts.map(cut => ({ cut, keptTokens: suffix[cut]! }));
+  const lastUserIndex = active.findLastIndex(entry => entry.sourceRole === "user" || entry.messages.some(message => message.role === "user"));
+  const turnUnfinished = lastUserIndex > 0 && !active.slice(lastUserIndex + 1).some(entry =>
+    entry.messages.some(message => message.role === "assistant" && message.stopReason === "stop" &&
+      (!Array.isArray(message.content) || !message.content.some(block => block.type === "toolCall"))));
+  const alignedFeasible = turnUnfinished ? feasible.filter(candidate => candidate.cut <= lastUserIndex) : [];
+  const activeFeasible = alignedFeasible.length ? alignedFeasible : feasible;
+  const candidates = activeFeasible.length ? activeFeasible : cuts.map(cut => ({ cut, keptTokens: suffix[cut]! }));
   requireThat(candidates.length > 0, "CAPACITY", "No legal nonempty B/K boundary");
   const lowerIndex = candidates.findIndex(c => c.keptTokens <= keepTarget);
   if (lowerIndex < 0) return candidates[candidates.length - 1]!;
   const lower = candidates[lowerIndex]!;
   const upper = candidates[lowerIndex - 1];
   // Only round upward within the feasible growth budget. Ties preserve more original history.
-  return feasible.length && upper && upper.keptTokens - keepTarget <= keepTarget - lower.keptTokens ? upper : lower;
+  return activeFeasible.length && upper && upper.keptTokens - keepTarget <= keepTarget - lower.keptTokens ? upper : lower;
 }
 export function unknownUsage(): UsageObservation {
   return { input: null, cacheRead: null, cacheWrite: null, contextInput: null, output: null, reasoning: null, totalTokens: null, cost: null };
