@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { maintain } from "../../src/engine/engine.js";
 import { maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
@@ -25,6 +26,28 @@ function remember(value: MaintenanceInput, result: MaintenanceResult) {
   value.calibration = [...(value.calibration ?? []), structuredClone(saved)];
   return saved;
 }
+
+test("historical v1 numeric-key digests restore positive undercount and invalidate changed sources", async () => {
+  const value = await source();
+  const message = value.active[1]!.messages[0]!;
+  assert(message.role === "assistant" && message.content[0]?.type === "toolCall");
+  message.content[0].arguments = { "2": "two", "10": "ten" };
+  // Frozen v1 disk encoding, independent of the current production digest helper.
+  // JSON.stringify emits integer-index keys numerically, even after lexical sorting.
+  const historicalDigest = (data: unknown) => createHash("sha256").update(JSON.stringify(data, (_key, item: unknown) =>
+    item !== null && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item)).digest("hex");
+  const { toolResults: _mode, headTailChars: _chars, ...extraction } = value.config.extraction;
+  value.calibration = JSON.parse(JSON.stringify([{
+    version: 1, provider: value.model.provider, api: value.model.api, modelId: value.model.id,
+    sourceEntryIds: value.active.map(entry => entry.entryId), sourceDigest: historicalDigest(value.active),
+    limitsDigest: historicalDigest({ contextWindow: value.model.contextWindow, maxTokens: value.model.maxTokens, extraction, imageTokens: value.config.imageTokens }),
+    measurement: { sourceEntryIds: value.active.map(entry => entry.entryId), estimatedInputTokens: 2000, actualInputTokens: 2700, undercountTokens: 700 },
+  }]));
+  assert.equal(maintenanceFeedback(value).calibratedUndercountTokens, 700);
+  message.content[0].arguments["2"] = "changed";
+  assert.equal(maintenanceFeedback(value).calibratedUndercountTokens, 0);
+});
 
 test("heuristic-admitted provider overflow reports exact evidence once, then auto reduces once without rewriting M or original K", async () => {
   const value = await source(), before = structuredClone({ active: value.active, memory: value.memory });
