@@ -7576,7 +7576,7 @@ phases:
     claimed_at: '2026-10-16T18:43:45.385735Z'
   - id: code-hygiene.pathway-audit
     name: 纵向通路完整性与删除安全性深度审查
-    status: claimed
+    status: done
     description: "step_type: review\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\".scratch/code-hygiene/pathway-audit.md\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -7601,6 +7601,12 @@ phases:
     agent: pathway-auditor
     claimed_by: pathway-auditor
     claimed_at: '2026-10-16T18:43:45.385959Z'
+    done_at: '2026-10-16T19:01:23.047693+00:00'
+    evidence: Completed vertical pathway & deletion consumer-safety audit on git:5af2d304bd569e0b37658b4ceb2bc4dfa971e4c8.
+      Validated verifier.report.v2 via review_report_validator.py (valid:true, binding_checked:true,
+      evidence_disposition:CONTRADICTION, 0 errors), saved .scratch/code-hygiene/pathway-audit.md
+      and .scratch/code-hygiene/pathway-audit.report.json with 4 [COMPLETENESS / WIRE]
+      findings (PA-1..PA-4) and complete deletion consumer-safety vetting.
   - id: code-hygiene.trim-and-wire
     name: 汇总精简与接线修复及离线回归验证
     status: pending
