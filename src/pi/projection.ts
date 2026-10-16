@@ -327,14 +327,20 @@ function historyWindow(text: string, cluster: HistoryCluster, limit: number, cen
 function historySnippet(text: string, clusters: readonly HistoryCluster[]): string {
   const best = clusters[0]!;
   // A second passage is useful only if it contributes terms missing from the best cluster.
-  const second = clusters.find(cluster => [...cluster.terms].some(term => !best.terms.has(term)) &&
-    (cluster.end <= best.index || cluster.index >= best.end));
+  let second: HistoryCluster | undefined, additional = 0;
+  for (const cluster of clusters) {
+    if (cluster.end > best.index && cluster.index < best.end) continue;
+    const coverage = [...cluster.terms].filter(term => !best.terms.has(term)).length;
+    if (coverage > additional) { second = cluster; additional = coverage; }
+  }
   if (second) {
     const firstRange = historyWindow(text, best, 600);
     const secondRange = historyWindow(text, second, 595);
     if (firstRange.end <= secondRange.start || secondRange.end <= firstRange.start) {
       return [firstRange, secondRange].map(range => text.slice(range.start, range.end)).join("\n...\n");
     }
+    // Context can overlap even when the matching clusters do not. Merge it rather than losing a term.
+    return text.slice(Math.min(firstRange.start, secondRange.start), Math.max(firstRange.end, secondRange.end));
   }
   const range = historyWindow(text, best, 1200);
   return text.slice(range.start, range.end);

@@ -118,6 +118,29 @@ test("two disjoint snippets cover separated query terms within the shared 1200 c
   assert.equal(snippet.split("\n...\n").length, 2);
 });
 
+test("overlapping context around separate clusters merges without dropping either query word", () => {
+  const manager = SessionManager.inMemory();
+  const body = "alpha " + ".".repeat(443) + " beta";
+  manager.appendMessage(user(body));
+  const projected = retire(manager);
+  const snippet = searchBranchHistory(manager.getBranch(), projected.active, { query: "alpha beta" }).matches[0]!.snippet;
+  assert.equal(snippet, body);
+  assert(snippet.length <= 1200);
+});
+
+test("the second passage maximizes missing-term coverage before its cluster tie breakers", () => {
+  const manager = SessionManager.inMemory();
+  const body = "gamma delta source\n" + " filler".repeat(1000) + "\nalpha gamma distractor\n" +
+    " filler".repeat(1000) + "\nalpha beta alpha latest";
+  manager.appendMessage(user(body));
+  const projected = retire(manager);
+  const snippet = searchBranchHistory(manager.getBranch(), projected.active, { query: "alpha beta gamma delta" }).matches[0]!.snippet;
+  assert(snippet.includes("alpha beta alpha latest"));
+  assert(snippet.includes("gamma delta source"));
+  assert(!snippet.includes("distractor"));
+  assert(snippet.length <= 1200);
+});
+
 test("bash, custom and branch-summary visible text is searchable without thinking, arguments or hidden data", () => {
   const manager = SessionManager.inMemory();
   manager.appendMessage(user("Root"));
