@@ -7539,7 +7539,7 @@ phases:
       SourceproofdoesnotcompletepaidBEAM; proceedexistingconsumer withinparentauthorizedrecovery/budget.
 - id: code-hygiene
   name: 全仓代码卫生审查与精简接线修复
-  status: pending
+  status: in_progress
   gate: code-hygiene.trim-and-wire 完成汇总修复与验证，npm run build 与 NODE_DISABLE_COMPILE_CACHE=1
     node --test --test-concurrency=2 dist/tests/engine/*.test.js dist/tests/pi/*.test.js
     100% 通过并提交到 main 分支，且 .scratch/code-hygiene/{structural-audit.md,pathway-audit.md,trim-and-wire-report.md}
@@ -7549,7 +7549,7 @@ phases:
   steps:
   - id: code-hygiene.structural-audit
     name: 横向结构与重复精简广度审查
-    status: pending
+    status: claimed
     description: "step_type: review\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\".scratch/code-hygiene/structural-audit.md\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -7572,9 +7572,11 @@ phases:
     - docs/CONSTITUTION.md
     - policies/default.md
     agent: structural-auditor
+    claimed_by: structural-auditor
+    claimed_at: '2026-10-16T18:43:45.385735Z'
   - id: code-hygiene.pathway-audit
     name: 纵向通路完整性与删除安全性深度审查
-    status: pending
+    status: claimed
     description: "step_type: review\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\".scratch/code-hygiene/pathway-audit.md\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -7597,6 +7599,8 @@ phases:
     - docs/CONSTITUTION.md
     - policies/default.md
     agent: pathway-auditor
+    claimed_by: pathway-auditor
+    claimed_at: '2026-10-16T18:43:45.385959Z'
   - id: code-hygiene.trim-and-wire
     name: 汇总精简与接线修复及离线回归验证
     status: pending
