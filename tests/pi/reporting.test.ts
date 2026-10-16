@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { ExtensionAPI, ExtensionContext, InlineExtension } from "@earendil-works/pi-coding-agent";
-import { contextSurface, type ContextSurface } from "pi-nunc/pi";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { emptyMemory } from "../../src/engine/index.js";
 import { createContextSurface, unknownBudget } from "../../src/pi/context.js";
 import { engineConfig } from "../../src/pi/config.js";
@@ -9,26 +8,8 @@ import { budgetLines, capLabel, detailsLines, DIAGNOSTIC_LIMIT, maintenanceLines
 import { NuncUi } from "../../src/ui/index.js";
 import { model } from "../engine/fixtures.js";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { assertOnlyCalibrationAppend, fixture, memoryPatch } from "./fixtures.js";
+import { assertOnlyCalibrationAppend, fixture, memoryPatch, surfacePort as port } from "./fixtures.js";
 
-function port(): {
-  extras: InlineExtension[];
-  context: () => ContextSurface;
-  ctx: () => ExtensionContext;
-  pi: () => ExtensionAPI;
-} {
-  let api: ExtensionAPI | undefined;
-  let ctx: ExtensionContext | undefined;
-  return {
-    extras: [{ name: "nunc-report-port", factory(pi) {
-      api = pi;
-      pi.on("session_start", (_event, next) => { ctx = next; });
-    } }],
-    context() { const value = contextSurface(api!); assert(value); return value; },
-    ctx() { assert(ctx); return ctx; },
-    pi() { assert(api); return api; },
-  };
-}
 
 test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unknown; reports do not consume diagnostics", async t => {
   const captured = port();

@@ -267,12 +267,6 @@ export function checkArtifact(check: ArtifactCheck, artifact: unknown): CheckRes
   );
   return { check: `${check.path}${check.pointer}`, status: passed ? "PROVEN" : "DISPROVEN", observed: observed ?? null };
 }
-function userTextFromMessage(message: Message): string | undefined {
-  if (message.role !== "user") return undefined;
-  if (typeof message.content === "string") return message.content;
-  if (Array.isArray(message.content)) return message.content.filter(b => b.type === "text").map(b => (b as any).text).join("");
-  return undefined;
-}
 function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: string; messages: Message[] }> {
   const records: Array<{ region: string; messages: Message[] }> = [];
   for (const message of ctx.messages ?? []) {
@@ -300,7 +294,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview: CheckResult[] = observer.actionChecks.map(check => {
     if (observer.id.startsWith("g")) {
-      return scoreGuidanceCheck(observer.id, check, rawActions, prerequisites, cwd, context?.fixtures);
+      return scoreGuidance(observer.id, check, rawActions, prerequisites, cwd, context?.fixtures);
     }
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;
@@ -365,7 +359,6 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   return { artifacts, checks, actionReview };
 }
 
-export const scoreGuidanceCheck = scoreGuidance;
 export function evaluateCapacityPredicates(
   variant: "fits-required" | "required-too-large",
   rawPatch: unknown,

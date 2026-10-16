@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeContext, type Context, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { estimateTextAndImageContentTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { bindHostSettings, contextSurface, memorySurface, type ContextSurface, type MemorySurface } from "pi-nunc/pi";
+import { bindHostSettings, contextSurface, type MemorySurface } from "pi-nunc/pi";
 import { emptyMemory } from "../../src/engine/index.js";
 import { historyPlanningEstimate, mainContext, memoryTokens, messageTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { Admission, type AdmissionObservation } from "../../src/pi/admission.js";
@@ -17,43 +17,14 @@ import { project } from "../../src/pi/projection.js";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
 import { SYNTHETIC_LAST_USER_APPEND_B } from "../../src/live/append-b.js";
 import { answer } from "../engine/fixtures.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fixture, memoryPatch, surfacePort as port, preparedSurface as prepared, responsesSSE } from "./fixtures.js";
 
 const LONG = "Exact body 中文 🦉\n" + "z".repeat(4000);
 const HOOK_A = "HOOK_A_TEMP_INJECTION";
 const HOOK_B = "HOOK_B_TEMP_INJECTION";
 const QUEUED = "queued-D-not-in-layout";
 
-function port(admissions: AdmissionObservation[] = []): {
-  extras: InlineExtension[];
-  memory: () => MemorySurface;
-  context: () => ContextSurface;
-  ctx: () => ExtensionContext;
-  pi: () => ExtensionAPI;
-  admissions: AdmissionObservation[];
-} {
-  let api: ExtensionAPI | undefined;
-  let ctx: ExtensionContext | undefined;
-  return {
-    extras: [{ name: "nunc-context-port", factory(pi) {
-      api = pi;
-      pi.on("session_start", (_event, next) => { ctx = next; });
-      pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation));
-    } }],
-    memory() { const value = memorySurface(api!); assert(value); return value; },
-    context() { const value = contextSurface(api!); assert(value); return value; },
-    ctx() { assert(ctx); return ctx; },
-    pi() { assert(api); return api; },
-    admissions,
-  };
-}
 
-async function prepared(t: { after: (fn: () => Promise<void>) => void }, options: Parameters<typeof fixture>[0] = {}, admissions: AdmissionObservation[] = []) {
-  const captured = port(admissions);
-  const f = await fixture({ ...options, extras: [...(options.extras ?? []), ...captured.extras] });
-  t.after(() => f.close());
-  return { f, ...captured };
-}
 
 for (const imageTokens of [undefined, 512]) test(`current F/M/R counts, tool association, packaging, and long bodies stay original (${imageTokens ?? "Pi image default"})`, async t => {
   const { f, memory, context, ctx, pi } = await prepared(t, { config: imageTokens === undefined ? {} : { budget: { imageTokens } } });
@@ -315,16 +286,7 @@ test("native serializer last-user appends are observed without diagnostic bodies
   const transport: typeof fetch = async (resource, init) => {
     sends++;
     await new Request(resource, init).json();
-    const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Controlled native response.", annotations: [] }] };
-    const events = [
-      { type: "response.created", response: { id: "response-1", model: catalog.id, status: "in_progress", output: [] } },
-      { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-      { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-      { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: "Controlled native response." },
-      { type: "response.output_item.done", output_index: 0, item },
-      { type: "response.completed", response: { id: "response-1", model: catalog.id, status: "completed", output: [item], usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-    ];
-    return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+    return responsesSSE(catalog.id, "Controlled native response.");
   };
   const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const };
   const wrapped: Provider = {
@@ -531,16 +493,7 @@ test("append plus metadata exposes text tokens separately from charged overhead;
   const transport: typeof fetch = async (resource, init) => {
     sends++;
     await new Request(resource, init).json();
-    const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Controlled native response.", annotations: [] }] };
-    const events = [
-      { type: "response.created", response: { id: "response-1", model: catalog.id, status: "in_progress", output: [] } },
-      { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-      { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-      { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: "Controlled native response." },
-      { type: "response.output_item.done", output_index: 0, item },
-      { type: "response.completed", response: { id: "response-1", model: catalog.id, status: "completed", output: [item], usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-    ];
-    return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+    return responsesSSE(catalog.id, "Controlled native response.");
   };
   const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const };
   const wrapped: Provider = {

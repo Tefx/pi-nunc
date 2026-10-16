@@ -250,11 +250,18 @@ export function createMemorySurface(options: {
         semanticEdits: params.toolResultEdits,
       }) : { applied: [], skipped: [] };
       const already = new Set(before.cleanup.map(d => `${d.entryId}:${d.messageIndex}`));
-      const cleanup: ToolResultCleanupResult = {
-        applied: selected.applied.filter(d => !already.has(`${d.entryId}:${d.messageIndex}`) &&
-          !d.sourceRefs?.some(ref => already.has(`${ref.entryId}:${ref.messageIndex}`))),
-        skipped: selected.skipped,
-      };
+      // Native context_edit replaces source bodies under stable entry IDs. M-only
+      // ancestor revisions remain legal, but cleanup must never approve those bodies.
+      const edited = new Set(before.active.filter(entry => entry.outputUsageUnavailable).map(entry => entry.entryId));
+      const cleanup: ToolResultCleanupResult = { applied: [], skipped: [...selected.skipped] };
+      for (const decision of selected.applied) {
+        const targetInvalid = edited.has(decision.entryId) || already.has(`${decision.entryId}:${decision.messageIndex}`);
+        const dependencyInvalid = decision.sourceRefs?.some(ref => edited.has(ref.entryId) || already.has(`${ref.entryId}:${ref.messageIndex}`));
+        if (targetInvalid || dependencyInvalid) cleanup.skipped.push({ entryId: decision.entryId, messageIndex: decision.messageIndex,
+          action: decision.action, reason: dependencyInvalid ? "missing_source_dependency" : "not_in_candidate_scope",
+          details: "Cleanup source or dependency was already cleaned or changed by native context_edit" });
+        else cleanup.applied.push(decision);
+      }
       const nextDecisions = [...before.cleanup, ...cleanup.applied];
       const leaf = ctx.sessionManager.getLeafId();
       try {

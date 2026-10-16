@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { memoryTokens } from "../../src/engine/accounting.js";
 import { repository } from "./fixtures.js";
+import type { NuncConfig } from "../../src/pi/config.js";
 
 /** Fixed hard-cap scenarios need a truly fitting required body on each SDK. */
 export function capacityRequiredText(tooLarge: boolean): string {
@@ -100,10 +101,11 @@ export async function comparisonStock(options: { e3?: "single" | "siblings" | "f
   await writeFile(join(f.state, "agent/settings.json"), JSON.stringify({ ...f.settings, defaultProvider: f.provider, defaultModel: f.modelId }));
   return f;
 }
-export async function compareCli(f: any, scenarios: unknown[], modes: string[], tag: string, automatic = false) {
+export async function compareCli(f: any, scenarios: unknown[], modes: string[], tag: string, automatic = false,
+  testOverride?: { requirement: string; reason: string; config: { nunc: NuncConfig } }) {
   const stateRoot = join(f.dir, `nunc-live-${tag}`);
   const selection = { target: { repository, stateRoot, cleanup: "remove" }, limits: { maxCalls: 300, maxTotalTokens: 24000000, maxDurationMs: 440000, maxOutputTokens: 20000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios,
-    overrides: [{ requirement: "controlled-extraction-observation", reason: "Named isolated loopback native scheduling and measured retention", config: { nunc: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 1024 } }, compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
+    overrides: [{ requirement: "controlled-extraction-observation", reason: "Named isolated loopback native scheduling and measured retention", config: { nunc: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 1024 } }, compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }, ...(testOverride ? [testOverride] : [])],
     comparison: { modes, targets: { native: { repository }, current: { repository: join(repository, ".scratch/baseline-70dacad") }, candidate: { repository } } } };
   const child = spawn(process.execPath, [join(repository, "scripts/compare-extraction.mjs")], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"] });
   let stdout = "", stderr = "";

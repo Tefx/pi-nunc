@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { object, canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
+import { object, canonical, parseInput, preflight, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
 import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
 import { childEnvironment, nativeEnvironment } from "./host.js";
@@ -59,7 +59,7 @@ export async function execute(value: unknown, repository: string, script: string
   const readAll = () => readQualifiedLedgers([...priorLedgerPaths, join(root, "calls.jsonl")]);
   // A newly created target is single-use; no silent rerun of possible prior effects.
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
-  const report: RunReport = { version: 1, status: "STOPPED", selection: publicInput(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
+  const report: RunReport = { version: 1, status: "STOPPED", selection: structuredClone(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
     "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
     "Semantic reasons, repeated failed attempts, restatement needs and unsupported claims require independent review of recorded actions/session evidence. No judge or additional model calls are authorized by this runner.",
     "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Reservations are never refunded; missing usage stays null.",
@@ -154,7 +154,7 @@ export async function observeStock(value: unknown, repository: string, signal: A
 }
 
 /** Called only after every child has exited. Failed/uncertain runs retain their evidence and are never replayed. */
-export async function finalizeRun(input: RunInput, receipt: Receipt, report: RunReport): Promise<void> {
+export async function finalizeRun(input: RunInput, receipt: Receipt, report: RunReport | import("./comparison.js").ComparisonReport): Promise<void> {
   const root = input.target.stateRoot;
   if (report.usage.unreconciledCallIds.length > 0) report.cleanup = "retained-for-reconciliation";
   const bound = JSON.parse(await readFile(join(root, "owner.json"), "utf8"));
@@ -162,7 +162,7 @@ export async function finalizeRun(input: RunInput, receipt: Receipt, report: Run
   if (input.target.cleanup === "remove" && report.status === "OBSERVED" && report.cleanup !== "retained-for-reconciliation") {
     // Preserve actual persistent evidence in the returned observer report before deleting its source directory.
     report.sessions = {};
-    for (const file of new Set(report.segments.flatMap(s => s.sessionFile ? [s.sessionFile] : []))) {
+    for (const file of new Set(("segments" in report ? report.segments : report.matrix).flatMap(s => s.sessionFile ? [s.sessionFile] : []))) {
       requireValue(within(file, root), "CLEANUP", "Session evidence is outside owned run");
       const text = await readFile(file, "utf8");
       requireValue(text.endsWith("\n"), "RECONCILIATION", "Incomplete persistent session; retain state");

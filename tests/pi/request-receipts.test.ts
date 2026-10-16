@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface } from "pi-nunc/pi";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { responsesSSE, fixture, memoryPatch } from "./fixtures.js";
 import { mainPlanningEstimate, messageTokens } from "../../src/engine/accounting.js";
 import { project } from "../../src/pi/projection.js";
 
@@ -30,18 +30,6 @@ test("unconfigured native images reach the host provider and new images are char
 
 const MARKER = "\n<turn-override>" + "Z".repeat(12000) + "</turn-override>";
 
-function responsesSSE(modelId: string, text: string, mode?: "current_turn" | "all_turns") {
-  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
-  const events = [
-    { type: "response.created", response: { id: "response-1", model: modelId, status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], ...(mode ? { reasoning: { context: mode } } : {}), usage: { input_tokens: 80, output_tokens: 4, total_tokens: 84, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-  ];
-  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-}
 
 function userMessages(f: Awaited<ReturnType<typeof fixture>>) {
   return f.runtime.session.sessionManager.getEntries().filter(entry => entry.type === "message" && entry.message.role === "user");
@@ -247,7 +235,7 @@ test("payload non-output change does not authorize that request or destroy an ea
     fetch: (async (resource: RequestInfo | URL, init?: RequestInit) => {
       sends++;
       await new Request(resource, init).json();
-      return responsesSSE(catalog.id, "Controlled native response.");
+      return responsesSSE(catalog.id, "Controlled native response.", { inputTokens: 80 });
     }) as typeof fetch,
     maxRetries: 0 as const,
   };
@@ -379,7 +367,7 @@ for (const mode of ["current_turn", "all_turns", undefined] as const) test(`nati
   const payloads: Record<string, unknown>[] = [];
   const bound = { apiKey: "offline-fixture-key", maxRetries: 0 as const, fetch: (async (resource: RequestInfo | URL, init?: RequestInit) => {
     payloads.push(await new Request(resource, init).json() as Record<string, unknown>);
-    return responsesSSE(model.id, "Controlled response", mode);
+    return responsesSSE(model.id, "Controlled response", { inputTokens: 80, reasoningContext: mode });
   }) as typeof fetch };
   const provider: Provider = { ...openai, getModels: () => [model],
     streamSimple: (m, c, o) => openai.streamSimple(m as Model<"openai-responses">, c, { ...o, ...bound }),

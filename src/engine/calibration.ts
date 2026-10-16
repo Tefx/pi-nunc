@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
 import { applyToolResultCleanup } from "./cleanup.js";
-import { integer, nonempty, record } from "./validation.js";
+import { canonical, integer, nonempty, record } from "./validation.js";
 
 type Snapshot = Omit<MaintenanceInput, "signal" | "binding" | "eligibleKeptEntryIds">;
 function digest(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(value, (_key, item: unknown) => record(item)
-    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)).digest("hex");
+  return createHash("sha256").update(canonical(value)).digest("hex");
 }
 function limitsDigest(input: Snapshot): string {
   const { toolResults: _mode, headTailChars: _chars, ...extraction } = input.config.extraction;

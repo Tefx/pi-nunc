@@ -25,7 +25,7 @@ import {
   type ToolResultEdit,
 } from "../../src/engine/index.js";
 import { extractionContext } from "../../src/engine/request.js";
-import { answer, input, model, responder, tool, user, assistant } from "./fixtures.js";
+import { input, responder, tool, user, assistant } from "./fixtures.js";
 
 function messageText(msg: ActiveEntry["messages"][number]): string {
   if (typeof msg.content === "string") return msg.content;
@@ -36,20 +36,6 @@ function messageText(msg: ActiveEntry["messages"][number]): string {
   return "";
 }
 
-function toolEntry(entryId: string, id: string, content: string, name = "read", isError = false): ActiveEntry {
-  return {
-    entryId,
-    sourceRole: "toolResult",
-    messages: [{
-      role: "toolResult",
-      toolCallId: id,
-      toolName: name,
-      isError,
-      timestamp: 0,
-      content: [{ type: "text", text: content }],
-    }],
-  };
-}
 
 test("parsePatch accepts optional toolResultEdits and maintains backwards compatibility with 4 fields", () => {
   const mem: Memory = { version: 1, slots: [{ id: "s1", text: "Note" }], nextId: 2 };
@@ -84,8 +70,8 @@ test("isMemoryUnchanged correctly compares memory slots", () => {
 test("semantic omit and replace apply uniform markers and calculate net savings", () => {
   const longText1 = "A".repeat(500);
   const longText2 = "B".repeat(500);
-  const t1 = toolEntry("t1", "c1", longText1);
-  const t2 = toolEntry("t2", "c2", longText2);
+  const t1 = tool("t1", "c1", longText1);
+  const t2 = tool("t2", "c2", longText2);
   const active = [t1, t2];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "New goal" }], nextId: 2 };
@@ -132,8 +118,8 @@ test("semantic omit and replace apply uniform markers and calculate net savings"
 });
 
 test("memoryRefs are mapped to final slot IDs and budget-dropped slots skip only dependent edits", () => {
-  const t1 = toolEntry("t1", "c1", "X".repeat(300));
-  const t2 = toolEntry("t2", "c2", "Y".repeat(300));
+  const t1 = tool("t1", "c1", "X".repeat(300));
+  const t2 = tool("t2", "c2", "Y".repeat(300));
   const active = [t1, t2];
 
   const memBefore: Memory = { version: 1, slots: [{ id: "s1", text: "Existing" }], nextId: 2 };
@@ -177,7 +163,7 @@ test("final M budget selection revokes only edits depending on dropped additions
     ] };
   const selected = applyPatch(before, patch, 1, slots => slots.length);
   assert.deepEqual(selected.memory.slots.map(s => s.text), ["Important note"]);
-  const entries = [toolEntry("a", "ca", "A".repeat(400)), toolEntry("b", "cb", "B".repeat(400))];
+  const entries = [tool("a", "ca", "A".repeat(400)), tool("b", "cb", "B".repeat(400))];
   const result = decideToolResultCleanup({ active: entries, retainedEntries: entries,
     candidateScope: [{ entryId: "a", messageIndex: 0 }, { entryId: "b", messageIndex: 0 }],
     initialMemory: before, finalMemory: selected.memory, keyToSlotMap: selected.keyToSlotMap,
@@ -187,9 +173,9 @@ test("final M budget selection revokes only edits depending on dropped additions
 });
 
 test("sourceRefs must point to fully retained non-omitted messages", () => {
-  const t1 = toolEntry("t1", "c1", "Z".repeat(300));
-  const t2 = toolEntry("t2", "c2", "W".repeat(300));
-  const t3 = toolEntry("t3", "c3", "V".repeat(300));
+  const t1 = tool("t1", "c1", "Z".repeat(300));
+  const t2 = tool("t2", "c2", "W".repeat(300));
+  const t3 = tool("t3", "c3", "V".repeat(300));
   const active = [t1, t2, t3];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -223,8 +209,8 @@ test("sourceRefs must point to fully retained non-omitted messages", () => {
 });
 
 test("mutual source dependencies in same batch are both skipped", () => {
-  const t1 = toolEntry("t1", "c1", "A".repeat(300));
-  const t2 = toolEntry("t2", "c2", "B".repeat(300));
+  const t1 = tool("t1", "c1", "A".repeat(300));
+  const t2 = tool("t2", "c2", "B".repeat(300));
   const active = [t1, t2];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -253,9 +239,9 @@ test("mutual source dependencies in same batch are both skipped", () => {
 test("mechanical deduplication protects keeper from same-batch semantic edits", () => {
   const identicalText = "Identical listing output:\n" + "file.txt\n".repeat(30);
   const call1 = assistant("call-1-entry", [{ type: "toolCall", id: "call-1", name: "find_files", arguments: { path: "." } }]);
-  const t1 = toolEntry("t1", "call-1", identicalText, "find_files");
+  const t1 = tool("t1", "call-1", identicalText, "find_files");
   const call2 = assistant("call-2-entry", [{ type: "toolCall", id: "call-2", name: "find_files", arguments: { path: "." } }]);
-  const t2 = toolEntry("t2", "call-2", identicalText, "find_files");
+  const t2 = tool("t2", "call-2", identicalText, "find_files");
   const active = [call1, t1, call2, t2];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -292,7 +278,7 @@ test("mechanical deduplication protects keeper from same-batch semantic edits", 
 });
 
 test("duplicate or conflicting edits in the same batch are rejected", () => {
-  const t1 = toolEntry("t1", "c1", "D".repeat(400));
+  const t1 = tool("t1", "c1", "D".repeat(400));
   const active = [t1];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
@@ -317,7 +303,7 @@ test("duplicate or conflicting edits in the same batch are rejected", () => {
 });
 
 test("tool results with omissions cannot be semantically cleaned", () => {
-  const t1 = toolEntry("t1", "c1", "E".repeat(400));
+  const t1 = tool("t1", "c1", "E".repeat(400));
   const active = [t1];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
@@ -365,7 +351,7 @@ test("tool results with non-text or outside candidate scope are rejected", () =>
       ],
     }],
   };
-  const t2 = toolEntry("t2", "c2", "Normal text ".repeat(30));
+  const t2 = tool("t2", "c2", "Normal text ".repeat(30));
   const active = [t1, t2];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -396,7 +382,7 @@ test("tool results with non-text or outside candidate scope are rejected", () =>
 });
 
 test("invalid edit shapes are locally rejected without blocking legal M", () => {
-  const t1 = toolEntry("t1", "c1", "G".repeat(400));
+  const t1 = tool("t1", "c1", "G".repeat(400));
   const active = [t1];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
@@ -429,7 +415,7 @@ test("invalid edit shapes are locally rejected without blocking legal M", () => 
 
 test("edits without net savings are rejected", () => {
   const shortText = "ok"; // 2 characters
-  const t1 = toolEntry("t1", "c1", shortText);
+  const t1 = tool("t1", "c1", shortText);
   const active = [t1];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
@@ -455,7 +441,7 @@ test("edits without net savings are rejected", () => {
 
 test("no cleanups applied when M is unchanged or feature is disabled", () => {
   const longText = "H".repeat(400);
-  const t1 = toolEntry("t1", "c1", longText);
+  const t1 = tool("t1", "c1", longText);
   const active = [t1];
   const mem: Memory = { version: 1, slots: [{ id: "s1", text: "Same note" }], nextId: 2 };
 
@@ -497,9 +483,9 @@ test("mechanical rules compactly format JSON and clean terminal ANSI escapes", (
   const rawTerminal = "\x1b[32mSUCCESS:\x1b[0m Build passed in 1.2s\r\n\x1b[33mWarning:\x1b[0m 0 issues\r\n";
   const unknownFormat = "Just some arbitrary text output with no special format.";
 
-  const t1 = toolEntry("t1", "c1", rawJson);
-  const t2 = toolEntry("t2", "c2", rawTerminal);
-  const t3 = toolEntry("t3", "c3", unknownFormat);
+  const t1 = tool("t1", "c1", rawJson);
+  const t2 = tool("t2", "c2", rawTerminal);
+  const t3 = tool("t3", "c3", unknownFormat);
   const active = [t1, t2, t3];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -544,7 +530,7 @@ test("maintain() integrates cleanup into candidate and observations, preserving 
   const longResult = "File contents line\n".repeat(40);
   // Insert a completed tool call and tool result in active history before latest user
   const tCall = assistant("call-entry", [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "foo.txt" } }]);
-  const tResult = toolEntry("result-entry", "call-1", longResult);
+  const tResult = tool("result-entry", "call-1", longResult);
   source.active = [user("u1", "First"), tCall, tResult, user("u2", "Second question")];
   source.cleanupCandidateScope = [{ entryId: "result-entry", messageIndex: 0 }];
 
@@ -589,7 +575,7 @@ test("maintain() does not apply cleanup when M is unchanged or config.toolResult
   const source = await input();
   const longResult = "Repetitive log line\n".repeat(30);
   const tCall = assistant("call-entry", [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "bar.txt" } }]);
-  const tResult = toolEntry("result-entry", "call-1", longResult);
+  const tResult = tool("result-entry", "call-1", longResult);
   source.active = [user("u1", "First"), tCall, tResult, user("u2", "Second question")];
 
   // Response with no M change (empty add/remove/priority/required)
@@ -627,7 +613,7 @@ test("maintain() does not apply cleanup when M is unchanged or config.toolResult
 
 test("decideToolResultCleanup with NO candidateScope fails closed and never manufactures scope", () => {
   const jsonText = '{\n  "status": "ok",\n  "code": 200\n}';
-  const t = toolEntry("t1", "c1", jsonText);
+  const t = tool("t1", "c1", jsonText);
   const active = [t];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
@@ -718,9 +704,9 @@ test("deduplication requires keeper in retainedEntries and demonstrable source i
 
   // Case A: Earlier entry b is retired (not in retainedEntries); c is in retainedEntries
   const callB = assistant("call-b-entry", [{ type: "toolCall", id: "call-b", name: "read", arguments: { path: "data.txt" } }]);
-  const entryB = toolEntry("b", "call-b", bodyText, "read");
+  const entryB = tool("b", "call-b", bodyText, "read");
   const callC = assistant("call-c-entry", [{ type: "toolCall", id: "call-c", name: "read", arguments: { path: "data.txt" } }]);
-  const entryC = toolEntry("c", "call-c", bodyText, "read");
+  const entryC = tool("c", "call-c", bodyText, "read");
   const activeA = [callB, entryB, callC, entryC];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -738,9 +724,9 @@ test("deduplication requires keeper in retainedEntries and demonstrable source i
 
   // Case B: Same toolName but DIFFERENT arguments (read file1 vs read file2)
   const callDiff1 = assistant("call-diff-1-entry", [{ type: "toolCall", id: "c-diff-1", name: "read", arguments: { path: "file1.txt" } }]);
-  const entryDiff1 = toolEntry("d1", "c-diff-1", bodyText, "read");
+  const entryDiff1 = tool("d1", "c-diff-1", bodyText, "read");
   const callDiff2 = assistant("call-diff-2-entry", [{ type: "toolCall", id: "c-diff-2", name: "read", arguments: { path: "file2.txt" } }]);
-  const entryDiff2 = toolEntry("d2", "c-diff-2", bodyText, "read");
+  const entryDiff2 = tool("d2", "c-diff-2", bodyText, "read");
   const activeB = [callDiff1, entryDiff1, callDiff2, entryDiff2];
 
   const resDiffArgs = decideToolResultCleanup({
@@ -755,9 +741,9 @@ test("deduplication requires keeper in retainedEntries and demonstrable source i
 
   // Case C: Same toolName and SAME arguments (both read file1.txt) and both retained
   const callSame1 = assistant("call-same-1-entry", [{ type: "toolCall", id: "c-same-1", name: "read", arguments: { path: "file1.txt" } }]);
-  const entrySame1 = toolEntry("s1", "c-same-1", bodyText, "read");
+  const entrySame1 = tool("s1", "c-same-1", bodyText, "read");
   const callSame2 = assistant("call-same-2-entry", [{ type: "toolCall", id: "c-same-2", name: "read", arguments: { path: "file1.txt" } }]);
-  const entrySame2 = toolEntry("s2", "c-same-2", bodyText, "read");
+  const entrySame2 = tool("s2", "c-same-2", bodyText, "read");
   const activeC = [callSame1, entrySame1, callSame2, entrySame2];
 
   const resSameArgs = decideToolResultCleanup({
@@ -779,10 +765,10 @@ test("sequential tool calls reusing toolCallId with different arguments do not d
 
   // Turn 1: call-reused reads path A
   const call1 = assistant("a1", [{ type: "toolCall", id: "call-reused", name: "read", arguments: { path: "path_A.txt" } }]);
-  const res1 = toolEntry("r1", "call-reused", commonBody, "read");
+  const res1 = tool("r1", "call-reused", commonBody, "read");
   // Turn 2: call-reused reads path B (different argument, same toolCallId)
   const call2 = assistant("a2", [{ type: "toolCall", id: "call-reused", name: "read", arguments: { path: "path_B.txt" } }]);
-  const res2 = toolEntry("r2", "call-reused", commonBody, "read");
+  const res2 = tool("r2", "call-reused", commonBody, "read");
 
   const active = [call1, res1, call2, res2];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -857,8 +843,8 @@ test("applyToolResultCleanup replaces text body exactly once and preserves all h
 test("request.ts extractionContext preserves prefix stability, puts candidates at tail, and pre-filters omissions/mixed", async () => {
   const baseInput = await input();
   const tCall = assistant("call-entry", [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "data.txt" } }]);
-  const tResultClean = toolEntry("res-clean", "call-1", "A".repeat(500));
-  const tResultOmission = toolEntry("res-omission", "call-1", "B".repeat(500));
+  const tResultClean = tool("res-clean", "call-1", "A".repeat(500));
+  const tResultOmission = tool("res-omission", "call-1", "B".repeat(500));
   const tResultImage: ActiveEntry = {
     entryId: "res-image",
     sourceRole: "toolResult",
@@ -995,9 +981,9 @@ test("stripToolBoilerplate requires keeper in retainedEntries and protects keepe
   const out2 = launchBp + dynamicSuffix;
 
   const call1 = assistant("a1", [{ type: "toolCall", id: "c1", name: "larva_subagent", arguments: { task: "first" } }]);
-  const t1 = toolEntry("t1", "c1", out1, "larva_subagent");
+  const t1 = tool("t1", "c1", out1, "larva_subagent");
   const call2 = assistant("a2", [{ type: "toolCall", id: "c2", name: "larva_subagent", arguments: { task: "second" } }]);
-  const t2 = toolEntry("t2", "c2", out2, "larva_subagent");
+  const t2 = tool("t2", "c2", out2, "larva_subagent");
   const active = [call1, t1, call2, t2];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -1040,7 +1026,7 @@ test("stripToolBoilerplate requires keeper in retainedEntries and protects keepe
   assert.equal(resRetiredKeeper.applied.length, 0);
 
   // Case D: a different tool cannot borrow this keeper
-  const other = toolEntry("other", "different", out2, "other_tool");
+  const other = tool("other", "different", out2, "other_tool");
   const crossTool = decideToolResultCleanup({ active: [call1, t1, other], retainedEntries: [call1, t1, other],
     candidateScope: [{ entryId: "other", messageIndex: 0 }], initialMemory: memBefore, finalMemory: memAfter });
   assert.equal(crossTool.applied.length, 0);
@@ -1048,8 +1034,8 @@ test("stripToolBoilerplate requires keeper in retainedEntries and protects keepe
   // Case E: Arbitrary shared header lines (not known launch boilerplate) must NOT strip
   const arbOut1 = "Unique diagnostic line A\nUnique diagnostic line B\nTail 1\n".repeat(10);
   const arbOut2 = "Unique diagnostic line A\nUnique diagnostic line B\nTail 2\n".repeat(10);
-  const tArb1 = toolEntry("ta1", "ca1", arbOut1, "bash");
-  const tArb2 = toolEntry("ta2", "ca2", arbOut2, "bash");
+  const tArb1 = tool("ta1", "ca1", arbOut1, "bash");
+  const tArb2 = tool("ta2", "ca2", arbOut2, "bash");
   const resArb = decideToolResultCleanup({
     active: [tArb1, tArb2],
     candidateScope: [{ entryId: "ta2", messageIndex: 0 }],
@@ -1062,8 +1048,8 @@ test("stripToolBoilerplate requires keeper in retainedEntries and protects keepe
 
 test("sourceRefs enforces final full-source condition and rejects mechanically reduced targets", () => {
   const jsonText = '{\n  "longKey": "value",\n  "another": [1, 2, 3]\n}';
-  const t1 = toolEntry("t1", "c1", jsonText);
-  const t2 = toolEntry("t2", "c2", "Dependent summary target ".repeat(20));
+  const t1 = tool("t1", "c1", jsonText);
+  const t2 = tool("t2", "c2", "Dependent summary target ".repeat(20));
   const active = [t1, t2];
 
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
@@ -1090,7 +1076,7 @@ test("sourceRefs enforces final full-source condition and rejects mechanically r
 });
 
 test("malformed edit plus valid edit on same target both trigger duplicate_edit rejection", () => {
-  const t1 = toolEntry("t1", "c1", "Long tool output text ".repeat(20));
+  const t1 = tool("t1", "c1", "Long tool output text ".repeat(20));
   const active = [t1];
   const memBefore: Memory = { version: 1, slots: [], nextId: 1 };
   const memAfter: Memory = { version: 1, slots: [{ id: "s1", text: "Goal" }], nextId: 2 };
@@ -1120,7 +1106,7 @@ test("legacy callers without cleanupCandidateScope preserve 100% consistent raw 
   const source = await input();
   const longResult = '{\n  "status": "legacy",\n  "data": [1, 2, 3]\n}';
   const tCall = assistant("call-entry", [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "data.json" } }]);
-  const tResult = toolEntry("res-entry", "call-1", longResult);
+  const tResult = tool("res-entry", "call-1", longResult);
   source.active = [user("u1", "First"), tCall, tResult, user("u2", "Second question")];
   delete source.cleanupCandidateScope;
 

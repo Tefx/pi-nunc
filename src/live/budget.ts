@@ -209,37 +209,7 @@ export class BudgetLedger {
   }
 
   readQualifiedCalls(): { calls: QualifiedCall[]; currentFileRecords: LedgerRecord[] } {
-    const seen = new Set<string>();
-    const allPaths: string[] = [];
-    for (const p of [...this.priorLedgerPaths, this.path]) {
-      const canonical = resolve(p);
-      if (seen.has(canonical)) continue;
-      seen.add(canonical);
-      allPaths.push(p);
-    }
-    const calls: QualifiedCall[] = [];
-    let currentFileRecords: LedgerRecord[] = [];
-    for (const p of allPaths) {
-      if (!existsSync(p)) continue;
-      const records = readLedger(p);
-      if (resolve(p) === resolve(this.path)) currentFileRecords = records;
-      const fileCalls = records.filter((r): r is CallRecord => r.kind === "reserve");
-      const fileTerminals = records.filter((r): r is CallEnd => r.kind === "terminal");
-      const fileTerminalsById = new Map<number, CallEnd[]>();
-      for (const t of fileTerminals) {
-        const list = fileTerminalsById.get(t.id) ?? [];
-        list.push(t);
-        fileTerminalsById.set(t.id, list);
-      }
-      for (const r of fileCalls) {
-        calls.push({
-          ledgerPath: p,
-          record: r,
-          terminals: fileTerminalsById.get(r.id) ?? [],
-        });
-      }
-    }
-    return { calls, currentFileRecords };
+    return { calls: readQualifiedLedgers([...this.priorLedgerPaths, this.path]), currentFileRecords: readLedger(this.path) };
   }
 
   readAllRecords(): LedgerRecord[] {
@@ -339,63 +309,11 @@ export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
 }
 
 export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?: Limits) {
-  if (records.length > 0 && "record" in records[0]! && "terminals" in records[0]!) {
-    const qCalls = records as QualifiedCall[];
-    const calls = qCalls.map(c => c.record);
-    const allTerminals = qCalls.flatMap(c => c.terminals);
-    const activeCalls = qCalls.filter(c => c.terminals.length === 0);
-
-    const sum = (key: keyof UsageObservation): number | null =>
-      allTerminals.length !== calls.length || allTerminals.some(r => r.usage[key] === null)
-        ? null
-        : allTerminals.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
-
-    const reservedTokens = calls.reduce((n, r) => n + r.reservedTokens, 0);
-    const chargedTokens = qCalls.reduce((n, c) => n + callChargedTokens(c.record, c.terminals), 0);
-    const reservedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : calls.reduce((n, r) => n + (r.reservedCostUsd ?? 0), 0);
-    const chargedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : qCalls.reduce((n, c) => n + (callChargedCost(c.record, c.terminals) ?? 0), 0);
-    const catalogReservationUsd = calls.every(r => r.catalogReservationUsd !== undefined) ? calls.reduce((n, r) => n + (r.catalogReservationUsd ?? 0), 0) : null;
-
-    const actualTokens = sum("totalTokens");
-    const actualCostUsd = sum("cost");
-
-    const activeReservedTokens = activeCalls.reduce((n, c) => n + c.record.reservedTokens, 0);
-    const activeReservedCostUsd = activeCalls.some(c => c.record.reservedCostUsd === null) ? null : activeCalls.reduce((n, c) => n + (c.record.reservedCostUsd ?? 0), 0);
-
-    const remainingCalls = limits?.maxCalls !== null && limits?.maxCalls !== undefined ? Math.max(0, limits.maxCalls - calls.length) : null;
-    const remainingTokens = limits?.maxTotalTokens !== null && limits?.maxTotalTokens !== undefined ? Math.max(0, limits.maxTotalTokens - chargedTokens) : null;
-    const remainingCostUsd = limits?.maxCostUsd !== null && limits?.maxCostUsd !== undefined && chargedCostUsd !== null ? Math.max(0, limits.maxCostUsd - chargedCostUsd) : null;
-
-    return {
-      calls: calls.length,
-      reservedTokens,
-      chargedTokens,
-      actualTokens,
-      reservedCostUsd,
-      chargedCostUsd,
-      actualCostUsd,
-      activeReservedTokens,
-      activeReservedCostUsd,
-      catalogReservationUsd,
-      input: sum("input"),
-      cacheRead: sum("cacheRead"),
-      cacheWrite: sum("cacheWrite"),
-      contextInput: sum("contextInput"),
-      output: sum("output"),
-      totalTokens: actualTokens,
-      costUsd: actualCostUsd,
-      remainingCalls,
-      remainingTokens,
-      remainingCostUsd,
-      unreconciledCallIds: activeCalls.map(c => c.record.id),
-    };
-  }
-
-  const lRecords = records as LedgerRecord[];
-  const calls = lRecords.filter((r): r is CallRecord => r.kind === "reserve");
-  const terminal = lRecords.filter((r): r is CallEnd => r.kind === "terminal");
+  const qualified = records.length > 0 && "record" in records[0]! && "terminals" in records[0]!;
+  const lRecords = qualified ? [] : records as LedgerRecord[];
+  const rawCalls = lRecords.filter((r): r is CallRecord => r.kind === "reserve");
+  const terminal = qualified ? (records as QualifiedCall[]).flatMap(c => c.terminals) : lRecords.filter((r): r is CallEnd => r.kind === "terminal");
   const callKey = (r: { ledgerPath?: string; id: number }) => r.ledgerPath ? `${r.ledgerPath}::${r.id}` : String(r.id);
-  const ended = new Set(terminal.map(callKey));
   const terminalsById = new Map<string, CallEnd[]>();
   for (const t of terminal) {
     const k = callKey(t);
@@ -403,20 +321,28 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
     list.push(t);
     terminalsById.set(k, list);
   }
-  const sum = (key: keyof UsageObservation): number | null => terminal.length !== calls.length || terminal.some(r => r.usage[key] === null) ? null : terminal.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
+
+  const qCalls: QualifiedCall[] = qualified ? records as QualifiedCall[] : rawCalls.map(record => ({
+    ledgerPath: record.ledgerPath ?? "", record, terminals: terminalsById.get(callKey(record)) ?? [],
+  }));
+  const calls = qCalls.map(c => c.record);
+  const activeCalls = qCalls.filter(c => c.terminals.length === 0);
+  const sum = (key: keyof UsageObservation): number | null =>
+    terminal.length !== calls.length || terminal.some(r => r.usage[key] === null)
+      ? null
+      : terminal.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
 
   const reservedTokens = calls.reduce((n, r) => n + r.reservedTokens, 0);
-  const chargedTokens = calls.reduce((n, r) => n + callChargedTokens(r, terminalsById.get(callKey(r))), 0);
+  const chargedTokens = qCalls.reduce((n, c) => n + callChargedTokens(c.record, c.terminals), 0);
   const reservedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : calls.reduce((n, r) => n + (r.reservedCostUsd ?? 0), 0);
-  const chargedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : calls.reduce((n, r) => n + (callChargedCost(r, terminalsById.get(callKey(r))) ?? 0), 0);
+  const chargedCostUsd = calls.some(r => r.reservedCostUsd === null) ? null : qCalls.reduce((n, c) => n + (callChargedCost(c.record, c.terminals) ?? 0), 0);
   const catalogReservationUsd = calls.every(r => r.catalogReservationUsd !== undefined) ? calls.reduce((n, r) => n + (r.catalogReservationUsd ?? 0), 0) : null;
 
   const actualTokens = sum("totalTokens");
   const actualCostUsd = sum("cost");
 
-  const activeCalls = calls.filter(r => !ended.has(callKey(r)));
-  const activeReservedTokens = activeCalls.reduce((n, r) => n + r.reservedTokens, 0);
-  const activeReservedCostUsd = activeCalls.some(r => r.reservedCostUsd === null) ? null : activeCalls.reduce((n, r) => n + (r.reservedCostUsd ?? 0), 0);
+  const activeReservedTokens = activeCalls.reduce((n, c) => n + c.record.reservedTokens, 0);
+  const activeReservedCostUsd = activeCalls.some(c => c.record.reservedCostUsd === null) ? null : activeCalls.reduce((n, c) => n + (c.record.reservedCostUsd ?? 0), 0);
 
   const remainingCalls = limits?.maxCalls !== null && limits?.maxCalls !== undefined ? Math.max(0, limits.maxCalls - calls.length) : null;
   const remainingTokens = limits?.maxTotalTokens !== null && limits?.maxTotalTokens !== undefined ? Math.max(0, limits.maxTotalTokens - chargedTokens) : null;
@@ -443,7 +369,7 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
     remainingCalls,
     remainingTokens,
     remainingCostUsd,
-    unreconciledCallIds: activeCalls.map(r => r.id),
+    unreconciledCallIds: activeCalls.map(c => c.record.id),
   };
 }
 function errorMessage(model: Model<Api>, reason: string): AssistantMessage {
@@ -463,7 +389,7 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
   requireValue(prefix === "/" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`), "ENDPOINT", "Transport path is outside authorized model baseUrl");
 }
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
-export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; subscriptionBilling?: (model: Model<Api>) => boolean; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; effectiveThinking?: string | undefined; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
+export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; subscriptionBilling?: (model: Model<Api>) => boolean; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
   function stream(model: Model<Api>, context: Context | TranscriptContext, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = new AssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
@@ -521,10 +447,6 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
               const expectedEffort = options.requireThinkingLevel;
               if (expectedEffort !== undefined && expectedEffort !== "off") {
                 requireValue(payloadEffort === expectedEffort, "THINKING_UNAPPLIED", `${kind} request payload for ${selected.id} does not apply required thinking level "${expectedEffort}"; observed "${payloadEffort ?? "none"}"`);
-              } else if (kind === "maintenance" && options.requireThinkingLevel !== "off" && !options.maintenanceThinking) {
-                if (payloadEffort !== options.requireThinkingLevel) {
-                  throw new RunnerError("THINKING_UNAPPLIED", `Maintenance request payload for ${selected.id} does not apply specified thinking level "${options.requireThinkingLevel}"; observed "${payloadEffort ?? "none"}". Raw maintenance defaults to effort none; apply maintenance-thinking override for isolated observation.`);
-                }
               }
             }
             options.onPayload?.({ callId: reservation!.id, cap: caps, ...(options.capturePayload ? { finalPayload: structuredClone(body) } : {}) });

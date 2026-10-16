@@ -13,7 +13,7 @@ import {
   applyLastUserTextAppend, authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, payloadMode,
 } from "../../src/pi/payload.js";
 import { model } from "../engine/fixtures.js";
-import { fixture } from "./fixtures.js";
+import { responsesSSE, fixture } from "./fixtures.js";
 
 const SYNTHETIC = SYNTHETIC_LAST_USER_APPEND;
 const SYNTHETIC_B = SYNTHETIC_LAST_USER_APPEND_B;
@@ -29,18 +29,6 @@ function authorize(before: unknown, after: unknown, extra: Partial<Parameters<ty
   return delta;
 }
 
-function responsesSSE(modelId: string, text: string) {
-  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
-  const events = [
-    { type: "response.created", response: { id: "response-1", model: modelId, status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-  ];
-  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-}
 
 function completionsSSE(modelId: string, text: string) {
   const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;

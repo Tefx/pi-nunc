@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
-import { canonical, parseInput, preflight, publicInput, requireValue, RunnerError, within, type ComparisonGroup, type ComparisonMode, type Receipt, type RunInput } from "./contract.js";
+import { parseInput, preflight, requireValue, RunnerError, type ComparisonGroup, type ComparisonMode, type RunInput } from "./contract.js";
 import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext, type LedgerRecord } from "./budget.js";
-import { launchWorker, type ChildReceipt } from "./runner.js";
+import { finalizeRun, launchWorker, type ChildReceipt } from "./runner.js";
 import type { SegmentReport } from "./worker.js";
 import { matchedParity, rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
 import type { MatchReference } from "./preparation.js";
@@ -34,27 +34,6 @@ export interface ComparisonReport {
   cleanup: "retained" | "removed" | "retained-for-reconciliation"; limitations: string[]; reason?: string | undefined;
   sessions?: Record<string, unknown[]> | undefined; rawSegments?: SegmentReport[] | undefined;
 }
-export async function finalizeComparisonRun(input: RunInput, receipt: Receipt, report: ComparisonReport): Promise<void> {
-  const root = input.target.stateRoot;
-  if (report.usage.unreconciledCallIds.length > 0) report.cleanup = "retained-for-reconciliation";
-  const bound = JSON.parse(await readFile(join(root, "owner.json"), "utf8"));
-  requireValue(canonical(bound.receipt) === canonical(receipt), "CLEANUP", "Run ownership changed; retain state");
-  if (input.target.cleanup === "remove" && report.status === "OBSERVED" && report.cleanup !== "retained-for-reconciliation") {
-    report.sessions = {};
-    const sessionFiles = new Set(report.matrix.flatMap(item => item.sessionFile ? [item.sessionFile] : []));
-    for (const file of sessionFiles) {
-      requireValue(within(file, root), "CLEANUP", "Session evidence is outside owned run");
-      const text = await readFile(file, "utf8");
-      requireValue(text.endsWith("\n"), "RECONCILIATION", "Incomplete persistent session; retain state");
-      report.sessions[file] = text.trim().split("\n").map(line => JSON.parse(line));
-    }
-    await rm(root, { recursive: true });
-    report.cleanup = "removed";
-  } else {
-    await writeFile(join(root, "report.json"), JSON.stringify(report, null, 2), { mode: 0o600 });
-    await writeFile(join(root, "owner.json"), JSON.stringify({ ...bound, status: "terminal", result: report.status, reason: report.reason, cleanup: report.cleanup }), { mode: 0o600 });
-  }
-}
 /** Call-ID joining is shared by segment, case and group totals. Missing terminals stay unknown. */
 export function scopedUsage(records: LedgerRecord[], ids: Set<number>, limits?: RunInput["limits"]) {
   const scoped = records.filter(r => ids.has(r.id));
@@ -82,7 +61,7 @@ export async function executeComparison(value: unknown, repository: string, scri
   const readAll = () => readQualifiedLedgers([...priorLedgerPaths, join(root, "calls.jsonl")]);
   await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600, flag: "wx" });
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
-  const report: ComparisonReport = { version: 1, status: "STOPPED", selection: publicInput(input), comparison: { modes: [] }, matrix: [], rawSegments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
+  const report: ComparisonReport = { version: 1, status: "STOPPED", selection: structuredClone(input), comparison: { modes: [] }, matrix: [], rawSegments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
     "Controlled HTTP responses prove stock-host scheduling, accounting and scorer mechanics only; semantic policy and continuation quality require independent observation.",
     "All setup, maintenance and continuation calls share the finite ledger. Unknown usage/cost remains null; reservations are never refunded.",
     "Matched runs prepare each actual rollover independently. Native summaries have provider output limits but no enforced rendered-memory ceiling after wrapper/file-list append; realized-size matching alone leaves budget parity UNPROVEN.",
@@ -196,7 +175,7 @@ export async function executeComparison(value: unknown, repository: string, scri
       report.usage = ledgerSummary(readAll(), input.limits);
     } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
     report.elapsedMs = Date.now() - (firstDispatchAt ?? started);
-    await finalizeComparisonRun(input, receipt, report);
+    await finalizeRun(input, receipt, report);
   }
   return report;
 }

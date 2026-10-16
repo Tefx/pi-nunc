@@ -267,7 +267,7 @@ export class NativeHost {
     if (object(state.model)) { const selected = state.model; this.model = this.options.modelTargets.find(m => m.provider === selected.provider && m.id === selected.id); }
     requireValue(this.model, "MODEL", "Native fallback or saved model outside authorization"); this.drain();
   }
-  async prompt(message: string, _options?: unknown): Promise<void> {
+  async prompt(message: string): Promise<void> {
     const start = this.events.length;
     await this.command("prompt", { message });
     await new Promise<void>((resolve, reject) => {
@@ -309,7 +309,7 @@ export class NativeHost {
     requireValue(object(state), "RPC", "Invalid native session state");
     return { isCompacting: state.isCompacting === true, pendingMessageCount: Number(state.pendingMessageCount) || 0 };
   }
-  async setModel(model: Model<Api>, _options?: unknown): Promise<void> { await this.command("set_model", { provider: model.provider, modelId: model.id }); await this.refresh(); }
+  async setModel(model: Model<Api>): Promise<void> { await this.command("set_model", { provider: model.provider, modelId: model.id }); await this.refresh(); }
   async close(): Promise<void> {
     if (this.sessionFile && existsSync(this.sessionFile)) {
       try { chmodSync(this.sessionFile, 0o600); } catch { /* ignore */ }
@@ -322,4 +322,3 @@ export class NativeHost {
   }
 }
 export async function openHost(options: HostOptions): Promise<NativeHost> { const host = new NativeHost(options); try { return await host.start(); } catch (error) { await host.close(); throw error; } }
-export async function closeHost(host: NativeHost): Promise<void> { await host.close(); }

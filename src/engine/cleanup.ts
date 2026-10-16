@@ -230,7 +230,7 @@ export interface CleanupDecisionOptions {
   disabled?: boolean | undefined;
 }
 
-function messageTextContent(message: ActiveEntry["messages"][number]): string | null {
+export function messageTextContent(message: ActiveEntry["messages"][number]): string | null {
   if (typeof message.content === "string") return message.content;
   if (!Array.isArray(message.content)) return null;
   let text = "";
@@ -496,7 +496,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   const boilerplateKeepers = new Map<string, ToolResultRef>();
 
   // Deduplication tracker: sameSourceKey -> keeper in retainedEntries
-  const seenIdentical = new Map<string, { ref: ToolResultRef; toolCallId: string; toolName: string; text: string }>();
+  const seenIdentical = new Map<string, ToolResultRef>();
 
   for (const entry of active) {
     for (const [messageIndex, message] of entry.messages.entries()) {
@@ -548,13 +548,13 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
 
         if (!existing) {
           if (isRetained) {
-            seenIdentical.set(sameSourceKey, { ref, toolCallId: message.toolCallId, toolName, text });
+            seenIdentical.set(sameSourceKey, ref);
           }
         } else if (candidateScopeSet.has(key) && !rejectedConflictKeys.has(key) && !mechanicalDecisions.has(key)) {
-          const marker = formatDeduplicateMarker(ref, existing.ref);
+          const marker = formatDeduplicateMarker(ref, existing);
           const netSavings = text.length - marker.length;
           if (netSavings > 0) {
-            protectedKeepers.add(refKey(existing.ref));
+            protectedKeepers.add(refKey(existing));
             mechanicalDecisions.set(key, {
               entryId: ref.entryId,
               messageIndex: ref.messageIndex,
@@ -566,7 +566,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
               originalLength: text.length,
               cleanedLength: marker.length,
               netSavings,
-              sourceRefs: [existing.ref],
+              sourceRefs: [existing],
             });
           }
         }

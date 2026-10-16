@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { canonical } from "../engine/validation.js";
+export { canonical } from "../engine/validation.js";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { lstat, readFile, realpath, readdir } from "node:fs/promises";
@@ -133,6 +135,14 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
   const config = parseConfig(value.nunc);
   if (config.policyFile !== undefined) requireValue(text(config.policyFile) && isAbsolute(config.policyFile), "CONFIG", "Runner policyFile must be absolute and repository-local");
 }
+function validateBatchFields(target: Record<string, unknown>, code: string, prefix: string): void {
+  for (const field of ["firstDispatchAt", "deadline"]) {
+    const value = target[field];
+    if (value !== undefined) requireValue((typeof value === "number" && Number.isFinite(value) && value > 0) || (typeof value === "string" && !isNaN(Date.parse(value))), code, `${prefix}.${field} must be a positive timestamp or valid ISO date`);
+  }
+  if (target.priorLedgers !== undefined) requireValue(Array.isArray(target.priorLedgers) && target.priorLedgers.every(p => typeof p === "string" && p.trim().length > 0), code, `${prefix}.priorLedgers must be an array of non-empty paths`);
+  if (target.sharedLedger !== undefined) requireValue(typeof target.sharedLedger === "string" && target.sharedLedger.trim().length > 0, code, `${prefix}.sharedLedger must be a non-empty string path`);
+}
 export function parseInput(value: unknown, execution = false): RunInput {
   keys(value, ["version", "mode", "target", "models", "limits", "scenarios", "receipt", "observations", "effective", "overrides", "resolvedModels", "comparison", "assets", "batch"], "input");
   requireValue(value.version === 1, "INPUT", "Expected input version 1");
@@ -157,35 +167,11 @@ export function parseInput(value: unknown, execution = false): RunInput {
   value.limits.maxTotalTokens = optionalPositive(value.limits.maxTotalTokens, "maxTotalTokens");
   for (const key of ["maxDurationMs", "maxOutputTokens"]) requireValue(positive(value.limits[key]), "LIMIT", `Positive bounded ${key} required`);
   requireValue(Number(value.limits.maxDurationMs) <= 86400000 && (value.limits.maxCostUsd === null || typeof value.limits.maxCostUsd === "number" && Number.isFinite(value.limits.maxCostUsd) && value.limits.maxCostUsd > 0), "LIMIT", "Invalid time/cost ceiling");
-  const lim = value.limits as any;
-  if (lim.firstDispatchAt !== undefined) {
-    requireValue((typeof lim.firstDispatchAt === "number" && Number.isFinite(lim.firstDispatchAt) && lim.firstDispatchAt > 0) || (typeof lim.firstDispatchAt === "string" && !isNaN(Date.parse(lim.firstDispatchAt))), "LIMIT", "limits.firstDispatchAt must be a positive timestamp or valid ISO date");
-  }
-  if (lim.deadline !== undefined) {
-    requireValue((typeof lim.deadline === "number" && Number.isFinite(lim.deadline) && lim.deadline > 0) || (typeof lim.deadline === "string" && !isNaN(Date.parse(lim.deadline))), "LIMIT", "limits.deadline must be a positive timestamp or valid ISO date");
-  }
-  if (lim.priorLedgers !== undefined) {
-    requireValue(Array.isArray(lim.priorLedgers) && lim.priorLedgers.every((p: any) => typeof p === "string" && p.trim().length > 0), "LIMIT", "limits.priorLedgers must be an array of non-empty paths");
-  }
-  if (lim.sharedLedger !== undefined) {
-    requireValue(typeof lim.sharedLedger === "string" && lim.sharedLedger.trim().length > 0, "LIMIT", "limits.sharedLedger must be a non-empty string path");
-  }
-  if ((value as any).batch !== undefined) {
-    requireValue(object((value as any).batch), "BATCH", "batch must be an object");
-    keys((value as any).batch, ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], "batch");
-    const b = (value as any).batch;
-    if (b.firstDispatchAt !== undefined) {
-      requireValue((typeof b.firstDispatchAt === "number" && Number.isFinite(b.firstDispatchAt) && b.firstDispatchAt > 0) || (typeof b.firstDispatchAt === "string" && !isNaN(Date.parse(b.firstDispatchAt))), "BATCH", "batch.firstDispatchAt must be a positive timestamp or valid ISO date");
-    }
-    if (b.deadline !== undefined) {
-      requireValue((typeof b.deadline === "number" && Number.isFinite(b.deadline) && b.deadline > 0) || (typeof b.deadline === "string" && !isNaN(Date.parse(b.deadline))), "BATCH", "batch.deadline must be a positive timestamp or valid ISO date");
-    }
-    if (b.priorLedgers !== undefined) {
-      requireValue(Array.isArray(b.priorLedgers) && b.priorLedgers.every((p: any) => typeof p === "string" && p.trim().length > 0), "BATCH", "batch.priorLedgers must be an array of non-empty paths");
-    }
-    if (b.sharedLedger !== undefined) {
-      requireValue(typeof b.sharedLedger === "string" && b.sharedLedger.trim().length > 0, "BATCH", "batch.sharedLedger must be a non-empty string path");
-    }
+  validateBatchFields(value.limits, "LIMIT", "limits");
+  if (value.batch !== undefined) {
+    requireValue(object(value.batch), "BATCH", "batch must be an object");
+    keys(value.batch, ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], "batch");
+    validateBatchFields(value.batch, "BATCH", "batch");
   }
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
@@ -328,11 +314,6 @@ export function selectedModels(input: RunInput): Model<Api>[] {
     return model;
   });
 }
-export function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (object(value)) return `{${Object.keys(value).filter(k => value[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(",")}}`;
-  return JSON.stringify(value) ?? "null";
-}
 export async function preflight(input: RunInput, repository: string, existingOwnedWorker = false): Promise<Receipt> {
   await validateTarget(input, repository, existingOwnedWorker); selectedModels(input);
   const node = (await readFile(join(repository, ".node-version"), "utf8")).trim();
@@ -464,4 +445,3 @@ export function parseComparisonInput(value: unknown, execution = false): RunInpu
   requireValue(object(value) && (value as { comparison?: unknown }).comparison !== undefined, "COMPARISON", "comparison configuration is required for compare-extraction");
   return parseInput(value, execution);
 }
-export function publicInput(input: RunInput): RunInput { return structuredClone(input); }

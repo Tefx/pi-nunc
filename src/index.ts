@@ -4,6 +4,7 @@ import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManag
 import type { FixedContext, MaintenanceResult, Memory } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch } from "./engine/index.js";
 import { subscriptionBilling } from "./engine/pi-model.js";
+import { messageTextContent } from "./engine/cleanup.js";
 import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
 import { maintenanceCalibrationRecord } from "./engine/calibration.js";
 import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration } from "./pi/calibration.js";
@@ -155,7 +156,7 @@ export default function nunc(pi: ExtensionAPI): void {
             ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.map(ref => {
               const message = projected.active.find(e => e.entryId === ref.entryId)?.messages[ref.messageIndex];
               return { ...ref, toolName: message?.role === "toolResult" ? message.toolName : "", toolCallId: message?.role === "toolResult" ? message.toolCallId : "",
-                textLength: message?.role === "toolResult" && Array.isArray(message.content) ? message.content.filter(b => b.type === "text").reduce((n, b) => n + b.text.length, 0) : 0 };
+                textLength: message?.role === "toolResult" ? messageTextContent(message)?.length ?? 0 : 0 };
             }) } : {}),
             ...(originals === undefined ? {} : { originals }),
             ...(history === undefined ? {} : { history }),
@@ -248,7 +249,7 @@ export default function nunc(pi: ExtensionAPI): void {
     const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
     const semanticScope = opportunity.scope.filter(ref => {
       const message = projected.active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
-      return message?.role === "toolResult" && Array.isArray(message.content) && message.content.every(b => b.type === "text");
+      return message?.role === "toolResult" && messageTextContent(message) !== null;
     });
     if (!opportunity.enabled || !semanticScope.length) return {};
     if (!ctx.model) return { warning: "Cleanup skipped: current model unavailable; memory can still be saved" };
@@ -294,8 +295,11 @@ export default function nunc(pi: ExtensionAPI): void {
         usage: record(response) ? response.usage : null }); } catch { /* Observation only. */ }
       if (stale()) return { stale: true };
       if (combined.aborted || !record(response) || response.role !== "assistant" || response.stopReason !== "stop" ||
+          response.endTurn === false || response.deferred || response.errorMessage ||
           response.model !== frozen.model.id || response.provider !== frozen.model.provider || response.api !== frozen.model.api ||
-          !Array.isArray(response.content) || response.content.some(b => !record(b) || (b.type !== "text" && b.type !== "thinking"))) {
+          (response.responseModel && response.responseModel !== frozen.model.id) ||
+          !Array.isArray(response.content) || response.content.some(b => !record(b) ||
+            !((b.type === "text" && typeof b.text === "string") || (b.type === "thinking" && typeof b.thinking === "string")))) {
         return { warning: "Cleanup did not complete; memory can still be saved with original tool results" };
       }
       const text = response.content.filter(b => record(b) && b.type === "text").map(b => b.text).join("");

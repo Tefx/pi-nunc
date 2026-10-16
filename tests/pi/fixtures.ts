@@ -3,12 +3,56 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fauxProvider, fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, InMemoryCredentialStore, type FauxResponseFactory, type TranscriptContext } from "@earendil-works/pi-ai";
-import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices, createEventBus, SessionManager, SettingsManager, ModelRegistry, ModelRuntime, type CreateAgentSessionRuntimeFactory, type ToolDefinition, type InlineExtension, type EventBus, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices, createEventBus, SessionManager, SettingsManager, ModelRegistry, ModelRuntime, type CreateAgentSessionRuntimeFactory, type ToolDefinition, type InlineExtension, type EventBus, type SessionEntry, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import nunc from "pi-nunc";
-import { bindHostSettings, type MaintenanceEvent, type NuncConfig } from "pi-nunc/pi";
+import { contextSurface, memorySurface, bindHostSettings, type MaintenanceEvent, type NuncConfig } from "pi-nunc/pi";
 import { sourceRecords, answer } from "../engine/fixtures.js";
 import type { MaintenanceResult } from "../../src/engine/types.js";
 import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/calibration.js";
+
+import type { AdmissionObservation } from "../../src/pi/admission.js";
+
+export function responsesSSE(modelId: string, text: string, options: {
+  inputTokens?: number; outputTokens?: number; cachedTokens?: number; reasoningTokens?: number;
+  reasoningContext?: "current_turn" | "all_turns" | undefined;
+} = {}): Response {
+  const { inputTokens = 12, outputTokens = 4, cachedTokens = 0, reasoningTokens = 0, reasoningContext } = options;
+  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
+  const events = [
+    { type: "response.created", response: { id: "response-1", model: modelId, status: "in_progress", output: [] } },
+    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
+    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
+    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
+    { type: "response.output_item.done", output_index: 0, item },
+    { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], ...(reasoningContext ? { reasoning: { context: reasoningContext } } : {}), usage: { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: inputTokens + outputTokens, input_tokens_details: { cached_tokens: cachedTokens }, output_tokens_details: { reasoning_tokens: reasoningTokens } } } },
+  ];
+  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+}
+
+export function surfacePort(admissions: AdmissionObservation[] = []) {
+  let api: ExtensionAPI | undefined;
+  let ctx: ExtensionContext | undefined;
+  const memory = () => { const value = memorySurface(api!); assert(value); return value; };
+  return {
+    extras: [{ name: "nunc-surface-port", factory(pi) {
+      api = pi;
+      pi.on("session_start", (_event, next) => { ctx = next; });
+      pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation));
+    } }] satisfies InlineExtension[],
+    memory,
+    context() { const value = contextSurface(api!); assert(value); return value; },
+    ctx() { assert(ctx); return ctx; },
+    pi() { assert(api); return api; },
+    admissions,
+  };
+}
+
+export async function preparedSurface(t: { after: (fn: () => Promise<void>) => void }, options: Parameters<typeof fixture>[0] = {}, admissions: AdmissionObservation[] = []) {
+  const captured = surfacePort(admissions);
+  const f = await fixture({ ...options, extras: [...(options.extras ?? []), ...captured.extras] });
+  t.after(() => f.close());
+  return { f, ...captured };
+}
 
 const root = fileURLToPath(new URL("../../../", import.meta.url)); // emitted dist/tests/pi -> worktree
 export const extensionPath = resolve(root, "dist/src/index.js");

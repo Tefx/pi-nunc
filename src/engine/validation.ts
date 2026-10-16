@@ -13,6 +13,12 @@ export function record(value: unknown): value is Record<string, unknown> {
 export function integer(value: unknown, min = 0): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= min;
 }
+/** Stable JSON for already JSON-shaped values; callers own boundary normalization. */
+export function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (record(value)) return `{${Object.keys(value).filter(k => value[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(",")}}`;
+  return JSON.stringify(value) ?? "null";
+}
 export function nonempty(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0; }
 export function keys(value: Record<string, unknown>, allowed: string[]): boolean {
   return Object.keys(value).every(key => allowed.includes(key));

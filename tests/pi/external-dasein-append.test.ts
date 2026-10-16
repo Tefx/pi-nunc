@@ -7,7 +7,7 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
 import { applyLastUserTextAppend, canonicalJson } from "../../src/pi/payload.js";
-import { fixture } from "./fixtures.js";
+import { responsesSSE, fixture } from "./fixtures.js";
 
 const DASEIN_INJECTOR = process.env.NUNC_DASEIN_INJECTOR ?? "/Users/tefx/Projects/dasein-pi-extension/src/core/provider-payload-injector.ts";
 const available = existsSync(DASEIN_INJECTOR);
@@ -19,18 +19,6 @@ async function loadDaseinInjector(): Promise<DaseinInjector> {
   return await import(pathToFileURL(DASEIN_INJECTOR).href) as DaseinInjector;
 }
 
-function responsesSSE(modelId: string, text: string) {
-  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
-  const events = [
-    { type: "response.created", response: { id: "response-1", model: modelId, status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-  ];
-  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-}
 
 test("named external Dasein injector matches tracked last-user append", { skip: !available }, async () => {
   const dasein = await loadDaseinInjector();

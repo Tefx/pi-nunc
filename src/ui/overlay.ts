@@ -397,42 +397,59 @@ export class NuncOverlay implements Focusable {
       return;
     }
     if (!this.host.prepareSave) {
-      this.finishSave(this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed), slotId, untrimmed);
+      this.finishCommit(this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed), slotId, untrimmed);
       return;
     }
     void this.savePrepared(slotId, untrimmed, basis);
   }
 
   private async savePrepared(slotId: string, untrimmed: string, basis: { revision: string; slotId: string; original: string }): Promise<void> {
-    const controller = new AbortController();
-    this.saving = controller;
-    this.savingFrom = "edit";
-    this.layer = "saving";
-    // Pi's Editor clears its buffer on submit; retain the draft across an async
-    // cleanup failure, Escape, model cancellation, or a concurrent state change.
-    this.editor?.setText(untrimmed);
-    this.host.tui.requestRender();
     const proposal: Memory = { ...this.memoryView.memory, slots: this.memoryView.memory.slots.map(slot =>
       slot.id === slotId ? { ...slot, text: untrimmed } : slot) };
+    await this.commitPrepared("edit", untrimmed === basis.original ? undefined : proposal,
+      () => ({ expectedRevision: basis.revision, update: [{ id: slotId, text: untrimmed }] }), slotId, untrimmed);
+  }
+
+  private async commitPrepared(
+    fromLayer: "edit" | "browse",
+    proposal: Memory | undefined,
+    patchParams: () => Parameters<MemorySurface["patch"]>[1],
+    nextSlotId: string | undefined,
+    draftOnFail?: string,
+  ): Promise<void> {
+    const controller = new AbortController();
+    this.saving = controller;
+    this.savingFrom = fromLayer;
+    this.layer = "saving";
+    // Pi clears submitted editor text; keep the draft through cancellation or failure.
+    if (draftOnFail !== undefined) this.editor?.setText(draftOnFail);
+    this.host.tui.requestRender();
     let prepared: { edits?: unknown; warning?: string; stale?: boolean } = {};
-    try { if (untrimmed !== basis.original) prepared = await this.host.prepareSave?.(this.host.ctx, proposal, controller.signal) ?? {}; }
+    try { if (proposal) prepared = await this.host.prepareSave?.(this.host.ctx, proposal, controller.signal) ?? {}; }
     catch (error) { prepared = { warning: `Cleanup failed: ${error instanceof Error ? error.message : String(error)}` }; }
     if (this.closed || controller.signal.aborted || this.saving !== controller) return;
     this.saving = undefined;
-    this.layer = "edit";
-    if (prepared.stale) { this.fail("Session/model/configuration changed while saving; draft was not committed", untrimmed); return; }
-    const result = this.host.memory.patch(this.host.ctx, { expectedRevision: basis.revision, update: [{ id: slotId, text: untrimmed }],
-      ...(prepared.edits === undefined ? {} : { toolResultEdits: prepared.edits }),
-      ...(prepared.warning ? { suppressCleanup: true } : {}) }, controller.signal);
-    this.finishSave(result, slotId, untrimmed, prepared.warning);
-  }
-
-  private finishSave(result: ReturnType<MemorySurface["replace"]> | ReturnType<MemorySurface["patch"]>, slotId: string, untrimmed: string, warning?: string): void {
-    if (!result.ok) {
-      this.fail(result.message, untrimmed);
+    this.layer = fromLayer;
+    if (prepared.stale) {
+      this.fail(`Session/model/configuration changed while saving; ${fromLayer === "edit" ? "draft" : "delete"} was not committed`, draftOnFail);
       return;
     }
-    this.preferredSlot = slotId;
+    const result = this.host.memory.patch(this.host.ctx, { ...patchParams(),
+      ...(prepared.edits === undefined ? {} : { toolResultEdits: prepared.edits }),
+      ...(prepared.warning ? { suppressCleanup: true } : {}) }, controller.signal);
+    this.finishCommit(result, nextSlotId, draftOnFail, prepared.warning);
+  }
+
+  private finishCommit(result: ReturnType<MemorySurface["replace"]> | ReturnType<MemorySurface["patch"]>, nextSlotId: string | undefined, draftOnFail?: string, warning?: string): void {
+    if (!result.ok) {
+      if (draftOnFail === undefined) {
+        this.layer = "browse";
+        this.search.focused = this._focused;
+      }
+      this.fail(result.message, draftOnFail);
+      return;
+    }
+    this.preferredSlot = nextSlotId;
     this.error = warning;
     this.editBasis = undefined;
     this.editor = undefined;
@@ -474,62 +491,16 @@ export class NuncOverlay implements Focusable {
     const index = slots.findIndex(slot => slot.id === id);
     const neighbor = slots[index + 1]?.id ?? slots[index - 1]?.id;
     if (!this.host.prepareSave) {
-      this.finishDelete(this.host.memory.delete(this.host.ctx, this.memoryView.revision, id), neighbor);
+      this.finishCommit(this.host.memory.delete(this.host.ctx, this.memoryView.revision, id), neighbor);
       return;
     }
     void this.deletePrepared(id, neighbor);
   }
 
   private async deletePrepared(id: string, neighbor: string | undefined): Promise<void> {
-    const slots = this.memoryView.memory.slots;
-    const controller = new AbortController();
-    this.saving = controller;
-    this.savingFrom = "browse";
-    this.layer = "saving";
-    this.host.tui.requestRender();
-    const proposal: Memory = { ...this.memoryView.memory, slots: slots.filter(slot => slot.id !== id) };
-    let prepared: { edits?: unknown; warning?: string; stale?: boolean } = {};
-    try { prepared = await this.host.prepareSave?.(this.host.ctx, proposal, controller.signal) ?? {}; }
-    catch (error) { prepared = { warning: `Cleanup failed: ${error instanceof Error ? error.message : String(error)}` }; }
-    if (this.closed || controller.signal.aborted || this.saving !== controller) return;
-    this.saving = undefined;
-    this.layer = "browse";
-    if (prepared.stale) { this.fail("Session/model/configuration changed while saving; delete was not committed"); return; }
-    const result = this.host.memory.patch(this.host.ctx, { expectedRevision: this.memoryView.revision, remove: [id],
-      ...(prepared.edits === undefined ? {} : { toolResultEdits: prepared.edits }),
-      ...(prepared.warning ? { suppressCleanup: true } : {}) }, controller.signal);
-    this.finishDelete(result, neighbor, prepared.warning);
-  }
-
-  private finishDelete(result: ReturnType<MemorySurface["delete"]> | ReturnType<MemorySurface["patch"]>, neighbor: string | undefined, warning?: string): void {
-    if (!result.ok) {
-      this.error = result.message;
-      this.host.onFailure?.(result.message);
-      this.layer = "browse";
-      this.search.focused = this._focused;
-      try { this.host.tui.requestRender(); } catch { /* Paint only. */ }
-      return;
-    }
-    this.preferredSlot = neighbor;
-    this.error = warning;
-    this.layer = "browse";
-    this.search.focused = this._focused;
-    this.memoryView = { ...this.memoryView, revision: result.revision, memory: result.memory };
-    try {
-      this.memoryView = this.host.memory.read(this.host.ctx);
-    } catch { /* Retain acknowledged view from result */ }
-    try {
-      this.contextView = this.host.context.read(this.host.ctx);
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : "Inspector read failed";
-    }
-    try {
-      this.host.onSuccess?.();
-    } catch { /* Callback only. */ }
-    this.rebuildList();
-    try {
-      this.host.tui.requestRender();
-    } catch { /* Paint only. */ }
+    const proposal: Memory = { ...this.memoryView.memory, slots: this.memoryView.memory.slots.filter(slot => slot.id !== id) };
+    await this.commitPrepared("browse", proposal,
+      () => ({ expectedRevision: this.memoryView.revision, remove: [id] }), neighbor);
   }
 
   private close(): void {
@@ -648,19 +619,6 @@ export class NuncOverlay implements Focusable {
       ...wrapTextWithAnsi(summary, contentWidth).slice(0, 4),
       hint,
     ];
-  }
-
-  private pack(sections: { id: string; lines: string[]; keep: number }[], budget: number): string[] {
-    const out: string[] = [];
-    const required = sections.reduce((n, section) => n + Math.min(section.keep, section.lines.length), 0);
-    let extra = Math.max(0, budget - required);
-    for (const section of sections) {
-      const need = Math.min(section.keep, section.lines.length);
-      const more = Math.min(Math.max(0, section.lines.length - need), extra);
-      extra -= more;
-      out.push(...section.lines.slice(0, need + more));
-    }
-    return out.slice(0, budget);
   }
 
   private fit(lines: string[], budget: number): string[] {

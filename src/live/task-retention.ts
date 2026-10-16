@@ -82,10 +82,7 @@ function buildSequence(actions: GuidanceAction[], cwd: string) {
   return { failedCallId: failed?.call.event.toolCallId, successfulCallId: succeeded?.call.event.toolCallId, laterWorkCallId: laterWork?.call.event.toolCallId };
 }
 
-export function taskFileChecks(...[scenario, turns, branch, active, rollovers, actions, cwd, requests = []]: SetupArgs): CheckResult[] {
-  const read = taskRead(scenario, branch, actions, cwd);
-  const delivered = branch.filter(e => e.type === "message" && e.message.role === "user");
-  const ordinary = scenario.turns.length === 1 && delivered.length === 1 && contentText((delivered[0] as any)?.message.content) === scenario.turns[0]!.text;
+function coreTaskRetentionChecks(read: ReturnType<typeof taskRead>, turns: Record<string, string[]>, branch: SessionEntry[], active: SessionEntry[], rollovers: RolloverObservation[], actions: GuidanceAction[], cwd: string, requests: RequestObservation[]): CheckResult[] {
   const facts = rollovers.map(r => retainedRollover(r, branch, requests, rollovers));
   const first = facts[0], second = facts[1], third = facts[2];
   const thirdRequests = rollovers[2]?.callIds.map(id => requests.find(r => r.callId === id && r.kind === "maintenance")).filter(Boolean) ?? [];
@@ -98,10 +95,19 @@ export function taskFileChecks(...[scenario, turns, branch, active, rollovers, a
     !third.keptEntryIds.includes(read.entryId) && maintainedGenerated);
   const build = buildSequence(actions, cwd);
   return [
-    check("TASK.md requirements entered through the sole ordinary user request and a complete persisted read", ordinary && read.complete, { read, deliveredUserIds: delivered.map(e => e.id) }),
     check("Three committed same-task compactions: task read in K, retirement, then maintenance of generated M and actual continuation", series, { facts, maintainedGenerated }),
     check("Observed build failure, successful repair build, then remaining task work in temporal order", Boolean(build.failedCallId && build.successfulCallId && build.laterWorkCallId), build),
     semantic("Input/oracle separation and condition availability versus execution", { deliveredTurns: turns, activeEntryIds: active.map(e => e.id), evidence: "scenario input asset; report.actions, contexts, requests and rollovers" }),
+  ];
+}
+
+export function taskFileChecks(...[scenario, turns, branch, active, rollovers, actions, cwd, requests = []]: SetupArgs): CheckResult[] {
+  const read = taskRead(scenario, branch, actions, cwd);
+  const delivered = branch.filter(e => e.type === "message" && e.message.role === "user");
+  const ordinary = scenario.turns.length === 1 && delivered.length === 1 && contentText((delivered[0] as any)?.message.content) === scenario.turns[0]!.text;
+  return [
+    check("TASK.md requirements entered through the sole ordinary user request and a complete persisted read", ordinary && read.complete, { read, deliveredUserIds: delivered.map(e => e.id) }),
+    ...coreTaskRetentionChecks(read, turns, branch, active, rollovers, actions, cwd, requests),
   ];
 }
 
@@ -214,24 +220,10 @@ export function sameTaskHistoryChecks(...[scenario, turns, branch, active, rollo
   const noSetupRead = !exchanges.some(x => x.call.turn !== "task" && x.call.event.toolName === "read" && pathIs(cwd, x.call.event.input?.path, "TASK.md"));
   const effects = sameTaskHistoryEffects(scenario, actions, cwd);
 
-  const facts = rollovers.map(r => retainedRollover(r, branch, requests, rollovers));
-  const first = facts[0], second = facts[1], third = facts[2];
-  const thirdRequests = rollovers[2]?.callIds.map(id => requests.find(r => r.callId === id && r.kind === "maintenance")).filter(Boolean) ?? [];
-  const records = thirdRequests.flatMap(r => r!.context.messages.flatMap(m => typeof m.content === "string" ? readSourceRecords(m.content) : m.content.flatMap(b => b.type === "text" ? readSourceRecords(b.text) : [])));
-  const previousMemory = rollovers[1]?.rebuilt ? project(rollovers[1].rebuilt!).memory.slots : [];
-  const maintainedGenerated = previousMemory.length > 0 && records.filter(r => r.source === "F/M").length === 1 &&
-    same(records.find(r => r.source === "F/M")?.M, previousMemory);
-  const series = Boolean(read.entryId && first?.continued && second?.continued && third?.continued &&
-    first.keptEntryIds.includes(read.entryId) && second.retiredEntryIds.includes(read.entryId) &&
-    !third.keptEntryIds.includes(read.entryId) && maintainedGenerated);
-  const build = buildSequence(actions, cwd);
-
   return [
     check("TASK.md requirements entered through the designated task request and complete persisted read following verified same-task preliminary setup", Boolean(turnOrderMatch && read.complete && taskReadEx && noSetupRead), { read, deliveredUserIds: delivered.map(e => e.id) }),
     check("Preliminary regional schema and input records were ingested, verified and written to records.json before task read", effects.status === "PROVEN", effects.observed),
-    check("Three committed same-task compactions: task read in K, retirement, then maintenance of generated M and actual continuation", series, { facts, maintainedGenerated }),
-    check("Observed build failure, successful repair build, then remaining task work in temporal order", Boolean(build.failedCallId && build.successfulCallId && build.laterWorkCallId), build),
-    semantic("Input/oracle separation and condition availability versus execution", { deliveredTurns: turns, activeEntryIds: active.map(e => e.id), evidence: "scenario input asset; report.actions, contexts, requests and rollovers" }),
+    ...coreTaskRetentionChecks(read, turns, branch, active, rollovers, actions, cwd, requests),
   ];
 }
 

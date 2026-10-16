@@ -22,6 +22,7 @@ async function archiveInput(): Promise<ScenarioInput> {
   return parseScenario(a, b, { id: "e3", variant: "archive-closeout", config: (await fixture()).scenarios[0]!.config }).input;
 }
 
+// Independent fixture oracle: do not derive expected artifacts from the scorer under test.
 function totals(input: ScenarioInput, month: string) {
   const channels: Record<string, { netUnits: number; netCents: number }> = Object.fromEntries(["web", "counter", "partner"].map(c => [c, { netUnits: 0, netCents: 0 }]));
   const excludedInvoices = [];

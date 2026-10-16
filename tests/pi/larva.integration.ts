@@ -13,7 +13,7 @@ import { applyLastUserTextAppend } from "../../src/pi/payload.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import { renderMemory } from "../../src/engine/memory.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { responsesSSE, fixture, memoryPatch } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
 import { RunnerError } from "../../src/live/contract.js";
 import { openHost, type NativeHost } from "../../src/live/host.js";
@@ -75,19 +75,6 @@ chmodSync(mockLarvaScript, 0o755);
 
 process.env.LARVA_CLI_ARGV_JSON = JSON.stringify([process.execPath, mockLarvaScript]);
 
-// Helper for Responses SSE stream
-function responsesSSE(modelId: string, text: string) {
-  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
-  const events = [
-    { type: "response.created", response: { id: "response-1", model: modelId, status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "response-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 128, output_tokens: 4, total_tokens: 132, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-  ];
-  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-}
 
 // Helper for Codex SSE stream
 function codexSSE(modelId: string, text: string) {
@@ -145,7 +132,7 @@ test("real loader loads user-supplied Larva v1 and resolves system prompt throug
     const request = new Request(resource, init);
     const body = await request.json() as Record<string, unknown>;
     bodies.push(body);
-    return responsesSSE(model.id, "Controlled Responses answer.");
+    return responsesSSE(model.id, "Controlled Responses answer.", { inputTokens: 128 });
   };
 
   const bound = { apiKey: "offline-test-key", fetch: transport, maxRetries: 0 as const };
@@ -487,13 +474,13 @@ test("genuine late change at before_provider_request validates and charges growt
       ...options,
       apiKey: "offline-test-key",
       maxRetries: 0 as const,
-      fetch: async () => responsesSSE(model.id, "Answer with late hook."),
+      fetch: async () => responsesSSE(model.id, "Answer with late hook.", { inputTokens: 128 }),
     } as Parameters<typeof openai.stream>[2]),
     streamSimple: (m, context, options) => openai.streamSimple(m as Model<"openai-responses">, context, {
       ...options,
       apiKey: "offline-test-key",
       maxRetries: 0 as const,
-      fetch: async () => responsesSSE(model.id, "Answer with late hook."),
+      fetch: async () => responsesSSE(model.id, "Answer with late hook.", { inputTokens: 128 }),
     }),
   };
   new ModelRegistry(f.modelRuntime).registerProvider(wrapped);

@@ -1,38 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, rename, mkdir, rm, writeFile } from "node:fs/promises";
-import { SessionManager, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { bindHostSettings, MANUAL_MEMORY_TYPE, memorySurface, type MemorySurface } from "pi-nunc/pi";
 import { isManualMemoryEntry, project, type BranchHistoryResult } from "../../src/pi/projection.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fixture, memoryPatch, surfacePort as port, preparedSurface } from "./fixtures.js";
 
-function port(admissions?: AdmissionObservation[]): {
-  extras: InlineExtension[];
-  surface: () => MemorySurface;
-  ctx: () => ExtensionContext;
-  pi: () => ExtensionAPI;
-} {
-  let api: ExtensionAPI | undefined;
-  let ctx: ExtensionContext | undefined;
-  return {
-    extras: [{ name: "nunc-memory-port", factory(pi) {
-      api = pi;
-      pi.on("session_start", (_event, next) => { ctx = next; });
-      if (admissions) pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation));
-    } }],
-    surface() { const value = memorySurface(api!); assert(value); return value; },
-    ctx() { assert(ctx); return ctx; },
-    pi() { assert(api); return api; },
-  };
-}
 
 async function prepared(t: { after: (fn: () => Promise<void>) => void }, options: Parameters<typeof fixture>[0] = {}, admissions?: AdmissionObservation[]) {
-  const captured = port(admissions);
-  const f = await fixture({ ...options, extras: [...(options.extras ?? []), ...captured.extras] });
-  t.after(() => f.close());
+  const { f, ...captured } = await preparedSurface(t, options, admissions);
   f.seed(); f.respond(memoryPatch);
   await f.runtime.session.compact();
   return { f, ...captured };
@@ -84,7 +63,7 @@ test("overbudget growth keeps saved memory and permits update/remove recovery", 
   const captured = port();
   const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } }, extras: captured.extras });
   t.after(() => f.close());
-  const surface = captured.surface(), ctx = captured.ctx();
+  const surface = captured.memory(), ctx = captured.ctx();
   const read = (f.runtime.session as any).getToolDefinition("nunc_memory_read");
   const budget = async () => JSON.parse((await read.execute("budget", {}, undefined, undefined, ctx)).content[0].text).budget;
   const added = surface.patch(ctx, { expectedRevision: surface.read(ctx).revision,
@@ -114,8 +93,8 @@ test("multilingual Markdown bodies survive manual save, disk restore and actual 
   const f = await fixture({ extras: captured.extras });
   t.after(() => f.close());
   const body = "## 后续验收\n\n- Keep normal spaces；禁止 push，42 ms。🙂\n- 路径 `/tmp/资料 α.json`，API `sourceRefs`，精确引文 ‘not ready’。";
-  const before = captured.surface().read(captured.ctx());
-  const saved = captured.surface().patch(captured.ctx(), { expectedRevision: before.revision, add: [{ key: "task", text: body }] });
+  const before = captured.memory().read(captured.ctx());
+  const saved = captured.memory().patch(captured.ctx(), { expectedRevision: before.revision, add: [{ key: "task", text: body }] });
   assert(saved.ok, JSON.stringify(saved));
   const manager = f.runtime.session.sessionManager;
   const file = manager.getSessionFile(); assert(file);
@@ -127,8 +106,8 @@ test("multilingual Markdown bodies survive manual save, disk restore and actual 
   await f.runtime.session.prompt("继续执行后续验收。");
   assert.equal(project(SessionManager.open(file).buildContextEntries()).memory.slots[0]?.text, body);
   const updated = body + "\n\n验证仍待完成，不能省略否定。";
-  const view = captured.surface().read(captured.ctx());
-  const edited = captured.surface().patch(captured.ctx(), { expectedRevision: view.revision, update: [{ id: view.memory.slots[0]!.id, text: updated }] });
+  const view = captured.memory().read(captured.ctx());
+  const edited = captured.memory().patch(captured.ctx(), { expectedRevision: view.revision, update: [{ id: view.memory.slots[0]!.id, text: updated }] });
   assert(edited.ok, JSON.stringify(edited));
   assert.equal(project(SessionManager.open(file).buildContextEntries()).memory.slots[0]?.text, updated);
 });
@@ -137,7 +116,7 @@ test("no-system-history manual M saves grow under the independent hard cap and r
   const captured = port();
   const f = await fixture({ config: { memory: { maxTokens: 40, hardMaxTokens: 1200 } }, extras: captured.extras });
   t.after(() => f.close());
-  const { surface, ctx } = captured;
+  const { memory: surface, ctx } = captured;
   assert.equal(f.runtime.session.sessionManager.getEntries().some(e => e.type === "message" && e.message.role === "system"), false);
   const before = surface().read(ctx());
   assert.equal(before.budget.unknown, false, "saved-M hard cap is known independently of incomplete F");
@@ -167,7 +146,7 @@ test("no-system-history manual M saves grow under the independent hard cap and r
 test("actual main overcap after a successful independent save terminates through native recovery without duplicating the prompt", async t => {
   const admissions: AdmissionObservation[] = [];
   let effects = 0;
-  const { f, surface, ctx } = await prepared(t, { enabled: true, config: { memory: { maxTokens: 40, hardMaxTokens: 3000 } },
+  const { f, memory: surface, ctx } = await prepared(t, { enabled: true, config: { memory: { maxTokens: 40, hardMaxTokens: 3000 } },
     tools: [{ name: "once", label: "Once", description: "Count a single settled effect", parameters: Type.Object({}),
       execute: async () => { effects++; return { content: [{ type: "text", text: "done" }], details: {} }; } }] }, admissions);
   let issued = false;
@@ -198,7 +177,7 @@ test("actual main overcap after a successful independent save terminates through
 });
 
 test("public appendEntry save is the only M carrier, stays out of R, and survives native reopen", async t => {
-  const { f, surface, ctx } = await prepared(t, { publicFactory: true });
+  const { f, memory: surface, ctx } = await prepared(t, { publicFactory: true });
   const before = project(f.runtime.session.sessionManager.buildContextEntries());
   const view = surface().read(ctx());
   const slot = view.memory.slots[0]!;
@@ -224,7 +203,7 @@ test("public appendEntry save is the only M carrier, stays out of R, and survive
 });
 
 test("resume/reload/new/tree/fork/clone follow the selected path; new is empty", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const view = surface().read(ctx());
   assert.equal(surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, "Path-local edit.").ok, true);
   const snapshotId = f.runtime.session.sessionManager.getLeafId()!;
@@ -249,7 +228,7 @@ test("resume/reload/new/tree/fork/clone follow the selected path; new is empty",
 });
 
 test("next native checkpoint absorbs effective M and does not replay older manual records", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const view = surface().read(ctx());
   assert.equal(surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, "Manual before absorb.").ok, true);
   f.seed("after-edit");
@@ -269,7 +248,7 @@ test("next native checkpoint absorbs effective M and does not replay older manua
 });
 
 test("new constructed requests see saved M; in-flight context and queue stay legitimate", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   let inflightHasEdit = false;
@@ -304,7 +283,7 @@ test("new constructed requests see saved M; in-flight context and queue stay leg
 
 test("saving preserves pre-save usage attribution with updated M on the next constructed main request", async t => {
   const admissions: AdmissionObservation[] = [];
-  const { f, surface, ctx } = await prepared(t, {}, admissions);
+  const { f, memory: surface, ctx } = await prepared(t, {}, admissions);
   f.respond(() => fauxAssistantMessage("Prefix established."));
   await f.runtime.session.prompt("Establish usage prefix");
   const view = surface().read(ctx());
@@ -325,7 +304,7 @@ test("candidate-to-native terminal gap occupies save; ordinary agent run does no
     ...captured.extras,
     { name: "nunc-memory-gap", factory(pi) {
       pi.on("session_before_compact", (_event, ctx) => {
-        const surface = captured.surface();
+        const surface = captured.memory();
         const view = surface.read(ctx);
         gap.result = surface.replace(ctx, view.revision, view.memory.slots[0]?.id ?? "s1", "illegal-gap");
       });
@@ -336,23 +315,23 @@ test("candidate-to-native terminal gap occupies save; ordinary agent run does no
   await f.runtime.session.compact();
   assert.equal(gap.result?.ok, false);
   assert.equal(gap.result && !gap.result.ok ? gap.result.code : "", "occupied");
-  const view = captured.surface().read(captured.ctx());
-  const after = captured.surface().replace(captured.ctx(), view.revision, view.memory.slots[0]!.id, "After native terminal");
+  const view = captured.memory().read(captured.ctx());
+  const after = captured.memory().replace(captured.ctx(), view.revision, view.memory.slots[0]!.id, "After native terminal");
   assert.equal(after.ok, true, JSON.stringify(after));
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   f.respond(async () => { started.resolve(); await release.promise; return fauxAssistantMessage("agent run"); });
   const turn = f.runtime.session.prompt("Ordinary run");
   await started.promise;
-  const during = captured.surface().read(captured.ctx());
-  const runSave = captured.surface().replace(captured.ctx(), during.revision, during.memory.slots[0]!.id, "During ordinary run");
+  const during = captured.memory().read(captured.ctx());
+  const runSave = captured.memory().replace(captured.ctx(), during.revision, during.memory.slots[0]!.id, "During ordinary run");
   assert.equal(runSave.ok, true, JSON.stringify(runSave));
   release.resolve();
   await turn;
 });
 
 test("revision conflicts on memory changes; unrelated custom entries do not", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const first = surface().read(ctx());
   f.runtime.session.sessionManager.appendCustomEntry("other.extension", { note: "unrelated" });
   const still = surface().replace(ctx(), first.revision, first.memory.slots[0]!.id, "Allowed after unrelated entry");
@@ -363,7 +342,7 @@ test("revision conflicts on memory changes; unrelated custom entries do not", as
 });
 
 test("tree switch between branches sharing a checkpoint rejects a stale path draft", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const checkpoint = f.runtime.session.sessionManager.getLeafId()!;
   f.seed("branch-a");
   const draft = surface().read(ctx());
@@ -379,7 +358,7 @@ test("tree switch between branches sharing a checkpoint rejects a stale path dra
 });
 
 test("growing edits obey M budget; delete/shorten may reduce over-budget M without moving K", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const beforeActive = project(f.runtime.session.sessionManager.buildContextEntries()).active.map(e => e.entryId);
   await writeFile(f.configFile, JSON.stringify({ memory: { hardMaxTokens: 8 } }));
   const view = surface().read(ctx());
@@ -398,7 +377,7 @@ test("growing edits obey M budget; delete/shorten may reduce over-budget M witho
 });
 
 test("empty text and invalid-config unknown budget do not append", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const before = f.runtime.session.sessionManager.getEntries().length;
   const view = surface().read(ctx());
   const empty = surface().replace(ctx(), view.revision, view.memory.slots[0]!.id, "   ");
@@ -413,7 +392,7 @@ test("empty text and invalid-config unknown budget do not append", async t => {
 });
 
 test("native append I/O failure is unconfirmed and does not claim unchanged memory", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const file = f.runtime.session.sessionFile!;
   const beforeText = surface().read(ctx()).memory.slots[0]!.text;
   await rename(file, file + ".saved"); await mkdir(file);
@@ -447,9 +426,9 @@ test("resource /reload does not clear unconfirmed or persist a follow-up save", 
   f.seed(); f.respond(memoryPatch);
   await f.runtime.session.compact();
   const file = f.runtime.session.sessionFile!;
-  const beforeText = captured.surface().read(captured.ctx()).memory.slots[0]!.text;
+  const beforeText = captured.memory().read(captured.ctx()).memory.slots[0]!.text;
   await rename(file, file + ".saved"); await mkdir(file);
-  const failed = captured.surface().replace(captured.ctx(), captured.surface().read(captured.ctx()).revision, captured.surface().read(captured.ctx()).memory.slots[0]!.id, "Unconfirmed write");
+  const failed = captured.memory().replace(captured.ctx(), captured.memory().read(captured.ctx()).revision, captured.memory().read(captured.ctx()).memory.slots[0]!.id, "Unconfirmed write");
   assert.equal(failed.ok, false);
   assert.equal(failed.ok ? "" : failed.code, "unconfirmed");
   await rm(file, { recursive: true }); await rename(file + ".saved", file);
@@ -473,8 +452,8 @@ test("successful save stays confirmed after resource /reload", async t => {
   f.seed(); f.respond(memoryPatch);
   await f.runtime.session.compact();
   const file = f.runtime.session.sessionFile!;
-  const view = captured.surface().read(captured.ctx());
-  assert.equal(captured.surface().replace(captured.ctx(), view.revision, view.memory.slots[0]!.id, "Confirmed before reload").ok, true);
+  const view = captured.memory().read(captured.ctx());
+  assert.equal(captured.memory().replace(captured.ctx(), view.revision, view.memory.slots[0]!.id, "Confirmed before reload").ok, true);
   await f.runtime.session.reload({
     beforeSessionStart: () => { bindHostSettings(captured.pi().events, f.settings); },
   });
@@ -487,7 +466,7 @@ test("successful save stays confirmed after resource /reload", async t => {
 });
 
 test("abortCompaction failed terminal unlocks save; overlapping compact does not stick occupied", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   f.respond(async context => {
@@ -514,7 +493,7 @@ test("abortCompaction failed terminal unlocks save; overlapping compact does not
 });
 
 test("legacy summary plus later manual revision is effective M", async t => {
-  const { f, surface, ctx } = await prepared(t);
+  const { f, memory: surface, ctx } = await prepared(t);
   const kept = f.runtime.session.sessionManager.getLeafId()!;
   f.runtime.session.sessionManager.appendCompaction("Legacy constraints.", kept, 5000);
   f.seed("after-legacy");

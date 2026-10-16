@@ -46,7 +46,11 @@ test("positive native no-work needs exact safe reason, unchanged source and zero
 test("public archive variant executes useful history, complete automatic split, restored suffix, restart and original check in three groups", { timeout: 180000 }, async () => {
   const f = await comparisonStock({ e3: "archive" });
   try {
-    const { code, report } = await compareCli(f, [{ id: "e3", variant: "archive-closeout" }], ["matched"], "archive-closeout", true);
+    const { code, report } = await compareCli(f, [{ id: "e3", variant: "archive-closeout" }], ["matched"], "archive-closeout", true, {
+      requirement: "archive-split-tool-capacity",
+      reason: "Keep the complete sibling tool suffix feasible while the unfinished user-request boundary exceeds H",
+      config: { nunc: { budget: { growthTokens: 4600 } } },
+    });
     assert.equal(code, 0, JSON.stringify(report?.rawSegments?.map((s: any) => ({ group: s.group, status: s.status, reason: s.reason, diagnostic: s.diagnostic, prerequisites: s.prerequisites }))));
     assert.equal(report.rawSegments.length, 6);
     for (const group of ["native", "current", "candidate"]) {

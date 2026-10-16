@@ -15,76 +15,13 @@ import { taskFileChecks } from "../../src/live/task-retention.js";
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 
-const VALID_SOLUTION_PY = `
-import json, sys
-
-def calc_single(r):
-    g = r.get('gross')
-    ref = r.get('refunds')
-    c = r.get('cost')
-    net = None if (g is None or ref is None) else g - ref
-    margin = None if (net is None or c is None) else net - c
-    return {'net': net, 'margin': margin}
-
-def get_graph():
-    return {
-        'nodes': ['gross', 'refunds', 'cost', 'net', 'margin'],
-        'edges': [['gross', 'net'], ['refunds', 'net'], ['net', 'margin'], ['cost', 'margin']]
-    }
-
-def get_trace(metric, r):
-    res = calc_single(r)
-    g = r.get('gross')
-    ref = r.get('refunds')
-    c = r.get('cost')
-    if metric == 'margin':
-        return {
-            'nodes': ['gross', 'refunds', 'cost', 'net', 'margin'],
-            'edges': [['gross', 'net'], ['refunds', 'net'], ['net', 'margin'], ['cost', 'margin']],
-            'values': {'gross': g, 'refunds': ref, 'cost': c, 'net': res['net'], 'margin': res['margin']}
-        }
-    elif metric == 'net':
-        return {
-            'nodes': ['gross', 'refunds', 'net'],
-            'edges': [['gross', 'net'], ['refunds', 'net']],
-            'values': {'gross': g, 'refunds': ref, 'net': res['net']}
-        }
-    return {'nodes': [], 'edges': [], 'values': {}}
-
-try:
-    req = json.load(sys.stdin)
-    op = req.get('op')
-    if op == 'single':
-        out = calc_single(req.get('record', {}))
-    elif op == 'batch':
-        out = [calc_single(x) for x in req.get('records', [])]
-    elif op == 'history':
-        series = req.get('series', {})
-        out = {k: [calc_single(x) for x in v] for k, v in series.items()}
-    elif op == 'graph':
-        out = get_graph()
-    elif op == 'trace':
-        out = get_trace(req.get('metric'), req.get('record', {}))
-    else:
-        out = {'error': 'unknown op'}
-    print(json.dumps(out))
-except Exception as e:
-    print(json.dumps({'error': str(e)}))
-`;
-
 const VALID_BUILD_PY = `
 import py_compile
 py_compile.compile('solution.py', doraise=True)
 print('Compilation succeeded; behavior has not been checked by this command.')
 `;
 
-const VALID_TEST_SOLUTION_PY = `import unittest
-from solution import calc_single
-class Regression(unittest.TestCase):
-    def test_values(self):
-        self.assertEqual(calc_single({'gross': 0, 'refunds': 0, 'cost': 0}), {'net': 0, 'margin': 0})
-`;
-// This fixture exercises only single; the oracle must never claim candidate test adequacy from it.
+// Controlled fixture coverage does not establish real candidate test adequacy.
 const FIXTURES = { "TASK.md": "# Task\n", "records.json": "{}\n", "build.py": VALID_BUILD_PY };
 
 async function setupWorkspace(dir: string, files: Record<string, string>) {
@@ -112,11 +49,11 @@ test("metrics oracle passes on valid solution.py with all operations and held-ou
   const dir = await mkdtemp(join(repository, ".scratch", "oracle-pass-"));
   try {
     await setupWorkspace(dir, {
-      "solution.py": VALID_SOLUTION_PY,
+      "solution.py": metricsSolution,
       "build.py": VALID_BUILD_PY,
       "TASK.md": "# Task\n",
       "records.json": "{}\n",
-      "test_solution.py": VALID_TEST_SOLUTION_PY,
+      "test_solution.py": metricsTests,
     });
     const report = executeMetricsOracle(dir, FIXTURES);
     assert.equal(report.status, "PROVEN", JSON.stringify(report));
@@ -132,7 +69,7 @@ test("metrics oracle passes on valid solution.py with all operations and held-ou
 test("metrics oracle rejects solution with wrong margin calculation", async () => {
   const dir = await mkdtemp(join(repository, ".scratch", "oracle-bad-margin-"));
   try {
-    const wrongSolution = VALID_SOLUTION_PY.replace("margin = None if (net is None or c is None) else net - c", "margin = 999");
+    const wrongSolution = metricsSolution.replace("net - r['cost']", "999");
     await setupWorkspace(dir, {
       "solution.py": wrongSolution,
       "build.py": VALID_BUILD_PY,
@@ -151,10 +88,7 @@ test("metrics oracle rejects solution with incorrect trace (leaking cost/margin 
   const dir = await mkdtemp(join(repository, ".scratch", "oracle-bad-trace-"));
   try {
     // Leaking cost and margin into net trace
-    const wrongSolution = VALID_SOLUTION_PY.replace(
-      "elif metric == 'net':\n        return {\n            'nodes': ['gross', 'refunds', 'net'],\n            'edges': [['gross', 'net'], ['refunds', 'net']],\n            'values': {'gross': g, 'refunds': ref, 'net': res['net']}\n        }",
-      "elif metric == 'net':\n        return {\n            'nodes': ['gross', 'refunds', 'cost', 'net', 'margin'],\n            'edges': [['gross', 'net'], ['refunds', 'net']],\n            'values': {'gross': g, 'refunds': ref, 'cost': c, 'net': res['net'], 'margin': res['margin']}\n        }"
-    );
+    const wrongSolution = metricsSolution.replace("nodes = ['gross', 'refunds', 'net']", "nodes = ['gross', 'refunds', 'cost', 'net', 'margin']");
     await setupWorkspace(dir, {
       "solution.py": wrongSolution,
       "build.py": VALID_BUILD_PY,
@@ -240,8 +174,8 @@ test("scoreGuidance evaluates held-out oracle for both stored g4 observer string
     assert.equal(scoreGuidance("g4", checkActiveEdit, actionsWithTurn, prerequisites, dir).status, "DISPROVEN");
 
     // Both must pass valid solution.py and return UNPROVEN for semantic review
-    await writeFile(join(dir, "solution.py"), VALID_SOLUTION_PY);
-    await writeFile(join(dir, "test_solution.py"), VALID_TEST_SOLUTION_PY);
+    await writeFile(join(dir, "solution.py"), metricsSolution);
+    await writeFile(join(dir, "test_solution.py"), metricsTests);
     const passTaskFile = scoreGuidance("g4", checkTaskFile, actionsWithTurn, prerequisites, dir);
     const passActiveEdit = scoreGuidance("g4", checkActiveEdit, actionsWithTurn, prerequisites, dir);
     assert.equal(passTaskFile.status, "UNPROVEN", "No original fixture binding supplied");
@@ -304,11 +238,11 @@ test("scoreGuidance evaluates held-out oracle for g4/task-file", async () => {
 
     // 2. Working solution in workspace: returns UNPROVEN with mechanical oracle evidence
     await setupWorkspace(dir, {
-      "solution.py": VALID_SOLUTION_PY,
+      "solution.py": metricsSolution,
       "build.py": VALID_BUILD_PY,
       "TASK.md": "# Task\n",
       "records.json": "{}\n",
-      "test_solution.py": VALID_TEST_SOLUTION_PY,
+      "test_solution.py": metricsTests,
     });
     const resPass = scoreGuidance("g4", check, actionsWithTurn, prerequisites, dir);
     assert.equal(resPass.status, "UNPROVEN");

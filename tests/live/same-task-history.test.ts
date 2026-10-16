@@ -10,30 +10,13 @@ import { sameTaskHistoryChecks, sameTaskHistoryEffects, deriveExpectedRecords, t
 import { diagnosePreparationFeasibility } from "../../src/live/preparation.js";
 import { parseInput, type RunInput } from "../../src/live/contract.js";
 import { runSegment } from "../../src/live/worker.js";
-import { metricsSolution } from "./metrics-fixture.js";
+import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 import { readLedger, ledgerSummary } from "../../src/live/budget.js";
 
 const config = { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } };
 
 // Candidate regression tests that directly consume and verify records.json dataset
-const candidateTests = `import unittest, json
-from solution import run
-
-class Regression(unittest.TestCase):
-    def test_modes(self):
-        series = {'north': [{'gross': 0, 'refunds': 0, 'cost': 0}],
-                  'south': [{'gross': None, 'refunds': 1, 'cost': 2}],
-                  'west': [{'gross': -2, 'refunds': 3, 'cost': 4}]}
-        history = run({'op': 'history', 'series': series})
-        self.assertEqual(set(history), set(series))
-        expected = {'north': [{'net': 0, 'margin': 0}], 'south': [{'net': None, 'margin': None}], 'west': [{'net': -5, 'margin': -9}]}
-        self.assertEqual(history, expected)
-        for name, records in series.items():
-            batch = run({'op': 'batch', 'records': records})
-            self.assertEqual(batch, history[name])
-            self.assertEqual(batch, [run({'op': 'single', 'record': r}) for r in records])
-
-    def test_dataset(self):
+const candidateTests = `import json\n${metricsTests}\n\n    def test_dataset(self):
         with open('records.json') as f:
             records = json.load(f)
         history = run({'op': 'history', 'series': records})
@@ -331,7 +314,8 @@ test("diagnosePreparationFeasibility delegates to actual prepareBoundary and cor
   assert.equal(siblingDiag.feasible, false);
   assert.match(siblingDiag.explanation, /Incomplete persisted sibling tool batch/);
 
-  // 4. Positive: Multi-turn same-task-history with genuine prefix (B >= 2500 tokens)
+  // 4. Positive: a genuine retiring prefix and a budget that requires the split-tool cut.
+  // H=1999 pays F=81 + M=191 + K=669 + growth=1024, but cannot retain the task request.
   const prefixText = "x".repeat(12000); // 12000 chars ~ 3000 tokens of preliminary ingest reads
   const longBranch: SessionEntry[] = [
     { id: "e-u1", parentId: null, type: "message", message: { role: "user", content: scenario.turns[0]!.text, timestamp: 1 }, timestamp: "1" },
@@ -357,9 +341,9 @@ test("diagnosePreparationFeasibility delegates to actual prepareBoundary and cor
     model,
     fixed,
     repository,
-    trigger: { callId: "call_task3", requestText: scenario.turns[2]!.text, path: "TASK.md", cwd: "/task", fixtureContent: scenario.files["TASK.md"]!, contextTokens: 6000 }
+    trigger: { callId: "call_task3", requestText: scenario.turns[2]!.text, path: "TASK.md", cwd: "/task", fixtureContent: scenario.files["TASK.md"]!, contextTokens: 2000 }
   });
-  assert.equal(longDiag.feasible, true);
+  assert.equal(longDiag.feasible, true, JSON.stringify(longDiag));
   assert.equal(longDiag.status, "FEASIBLE");
   assert.equal(longDiag.firstKeptEntryId, "e-a3");
   assert(longDiag.retiringPrefixTokens! > 2000, `Retiring prefix must be substantial, got ${longDiag.retiringPrefixTokens}`);
@@ -373,12 +357,16 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
+  // At the first read, candidate F is 3387/1014 with memory tools on/off; K=667.
+  // H=5300/2930 pays F + M + K + growth but excludes the unfinished user boundary.
+  // Later cuts must still commit and continue under the same real host checks below.
+  const reserveTokens = group === "candidate" ? (tools ? 54700 : 57070) : 36000;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
-    effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
+    effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
     comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "refs/nunc/task-retention-pre-change" } } },
     overrides: [{ requirement: "maintenance-thinking", maintenanceThinking: "low", reason: "Controlled low-effort native serializer proof" }, ...(tools ? [] : [{ requirement: "memory-tools-off", memoryTools: false, reason: "Actual tools-off comparison" }])],
     limits: { maxCalls: 50, maxTotalTokens: 4000000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
-    scenarios: [{ id: "g4", variant: "same-task-history", config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
+    scenarios: [{ id: "g4", variant: "same-task-history", config: { compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
 
   const { input: scenario } = await loadScenario(repository, input.scenarios[0]!);
   const expectedRecords = deriveExpectedRecords(scenario);

@@ -3,8 +3,9 @@ import { createHash } from "node:crypto";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ActiveEntry, Memory, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { applyToolResultCleanup, emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
+import { messageTextContent } from "../engine/cleanup.js";
 import { isSystemMessage } from "../engine/accounting.js";
-import { EngineError, integer, record, requireThat, validateMemory } from "../engine/validation.js";
+import { canonical, EngineError, integer, record, requireThat, validateMemory } from "../engine/validation.js";
 
 /** Private CustomEntry type. Replaceable encoding; not a public SDK. */
 export const MANUAL_MEMORY_TYPE = "nunc.memory";
@@ -13,18 +14,32 @@ export function isManualMemoryEntry(entry: SessionEntry): entry is Extract<Sessi
   return entry.type === "custom" && entry.customType === MANUAL_MEMORY_TYPE;
 }
 
-type StoredDecision = ToolResultDecision & { sourceDigest: string };
+type StoredDecision = ToolResultDecision & { sourceDigest: string; sourceRefDigests?: string[] };
+const digestPattern = /^[a-f0-9]{64}$/;
+const validRef = (value: unknown): value is ToolResultRef => record(value) && Object.keys(value).every(key => key === "entryId" || key === "messageIndex") &&
+  typeof value.entryId === "string" && value.entryId.trim().length > 0 && integer(value.messageIndex);
+function dependencyDigest(active: readonly ActiveEntry[], ref: ToolResultRef): string | undefined {
+  const entry = active.find(entry => entry.entryId === ref.entryId);
+  const message = entry?.messages[ref.messageIndex];
+  if (!message || entry?.outputUsageUnavailable) return undefined;
+  return sourceDigest(JSON.stringify({ role: message.role, content: message.content,
+    ...(message.role === "toolResult" ? { toolCallId: message.toolCallId, toolName: message.toolName } : {}) }));
+}
 const sourceDigest = (text: string) => createHash("sha256").update(JSON.stringify(text)).digest("hex");
 const sourceText = (active: readonly ActiveEntry[], ref: ToolResultRef): string | undefined => {
   const message = active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
-  return message?.role === "toolResult" && Array.isArray(message.content) && message.content.every(block => block.type === "text")
-    ? message.content.map(block => block.text).join("") : undefined;
+  return message?.role === "toolResult" ? messageTextContent(message) ?? undefined : undefined;
 };
 export function sealDecisions(active: readonly ActiveEntry[], decisions: readonly ToolResultDecision[]): StoredDecision[] {
   return decisions.map(decision => {
     const text = sourceText(active, decision);
     if (text === undefined || text.length !== decision.originalLength) throw new EngineError("INPUT", "Cleanup source changed before native save");
-    return { ...decision, sourceDigest: sourceDigest(text) };
+    const sourceRefDigests = decision.sourceRefs?.map(ref => {
+      const digest = dependencyDigest(active, ref);
+      if (digest === undefined) throw new EngineError("INPUT", "Cleanup dependency changed before native save");
+      return digest;
+    });
+    return { ...decision, sourceDigest: sourceDigest(text), ...(sourceRefDigests ? { sourceRefDigests } : {}) };
   });
 }
 function readDecisions(data: unknown): { valid: StoredDecision[]; invalid: string[] } {
@@ -36,7 +51,12 @@ function readDecisions(data: unknown): { valid: StoredDecision[]; invalid: strin
         (value.kind === "semantic" || value.kind === "mechanical") &&
         integer(value.originalLength) && integer(value.cleanedLength) && value.cleanedLength === value.text.length &&
         integer(value.netSavings, 1) && value.netSavings === value.originalLength - value.cleanedLength &&
-        typeof value.sourceDigest === "string" && /^[a-f0-9]{64}$/.test(value.sourceDigest)) valid.push(value as unknown as StoredDecision);
+        typeof value.action === "string" && ["omit", "replace", "deduplicate", "compact_json", "clean_terminal", "strip_boilerplate", "compact_toc"].includes(value.action) &&
+        (value.memoryRefs === undefined || Array.isArray(value.memoryRefs) && value.memoryRefs.every(ref => typeof ref === "string" && ref.length > 0)) &&
+        (value.sourceRefs === undefined || Array.isArray(value.sourceRefs) && value.sourceRefs.every(validRef)) &&
+        (value.sourceRefDigests === undefined || Array.isArray(value.sourceRefDigests) && Array.isArray(value.sourceRefs) &&
+          value.sourceRefDigests.length === value.sourceRefs.length && value.sourceRefDigests.every(digest => typeof digest === "string" && digestPattern.test(digest))) &&
+        typeof value.sourceDigest === "string" && digestPattern.test(value.sourceDigest)) valid.push(value as unknown as StoredDecision);
     else invalid.push(record(value) && typeof value.entryId === "string" && integer(value.messageIndex) ? `${value.entryId}:${value.messageIndex}` : "invalid saved cleanup decision");
   }
   return { valid, invalid };
@@ -154,7 +174,7 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
   }
   const byId = new Map(active.map(entry => [entry.entryId, entry]));
   const unavailable: string[] = [...saved.invalid];
-  const valid: ToolResultDecision[] = [];
+  const valid: StoredDecision[] = [];
   for (const decision of saved.valid) {
     const source = byId.get(decision.entryId)?.messages[decision.messageIndex];
     const text = sourceText(active, decision);
@@ -164,8 +184,11 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
     } else valid.push(decision);
   }
   const validIds = new Set(valid.map(d => `${d.entryId}:${d.messageIndex}`));
-  const cleanup = valid.filter(d => !d.sourceRefs?.some(ref =>
-    !byId.get(ref.entryId)?.messages[ref.messageIndex] || validIds.has(`${ref.entryId}:${ref.messageIndex}`)));
+  const cleanup = valid.filter(d => !d.sourceRefs?.some((ref, index) => {
+    const digest = dependencyDigest(active, ref);
+    return digest === undefined || validIds.has(`${ref.entryId}:${ref.messageIndex}`) ||
+      (d.sourceRefDigests !== undefined && digest !== d.sourceRefDigests[index]);
+  }));
   for (const d of valid) if (!cleanup.includes(d)) unavailable.push(`${d.entryId}:${d.messageIndex}`);
   return { memory, active, cleanup, unavailable, ...(latest ? { latestId: latest.id } : {}) };
 }
@@ -508,9 +531,7 @@ function messageKeys(): MessageKey {
     const object = typeof value === "object" && value !== null ? value : undefined;
     if (object && cache.has(object)) return cache.get(object);
     const normalized = snapshot(value);
-    const key = normalized === undefined ? undefined : JSON.stringify(normalized, (_name, item: unknown) =>
-      item && typeof item === "object" && !Array.isArray(item)
-        ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
+    const key = normalized === undefined ? undefined : canonical(normalized);
     if (object) cache.set(object, key);
     return key;
   };

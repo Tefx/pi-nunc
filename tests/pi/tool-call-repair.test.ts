@@ -9,7 +9,7 @@ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-code
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
-import { fixture } from "./fixtures.js";
+import { responsesSSE, fixture } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
 
 const frame = (v: unknown) => `data: ${JSON.stringify(v)}\n\n`;
@@ -48,18 +48,6 @@ function responsesToolCallSSE(modelId: string, callId: string, name: string, arg
   return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 }
 
-function responsesTextSSE(modelId: string, text: string) {
-  const item = { type: "message", id: "msg-1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
-  const events = [
-    { type: "response.created", response: { id: "resp-1", model: modelId, status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "resp-1", model: modelId, status: "completed", output: [item], usage: { input_tokens: 50, output_tokens: 10, total_tokens: 60, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-  ];
-  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-}
 
 function anthropicToolCallSSE(modelId: string, callId: string, name: string, args: Record<string, unknown>) {
   const events = [
@@ -131,7 +119,7 @@ const nativeAdapters: NativeAdapterSpec[] = [
       return {
         provider: p, model: m,
         toolCallSSE: (id, name, args) => responsesToolCallSSE(m.id, id, name, args),
-        textSSE: (txt) => responsesTextSSE(m.id, txt),
+        textSSE: (txt) => responsesSSE(m.id, txt, { inputTokens: 50, outputTokens: 10 }),
         extractCalls: (body: any) => body.input.filter((i: any) => i.type === "function_call").map((i: any) => ({
           id: i.call_id,
           args: typeof i.arguments === "string" ? JSON.parse(i.arguments) : i.arguments,
@@ -175,7 +163,7 @@ const nativeAdapters: NativeAdapterSpec[] = [
       return {
         provider: p, model: m, isCodex: true,
         toolCallSSE: (id, name, args) => responsesToolCallSSE(m.id, id, name, args),
-        textSSE: (txt) => responsesTextSSE(m.id, txt),
+        textSSE: (txt) => responsesSSE(m.id, txt, { inputTokens: 50, outputTokens: 10 }),
         extractCalls: (body: any) => body.input.filter((i: any) => i.type === "function_call").map((i: any) => ({
           id: i.call_id,
           args: typeof i.arguments === "string" ? JSON.parse(i.arguments) : i.arguments,

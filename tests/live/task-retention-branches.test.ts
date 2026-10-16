@@ -9,7 +9,6 @@ import { loadScenario } from "../../src/live/scenarios.js";
 import { confirmedEdits } from "../../src/live/task-retention.js";
 import { ledgerSummary, readLedger } from "../../src/live/budget.js";
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
-import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { repository } from "./fixtures.js";
 
 async function branch(variant: Selection["variant"], controlledOpportunity = false) {
@@ -21,10 +20,10 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
   const scoped = variant === "scoped-tasks";
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const selection: Selection = { id: scoped ? "g3" : "g4", variant: variant!, config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
-    nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40, ...(sourceLoss ? { toolResults: "auto" as const } : {}) }, ...(sourceLoss ? { budget: { // Includes shared writing guidance in F/tool schemas and the maintenance contract.
-      // Single-copy guidance: full requests are 10,171–10,184 Pi-estimated tokens; this limit resolves below them.
-      // Actual omissions remain mandatory below; production pressure and limits are unchanged.
-      inputLimit: estimateTextTokens("x".repeat(9500 * 4)) } } : {}) },
+    nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40, ...(sourceLoss ? { toolResults: "auto" as const } : {}) }, ...(sourceLoss ? { budget: {
+      // Current policy: full extraction is 9470/9483 tokens; reduced is 8759/8770.
+      // Subtracting the 1024 safety reserve gives 9376: reduced fits, full does not.
+      inputLimit: 10400 } } : {}) },
     retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } };
   const scenario = (await loadScenario(repository, selection)).input;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
@@ -93,6 +92,12 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
     } else if (sourceLoss) {
       const omission = report.rollovers!.flatMap(r => r.result!.observations.omissions);
       assert(omission.length > 0, "configured capacity actually omits source detail");
+      for (const rollover of report.rollovers!) {
+        const accounting = rollover.result!.observations.accounting;
+        assert(accounting, "committed rollover reports actual extraction accounting");
+        assert(accounting.fullExtractionTokens > accounting.extractionInputLimit, "full source exceeds the actual extraction budget");
+        assert(accounting.extractionTokens <= accounting.extractionInputLimit, "reduced source fits the actual extraction budget");
+      }
       assert.equal(report.setupChecks![0]!.status, "PROVEN", JSON.stringify(report.setupChecks));
       const task = join(stateRoot, `g4-${variant}`, "task");
       await assert.rejects(stat(join(task, "TASK.md")));

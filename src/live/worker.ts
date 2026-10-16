@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { convertToLlm, sessionEntryToContextMessages, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { closeHost, openHost, type NativeHost } from "./host.js";
+import { openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection, taskRetentionSelection } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult } from "./scenarios.js";
 import { isSystemMessage } from "../engine/accounting.js";
@@ -58,29 +58,6 @@ export interface SegmentReport {
   noWork?: Array<{ turn: string; diagnostic: NativeRpcDiagnostic; entryIds: string[]; settings: Selection["config"]["compaction"] }>;
   ordinaryScore?: Awaited<ReturnType<typeof scoreArtifacts>>;
   observedFacts?: RolloverFacts;
-  comparisonFacts?: {
-    h: number;
-    cutPoint?: number | undefined;
-    firstKeptEntryId?: string | undefined;
-    kTokens?: number | undefined;
-    mTokens?: number | undefined;
-    summarySize?: number | undefined;
-    outputCap?: number | undefined;
-    outputReserve?: number | undefined;
-    memoryLimit?: number | undefined;
-    model?: string | undefined;
-    overhead?: {
-      fileListCount?: number | undefined;
-      wrapperOverheadTokens?: number | undefined;
-      splitTurnCalls?: number | undefined;
-    } | undefined;
-    exposure?: {
-      turns: string[];
-      toolResultsCount: number;
-    } | undefined;
-    requiredObservation?: unknown;
-    guardApplicability?: string | undefined;
-  } | undefined;
 }
 function userText(entry: SessionEntry): string | undefined {
   if (entry.type !== "message" || entry.message.role !== "user") return undefined;
@@ -94,17 +71,10 @@ function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
 export { taskFileChecks as evaluateTaskFileSetupChecks, sameTaskHistoryChecks as evaluateSameTaskHistorySetupChecks, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks } from "./task-retention.js";
 import { taskFileChecks as evaluateTaskFileSetupChecks, sameTaskHistoryChecks as evaluateSameTaskHistorySetupChecks, sameTaskHistoryEffects, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks, taskRead, sourceLossChecks } from "./task-retention.js";
 
-function captureComparisonFacts(
-  report: SegmentReport,
-  runtime: NativeHost | undefined,
-  selection: Selection,
-  group: ComparisonGroup,
-  firstModel: Model<Api>,
-  lastBeforeActive: SessionEntry[]
-): void {
+function captureComparisonFacts(report: SegmentReport, group: ComparisonGroup): void {
   const row = report.rollovers?.at(-1);
   if (row) report.observedFacts = rolloverFacts(row, report.requests ?? [], group);
-  // No host/transaction means no observed facts. Selection values never stand in for observations.
+  // Only actual rollover observations supply facts; selection values are never substitutes.
 }
 export async function runSegment(job: WorkerJob, overrides: { controlledModels?: unknown; models?: Model<Api>[]; signal?: AbortSignal } = {}): Promise<SegmentReport> {
   const startedAt = Date.now();
@@ -339,7 +309,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       }
       const beforeIds = new Set(sm.getBranch().map(e => e.id));
       turnBeforeIds = beforeIds;
-      await session.prompt(inputTurn.text, { expandPromptTemplates: false });
+      await session.prompt(inputTurn.text);
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !isSystemMessage(e.message) && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
       if (!boundaryFailure && report.preparations?.some(p => (p as any).deferred) && report.rollovers!.length === 0) {
@@ -435,7 +405,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           const models = overrides.models ?? selectedModels(input), next = models[1];
           requireValue(next && session.model && next.contextWindow < session.model.contextWindow, "MODEL", "No authorized smaller target");
           const before = session.model;
-          await session.setModel(next, { persist: false });
+          await session.setModel(next);
           report.prerequisites.push({ check: "public session model switch recorded distinct smaller real catalog target", status: session.model?.id === next.id && sm.getBranch().some(e => e.type === "model_change" && e.provider === next.provider && e.modelId === next.id) ? "PROVEN" : "UNPROVEN", observed: { from: { provider: before.provider, id: before.id, capacity: before.contextWindow }, to: { provider: next.provider, id: next.id, capacity: next.contextWindow }, controlledProvider: Boolean(overrides.controlledModels) } });
         } else if (control.action === "rollover") {
           lastBeforeActive = structuredClone(sm.buildContextEntries());
@@ -532,7 +502,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 .filter(c => selection.id !== "g8" || c.check !== "at least one necessary candidate is larger than an optional candidate"));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
-              const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots) && isDeepStrictEqual(saved.buildContextEntries(), beforeActive);
+              // Failed maintenance may append a calibration receipt without changing
+              // visible history, memory, cleanup or the native checkpoint boundary.
+              const unchanged = isDeepStrictEqual(after.filter(e => e.type === "compaction"), previousSnapshots) &&
+                isDeepStrictEqual(project(saved.buildContextEntries()), project(beforeActive));
               report.prerequisites.push({ check: "failed maintenance preserved prior saved memory/boundary", status: unchanged ? "PROVEN" : "DISPROVEN" });
               if ((selection.id === "e4" || selection.id === "g8") && selection.variant === "required-too-large") {
                 const req = result?.observations.required;
@@ -747,7 +720,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? report.setupChecks ?? [] : [])];
     if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...scorePrerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);
-    captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);
+    captureComparisonFacts(report, group);
     report.status = report.prerequisites.every(p => p.status === "PROVEN") &&
       !report.score.checks.some(c => c.status === "DISPROVEN") &&
       !report.score.actionReview.some(r => r.status === "DISPROVEN") &&
@@ -765,12 +738,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     if (runtime) {
       report.commands = runtime.commands.slice();
       if (runtime.session.sessionFile) report.sessionFile = runtime.session.sessionFile;
-      if (!report.comparisonFacts) {
-        captureComparisonFacts(report, runtime, selection, group, firstModel, lastBeforeActive);
+      if (!report.observedFacts) {
+        captureComparisonFacts(report, group);
       }
-      try { await closeHost(runtime); } catch { report.status = "STOPPED"; report.reason = "CLEANUP"; }
-    } else if (!report.comparisonFacts) {
-      captureComparisonFacts(report, undefined, selection, group, firstModel, lastBeforeActive);
+      try { await runtime.close(); } catch { report.status = "STOPPED"; report.reason = "CLEANUP"; }
+    } else if (!report.observedFacts) {
+      captureComparisonFacts(report, group);
     }
     const endLedger = readLedger(join(input.target.stateRoot, "calls.jsonl"));
     const segmentReserves = endLedger.filter((r): r is CallRecord => r.kind === "reserve" && !startReserveIds.has(r.id));

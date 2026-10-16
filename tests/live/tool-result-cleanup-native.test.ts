@@ -25,7 +25,7 @@ test("native Luna m5 provider wrapper sends low effort for both main and mainten
   try {
     const provider = boundedProvider(openaiCodexProvider(), [model], ledger, {
       classify: simple => simple ? "main" : "maintenance", onContext: (_model, _context, kind) => kinds.push(kind),
-      effectiveThinking: "low", maintenanceThinking: "low", requireThinkingLevel: "low",
+      maintenanceThinking: "low", requireThinkingLevel: "low",
     });
     const context = (text: string) => normalizeContext({ messages: [{ role: "user", content: [{ type: "text", text }], timestamp: 0 }] });
     const main = await provider.streamSimple(model, context("Controlled main"), { apiKey: f.oauth.access, reasoning: "low", maxTokens: 1024 }).result();

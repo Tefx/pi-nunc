@@ -7,7 +7,7 @@ import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { record } from "../../src/engine/validation.js";
 import { applyLastUserTextAppend, authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite } from "../../src/pi/payload.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
-import { fixture } from "./fixtures.js";
+import { responsesSSE, fixture } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
 
 const provider = openaiCodexProvider();
@@ -80,18 +80,6 @@ test("instruction shrinkage never pays for appended text or metadata growth; adm
   assert.throws(() => authorize(tiny, { ...tiny, instructions: "i".repeat(32000) }), /Payload input growth/);
 });
 
-function responseSSE() {
-  const item = { type: "message", id: "msg-fixture", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed.", annotations: [] }] };
-  const events = [
-    { type: "response.created", response: { id: "response-fixture", model: model.id, status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: "Completed." },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "response-fixture", model: model.id, status: "completed", output: [item], usage: { input_tokens: 128, output_tokens: 4, total_tokens: 132, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } },
-  ];
-  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-}
 
 test("real loader and Codex serializer deliver restored instructions on idle callback; growth, arbitrary rewrites and cancellation send nothing", { timeout: 90000 }, async t => {
   type Mode = "unchanged" | "restore" | "overflow" | "rewrite-history" | "cancel";
@@ -122,7 +110,7 @@ test("real loader and Codex serializer deliver restored instructions on idle cal
     const decoded = request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
     const body: unknown = JSON.parse(decoded.toString("utf8"));
     assert(record(body)); bodies.push(body);
-    return responseSSE();
+    return responsesSSE(model.id, "Completed.", { inputTokens: 128 });
   };
   const credential = oauthFixture();
   await f.credentials.modify(model.provider, async () => credential);

@@ -3,6 +3,7 @@ import type { ActiveEntry, MaintenanceInput, Omission } from "./types.js";
 import { RESPONSE_CONTRACT } from "./memory.js";
 import { extractionOutputPlan, hardMemoryLimit, inputLimit, requestTokens } from "./accounting.js";
 import { record, requireThat } from "./validation.js";
+import { messageTextContent } from "./cleanup.js";
 import { maintenanceFeedback } from "./calibration.js";
 
 function transcript(entries: ActiveEntry[], region: "B" | "K"): (TextContent | ImageContent)[] {
@@ -112,28 +113,14 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
           if (omissions.some(o => o.entryId === entry.entryId && o.messageIndex === messageIndex)) {
             continue;
           }
-          // Filter out results with non-text or mixed blocks (e.g. image)
-          if (Array.isArray(message.content) && message.content.some(b => b.type !== "text")) {
-            continue;
-          }
-
-          let len = 0;
-          const content = message.content as unknown;
-          if (typeof content === "string") {
-            len = content.length;
-          } else if (Array.isArray(content)) {
-            for (const b of content) {
-              if (b && typeof b === "object" && "text" in b && typeof b.text === "string") {
-                len += b.text.length;
-              }
-            }
-          }
+          const text = messageTextContent(message);
+          if (text === null) continue;
           safeCandidates.push({
             entryId: entry.entryId,
             messageIndex,
             toolName: message.toolName,
             toolCallId: message.toolCallId,
-            textLength: len,
+            textLength: text.length,
           });
         }
       }

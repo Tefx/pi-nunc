@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, Provider, Context, AssistantMessage } from "@earendil-works/pi-ai";
-import { fixture } from "./fixtures.js";
+import { responsesSSE, fixture } from "./fixtures.js";
 import { piComplete, subscriptionBilling } from "../../src/engine/pi-model.js";
 import { BudgetLedger, boundedProvider, readLedger, ledgerSummary } from "../../src/live/budget.js";
 import { serializedEvidence } from "../../src/live/stable-memory-observation.js";
@@ -13,18 +13,6 @@ import type { AdmissionObservation } from "../../src/pi/admission.js";
 const provider = openaiProvider();
 const model = provider.getModels().find(m => m.id === "gpt-6.1-sol")!;
 assert(model);
-function sse(text: string): Response {
-  const item = { type: "message", id: "msg-fixture", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
-  const events = [
-    { type: "response.created", response: { id: "response-fixture", model: model.id, status: "in_progress", output: [] } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
-    { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-    { type: "response.output_text.delta", item_id: item.id, output_index: 0, delta: text },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response: { id: "response-fixture", model: model.id, status: "completed", output: [item], usage: { input_tokens: 200, output_tokens: 32, total_tokens: 232, input_tokens_details: { cached_tokens: 40 }, output_tokens_details: { reasoning_tokens: 8 } } } },
-  ];
-  return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-}
 
 for (const oauth of [true, false]) test(`real loader / native openai serializer preserves medium main+maintenance and ${oauth ? "subscription unknown" : "API-key catalog"} billing`, async t => {
   const admissions: AdmissionObservation[] = [], bodies: Record<string, unknown>[] = [];
@@ -38,7 +26,7 @@ for (const oauth of [true, false]) test(`real loader / native openai serializer 
     const body = await request.json() as Record<string, unknown>; bodies.push(body);
     assert.deepEqual(body.reasoning, { effort: "medium", summary: "auto" });
     assert.equal(Object.hasOwn(body, "max_output_tokens"), !oauth, "Native subscription omits cap; API-key serializer retains it");
-    return sse(bodies.length === 2 ? JSON.stringify({ add: [{ key: "fact", text: "Continue verification." }], remove: [], priority: ["fact"], required: ["fact"] }) : "Controlled continuation.");
+    return responsesSSE(model.id, bodies.length === 2 ? JSON.stringify({ add: [{ key: "fact", text: "Continue verification." }], remove: [], priority: ["fact"], required: ["fact"] }) : "Controlled continuation.", { inputTokens: 200, outputTokens: 32, cachedTokens: 40, reasoningTokens: 8 });
   };
   const requests: Array<{ callId: number; outputPlanning: number | null; kind: string }> = [];
   const caps: Array<{ callId: number; cap: ReturnType<typeof import("../../src/pi/payload.js").outputCapState> }> = [];
@@ -89,7 +77,7 @@ test("public raw maintenance bridge preserves native medium and actual Responses
   const registry = new ModelRegistry(f.modelRuntime);
   const wrapped: Provider = { ...provider, stream: (m, context, options) => {
     assert.equal(m.api, "openai-responses");
-    return provider.stream({ ...m, api: "openai-responses" }, context, { ...options, fetch: async () => sse("Observed."), onPayload: body => { payload = structuredClone(body); } } as Parameters<typeof provider.stream>[2]);
+    return provider.stream({ ...m, api: "openai-responses" }, context, { ...options, fetch: async () => responsesSSE(model.id, "Observed.", { inputTokens: 200, outputTokens: 32, cachedTokens: 40, reasoningTokens: 8 }), onPayload: body => { payload = structuredClone(body); } } as Parameters<typeof provider.stream>[2]);
   } };
   registry.registerProvider(wrapped);
   const context: Context = { messages: [
@@ -122,7 +110,7 @@ test("thinking changed during native Responses extraction discards the otherwise
     assert.equal(m.api, "openai-responses");
     return provider.stream({ ...m, api: "openai-responses" }, context, { ...options, fetch: async () => {
       f.runtime.session.setThinkingLevel("high");
-      return sse(JSON.stringify({ add: [{ key: "fact", text: "Must not commit stale candidate." }], remove: [], priority: ["fact"], required: ["fact"] }));
+      return responsesSSE(model.id, JSON.stringify({ add: [{ key: "fact", text: "Must not commit stale candidate." }], remove: [], priority: ["fact"], required: ["fact"] }), { inputTokens: 200, outputTokens: 32, cachedTokens: 40, reasoningTokens: 8 });
     } } as Parameters<typeof provider.stream>[2]);
   } };
   new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
@@ -139,7 +127,7 @@ test("native provider decorator rejects subscription USD guarantees before reser
   let sent = 0;
   for (const maxCostUsd of [100, null]) {
     const ledger = new BudgetLedger(join(f.dir, `decorator-${maxCostUsd}.jsonl`), { maxCalls: 1, maxTotalTokens: 1000000, maxOutputTokens: model.maxTokens, maxDurationMs: 10000, maxCostUsd }, Date.now() + 10000, new AbortController().signal);
-    registry.registerProvider(boundedProvider(provider, [model], ledger, { subscriptionBilling: m => subscriptionBilling(m, registry), onRequest: data => { assert.equal(data.reasoning, "medium"); assert.equal(data.model.api, "openai-responses"); }, fetch: async () => { sent++; return sse("Controlled."); } }));
+    registry.registerProvider(boundedProvider(provider, [model], ledger, { subscriptionBilling: m => subscriptionBilling(m, registry), onRequest: data => { assert.equal(data.reasoning, "medium"); assert.equal(data.model.api, "openai-responses"); }, fetch: async () => { sent++; return responsesSSE(model.id, "Controlled.", { inputTokens: 200, outputTokens: 32, cachedTokens: 40, reasoningTokens: 8 }); } }));
     await f.modelRuntime.refresh({ allowNetwork: false });
     const result = await registry.complete(model, { messages: [{ role: "user", content: "Controlled", timestamp: 1 }] }, { reasoningEffort: "medium" });
     assert.equal(result.stopReason, maxCostUsd === null ? "stop" : "error");

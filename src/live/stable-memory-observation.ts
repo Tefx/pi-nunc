@@ -7,12 +7,13 @@ import type { CallEnd, LedgerRecord } from "./budget.js";
 export interface LayoutObservation {
   turn: string; model: string; kind: string; callId?: number;
   messageCount: number; memoryIndex?: number; memoryContent?: string;
+  legalTailIndex?: number; memoryBoundaryLegal?: boolean;
   memoryPresent?: boolean; uniqueCarrier: boolean;
   deliveredMemoryMatches?: boolean;
   payloadSyntheticMissing?: boolean;
   input?: number; cacheRead?: number; cacheWrite?: number; keepRecentFraction?: number;
 }
-export interface PositionEpoch { content: string; indexes: number[]; observedInputs: Array<number | undefined>; firstAtTail: boolean }
+export interface PositionEpoch { content: string; indexes: number[]; observedInputs: Array<number | undefined>; firstAtLegalTail: boolean | undefined }
 function text(value: any): string | undefined {
   if (typeof value === "string") return value;
   if (!Array.isArray(value) || value.some(b => !["text", "input_text", "output_text"].includes(b?.type))) return;
@@ -98,6 +99,40 @@ function serializedResponsesEvidence(request: RequestObservation, payload: any):
   return { ...(synthetic !== undefined ? { synthetic } : {}),
     memory: sameCount && ordinal >= 0 && text(users[ordinal]?.content) === admission.memoryContent };
 }
+/** Independent Context oracle: tool-call/result intervals exclude interrupted boundaries.
+ * Unlike the production selector, enumerate boundaries after validating the complete
+ * observed associations. Missing results remain open intervals; malformed traces are unknown.
+ */
+function memoryBoundaryEvidence(request: RequestObservation): Pick<LayoutObservation, "legalTailIndex" | "memoryBoundaryLegal"> {
+  const a = request.admission, index = a?.memoryIndex;
+  if (a?.memoryPresent !== true || a.memoryCarrierCount !== 1 || index === undefined ||
+      !Number.isInteger(index) || index < 0 || index >= request.context.messages.length ||
+      request.context.messages[index]?.role !== "user" || text(request.context.messages[index]?.content) !== a.memoryContent) return {};
+  const history = request.context.messages.filter((_message, i) => i !== index);
+  const intervals: Array<{ at: number; name: string; end?: number }> = [];
+  const pending = new Map<string, typeof intervals[number]>();
+  for (const [i, message] of history.entries()) {
+    if (message.role === "user" || message.role === "system") continue;
+    if (message.role === "assistant") {
+      if (!Array.isArray(message.content)) return {};
+      for (const block of message.content) if (block.type === "toolCall") {
+        if (!block.id || !block.name || pending.has(block.id)) return {};
+        const interval = { at: i, name: block.name };
+        intervals.push(interval);
+        pending.set(block.id, interval);
+      }
+    } else if (message.role === "toolResult") {
+      const call = pending.get(message.toolCallId);
+      if (!call || call.name !== message.toolName) return {};
+      call.end = i;
+      pending.delete(message.toolCallId);
+    } else return {};
+  }
+  const boundaries = Array.from({ length: history.length + 1 }, (_v, i) => i).filter(i =>
+    (i === 0 || history[i - 1]!.role !== "toolResult") &&
+    intervals.every(call => i <= call.at || i > (call.end ?? history.length)));
+  return { legalTailIndex: boundaries.at(-1)!, memoryBoundaryLegal: boundaries.includes(index) };
+}
 export function layoutsFromRequests(requests: readonly RequestObservation[], ledger: readonly LedgerRecord[], keepRecentFraction?: number): LayoutObservation[] {
   const terminals = ledger.filter((row): row is CallEnd => row.kind === "terminal");
   return requests.filter(request => request.kind === "main").map(request => {
@@ -109,6 +144,7 @@ export function layoutsFromRequests(requests: readonly RequestObservation[], led
     return {
       turn: request.turn, model: `${request.model.provider}/${request.model.id}`, kind: request.kind, callId: request.callId,
       messageCount: request.context.messages.length,
+      ...memoryBoundaryEvidence(request),
       uniqueCarrier: a?.memoryPresent === true && a.memoryCarrierCount === 1 && a.memoryIndex !== undefined && contextContent === a.memoryContent,
       ...(a?.memoryPresent !== undefined ? { memoryPresent: a.memoryPresent } : {}),
       ...(a?.memoryIndex !== undefined ? { memoryIndex: a.memoryIndex } : {}),
@@ -130,17 +166,18 @@ export function unchangedContentEpochs(rows: readonly LayoutObservation[], expec
     if (!row.uniqueCarrier || row.memoryIndex === undefined || row.memoryContent === undefined || (expectedContent !== undefined && row.memoryContent !== expectedContent)) { previous = undefined; continue; }
     const observedInput = row.input !== undefined && row.cacheRead !== undefined && row.cacheWrite !== undefined ? row.input + row.cacheRead + row.cacheWrite : undefined;
     if (previous?.content === row.memoryContent) { previous.indexes.push(row.memoryIndex); previous.observedInputs.push(observedInput); }
-    else { previous = { content: row.memoryContent, indexes: [row.memoryIndex], observedInputs: [observedInput], firstAtTail: row.memoryIndex === row.messageCount - 1 }; epochs.push(previous); }
+    else { previous = { content: row.memoryContent, indexes: [row.memoryIndex], observedInputs: [observedInput], firstAtLegalTail: row.legalTailIndex === undefined || row.memoryBoundaryLegal === undefined ? undefined : row.memoryBoundaryLegal && row.memoryIndex === row.legalTailIndex }; epochs.push(previous); }
   }
   return epochs;
 }
 export function positionStable(rows: readonly LayoutObservation[], expectedContent?: string): boolean {
   const epochs = unchangedContentEpochs(rows, expectedContent).filter(e => e.indexes.length >= 2);
-  return uniqueCarriers(rows) && epochs.length > 0 && epochs.every(e => e.indexes.every(i => i === e.indexes[0]));
+  return uniqueCarriers(rows) && mainLayouts(rows).every(r => r.memoryPresent === false || r.memoryBoundaryLegal === true) &&
+    epochs.length > 0 && epochs.every(e => e.indexes.every(i => i === e.indexes[0]));
 }
 export function movingUsesTail(rows: readonly LayoutObservation[], expectedContent?: string): boolean {
   const placed = mainLayouts(rows).filter(r => r.memoryPresent === true && (expectedContent === undefined || r.memoryContent === expectedContent));
-  return uniqueCarriers(rows) && placed.length >= 2 && placed.every(r => r.memoryIndex === r.messageCount - 1);
+  return uniqueCarriers(rows) && placed.length >= 2 && placed.every(r => r.memoryBoundaryLegal === true && r.legalTailIndex !== undefined && r.memoryIndex === r.legalTailIndex);
 }
 export function noSyntheticMissing(rows: readonly LayoutObservation[]): boolean | undefined {
   const main = mainLayouts(rows);
@@ -163,12 +200,12 @@ export function scoreStableMemory(input: { id: string; variant?: string; layouts
   const synthetic = noSyntheticMissing(rows);
   results.push({ check: "no serializer-synthesized missing tool results", status: synthetic === true ? "PROVEN" : synthetic === false ? "DISPROVEN" : "UNPROVEN", reason: "Complete per-call final chat-completions or native Codex Responses tool calls/results compared to Context; other formats remain unproven" });
   if (input.id === "m1") {
-    results.push({ check: input.variant === "fixed" ? "fixed layout keeps M at a stable request index across an unchanged-content epoch" : "moving baseline places M at the request tail", status: (input.variant === "fixed" ? positionStable(rows, input.expectedContent) : movingUsesTail(rows, input.expectedContent)) ? "PROVEN" : "UNPROVEN" });
+    results.push({ check: input.variant === "fixed" ? "fixed layout keeps M at a stable request index across an unchanged-content epoch" : "moving baseline places M at the legal request tail", status: (input.variant === "fixed" ? positionStable(rows, input.expectedContent) : movingUsesTail(rows, input.expectedContent)) ? "PROVEN" : "UNPROVEN" });
     const epochs = unchangedContentEpochs(rows);
     // Qualification is input scale and two warmup opportunities on each side of
     // a real content update, never a promise about a provider's cache threshold.
     const qualified = epochs.filter(e => e.observedInputs.filter(n => n !== undefined && n >= 17000).length >= 3);
-    results.push({ check: "large unchanged-M warmup and updated-M rewarm epochs", status: qualified.length >= 2 && qualified.every(e => e.firstAtTail) ? "PROVEN" : "UNPROVEN", observed: { minimumObservedInput: 17000, epochs: epochs.map(e => ({ requests: e.indexes.length, indexes: e.indexes })) } });
+    results.push({ check: "large unchanged-M warmup and updated-M rewarm epochs", status: qualified.length >= 2 && qualified.every(e => e.firstAtLegalTail === true) ? "PROVEN" : "UNPROVEN", observed: { minimumObservedInput: 17000, epochs: epochs.map(e => ({ requests: e.indexes.length, indexes: e.indexes })) } });
   }
   if (input.id === "m4") {
     const expected = input.variant === "keep-0.67" ? 0.67 : 0.5;

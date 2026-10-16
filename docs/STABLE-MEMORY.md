@@ -259,7 +259,7 @@ memoryLimit = min(原有建议目标, memory.targetTokens ?? 8192)
 - Admission、receipt、预算、UI 均正确处理中段 M；外观类似记忆的真实 user 消息仍属于 R。
 - 从真实 loader/context hook 到原生 serializer 的序列中，唯一 M、实际位置、真实历史及工具关联均符合合同；不松动 `previous_response_id` 检查。
 
-现有断言尾置的测试应随新合同改为稳定位置和真实序列化行为检查；不能只改期望输出掩盖内容或状态错误。相关离线测试、完整库存和实际 Larva 组合证据按 [DEVELOPMENT.md](DEVELOPMENT.md) 的入口与适用性要求取得。
+现有断言尾置的测试应随新合同改为稳定位置和真实序列化行为检查；不能只改期望输出掩盖内容或状态错误。scorer 应从实际请求 Context 中移除已绑定的唯一 M，独立核验调用／结果关联及没有未完成工具调用的合法边界；排除紧随 toolResult 的位置。移动对照逐次检查最后一个合法边界，固定布局检查同内容 epoch 的位置稳定，并检查新 epoch 首次位于合法尾边界；均不要求物理消息末尾。缺失或无法验证的边界证据不得计为通过，17000 输入量及两侧 warmup 次数要求保持不变。相关离线测试、完整库存和实际 Larva 组合证据按 [DEVELOPMENT.md](DEVELOPMENT.md) 的入口与适用性要求取得。
 
 ### 11.2 缓存与记忆使用效果
 

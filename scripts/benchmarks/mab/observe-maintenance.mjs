@@ -3,7 +3,7 @@
 // effects: Append task-local observations; stop optional idle cache warming; no model calls, prompt edits or checkpoint writes.
 // requires: Pi1.1 public ExtensionAPI; Nunc's existing nunc:maintenance event for Nunc usage.
 import { appendFileSync } from 'node:fs';
-export default function (pi) {
+export default function maintenance(pi) {
   pi.registerFlag('bench-observer-file', { type: 'string', description: 'Task-local benchmark observations (not model context)' });
   const record = (data) => {
     const path = pi.getFlag('bench-observer-file');
@@ -15,4 +15,16 @@ export default function (pi) {
   pi.events.on('nunc:maintenance', (event) => record({ type: 'nunc_maintenance', reason: event.reason, ok: event.result.ok, code: event.result.code, message: event.result.message, observations: event.result.observations }));
   pi.on('session_compact_failed', (event) => { record({ type: 'compaction_failed', ...event }); });
   pi.on('cache_warming_decision', () => ({ action: 'stop' }));
+}
+
+/** Share event/command composition while each benchmark retains its own capture policy. */
+export function composeObserver(capture) {
+  return pi => {
+    capture(pi);
+    maintenance(pi);
+    pi.registerCommand('bench-compact', {
+      description: 'Start native compaction; caller awaits compaction_end',
+      handler: (_args, ctx) => { ctx.compact(); },
+    });
+  };
 }

@@ -1,7 +1,7 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { estimateContextTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
-import { EngineError, record } from "../engine/validation.js";
+import { canonical, EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
 export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "control" | "metadata" | "unsupported";
@@ -39,12 +39,6 @@ const CAP_KEYS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as
 export function jsonView(value: unknown): unknown {
   try { return JSON.parse(JSON.stringify(value)); }
   catch (cause) { throw new EngineError("CONFIG", "Nunc: native payload is not JSON-serializable; request was not sent", { cause }); }
-}
-
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (record(value)) return `{${Object.keys(value).filter(k => value[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(",")}}`;
-  return JSON.stringify(value) ?? "null";
 }
 
 export function canonicalJson(value: unknown): string { return canonical(jsonView(value)); }

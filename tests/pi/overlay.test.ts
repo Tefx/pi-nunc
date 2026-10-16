@@ -2,32 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { KeybindingsManager, TUI_KEYBINDINGS, type TUI } from "@earendil-works/pi-tui";
-import { initTheme, type ExtensionAPI, type ExtensionContext, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 initTheme();
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { contextSurface, memorySurface, type ContextSurface, type MemorySurface } from "pi-nunc/pi";
 import { NuncOverlay } from "../../src/ui/overlay.js";
 import { UNLOAD_LIMIT } from "../../src/ui/status.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fixture, memoryPatch, surfacePort as port } from "./fixtures.js";
 
-function port(): {
-  extras: InlineExtension[];
-  memory: () => MemorySurface;
-  context: () => ContextSurface;
-  ctx: () => ExtensionContext;
-} {
-  let api: ExtensionAPI | undefined;
-  let ctx: ExtensionContext | undefined;
-  return {
-    extras: [{ name: "nunc-ui-port", factory(pi) {
-      api = pi;
-      pi.on("session_start", (_event, next) => { ctx = next; });
-    } }],
-    memory() { const value = memorySurface(api!); assert(value); return value; },
-    context() { const value = contextSurface(api!); assert(value); return value; },
-    ctx() { assert(ctx); return ctx; },
-  };
-}
 
 function visible(lines: string[]): string {
   return lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b_pi:c\x07/g, "");

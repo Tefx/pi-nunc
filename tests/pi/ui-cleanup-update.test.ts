@@ -10,7 +10,7 @@ import type { NuncOverlay } from "../../src/ui/overlay.js";
 import { fixture } from "./fixtures.js";
 
 initTheme();
-for (const updateMode of ["nonempty", "empty", "legacy"] as const) test(`actual UI cleanup ${updateMode} update preserves user-selected M`, async t => {
+for (const updateMode of ["nonempty", "empty", "legacy", "errorMessage", "endTurn", "deferred", "responseModel", "toolCall"] as const) test(`actual UI cleanup ${updateMode} update preserves user-selected M`, async t => {
   let ctx: ExtensionContext | undefined, api: ExtensionAPI | undefined;
   const responseObserved = Promise.withResolvers<void>();
   const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } },
@@ -39,9 +39,15 @@ for (const updateMode of ["nonempty", "empty", "legacy"] as const) test(`actual 
   const proposalText = `${slot.text} Edited by user.`;
   f.respond(context => {
     assert(JSON.stringify(context.messages).includes(proposalText), "cleanup model must receive the user's proposed M");
-    return fauxAssistantMessage(JSON.stringify({ add: [], remove: [], priority: [slot.id], required: [],
-      ...(updateMode === "legacy" ? {} : { update: updateMode === "empty" ? [] : [{ id: slot.id, text: "Unauthorized model revision." }] }),
+    const response = fauxAssistantMessage(JSON.stringify({ add: [], remove: [], priority: [slot.id], required: [],
+      ...(updateMode === "legacy" ? {} : { update: updateMode === "nonempty" ? [{ id: slot.id, text: "Unauthorized model revision." }] : [] }),
       toolResultEdits: [{ entryId: resultEntry.entryId, messageIndex: 0, action: "omit", memoryRefs: [slot.id] }] }));
+    if (updateMode === "errorMessage") response.errorMessage = "Provider reported failure";
+    if (updateMode === "endTurn") Object.assign(response, { endTurn: false });
+    if (updateMode === "deferred") Object.assign(response, { deferred: true });
+    if (updateMode === "responseModel") Object.assign(response, { responseModel: "different-model" });
+    if (updateMode === "toolCall") response.content.push({ type: "toolCall", id: "unexpected", name: "read", arguments: {} });
+    return response;
   });
   const ready = Promise.withResolvers<NuncOverlay>(), done = Promise.withResolvers<unknown>();
   t.after(() => done.resolve(null));
@@ -66,7 +72,12 @@ for (const updateMode of ["nonempty", "empty", "legacy"] as const) test(`actual 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(overlay.layerName, "browse");
   assert.equal(surface.read(ctx).memory.slots[0]?.text, proposalText);
-  assert.equal(project(manager.buildContextEntries()).cleanup.length, updateMode === "nonempty" ? 0 : 1);
+  const validCleanup = updateMode === "empty" || updateMode === "legacy";
+  assert.equal(project(manager.buildContextEntries()).cleanup.length, validCleanup ? 1 : 0);
+  if (!validCleanup) {
+    assert.match(overlay.render(120).join("\n"), /Cleanup (?:did not complete|response changed frozen memory)/);
+    assert(JSON.stringify(project(manager.buildContextEntries()).active).includes("Eligible original evidence."));
+  }
   assert.equal(f.calls.length, 2, "one anchor request and one cleanup request, no retry");
   overlay.dispose(); done.resolve(null); await opened;
 });
