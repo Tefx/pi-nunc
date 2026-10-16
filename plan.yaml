@@ -7537,3 +7537,95 @@ phases:
       carried, no reset/release; max6main12judge. Oldtargetsimmutable. Evidence .scratch/defaults-remaining-2026-10-13/query-recovery-support/{DELIVERY.md,native-proof.json,native-proof-final,logs,cleanup.json}.
       Ownenvremoved; immutabletoolchain heldforimmediateBEAMruntimeconsumer only.
       SourceproofdoesnotcompletepaidBEAM; proceedexistingconsumer withinparentauthorizedrecovery/budget.
+- id: code-hygiene
+  name: 全仓代码卫生审查与精简接线修复
+  status: pending
+  gate: code-hygiene.trim-and-wire 完成汇总修复与验证，npm run build 与 NODE_DISABLE_COMPILE_CACHE=1
+    node --test --test-concurrency=2 dist/tests/engine/*.test.js dist/tests/pi/*.test.js
+    100% 通过并提交到 main 分支，且 .scratch/code-hygiene/{structural-audit.md,pathway-audit.md,trim-and-wire-report.md}
+    落盘完备。
+  depends_on:
+  - nunc-defaults-remaining
+  steps:
+  - id: code-hygiene.structural-audit
+    name: 横向结构与重复精简广度审查
+    status: pending
+    description: "step_type: review\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\".scratch/code-hygiene/structural-audit.md\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \"src/**\", \"policies/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \"\
+      package.json\", \"package-lock.json\", \"tsconfig.json\", \".env\", \".env.*\"\
+      , \"**/auth.json\"]\n\n[REQUIRES_SKILL: code-hygiene]\n\nDeliver: 以只读 AUDIT\
+      \ 模式对当前仓库生产源码（`src/**`、`policies/default.md`、`scripts/**`）与测试套件（`tests/engine/**`、`tests/pi/**`、`tests/live/**`）进行横向广度扫描，覆盖\
+      \ Lens 2（重复与漏用复用）、Lens 3（死代码与迭代沉积）、Lens 4（浅层包装与非正交接口）以及结构性 Lens 5（测试脚手架重复），按技能规范输出带\
+      \ `[COMPLETENESS / WIRE]` 或 `[SIMPLICITY / TRIM]` 分类、精确 `path:line_start-line_end`、证据与最小行为保持行动建议的审查报告，写入\
+      \ `.scratch/code-hygiene/structural-audit.md`。\n\nBoundary: owner 为 `structural-auditor`；仓库跟踪源码、配置、测试、文档与\
+      \ `.pi/nunc-recovery.json` 严格只读，仅写入 `.scratch/code-hygiene/structural-audit.md`。不执行付费模型调用或改动持久化状态。\n\
+      \nAdmit: 当前 `main` 分支（`55dca7ad82240621f01f0ea3ff7e1fc9b2c1392e`）生产源码与测试套件；产出报告供下游\
+      \ `code-hygiene.trim-and-wire` 消费。\n\nRecovery: 只读扫描若遇局部工具或路径问题，在同一 owner 内修正查询方式并完成完整范围审查与报告落盘。"
+    verification: 确认 `.scratch/code-hygiene/structural-audit.md` 已生成且非空，覆盖 `src/**`、`policies/default.md`、`scripts/**`
+      与 `tests/engine/**`、`tests/pi/**`、`tests/live/**` 的 Lens 2/3/4 及结构性 Lens 5 发现，且
+      `git status --porcelain` 显示跟踪文件零修改、`.pi/nunc-recovery.json` 未被改动。
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/CONSTITUTION.md
+    - policies/default.md
+    agent: structural-auditor
+  - id: code-hygiene.pathway-audit
+    name: 纵向通路完整性与删除安全性深度审查
+    status: pending
+    description: "step_type: review\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: [\".scratch/code-hygiene/pathway-audit.md\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \"src/**\", \"policies/**\", \"scripts/**\", \"tests/**\", \"docs/**\", \"\
+      package.json\", \"package-lock.json\", \"tsconfig.json\", \".env\", \".env.*\"\
+      , \"**/auth.json\"]\n\n[REQUIRES_SKILL: code-hygiene]\n\nDeliver: 以只读 AUDIT\
+      \ 模式对当前仓库生产源码（`src/**`、`policies/default.md`、`scripts/**`）与测试套件（`tests/engine/**`、`tests/pi/**`、`tests/live/**`）进行纵向深度与安全追踪，覆盖\
+      \ Lens 1（入口到终端副作用接线完整性、幽灵/只写字段、吞异常与边界校验）、Lens 4（接口契约）、语义性 Lens 5（假阳性/循环 Oracle\
+      \ 测试），并对候选删除项做消费者安全性核查（公开导出、动态/反射调用、跨模块引用、持久化兼容），将完整审查报告写入 `.scratch/code-hygiene/pathway-audit.md`。\n\
+      \nBoundary: owner 为 `pathway-auditor`；仓库跟踪源码、配置、测试、文档与 `.pi/nunc-recovery.json`\
+      \ 严格只读，仅写入 `.scratch/code-hygiene/pathway-audit.md`。不执行付费模型调用或改动持久化状态。\n\nAdmit:\
+      \ 当前 `main` 分支（`55dca7ad82240621f01f0ea3ff7e1fc9b2c1392e`）生产源码与测试套件；产出报告供下游\
+      \ `code-hygiene.trim-and-wire` 消费。\n\nRecovery: 只读追踪若遇局部查询问题，在同一 owner 内补齐调用链与消费者核查并完成报告落盘。"
+    verification: 确认 `.scratch/code-hygiene/pathway-audit.md` 已生成且非空，覆盖 Lens 1、Lens
+      4、语义性 Lens 5 及候选删除项的消费者安全性核查，且 `git status --porcelain` 显示跟踪文件零修改、`.pi/nunc-recovery.json`
+      未被改动。
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/CONSTITUTION.md
+    - policies/default.md
+    agent: pathway-auditor
+  - id: code-hygiene.trim-and-wire
+    name: 汇总精简与接线修复及离线回归验证
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"policies/default.md\", \"scripts/**\", \"tests/**\"\
+      , \"docs/**\", \".scratch/code-hygiene/trim-and-wire-report.md\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \"package.json\", \"package-lock.json\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\n[REQUIRES_SKILL: code-hygiene]\n\nDeliver: 以可写 `TRIM_AND_WIRE` 模式读取 `.scratch/code-hygiene/structural-audit.md`\
+      \ 与 `.scratch/code-hygiene/pathway-audit.md`，汇总真实有效的 `[COMPLETENESS / WIRE]`\
+      \ 与 `[SIMPLICITY / TRIM]` 问题，剔除误报与不安全删除项，在不破坏公共契约、持久化格式与安全边界的前提下实施最小行为保持修复（严禁删除或改动\
+      \ `/Users/tefx/Projects/pi-nunc/.pi/nunc-recovery.json`），运行构建与离线测试验证 100% 通过后提交到\
+      \ `main` 分支，并将汇总修复与验证报告写入 `.scratch/code-hygiene/trim-and-wire-report.md`。\n\
+      \nBoundary: owner 为 `node-typescript-engineer`；属于本仓库可 Git 回退的源码与测试精简修复事务。严禁触碰\
+      \ `/Users/tefx/Projects/pi-nunc/.pi/nunc-recovery.json`、全局 Pi 配置或凭据，不执行付费外部模型调用，不\
+      \ push 远端。\n\nAdmit: 消费 `code-hygiene.structural-audit`（`.scratch/code-hygiene/structural-audit.md`）与\
+      \ `code-hygiene.pathway-audit`（`.scratch/code-hygiene/pathway-audit.md`）的两份审查报告，以及当前\
+      \ `main` 分支代码基线。\n\nRecovery: 若某项精简或接线修改破坏构建或测试，在同一步骤内定位并恢复或修正该项变更，确保最终提交在构建与测试上\
+      \ 100% 通过且 `/Users/tefx/Projects/pi-nunc/.pi/nunc-recovery.json` 完好无损。"
+    verification: 执行 `npm run build` 与 `NODE_DISABLE_COMPILE_CACHE=1 node --test --test-concurrency=2
+      dist/tests/engine/*.test.js dist/tests/pi/*.test.js` 确认 exit code 为 0 且 100%
+      通过；确认变更已提交到 `main` 分支，`/Users/tefx/Projects/pi-nunc/.pi/nunc-recovery.json`
+      未被删除或改动，且 `.scratch/code-hygiene/trim-and-wire-report.md` 完整记录采纳修复项、排除项理由及验证结果。
+    refs:
+    - README.md
+    - docs/DESIGN.md
+    - docs/CONSTITUTION.md
+    - policies/default.md
+    depends_on:
+    - code-hygiene.structural-audit
+    - code-hygiene.pathway-audit
+    agent: node-typescript-engineer
