@@ -7615,7 +7615,7 @@ phases:
       findings (PA-1..PA-4) and complete deletion consumer-safety vetting.
   - id: code-hygiene.trim-and-wire
     name: 汇总精简与接线修复及离线回归验证
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/default.md\", \"scripts/**\", \"tests/**\"\
       , \"docs/**\", \".scratch/code-hygiene/trim-and-wire-report.md\"]\n  blocked_paths:\
@@ -7645,3 +7645,5 @@ phases:
     - code-hygiene.structural-audit
     - code-hygiene.pathway-audit
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-16T19:06:59.556192Z'
