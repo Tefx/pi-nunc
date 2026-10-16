@@ -7539,7 +7539,7 @@ phases:
       SourceproofdoesnotcompletepaidBEAM; proceedexistingconsumer withinparentauthorizedrecovery/budget.
 - id: code-hygiene
   name: 全仓代码卫生审查与精简接线修复
-  status: in_progress
+  status: done
   gate: code-hygiene.trim-and-wire 完成汇总修复与验证，npm run build 与 NODE_DISABLE_COMPILE_CACHE=1
     node --test --test-concurrency=2 dist/tests/engine/*.test.js dist/tests/pi/*.test.js
     100% 通过并提交到 main 分支，且 .scratch/code-hygiene/{structural-audit.md,pathway-audit.md,trim-and-wire-report.md}
@@ -7615,7 +7615,7 @@ phases:
       findings (PA-1..PA-4) and complete deletion consumer-safety vetting.
   - id: code-hygiene.trim-and-wire
     name: 汇总精简与接线修复及离线回归验证
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"policies/default.md\", \"scripts/**\", \"tests/**\"\
       , \"docs/**\", \".scratch/code-hygiene/trim-and-wire-report.md\"]\n  blocked_paths:\
@@ -7647,3 +7647,13 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-16T19:06:59.556192Z'
+    done_at: '2026-10-16T20:38:56.023307+00:00'
+    evidence: Completed 3-Step Frozen-Ledger Audit-Fix-Review Loop on main (commit
+      a3c72627d29636a7434755c3730161d5574c8db5, fast-forwarded onto main). Closed
+      25/25 Frozen Finding Ledger items (PA-1..PA-4, SA-W1..SA-W5, SA-T1..SA-T16)
+      plus DELTA-1 (preserving version:1 JSON.stringify recursive-sorted digest encoding
+      for numeric keys in src/engine/calibration.ts), net -152 lines across 57 files.
+      Verified npm run build (exit 0), engine+pi 594/594 tests pass, live offline
+      265/265 tests pass, and Step 3 pathway-auditor Frozen-Ledger Delta review validated
+      via review_report_validator.py (valid:true, binding_checked:true, evidence_disposition:POSITIVE_EVIDENCE,
+      COMPLETED+PROVEN). Cleaned up worktree .vectl/worktrees/code-hygiene.trim-and-wire.
