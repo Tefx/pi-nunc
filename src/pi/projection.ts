@@ -285,6 +285,61 @@ function branchHistoryCandidates(branch: readonly SessionEntry[], active: readon
   return candidates;
 }
 
+interface HistoryHit { index: number; end: number; term: number; whole: boolean }
+interface HistoryCluster { index: number; end: number; terms: Set<number>; whole: number }
+
+/** Literal Unicode offsets, with whole-word evidence preferred over incidental substrings. */
+function historyClusters(text: string, patterns: readonly RegExp[]): HistoryCluster[] {
+  const hits: HistoryHit[] = patterns.flatMap((pattern, term) => [...text.matchAll(pattern)].map(hit => {
+    const end = hit.index + hit[0].length;
+    return { index: hit.index, end, term, whole:
+      !/[\p{L}\p{N}_]$/u.test(text.slice(Math.max(0, hit.index - 2), hit.index)) &&
+      !/^[\p{L}\p{N}_]/u.test(text.slice(end, end + 2)) };
+  })).sort((a, b) => a.index - b.index);
+  const counts = new Map<number, number>(), ends: number[] = [];
+  const clusters: HistoryCluster[] = [];
+  let right = 0, whole = 0;
+  for (let left = 0; left < hits.length; left++) {
+    const anchor = hits[left]!;
+    while (right < hits.length && hits[right]!.index < anchor.index + 400) {
+      const hit = hits[right]!;
+      counts.set(hit.term, (counts.get(hit.term) ?? 0) + 1);
+      whole += Number(hit.whole);
+      while (ends.length && hits[ends.at(-1)!]!.end <= hit.end) ends.pop();
+      ends.push(right++);
+    }
+    clusters.push({ index: anchor.index, end: hits[ends[0]!]!.end, terms: new Set(counts.keys()), whole });
+    const count = counts.get(anchor.term)! - 1;
+    if (count) counts.set(anchor.term, count); else counts.delete(anchor.term);
+    whole -= Number(anchor.whole);
+    if (ends[0] === left) ends.shift();
+  }
+  return clusters.sort((a, b) => b.terms.size - a.terms.size || b.whole - a.whole || b.index - a.index);
+}
+
+function historyWindow(text: string, cluster: HistoryCluster, limit: number, centered = false): { start: number; end: number } {
+  const start = centered
+    ? Math.max(0, Math.min(text.length - limit, Math.floor((cluster.index + cluster.end - limit) / 2)))
+    : Math.max(0, cluster.index - Math.min(400, Math.floor((limit - Math.min(limit, cluster.end - cluster.index)) / 2)));
+  return { start, end: Math.min(text.length, start + limit, cluster.end + (centered ? limit : 400)) };
+}
+
+function historySnippet(text: string, clusters: readonly HistoryCluster[]): string {
+  const best = clusters[0]!;
+  // A second passage is useful only if it contributes terms missing from the best cluster.
+  const second = clusters.find(cluster => [...cluster.terms].some(term => !best.terms.has(term)) &&
+    (cluster.end <= best.index || cluster.index >= best.end));
+  if (second) {
+    const firstRange = historyWindow(text, best, 600);
+    const secondRange = historyWindow(text, second, 595);
+    if (firstRange.end <= secondRange.start || secondRange.end <= firstRange.start) {
+      return [firstRange, secondRange].map(range => text.slice(range.start, range.end)).join("\n...\n");
+    }
+  }
+  const range = historyWindow(text, best, 1200);
+  return text.slice(range.start, range.end);
+}
+
 /** In-memory selected-branch lookup. Pass effectiveActive() so active cleanup originals can be identified. */
 export function searchBranchHistory(branch: readonly SessionEntry[], active: readonly ActiveEntry[], options: BranchHistoryOptions): BranchHistoryResult {
   requireThat(options.query === undefined || typeof options.query === "string", "INPUT", "query must be a string");
@@ -294,22 +349,26 @@ export function searchBranchHistory(branch: readonly SessionEntry[], active: rea
   const candidates = branchHistoryCandidates(branch, active);
   const terms = [...new Map((options.query ?? "").trim().split(/\s+/u).filter(Boolean).map(term => [term.toLowerCase(), term])).values()];
   // Escaped literal patterns keep match offsets in the original text, including Unicode case mappings.
-  const patterns = terms.map(term => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "iu"));
+  const patterns = terms.map(term => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu"));
+  const clustersByCandidate = new Map(candidates.map(candidate => [candidate, historyClusters(candidate.text, patterns)]));
   const ranked = patterns.length ? candidates.flatMap((candidate, index) => {
-    const hits = patterns.map(pattern => pattern.exec(candidate.text)).filter(hit => hit !== null);
-    const first = hits.sort((a, b) => a.index - b.index)[0];
-    return first ? [{ candidate, index, score: hits.length, position: first.index, length: first[0].length }] : [];
+    const clusters = clustersByCandidate.get(candidate)!;
+    const score = new Set(clusters.flatMap(cluster => [...cluster.terms])).size;
+    return score ? [{ candidate, index, score, clusters }] : [];
   }).sort((a, b) => b.score - a.score || b.index - a.index) : [];
-  const matches = ranked.slice(0, options.limit ?? 5).map(({ candidate, position, length }) => {
+  const matches = ranked.slice(0, options.limit ?? 5).map(({ candidate, clusters }) => {
     const { text, ...ref } = candidate;
-    const start = Math.max(0, position - 400);
-    return { ...ref, snippet: text.slice(start, Math.min(text.length, position + length + 400, start + 1200)) };
+    return { ...ref, snippet: historySnippet(text, clusters) };
   });
   const entries = [...new Set(options.entryIds ?? [])].map(entryId => {
     let remaining = 4000;
     const source = candidates.filter(candidate => candidate.entryId === entryId);
-    const messages = source.map(({ entryId: _entryId, text, ...ref }) => {
-      const body = text.slice(0, remaining);
+    const messages = source.map(candidate => {
+      const { entryId: _entryId, text, ...ref } = candidate;
+      const best = clustersByCandidate.get(candidate)?.[0];
+      const range = best && text.length > 4000 && remaining > 0
+        ? historyWindow(text, best, remaining, true) : { start: 0, end: remaining };
+      const body = text.slice(range.start, range.end);
       remaining -= body.length;
       return { ...ref, text: body };
     });

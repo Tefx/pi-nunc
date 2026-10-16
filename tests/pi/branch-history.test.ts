@@ -63,6 +63,61 @@ test("literal punctuation, Unicode match offsets and long matches keep snippets 
   assert.deepEqual(searchBranchHistory(branch, projected.active, { query: "a.b" }).matches, []);
 });
 
+test("proximity snippets ignore early partial-name and substring distractors", () => {
+  for (const [query, early, fact] of [
+    ["Shaman King", "United Kingdom; Shaman names", "Shaman King was created in the country of Greece."],
+    ["Joseph Mitchell", "Joseph elsewhere; Margaret Mitchell", "Joseph Mitchell is a citizen of United Kingdom."],
+    ["Aki Takase", "Aki elsewhere; Takase elsewhere", "The music that Aki Takase plays is Carnatic music."],
+  ] as const) {
+    const manager = SessionManager.inMemory();
+    const body = early + " filler".repeat(1500) + "\n" + fact + " tail".repeat(1000);
+    const id = manager.appendMessage(user(body));
+    const projected = retire(manager);
+    const found = searchBranchHistory(manager.getBranch(), projected.active, { query, entryIds: [id] });
+    assert(found.matches[0]!.snippet.includes(fact), query);
+    assert(found.matches[0]!.snippet.length <= 1200);
+    assert(found.entries[0]!.messages[0]!.text.includes(fact));
+    assert.equal(found.entries[0]!.messages[0]!.text.length, 4000);
+    assert.equal(found.entries[0]!.truncated, true);
+    assert.equal(searchBranchHistory(manager.getBranch(), projected.active, { entryIds: [id] }).entries[0]!.messages[0]!.text, body.slice(0, 4000));
+    assert.equal(searchBranchHistory(manager.getBranch(), projected.active, { query: "missing", entryIds: [id] }).entries[0]!.messages[0]!.text, body.slice(0, 4000));
+  }
+});
+
+test("whole Unicode words outrank later substring clusters, including underscore boundaries", () => {
+  const manager = SessionManager.inMemory();
+  const fact = "Élan King exact record";
+  manager.appendMessage(user(fact + " filler".repeat(1000) + "\nÉlan_ Kingdom weak record"));
+  const projected = retire(manager);
+  const snippet = searchBranchHistory(manager.getBranch(), projected.active, { query: "élan King" }).matches[0]!.snippet;
+  assert(snippet.includes(fact));
+  assert(!snippet.includes("weak record"));
+});
+
+test("equal full-phrase clusters choose the latest occurrence and center exact reads near the end", () => {
+  const manager = SessionManager.inMemory();
+  const early = "Silver Falcon old value", later = "Silver Falcon revised value";
+  const body = early + " filler".repeat(1600) + "\n" + later;
+  const id = manager.appendMessage(user(body));
+  const projected = retire(manager);
+  const found = searchBranchHistory(manager.getBranch(), projected.active, { query: "Silver Falcon", entryIds: [id] });
+  assert(found.matches[0]!.snippet.includes(later));
+  assert(!found.matches[0]!.snippet.includes(early));
+  assert.equal(found.entries[0]!.messages[0]!.text, body.slice(-4000));
+});
+
+test("two disjoint snippets cover separated query terms within the shared 1200 character bound", () => {
+  const manager = SessionManager.inMemory();
+  manager.appendMessage(user("alpha source" + " filler".repeat(1500) + "beta updated source"));
+  const projected = retire(manager);
+  const snippet = searchBranchHistory(manager.getBranch(), projected.active, { query: "alpha beta" }).matches[0]!.snippet;
+  assert(snippet.includes("alpha source"));
+  assert(snippet.includes("beta updated source"));
+  assert(snippet.includes("\n...\n"));
+  assert(snippet.length <= 1200);
+  assert.equal(snippet.split("\n...\n").length, 2);
+});
+
 test("bash, custom and branch-summary visible text is searchable without thinking, arguments or hidden data", () => {
   const manager = SessionManager.inMemory();
   manager.appendMessage(user("Root"));
