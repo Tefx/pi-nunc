@@ -7549,7 +7549,7 @@ phases:
   steps:
   - id: code-hygiene.structural-audit
     name: 横向结构与重复精简广度审查
-    status: claimed
+    status: done
     description: "step_type: review\nrepo_change_policy: no_repo_change\nscope:\n\
       \  allowed_paths: [\".scratch/code-hygiene/structural-audit.md\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -7574,6 +7574,12 @@ phases:
     agent: structural-auditor
     claimed_by: structural-auditor
     claimed_at: '2026-10-16T18:43:45.385735Z'
+    done_at: '2026-10-16T19:06:31.182048+00:00'
+    evidence: Completed horizontal breadth structural audit on git:5af2d304bd569e0b37658b4ceb2bc4dfa971e4c8.
+      Validated verifier.report.v2 via review_report_validator.py (valid:true, binding_checked:true,
+      evidence_disposition:POSITIVE_EVIDENCE, 0 errors), saved .scratch/code-hygiene/structural-audit.md
+      and .scratch/code-hygiene/structural-audit.report.json with 21 structured hygiene
+      items (W1..W5, T1..T16).
   - id: code-hygiene.pathway-audit
     name: 纵向通路完整性与删除安全性深度审查
     status: done
