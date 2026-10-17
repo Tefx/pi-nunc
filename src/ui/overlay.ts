@@ -17,6 +17,8 @@ import {
   type SelectItem,
   type SelectListTheme,
   type TUI,
+  type TuiMouseEvent,
+  type TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
 import type { ContextSurface, ContextView } from "../pi/context.js";
 import { unknownBudget } from "../pi/context.js";
@@ -95,6 +97,8 @@ export class NuncOverlay implements Focusable {
   private contextPath: string[] = [];
   private previewOffset = 0;
   private previewViewport = 1;
+  private previewTotal = 0;
+  private previewWidth = 80;
   private error: string | undefined;
   private closed = false;
   private saving: AbortController | undefined;
@@ -176,6 +180,15 @@ export class NuncOverlay implements Focusable {
 
   handleInput(data: string): void {
     if (this.closed) return;
+    const sgr = /^\x1b\[<(\d+);\d+;\d+[Mm]$/.exec(data);
+    const x10 = /^\x1b\[M[\s\S]{3}$/.test(data);
+    if (sgr || x10) {
+      const button = sgr ? Number(sgr[1]) : data.charCodeAt(3) - 32;
+      if ((button & 64) !== 0 && (button & 3) <= 1) {
+        this.scrollPreview(((button & 1) === 0 ? -1 : 1) * ((button & 8) !== 0 ? this.previewViewport : 3));
+      }
+      return;
+    }
     if (this.layer === "saving") {
       if (this.hit(data, "tui.select.cancel")) {
         this.saving?.abort();
@@ -189,6 +202,20 @@ export class NuncOverlay implements Focusable {
     if (this.layer === "confirm-discard") return this.handleConfirm(data, () => this.leaveEdit(true));
     if (this.layer === "edit") return this.handleEdit(data);
     this.handleBrowse(data);
+  }
+
+  handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+    if (this.closed || this.layer !== "browse" || event.type !== "wheel") return;
+    const delta = Number.isFinite(event.wheelDelta) ? Math.trunc(event.wheelDelta!) : 0;
+    this.scrollPreview(event.alt ? Math.sign(delta) * this.previewViewport : delta);
+    return { handled: true, render: true };
+  }
+
+  private scrollPreview(delta: number): void {
+    if (this.layer !== "browse") return;
+    const total = this.getPreviewLines(this.previewWidth).length;
+    this.previewOffset = Math.max(0, Math.min(this.previewOffset + delta, Math.max(0, total - this.previewViewport)));
+    this.host.tui.requestRender();
   }
 
   render(width: number): string[] {
@@ -207,7 +234,7 @@ export class NuncOverlay implements Focusable {
     const topTitle = truncateToWidth(`─ ${title} `, boxWidth - 2);
     const topMiddle = `${topTitle}${"─".repeat(Math.max(0, boxWidth - 2 - visibleWidth(topTitle)))}`;
     const inner = this.layer === "edit" || this.layer === "saving" && this.savingFrom === "edit" ? this.renderEditor(contentWidth, innerBudget)
-      : this.layer === "confirm-delete" || this.layer === "confirm-discard" ? this.fit(this.renderConfirm(contentWidth), innerBudget)
+      : this.layer === "confirm-delete" || this.layer === "confirm-discard" ? this.renderConfirm(contentWidth, innerBudget)
       : this.renderBrowse(contentWidth, innerBudget);
     const lines = [
       this.borderRow("╭", topMiddle, "╮", boxWidth, withShadow),
@@ -584,11 +611,14 @@ export class NuncOverlay implements Focusable {
     const ready = innerBudget > 12 ? [this.readyLine()] : [];
     const search = [`${filterPrefix}${this.search.render(inputWidth)[0] ?? ""}`];
     const list = listLines.slice(0, this.listHeight);
-    const divider = [theme.fg("border", "─".repeat(contentWidth))];
-    const reserved = tabs.length + ready.length + search.length + list.length + divider.length + error.length + 1;
+    while (list.length < this.listHeight) list.push("");
+    const reserved = tabs.length + ready.length + search.length + list.length + 1 + error.length + 1;
     this.previewViewport = Math.max(1, innerBudget - reserved);
     const preview = this.previewLines(contentWidth, this.previewViewport);
-    return [...tabs, ...ready, ...search, ...list, ...divider, ...preview, ...error, hint].slice(0, innerBudget);
+    const position = this.previewTotal > this.previewViewport
+      ? truncateToWidth(` ${this.previewOffset + 1}–${Math.min(this.previewTotal, this.previewOffset + this.previewViewport)} / ${this.previewTotal} ─`, contentWidth, "") : "";
+    const divider = [theme.fg("border", "─".repeat(Math.max(0, contentWidth - visibleWidth(position))) + position)];
+    return this.fit([...tabs, ...ready, ...search, ...list, ...divider, ...preview, ...error, hint], innerBudget);
   }
 
   private renderEditor(contentWidth: number, innerBudget: number): string[] {
@@ -603,27 +633,28 @@ export class NuncOverlay implements Focusable {
     this.editorRows = editorBudget;
     const editorLines = this.editor ? this.editor.render(contentWidth) : [];
     const windowed = windowEditorLines(editorLines, editorBudget);
-    return [...notice, ...windowed, ...error, hint].slice(0, innerBudget);
+    return this.fit([...notice, ...windowed, ...error, hint], innerBudget);
   }
 
-  private renderConfirm(contentWidth: number): string[] {
+  private renderConfirm(contentWidth: number, innerBudget: number): string[] {
     const theme = this.host.theme;
     const id = this.preferredSlot ?? this.list.getSelectedItem()?.value ?? "";
     const slot = this.memoryView.memory.slots.find(item => item.id === id);
     const title = this.layer === "confirm-delete" ? `Delete ${id}?` : "Discard unsaved edits?";
     const summary = this.layer === "confirm-delete" ? (slot?.text.replace(/\s+/g, " ").trim() ?? "") : "Edited text is kept until you confirm discard.";
     const hint = theme.fg("dim", `${this.keyLabel("tui.select.confirm")} confirm · ${this.keyLabel("tui.select.cancel")} back`);
-    return [
+    return this.fit([
       this.tabLine(),
       theme.fg("warning", title),
       ...wrapTextWithAnsi(summary, contentWidth).slice(0, 4),
       hint,
-    ];
+    ], innerBudget);
   }
 
   private fit(lines: string[], budget: number): string[] {
-    if (lines.length <= budget) return lines;
-    return [...lines.slice(0, Math.max(1, budget - 1)), lines[lines.length - 1]!];
+    const content = lines.slice(0, -1).slice(0, Math.max(0, budget - 1));
+    while (content.length < budget - 1) content.push("");
+    return [...content, lines[lines.length - 1] ?? ""];
   }
 
   private tabLine(): string {
@@ -686,11 +717,15 @@ export class NuncOverlay implements Focusable {
   }
 
   private previewLines(contentWidth: number, budget: number): string[] {
+    this.previewWidth = contentWidth;
     const lines = this.getPreviewLines(contentWidth);
+    this.previewTotal = lines.length;
     const view = Math.max(1, budget);
     const maxOffset = Math.max(0, lines.length - view);
     this.previewOffset = Math.min(Math.max(0, this.previewOffset), maxOffset);
-    return lines.slice(this.previewOffset, this.previewOffset + view);
+    const slice = lines.slice(this.previewOffset, this.previewOffset + view);
+    while (slice.length < view) slice.push("");
+    return slice;
   }
 
   private hintLine(): string {

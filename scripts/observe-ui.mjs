@@ -80,7 +80,7 @@ try {
     slots: [
       { id: "s12", text: "Must stay compatible with Node 18 UNIQUE_SLOT_TOKEN" },
       { id: "s15", text: "Do not auto-retry after a successful upload" },
-      { id: "s19", text: "Windows path handling is not verified yet" },
+      { id: "s19", text: "Wheel preview fixture\n\n" + Array.from({ length: 100 }, (_, i) => `WHEEL_LINE_${String(i).padStart(3, "0")}`).join("\n\n") },
     ],
   };
   const sessions = f.env.PI_CODING_AGENT_DIR.replace(/agent$/, "sessions");
@@ -128,6 +128,17 @@ try {
   await delay(80);
   await p.send("/nunc");
   await f.wait(() => /\[Slots\]/.test(strip(p.stdout)), "overlay slots");
+  const wheelSearchMark = p.stdout.length;
+  p.keys("Wheel preview fixture");
+  await f.wait(() => /Search Wheel preview fixture/.test(frame(p, wheelSearchMark)) && /WHEEL_LINE_000/.test(frame(p, wheelSearchMark)), "long slot preview head");
+  const wheelDownMark = p.stdout.length;
+  for (let i = 0; i < 240; i++) { p.keys("\x1b[<65;20;15M"); await delay(10); }
+  await f.wait(() => /WHEEL_LINE_099/.test(frame(p, wheelDownMark)), "SGR wheel reaches slot tail");
+  const wheelUpMark = p.stdout.length;
+  for (let i = 0; i < 240; i++) { p.keys("\x1b[<64;20;15M"); await delay(10); }
+  await f.wait(() => /WHEEL_LINE_000/.test(frame(p, wheelUpMark)), "SGR wheel returns to slot head");
+  p.keys("\x15");
+  await delay(100);
   p.keys("UNIQUE_SLOT_TOKEN");
   await delay(200);
   assert.match(strip(p.stdout), /UNIQUE_SLOT_TOKEN/);
@@ -329,6 +340,7 @@ try {
     keyboardSentDuringProjection: projection.keyboardSentDuringProjection,
     footer: Boolean(strip(p.stdout).match(/🧠/)),
     overlay: true,
+    mouseWheelPreview: true,
     savedManual: true,
     nativeCleanupSave: true,
     nativeCleanupCancellation: true,

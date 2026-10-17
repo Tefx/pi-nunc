@@ -650,5 +650,65 @@ test("context Budget, Last maintenance accounting, Diagnostics, and warning summ
   assert.match(clean(overlay.render(90)), /Admission CAPACITY/);
 });
 
+test("overlay height and browse divider stay fixed across slots, filters, tabs and layers", () => {
+  const f = fixture({ text: "short" });
+  f.view.memory.slots[1]!.text = Array.from({ length: 80 }, (_, i) => `Paragraph ${i}\n\n**Markdown body ${i}**`).join("\n\n");
+  f.overlay.sync();
+  const initial = f.overlay.render(90);
+  const divider = (lines: string[]) => lines.findIndex(line => /^│ ─/.test(clean([line])));
+  const height = initial.length, row = divider(initial);
+  assert(row > 0);
+  const browse = () => { const lines = f.overlay.render(90); assert.equal(lines.length, height); assert.equal(divider(lines), row); };
+  browse();
+  for (const key of ["\x1b[B", "\x1b[A", "\t", "\t", "short", "no-match", "\x15"]) { f.overlay.handleInput(key); browse(); }
+  f.overlay.handleInput("\x04");
+  assert.equal(f.overlay.layerName, "confirm-delete");
+  assert.equal(f.overlay.render(90).length, height);
+  f.overlay.handleInput("\x1b");
+  f.overlay.handleInput("\r");
+  assert.equal(f.overlay.layerName, "edit");
+  assert.equal(f.overlay.render(90).length, height);
+  f.overlay.handleInput("changed");
+  f.overlay.handleInput("\x1b");
+  assert.equal(f.overlay.layerName, "confirm-discard");
+  assert.equal(f.overlay.render(90).length, height);
+});
 
+test("normalized, SGR and X10 wheels clamp preview without entering search", () => {
+  const f = fixture({ rows: 30, text: Array.from({ length: 100 }, (_, i) => `LINE_${String(i).padStart(3, "0")}\n`).join("\n") });
+  const render = () => clean(f.overlay.render(90));
+  const mouse = (wheelDelta: number) => f.overlay.handleMouse({ type: "wheel", button: "none", x: 10, y: 10, screenX: 10, screenY: 10, width: 90, height: 30, shift: false, alt: false, ctrl: false, wheelDelta });
+  assert.match(render(), /LINE_000/);
+  const position = () => {
+    const match = / (\d+)–(\d+) \/ (\d+) /.exec(render());
+    assert(match);
+    return { start: Number(match[1]), view: Number(match[2]) - Number(match[1]) + 1 };
+  };
+  mouse(5);
+  assert.equal(position().start, 6, "normalized delta is measured in logical lines");
+  mouse(-5);
+  assert.equal(position().start, 1);
+  for (let i = 0; i < 100; i++) { assert.deepEqual(mouse(5), { handled: true, render: true }); render(); }
+  assert.match(render(), /LINE_099/);
+  for (let i = 0; i < 100; i++) { mouse(-5); render(); }
+  assert.match(render(), /LINE_000/);
+  for (const down of ["\x1b[<65;20;15M", "\x1b[<73;20;15M", "\x1b[M" + String.fromCharCode(97, 52, 47)]) {
+    const expectedStep = down.includes("<73;") ? position().view : 3;
+    f.overlay.handleInput(down);
+    assert.equal(position().start, 1 + expectedStep);
+    for (let i = 0; i < 100; i++) { f.overlay.handleInput(down); render(); }
+    assert.match(render(), /LINE_099/);
+    assert.doesNotMatch(render(), /No matching slots/);
+    for (let i = 0; i < 100; i++) { f.overlay.handleInput("\x1b[<64;20;15M"); render(); }
+    assert.match(render(), /LINE_000/);
+  }
+  f.overlay.handleInput("\x1b[M" + String.fromCharCode(97, 52, 47));
+  assert.equal(position().start, 4);
+  f.overlay.handleInput("\x1b[M" + String.fromCharCode(96, 52, 47));
+  assert.equal(position().start, 1);
+  for (const data of ["\x1b[<0;20;15M", "\x1b[<0;20;15m", "\x1b[<32;20;15M", "\x1b[M" + String.fromCharCode(32, 52, 47)]) f.overlay.handleInput(data);
+  assert.match(render(), /LINE_000/);
+  assert.doesNotMatch(render(), /No matching slots/);
+  assert.match(render(), /\d+–\d+ \/ \d+/);
+});
 
