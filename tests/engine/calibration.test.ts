@@ -2,11 +2,108 @@ import { test } from "node:test";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { maintain } from "../../src/engine/engine.js";
-import { maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
+import { activeUsageUndercount, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
 import { extractionContext, resolveExtractionRequest } from "../../src/engine/request.js";
-import { inputLimit, requestTokens } from "../../src/engine/accounting.js";
+import { inputLimit, mainPlanningEstimate, requestTokens } from "../../src/engine/accounting.js";
 import { answer, assistant, input, noChange, responder, sourceRecords, tool, user } from "./fixtures.js";
 import type { MaintenanceInput, MaintenanceResult, ModelRequest } from "../../src/engine/types.js";
+
+test("first threshold maintenance calibrates the 1M window from assistant usage and scales after reduction", async () => {
+  const value = await input();
+  value.model.contextWindow = 1048576; value.model.maxTokens = 65536;
+  value.config.triggerTokens = 1035630;
+  value.config.extraction = { ...value.config.extraction, outputTokens: 8192, outputAuto: true, safetyTokens: 1024 };
+  value.active = [user("old", "a".repeat(2750000)),
+    assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]),
+    tool("body", "x", "b".repeat(150000)),
+    { entryId: "usage", sourceRole: "assistant", messages: [{ ...answer(), usage: { ...answer().usage, input: 1035590, cacheRead: 0, cacheWrite: 0, output: 40, totalTokens: 1035630 } }] },
+    user("latest", "Continue.")];
+  value.eligibleKeptEntryIds = ["latest"];
+  const fullPrefix = value.active.slice(0, 4);
+  const prefixTokens = mainPlanningEstimate(value.fixed, value.memory.slots, fullPrefix, value.model, undefined, 0).tokens;
+  const rawDelta = 1035630 - prefixTokens;
+  assert(rawDelta > 200000 && rawDelta < 210000);
+  let requests = 0;
+  const result = await maintain(value, async request => {
+    requests++;
+    const reducedPrefix = sourceRecords(request.context).slice(0, 4).map((entry, index) => ({ ...value.active[index]!, messages: entry.messages }));
+    const retainedTokens = mainPlanningEstimate(value.fixed, value.memory.slots, reducedPrefix, value.model, undefined, 0).tokens;
+    assert.equal(request.calibratedUndercountTokens, Math.ceil(rawDelta * retainedTokens / prefixTokens));
+    assert(request.calibratedUndercountTokens! < rawDelta);
+    assert(request.outputTokens >= 8192 && request.outputTokens < 65536);
+    assert(requestTokens(request.context) + request.calibratedUndercountTokens! + request.outputTokens + 1024 <= 1048576);
+    return answer();
+  });
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(requests, 1); assert.equal(result.observations.omissions.length, 1);
+  const accounting = result.observations.accounting!;
+  const initialLimit = 1048576 - 8192 - 1024;
+  assert(accounting.fullExtractionTokens <= initialLimit);
+  assert(accounting.fullExtractionTokens + rawDelta > initialLimit);
+  assert.equal(accounting.normalExtractionAtTrigger, accounting.fullExtractionTokens - accounting.mainBeforeTokens + accounting.effectiveTrigger);
+  assert.equal(accounting.extractionPlanningTokens, accounting.extractionTokens + accounting.calibratedUndercountTokens!);
+  assert.equal(accounting.outputLimitedBy, "window");
+  assert.equal(result.observations.maintenanceCalibration?.actualInputTokens, 175, "persist only maintenance response input");
+});
+
+for (const invalid of ["model", "provider", "api", "aborted", "error", "ineligible", "unavailable", "unknown-edit", "stale-time", "fractional", "missing", "zero"] as const) {
+  test(`active usage rejects ${invalid} anchors`, async () => {
+    const value = await input();
+    const message = { ...answer(), timestamp: 1, usage: { ...answer().usage, input: 50000 } };
+    const entry = { entryId: "anchor", sourceRole: "assistant" as const, messages: [message], outputUsageUnavailable: false };
+    value.active = [user("old", "source"), entry, user("latest", "Continue.")];
+    if (invalid === "model") message.model = "other";
+    if (invalid === "provider") message.provider = "other";
+    if (invalid === "api") message.api = "anthropic-messages";
+    if (invalid === "aborted" || invalid === "error") message.stopReason = invalid;
+    if (invalid === "ineligible") value.eligibleUsageEntryIds = ["old", "latest"];
+    if (invalid === "unavailable") { entry.outputUsageUnavailable = true; value.eligibleUsageEntryIds = ["anchor"]; }
+    if (invalid === "unknown-edit") value.active[0]!.outputUsageUnavailable = true;
+    if (invalid === "stale-time") value.active[0]!.messages[0]!.timestamp = 2;
+    if (invalid === "fractional") message.usage.cacheRead = 0.5;
+    if (invalid === "missing") Reflect.deleteProperty(message.usage, "totalTokens");
+    if (invalid === "zero") Object.assign(message.usage, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 });
+    assert.equal(activeUsageUndercount(value), 0);
+    const result = await maintain(value, responder());
+    assert(result.ok, result.ok ? "" : result.message);
+    assert.equal(result.observations.accounting!.calibratedUndercountTokens, 0);
+  });
+}
+
+test("usage selects the latest valid message prefix and keeps the larger maintenance correction", async () => {
+  const value = await input();
+  const early = { ...answer(), usage: { ...answer().usage, input: 40000 } };
+  const latest = { ...answer(), usage: { ...answer().usage, input: 12000 } };
+  value.active = [user("old", "source"), { entryId: "anchors", sourceRole: "assistant", messages: [early, latest] }, user("latest", "z".repeat(80000))];
+  const prefix = value.active.slice(0, 2);
+  const expected = 12115 - mainPlanningEstimate(value.fixed, value.memory.slots, prefix, value.model, undefined, 0).tokens;
+  assert.equal(activeUsageUndercount(value), expected, "later source is excluded and the latest usage wins over the larger earlier usage");
+  value.eligibleUsageEntryIds = ["anchors"];
+  value.active[0]!.outputUsageUnavailable = true;
+  assert.equal(activeUsageUndercount(value), expected, "explicit host scope permits anchors following an edit");
+  remember(value, await maintain(value, request => Promise.resolve(measured(request, 20000))));
+  const feedback = maintenanceFeedback(value);
+  assert.equal(feedback.maintenanceUndercountTokens, 20000);
+  assert.equal(feedback.activeUndercountTokens, expected);
+  assert.equal(feedback.calibratedUndercountTokens, 20000);
+});
+
+test("main usage cannot fabricate a maintenance measurement when the response has no usage", async () => {
+  const value = await input();
+  value.active.splice(2, 0, { entryId: "main-usage", sourceRole: "assistant", messages: [{ ...answer(), usage: { ...answer().usage, input: 20000 } }] });
+  const result = await maintain(value, async () => ({ ...answer(), usage: undefined }));
+  assert(result.ok, result.ok ? "" : result.message);
+  assert(result.observations.accounting!.calibratedUndercountTokens! > 0);
+  assert.equal(result.observations.maintenanceCalibration, undefined);
+  assert.equal(maintenanceCalibrationRecord(value, result), undefined);
+});
+
+for (const eligible of [["missing"], ["old", "old"], "old"]) test(`invalid usage eligibility ${JSON.stringify(eligible)} fails before dispatch`, async () => {
+  const value = await input();
+  Object.assign(value, { eligibleUsageEntryIds: eligible });
+  const result = await maintain(value, async () => assert.fail("invalid host scope cannot dispatch"));
+  assert(!result.ok); assert.equal(result.code, "INPUT"); assert.equal(result.observations.requests, 0);
+});
 
 const providerError = "400 INVALID_ARGUMENT: The input token count exceeds the maximum number of tokens allowed 60000.";
 function overflow(request: ModelRequest) {

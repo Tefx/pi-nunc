@@ -58,6 +58,8 @@ export interface MaintenanceInput {
   active: ActiveEntry[];
   /** Optional host-path restrictions (e.g. avoid a kept range crossing an older compaction). */
   eligibleKeptEntryIds?: string[];
+  /** Host prefix usage anchors after checkpoint/context-edit invalidation. */
+  eligibleUsageEntryIds?: string[];
   /** Optional caller-supplied candidate scope for tool result cleanup. */
   cleanupCandidateScope?: ToolResultRef[];
   /** Selected-branch maintenance evidence only; never main-response usage. Old/inapplicable records are ignored. */

@@ -4,13 +4,57 @@ import { rm, writeFile } from "node:fs/promises";
 import { createAssistantMessageEventStream, fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import { ModelRegistry, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/calibration.js";
-import { MANUAL_MEMORY_TYPE, project } from "../../src/pi/projection.js";
+import { eligibleUsageEntryIds, MANUAL_MEMORY_TYPE, project } from "../../src/pi/projection.js";
 import { requestTokens } from "../../src/engine/accounting.js";
 import { contextSurface, type ContextSurface } from "../../src/pi/context.js";
 import { maintenanceLines } from "../../src/ui/status.js";
 import type { MaintenanceCalibrationRecord } from "../../src/engine/types.js";
 import { answer, sourceRecords } from "../engine/fixtures.js";
 import { fixture, memoryPatch } from "./fixtures.js";
+
+test("first native compact reduces tool bodies from current-prefix main usage without a provider refusal", async t => {
+  const f = await fixture(); t.after(() => f.close()); seed(f);
+  const manager = f.runtime.session.sessionManager;
+  manager.appendMessage({ ...answer({}, f.faux.getModel()), timestamp: 4,
+    usage: { ...answer().usage, input: 58000, output: 40, cacheRead: 0, cacheWrite: 0, totalTokens: 58040 } });
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  f.respond(memoryPatch);
+  assert.equal(calibrationEntries(f).length, 0);
+  await f.runtime.session.compact();
+  const result = f.events.at(-1)!.result;
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(f.calls.length, 1); assert.equal(result.observations.requests, 1);
+  assert.equal(result.observations.omissions.length, 1);
+  const accounting = result.observations.accounting!;
+  assert(accounting.fullExtractionTokens < accounting.extractionInputLimit);
+  assert(accounting.calibratedUndercountTokens! > 0);
+  assert(accounting.extractionTokens < accounting.fullExtractionTokens);
+  assert(accounting.extractionPlanningTokens! + accounting.outputReserveTokens <= f.faux.getModel().contextWindow);
+  assert.equal(checkpoints(f).length, 1);
+});
+
+test("native usage eligibility excludes retained K and every anchor before the last active context edit", async t => {
+  const f = await fixture(); t.after(() => f.close()); const { body } = seed(f);
+  const manager = f.runtime.session.sessionManager;
+  let entries = manager.buildContextEntries(), active = project(entries).active;
+  assert.deepEqual(eligibleUsageEntryIds(entries, active), active.map(entry => entry.entryId));
+  manager.appendContextEdit(body, { content: "Corrected body." });
+  entries = manager.buildContextEntries(); active = project(entries).active;
+  assert.deepEqual(eligibleUsageEntryIds(entries, active), []);
+  const fresh = manager.appendMessage({ ...answer({}, f.faux.getModel()), timestamp: 4 });
+  entries = manager.buildContextEntries(); active = project(entries).active;
+  assert.deepEqual(eligibleUsageEntryIds(entries, active), [fresh]);
+  manager.appendContextEdit(body, { content: "Second correction." });
+  entries = manager.buildContextEntries(); active = project(entries).active;
+  assert.deepEqual(eligibleUsageEntryIds(entries, active), [], "last edit invalidates intervening usage too");
+  f.respond(memoryPatch); await f.runtime.session.compact();
+  entries = manager.buildContextEntries(); active = project(entries).active;
+  assert(active.length > 0);
+  assert.deepEqual(eligibleUsageEntryIds(entries, active), [], "all surviving K precedes checkpoint");
+  const after = manager.appendMessage({ ...answer({}, f.faux.getModel()), timestamp: 5 });
+  entries = manager.buildContextEntries(); active = project(entries).active;
+  assert.deepEqual(eligibleUsageEntryIds(entries, active), [after]);
+});
 
 const providerError = "400 INVALID_ARGUMENT: The input token count exceeds the maximum number of tokens allowed 60000.";
 const rejection = () => fauxAssistantMessage("", { stopReason: "error", errorMessage: providerError });
@@ -195,15 +239,19 @@ test("measured maintenance undercount survives successful checkpoint/restart, re
       return stream(message);
     },
   });
+  await f.runtime.session.prompt("Record main usage before the checkpoint; retain this turn in K.");
+  assert.equal(main, 1);
   await f.runtime.session.compact();
   const first = f.events.at(-1)!.result;
   assert(first.ok); assert.equal(first.observations.maintenanceCalibration?.undercountTokens, delta);
   const saved = (checkpoints(f).at(-1)!.details as { maintenanceCalibration: MaintenanceCalibrationRecord }).maintenanceCalibration;
   assert.deepEqual(saved.sourceEntryIds, first.candidate.kept.map(e => e.entryId));
   assert.equal(saved.measurement?.undercountTokens, delta);
-  await f.runtime.session.prompt("Continue with a new main request.");
-  assert.equal(main, 1); assert.equal(raw, 1); assert.equal(checkpoints(f).length, 1);
+  assert.equal(raw, 1); assert.equal(checkpoints(f).length, 1);
+  const retained = project(f.runtime.session.sessionManager.buildContextEntries()).active;
+  assert(retained.some(entry => entry.messages.some(message => message.role === "assistant" && message.usage.totalTokens === 41340)), "large pre-checkpoint usage remains in K");
   await rm(f.configFile); await f.reopenWithoutConfig();
+  f.runtime.session.sessionManager.appendMessage({ role: "user", content: "New delivered source after restart, without fresh assistant usage.", timestamp: Date.now() });
   await f.runtime.session.compact();
   const next = f.events.at(-1)!.result;
   assert(next.ok, next.ok ? "" : next.message);
@@ -215,5 +263,16 @@ test("measured maintenance undercount survives successful checkpoint/restart, re
   assert.notEqual(next.observations.maintenanceCalibration?.actualInputTokens, 41300, "main context usage never enters maintenance calibration");
   const lines = maintenanceLines(view.read(ctx).lastMaintenance).join("\n");
   assert.match(lines, /Maintenance calibration: \+1,700 → planned [\d,]+ \(prior maintenance usage; uncertain\)/);
+  await f.runtime.session.prompt("Continue with a post-checkpoint main request.");
+  assert.equal(main, 2);
+  await f.runtime.session.compact();
+  const postCheckpoint = f.events.at(-1)!.result;
+  assert(postCheckpoint.ok, postCheckpoint.ok ? "" : postCheckpoint.message);
+  assert(postCheckpoint.observations.accounting!.calibratedUndercountTokens! > delta, "fresh main usage calibrates in-flight planning");
+  assert.equal(postCheckpoint.observations.maintenanceCalibration?.undercountTokens, delta);
+  assert.notEqual(postCheckpoint.observations.maintenanceCalibration?.actualInputTokens, 41300);
+  const persisted = (checkpoints(f).at(-1)!.details as { maintenanceCalibration: MaintenanceCalibrationRecord }).maintenanceCalibration;
+  assert.equal(persisted.measurement?.undercountTokens, delta, "post-checkpoint main usage never replaces persisted maintenance evidence");
+  assert.notEqual(persisted.measurement?.actualInputTokens, 41300);
   t.diagnostic(`successful checkpoint/restart: maintenance raw sends=${raw}, main sends=${main}, measured/additive correction=${delta}`);
 });

@@ -670,6 +670,18 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
   return [...patched.slice(0, index), carrier, ...patched.slice(index)];
 }
 
+/** Usage before a checkpoint or an active-source edit described a retired prefix. */
+export function eligibleUsageEntryIds(entries: readonly SessionEntry[], active: readonly ActiveEntry[]): string[] {
+  const activeIds = new Set(active.map(entry => entry.entryId));
+  const latest = entries.find(entry => entry.type === "compaction");
+  const afterCheckpoint = entriesAfterLatestCheckpoint(entries, latest?.id);
+  let startIndex = 0;
+  for (const [index, entry] of afterCheckpoint.entries()) {
+    if (entry.type === "context_edit" && activeIds.has(entry.targetId)) startIndex = index + 1;
+  }
+  return afterCheckpoint.slice(startIndex).filter(entry => activeIds.has(entry.id)).map(entry => entry.id);
+}
+
 /** Visible real history may overlap earlier checkpoints. Summary normalization
  * belongs to context/source projection, never to an artificially advanced cut.
  */

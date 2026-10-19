@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
 import { applyToolResultCleanup } from "./cleanup.js";
+import { mainPlanningEstimate } from "./accounting.js";
 import { integer, nonempty, record } from "./validation.js";
 
 type Snapshot = Omit<MaintenanceInput, "signal" | "binding" | "eligibleKeptEntryIds">;
@@ -68,12 +69,44 @@ export function selectMaintenanceCalibration(input: Snapshot, records: readonly 
     });
 }
 
-export function maintenanceFeedback(input: Snapshot) {
+/** Current-prefix provider usage bounds heuristic error without becoming persisted maintenance evidence. */
+export function activeUsageUndercount(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active): number {
+  const eligible = input.eligibleUsageEntryIds === undefined ? undefined : new Set(input.eligibleUsageEntryIds);
+  if (!eligible && input.active.some(entry => entry.outputUsageUnavailable)) return 0;
+  let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
+  let anchor: { entryIndex: number; messageIndex: number; usageTokens: number } | undefined;
+  for (const [entryIndex, entry] of input.active.entries()) {
+    for (const [messageIndex, message] of entry.messages.entries()) {
+      if (message.role === "assistant" && (!eligible || eligible.has(entry.entryId)) && !entry.outputUsageUnavailable &&
+          message.timestamp >= latestPrefixTimestamp && message.stopReason !== "aborted" && message.stopReason !== "error" &&
+          message.model === input.model.id && message.provider === input.model.provider && message.api === input.model.api &&
+          record(message.usage) && [message.usage.input, message.usage.output, message.usage.cacheRead, message.usage.cacheWrite, message.usage.totalTokens].every(n => integer(n))) {
+        const usageTokens = message.usage.input + message.usage.output + message.usage.cacheRead + message.usage.cacheWrite;
+        if (usageTokens >= 1) anchor = { entryIndex, messageIndex, usageTokens };
+      }
+      latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
+    }
+  }
+  if (!anchor) return 0;
+  const prefixTokens = (source: readonly ActiveEntry[]) => mainPlanningEstimate(input.fixed, input.memory.slots,
+    [...source.slice(0, anchor.entryIndex), { ...source[anchor.entryIndex]!, messages: source[anchor.entryIndex]!.messages.slice(0, anchor.messageIndex + 1) }],
+    input.model, input.config.imageTokens, input.config.main.extraInputTokens).tokens;
+  const fullPrefixTokens = prefixTokens(input.active);
+  const rawUndercount = Math.max(0, anchor.usageTokens - fullPrefixTokens);
+  if (rawUndercount === 0 || fullPrefixTokens <= 0) return 0;
+  if (selectedSource === input.active) return rawUndercount;
+  return Math.ceil(rawUndercount * Math.min(1, prefixTokens(selectedSource) / fullPrefixTokens));
+}
+
+export function maintenanceFeedback(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active) {
   const selected = selectMaintenanceCalibration(input);
   const measurement = selected.findLast(value => value.measurement)?.measurement;
+  const maintenanceUndercountTokens = measurement?.undercountTokens ?? 0;
+  const activeUndercountTokens = activeUsageUndercount(input, selectedSource);
   return { full: selected.findLast(value => value.providerOverflow?.mode === "full")?.providerOverflow,
     reduced: selected.findLast(value => value.providerOverflow?.mode === "reduced")?.providerOverflow,
-    calibratedUndercountTokens: measurement?.undercountTokens ?? 0, measurement };
+    calibratedUndercountTokens: Math.max(maintenanceUndercountTokens, activeUndercountTokens),
+    maintenanceUndercountTokens, activeUndercountTokens, measurement };
 }
 
 export function sameRejectedRequest(overflow: ProviderOverflow | undefined, active: readonly ActiveEntry[], resolved: { extractionInputLimit: number; outputTokens: number }): boolean {

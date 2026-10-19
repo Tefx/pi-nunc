@@ -12,7 +12,7 @@ import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
-import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
+import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, eligibleUsageEntryIds, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
@@ -245,7 +245,8 @@ export default function nunc(pi: ExtensionAPI): void {
   });
   const prepareUiCleanup = async (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal): Promise<{ edits?: unknown; warning?: string; stale?: boolean }> => {
     if (signal.aborted) return { stale: true };
-    const projected = project(ctx.sessionManager.buildContextEntries());
+    const entries = ctx.sessionManager.buildContextEntries();
+    const projected = project(entries);
     const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
     const semanticScope = opportunity.scope.filter(ref => {
       const message = projected.active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
@@ -277,7 +278,7 @@ export default function nunc(pi: ExtensionAPI): void {
       if (stale()) return { stale: true };
       const active = effectiveActive(projected, true);
       const input = { binding: { sessionId: frozen.sessionId, leafId: frozen.leafId ?? "", generation: String(generation) },
-        model: frozen.model, fixed: frozen.fixed, memory: proposal, active, cleanupCandidateScope: semanticScope,
+        model: frozen.model, fixed: frozen.fixed, memory: proposal, active, eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), cleanupCandidateScope: semanticScope,
         policy, config };
       const plan = memoryPlan(frozen.fixed, frozen.model, config, input.memory.slots);
       const resolved = resolveExtractionRequest(input, cap => {
@@ -449,7 +450,7 @@ export default function nunc(pi: ExtensionAPI): void {
       contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config });
       ui.refresh(ctx);
       const input = { binding, model, fixed: f, memory: projected.memory, active,
-        eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
+        eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
       const calibration = projectMaintenanceCalibration(manager.getBranch(), input);
       const maintenanceInput = { ...input, calibration };
       const result = await maintain(maintenanceInput, admission.complete(piComplete(ctx.modelRegistry, thinking)));

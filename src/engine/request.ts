@@ -173,12 +173,12 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
 }
 
 /** Resolve before dispatch, including every caller-added block. No model calls or source changes. */
-export function resolveExtractionRequest(input: Omit<MaintenanceInput, "signal">, build: (outputTokens: number) => Context) {
+export function resolveExtractionRequest(input: Omit<MaintenanceInput, "signal">, build: (outputTokens: number) => Context, selectedSource: readonly ActiveEntry[] = input.active) {
   const { budget, automatic, desired, uncapped } = extractionOutputPlan(input.model, input.config.extraction);
   let context = build(desired);
-  const calibratedUndercountTokens = maintenanceFeedback(input).calibratedUndercountTokens;
+  const calibratedUndercountTokens = maintenanceFeedback(input, selectedSource).calibratedUndercountTokens;
   const tokens = requestTokens(context, input.config.imageTokens) + budget.extraInputTokens + calibratedUndercountTokens;
-  // Check the minimum first, including only applicable maintenance measurements.
+  // Check the minimum first, including applicable maintenance and active-prefix usage.
   requireThat(tokens <= inputLimit(input.model, budget), "CAPACITY", "Complete extraction cannot fit its minimum output reserve, safety and maintenance calibration");
   const outputTokens = automatic ? Math.min(desired, Math.floor(input.model.contextWindow - tokens - budget.safetyTokens)) : budget.outputTokens;
   requireThat(outputTokens >= budget.outputTokens, "CAPACITY", "Insufficient automatic output headroom; no request dispatched");

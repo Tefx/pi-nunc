@@ -55,6 +55,10 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       requireThat(Array.isArray(eligible) && eligible.every(id => typeof id === "string" && frozen.active.some(e => e.entryId === id)) && new Set(eligible).size === eligible.length, "INPUT", "Invalid host retained-boundary restriction");
       cuts = cuts.filter(cut => eligible.includes(frozen.active[cut]!.entryId));
     }
+    if (frozen.eligibleUsageEntryIds !== undefined) {
+      const eligible = frozen.eligibleUsageEntryIds;
+      requireThat(Array.isArray(eligible) && eligible.every(id => typeof id === "string" && frozen.active.some(e => e.entryId === id)) && new Set(eligible).size === eligible.length, "INPUT", "Invalid host usage-anchor restriction");
+    }
     const config = frozen.config;
     for (const e of frozen.active) for (const m of e.messages) if (typeof m.content !== "string" && m.content.some(b => b.type === "image")) {
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
@@ -67,15 +71,17 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     let context = extractionContext(frozen, cut, organizingTarget, selectedSource, []);
     const fullExtractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
     const feedback = maintenanceFeedback(frozen);
-    const calibratedUndercountTokens = feedback.calibratedUndercountTokens;
+    let calibratedUndercountTokens = feedback.calibratedUndercountTokens;
+    // The trigger already uses provider tokens; shared main/extraction error cancels here.
+    const triggerExtraUndercount = Math.max(0, feedback.maintenanceUndercountTokens - feedback.activeUndercountTokens);
     // Sustainable-trigger advice must never veto an executable current request.
-    const normalExtractionAtTrigger = fullExtractionTokens + calibratedUndercountTokens - mainBeforeTokens + effectiveTrigger;
+    const normalExtractionAtTrigger = fullExtractionTokens + triggerExtraUndercount - mainBeforeTokens + effectiveTrigger;
     const outputPlan = extractionOutputPlan(frozen.model, config.extraction);
     const outputCapTokens = outputPlan.uncapped ? null : outputPlan.floor;
     observations.accounting = {
       estimator: "pi-heuristic", outputReserveTokens: outputPlan.floor, outputCapTokens, outputDesiredTokens: outputPlan.desired,
       normalHeadroomSufficient: normalExtractionAtTrigger <= extractionInputLimit,
-      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens + calibratedUndercountTokens - mainBeforeTokens)),
+      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens + triggerExtraUndercount - mainBeforeTokens)),
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
       effectiveTrigger, memoryLimit, memoryReserveTokens, memoryHardLimit: hardMemoryLimit(config), memoryTargetExceeded: false, keepTarget, keptTokens,
@@ -91,24 +97,27 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       observations.omissions = reduced.omissions;
       selectedSource = reduced.source;
       context = extractionContext(frozen, cut, organizingTarget, selectedSource, reduced.omissions);
+      calibratedUndercountTokens = maintenanceFeedback(frozen, selectedSource).calibratedUndercountTokens;
+      observations.accounting.calibratedUndercountTokens = calibratedUndercountTokens;
+      observations.accounting.extractionUncertainties = calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [];
       observations.accounting.extractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
       observations.accounting.extractionPlanningTokens = observations.accounting.extractionTokens + calibratedUndercountTokens;
       requireThat(!knownOverflow || reduced.omissions.length > 0, "CAPACITY", "Provider already rejected this source; the single tool-body reduction made no omissions. Change source or capacity before explicit maintenance");
     }
     requireThat(observations.accounting.extractionPlanningTokens! <= extractionInputLimit, "CAPACITY", "Full extraction cannot fit; selected bounded handling is disabled or insufficient. No candidate is handed off");
-    const resolved = resolveExtractionRequest(frozen, cap => extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, cap));
+    const resolved = resolveExtractionRequest(frozen, cap => extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, cap), selectedSource);
     context = resolved.context;
     Object.assign(observations.accounting, { outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens,
       outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy,
       extractionTokens: resolved.extractionTokens, extractionInputLimit: resolved.extractionInputLimit,
-      extractionPlanningTokens: resolved.extractionPlanningTokens });
+      calibratedUndercountTokens: resolved.calibratedUndercountTokens, extractionPlanningTokens: resolved.extractionPlanningTokens });
     const mode = observations.omissions.length > 0 ? "reduced" : "full";
     requireThat(!sameRejectedRequest(mode === "reduced" ? feedback.reduced : feedback.full, frozen.active, resolved), "CAPACITY",
       `Provider already rejected the same ${mode} maintenance source and effective limits; no request dispatched. Change source, reduction or capacity before explicit maintenance`);
     cancelled(signal);
     observations.requests = 1;
     const response = await withCancellation(() => complete({ model: frozen.model, context: freezeCopy(context), outputTokens: resolved.outputTokens,
-      ...(calibratedUndercountTokens > 0 ? { calibratedUndercountTokens } : {}), signal }), signal);
+      ...(resolved.calibratedUndercountTokens > 0 ? { calibratedUndercountTokens: resolved.calibratedUndercountTokens } : {}), signal }), signal);
     if (record(response)) {
       observations.usage = observeUsage(response.usage);
       observations.stopReason = typeof response.stopReason === "string" ? response.stopReason : null;
