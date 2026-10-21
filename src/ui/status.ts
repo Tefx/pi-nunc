@@ -13,16 +13,26 @@ export interface CompactFooterInput {
 }
 export interface DiagnosticNote { level: "warning" | "error" | "info"; message: string }
 
-export const COMMAND_USAGE = "Usage: /nunc [details]";
+export const COMMAND_USAGE = "Usage: /nunc [details | compact-for <provider/model-id>]";
 export const UNLOAD_LIMIT = "Manual edits not yet absorbed by the next native compaction need a current Nunc to interpret; unload or older Nunc still reads the last native summary.";
 export const DIAGNOSTIC_LIMIT = 20;
 
 const COMPLETIONS = [
   { value: "details", label: "details", description: "Complete memory, budget, maintenance, and diagnostic report" },
+  { value: "compact-for", label: "compact-for", description: "Compact with the current model for a target model; does not switch models" },
 ] as const;
 
-export function commandCompletions(prefix: string): { value: string; label: string; description: string }[] | null {
+export function commandCompletions(prefix: string, models: readonly { provider: string; id: string; name: string; contextWindow: number }[] = []): { value: string; label: string; description: string }[] | null {
   const trimmed = prefix.trimStart();
+  const target = /^compact-for\s+(\S*)$/.exec(trimmed);
+  if (target) {
+    const query = target[1]!.toLowerCase();
+    const hits = models.filter(m => `${m.provider}/${m.id} ${m.name}`.toLowerCase().includes(query))
+      .sort((a, b) => `${a.provider}/${a.id}`.localeCompare(`${b.provider}/${b.id}`))
+      .slice(0, 50).map(m => ({ value: `compact-for ${m.provider}/${m.id}`, label: `${m.provider}/${m.id}`,
+        description: `${m.name} · ${m.contextWindow.toLocaleString("en-US")} context · target only` }));
+    return hits.length ? hits : null;
+  }
   if (trimmed.includes(" ")) return null;
   const hits = COMPLETIONS.filter(item => item.value.startsWith(trimmed));
   return hits.length ? hits.map(item => ({ ...item })) : null;
@@ -119,6 +129,11 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
       ? `Native save: saved · after ${last.after.memory.slots.length} slots`
       : `Native save: ${last.native}${last.native === "saved" ? "" : " (candidate success is not a native save)"}`,
   ];
+  if (last.target) {
+    const t = last.target;
+    lines.push(`Target: ${t.provider}/${t.modelId} · projected input ${t.estimatedInputTokens === null ? "unknown" : thousands(t.estimatedInputTokens)} · planning limit ${thousands(t.plannedInputLimit)} · growth ${thousands(t.growthReserve)} · ${t.fits ? "fits projection" : "not established"}`,
+      "Target projection uses frozen prompt/tools; later actual requests still require admission. No model switch.");
+  }
   if (last.accounting) {
     const a = last.accounting;
     lines.push(

@@ -22,7 +22,9 @@ test("verify-live completes every stable-memory scenario through real loader, HT
       { requirement: "provider-wrap", reason: "Recapture transparent provider composition after turn a" },
       { requirement: "stable-memory-bounded-window", reason: "Fixed native 24000 threshold, unchanged q" },
       ...["fixed", "moving"].map(variant => ({ requirement: `cache-${variant}`, reason: "Isolate layout/cache epochs from compaction", scenario: `m1/${variant}`, config: { nunc: { extraction: { outputTokens: 1024 } }, compaction: { enabled: false } } })),
-      { requirement: "m2-source-retirement", reason: "Explicitly prepare retired source turns for M-only mechanics; never calibrate m4", scenario: "m2", config: { nunc: { extraction: { outputTokens: 1024 } }, retentionCalibration: { minFraction: 0.001, maxFraction: 0.2 } } },
+      // Low-water q now scales actual history: the initial 960-token history needs
+      // q >= 253/960 to keep the complete 289-token b turn. Keep all placement assertions.
+      { requirement: "m2-source-retirement", reason: "Prepare retired sources with an actual-history fraction for M-only mechanics; never calibrate m4", scenario: "m2", config: { nunc: { extraction: { outputTokens: 1024 } }, retentionCalibration: { minFraction: 0.001, maxFraction: 0.5 } } },
       ...[0.67, 0.5].map(q => ({ requirement: `explicit-retention-${q}`, reason: "Fixed ratio comparison", scenario: `m4/keep-${q}`, config: { nunc: { rolling: { keepRecentFraction: q }, extraction: { outputTokens: 1024 } } } })),
     ],
   };

@@ -1,7 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
+import { randomUUID } from "node:crypto";
 import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earendil-works/pi-ai";
 import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, MaintenanceResult, Memory } from "./engine/index.js";
+import type { FixedContext, MaintenanceInput, MaintenanceResult, Memory } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch } from "./engine/index.js";
 import { subscriptionBilling } from "./engine/pi-model.js";
 import { messageTextContent } from "./engine/cleanup.js";
@@ -41,15 +42,20 @@ export default function nunc(pi: ExtensionAPI): void {
   let uiRunning: AbortController | undefined;
   let hostSettings: HostSettingsSource | undefined;
   let headroomWarned = false;
+  let completionRegistry: ExtensionContext["modelRegistry"] | undefined;
+  type CompactForIntent = { marker: string; sessionId: string; leafId: string | null; generation: number;
+    target: NonNullable<MaintenanceInput["target"]>; claimed: boolean;
+    outcome?: NonNullable<MaintenanceResult["observations"]["target"]> };
+  let compactFor: CompactForIntent | undefined;
   const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; };
   const dropAnchors = () => { clearMemoryAnchors(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
     invalidate(); hostSettings = value as HostSettingsSource;
   });
-  const getHostSettings = (ctx: ExtensionContext) => {
+  const getHostSettings = (ctx: ExtensionContext, model = ctx.model) => {
     if (hostSettings) {
-      const read = hostSettings.readSettings(ctx.model);
+      const read = hostSettings.readSettings(model);
       const projectTrusted = hostSettings.isProjectTrusted ? hostSettings.isProjectTrusted() : ctx.isProjectTrusted();
       const globalNunc = hostSettings.getGlobalSettings ? hostSettings.getGlobalSettings()?.nunc : read.nunc;
       const projectNunc = projectTrusted ? (hostSettings.getProjectSettings ? hostSettings.getProjectSettings()?.nunc : read.nunc) : undefined;
@@ -65,7 +71,7 @@ export default function nunc(pi: ExtensionAPI): void {
     const globalSettings = manager.getGlobalSettings() as Record<string, unknown>;
     const projectSettings = manager.getProjectSettings() as Record<string, unknown>;
     return {
-      compaction: manager.getCompactionSettings(ctx.model),
+      compaction: manager.getCompactionSettings(model),
       blockImages: manager.getBlockImages(),
       globalNunc: globalSettings.nunc,
       projectNunc: projectSettings.nunc,
@@ -340,6 +346,7 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   pi.on("session_start", (_event, ctx) => {
+    completionRegistry = ctx.modelRegistry;
     invalidate(); dropAnchors(); contextView.resetPath();
     try {
       supported(ctx);
@@ -368,7 +375,7 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_before_fork", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_before_tree", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_tree", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
-  pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); dropAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
+  pi.on("session_shutdown", (_event, ctx) => { completionRegistry = undefined; memory.endFreeze(); invalidate(); dropAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
   pi.on("model_select", (_event, ctx) => {
     invalidate(); admission.ensure(ctx); ui.refresh(ctx);
     if (!ctx.model) return;
@@ -444,6 +451,16 @@ export default function nunc(pi: ExtensionAPI): void {
       if (!isDeepStrictEqual(host.compaction, event.preparation.settings)) throw new EngineError("CONFIG", "Host settings differ from preparation; reload settings before maintenance");
       const model = structuredClone(ctx.model), thinking = ctx.thinkingLevel, f = structuredClone(fixed(ctx));
       const config = engineConfig(selection.config, model, event.preparation.settings, omitsSerializedOutputCap(model) || subscriptionBilling(model, ctx.modelRegistry));
+      const intent = compactFor;
+      const target = intent?.target;
+      if (intent) {
+        if (event.reason !== "manual" || event.customInstructions !== intent.marker || intent.claimed ||
+            intent.generation !== generation || intent.sessionId !== binding.sessionId || intent.leafId !== manager.getLeafId()) {
+          throw new EngineError("CANCELLED", "Targeted compaction invocation changed or was already consumed");
+        }
+        intent.claimed = true;
+        config.extraction.toolResults = "full";
+      }
       const entries = manager.buildContextEntries();
       const projected = project(entries);
       const sourceRevision = memoryRevision(binding.sessionId, manager.getLeafId(), entries);
@@ -455,12 +472,12 @@ export default function nunc(pi: ExtensionAPI): void {
       const active = effectiveActive(projected, opportunity.enabled);
       // Freeze delivered R only. Pending/future D is neither observed nor consumed.
       const loaded = await loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) });
-      const policy = { ...loaded, user: loaded.user + (event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
+      const policy = { ...loaded, user: loaded.user + (!intent && event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
       if (controller.signal.aborted) throw new EngineError("CANCELLED", "Maintenance cancelled");
       config.toolResultCleanup = opportunity.enabled;
       contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config });
       ui.refresh(ctx);
-      const input = { binding, model, fixed: f, memory: projected.memory, active,
+      const input = { binding, model, ...(target ? { target } : {}), fixed: f, memory: projected.memory, active,
         eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
       const calibration = projectMaintenanceCalibration(manager.getBranch(), input);
       const maintenanceInput = { ...input, calibration };
@@ -493,12 +510,18 @@ export default function nunc(pi: ExtensionAPI): void {
           cleanupEnabled(ctx) !== opportunity.enabled) {
         throw new EngineError("CANCELLED", "Session, path, model, tools or configuration changed during maintenance; candidate discarded");
       }
+      if (target && (!isDeepStrictEqual(ctx.modelRegistry.find(target.model.provider, target.model.id), target.model) ||
+          !isDeepStrictEqual(engineConfig({ ...selection.config, extraction: { ...selection.config.extraction, outputTokens: "auto" } }, target.model,
+            getHostSettings(ctx, target.model).compaction), target.config))) {
+        throw new EngineError("CANCELLED", "Target model or target settings changed during maintenance");
+      }
       const savedCalibration = maintenanceCalibrationRecord(maintenanceInput, result);
       if (!result.ok) {
         if (savedCalibration) pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE, savedCalibration);
         notify(ctx, `${result.code}: ${result.message}`);
         return { cancel: true };
       }
+      if (intent && result.observations.target) intent.outcome = result.observations.target;
       if (!eligibleStarts(branch, current.active, current.latestId).includes(result.candidate.firstKeptEntryId)) throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
       const retained = new Set(result.candidate.kept.map(e => e.entryId));
       const nextDecisions = [...projected.cleanup, ...(result.candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
@@ -522,11 +545,38 @@ export default function nunc(pi: ExtensionAPI): void {
       await ui.openOverlay(ctx);
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid configuration"); }
   } });
-  pi.registerCommand("nunc", { description: "Show memory overlay or complete text report (no request)",
-    getArgumentCompletions: prefix => commandCompletions(prefix),
+  pi.registerCommand("nunc", { description: "Show memory/report, or compact for a target model",
+    getArgumentCompletions: prefix => commandCompletions(prefix, completionRegistry?.getAll() ?? []),
     handler: async (args, ctx) => {
     try {
       const mode = args.trim();
+      const compactMatch = /^compact-for\s+(\S+)$/.exec(mode);
+      if (compactMatch) {
+        supported(ctx);
+        if (!ctx.isIdle() || ctx.hasPendingMessages() || running || uiRunning || compactFor) throw new EngineError("INPUT", "Wait for an idle session without pending messages before compact-for");
+        if (!ctx.model) throw new EngineError("CONFIG", "No current execution model");
+        const name = compactMatch[1]!;
+        const catalog = ctx.modelRegistry.getAll();
+        const exact = catalog.find(m => `${m.provider}/${m.id}` === name);
+        const matches = exact ? [exact] : catalog.filter(m => m.id === name);
+        if (matches.length !== 1) throw new EngineError("CONFIG", matches.length ? "Ambiguous target; use provider/model-id" : `Unknown target model: ${name}`);
+        const targetModel = structuredClone(matches[0]!);
+        const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd);
+        const targetConfig = engineConfig({ ...selection.config, extraction: { ...selection.config.extraction, outputTokens: "auto" } }, targetModel,
+          getHostSettings(ctx, targetModel).compaction);
+        const intent: CompactForIntent = { marker: `nunc-compact-for:${randomUUID()}`, sessionId: ctx.sessionManager.getSessionId(),
+          leafId: ctx.sessionManager.getLeafId(), generation, target: { model: targetModel, config: targetConfig }, claimed: false };
+        compactFor = intent;
+        try {
+          await new Promise<void>((resolve, reject) => ctx.compact({ customInstructions: intent.marker,
+            onComplete: () => resolve(), onError: reject }));
+          if (!intent.outcome || generation !== intent.generation || ctx.sessionManager.getSessionId() !== intent.sessionId) {
+            throw new EngineError("CANCELLED", "Targeted compaction has no current confirmed result");
+          }
+          notify(ctx, `Saved compaction for ${targetModel.provider}/${targetModel.id}: projected input ${intent.outcome.estimatedInputTokens}, planning limit ${intent.outcome.plannedInputLimit}, growth reserve ${intent.outcome.growthReserve}. Current model unchanged; switch manually. Later prompt/tools/input can change actual capacity.`, "info");
+        } finally { if (compactFor === intent) compactFor = undefined; }
+        return;
+      }
       if (mode && mode !== "details") { notify(ctx, COMMAND_USAGE); return; }
       supported(ctx);
       if (!mode && ctx.mode === "tui") { await ui.openOverlay(ctx); return; }

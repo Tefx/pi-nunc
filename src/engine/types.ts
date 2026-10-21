@@ -55,6 +55,8 @@ export interface EngineConfig {
 export interface MaintenanceInput {
   binding: Binding;
   model: Model<Api>;
+  /** Explicit compact-for only: execution remains on model; target owns retention and final projection checks. */
+  target?: { model: Model<Api>; config: EngineConfig };
   fixed: FixedContext;
   memory: Memory;
   active: ActiveEntry[];
@@ -188,6 +190,7 @@ export interface Observations {
   providerOverflow?: ProviderOverflow;
   maintenanceCalibration?: MaintenanceMeasurement;
   required?: RequiredObservation;
+  target?: { provider: string; modelId: string; inputLimit: number; plannedInputLimit: number; growthReserve: number; estimatedInputTokens: number | null; fits: boolean };
   toolResultCleanup?: ToolResultCleanupResult;
 }
 export type FailureCode = "CONFIG" | "INPUT" | "UNSUPPORTED_INPUT" | "CAPACITY" | "RESPONSE" | "MODEL" | "CANCELLED";

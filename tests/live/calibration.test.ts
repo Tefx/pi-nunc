@@ -4,6 +4,28 @@ import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-work
 import { emptyMemory, loadPolicy, type MaintenanceInput } from "../../src/engine/index.js";
 import { engineConfig } from "../../src/pi/index.js";
 import { calibrateRetention } from "../../src/live/calibration.js";
+import { maintain } from "../../src/engine/engine.js";
+import { input, responder, user } from "../engine/fixtures.js";
+
+test("low-water calibration predicts the boundary that actual maintenance independently selects", async () => {
+  const source = await input();
+  source.model.contextWindow = 200000;
+  source.config = engineConfig({ rolling: { keepRecentFraction: 0.5 } }, source.model, { reserveTokens: 16384, keepRecentTokens: 1 });
+  source.active = [user("a", "old ".repeat(8000)), user("b", "retained ".repeat(1000)), user("c", "latest ".repeat(1000))];
+  const control = { afterTurn: "c", action: "rollover" as const, placement: { retireThroughTurn: "a", retainTurns: ["b", "c"] } };
+  const turns = { a: ["a"], b: ["b"], c: ["c"] }, order = ["a", "b", "c"], range = { minFraction: 0.0001, maxFraction: 0.9999 };
+  assert.throws(() => calibrateRetention(source, control, turns, order, { ...range, maxFraction: 0.2 }), /No legal retained boundary/);
+  const calibrated = calibrateRetention(source, control, turns, order, range);
+  assert.equal(calibrated.firstKeptEntryId, "b");
+  source.config.keepRecentFraction = calibrated.selectedFraction;
+  const result = await maintain(source, responder());
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(result.candidate.firstKeptEntryId, "b");
+  assert.equal(result.observations.accounting!.keepTarget, calibrated.accounting.keepTarget);
+  assert.deepEqual(result.candidate.kept.map(e => e.entryId), ["b", "c"]);
+  source.config.keepRecentTargetTokens = 10;
+  assert.throws(() => calibrateRetention(source, control, turns, order, range), /No legal retained boundary/);
+});
 
 test("calibration refuses illegal tool association cuts and absent retained entries", async () => {
   const provider = fauxProvider({ provider: "nunc-calibration", models: [{ id: "short", contextWindow: 60000, maxTokens: 4096 }] }), model = provider.getModel();

@@ -15,13 +15,13 @@ test("compact footer keeps unknown, zero-budget, and over-100 honest", () => {
   assert.deepEqual(compactFooter({ unavailable: false, occupied: false, unconfirmed: false, warning: false, slotCount: 8, budget: { tokens: 2840, limit: 2000, unknown: false } }), { text: "🧠 8·142%", tone: "dim" });
 });
 
-test("/nunc completions offer only details", () => {
+test("/nunc completions offer read-only details and explicit targeted compaction", () => {
   const details = { value: "details", label: "details", description: "Complete memory, budget, maintenance, and diagnostic report" };
-  assert.deepEqual(commandCompletions(""), [details]);
+  assert.deepEqual(commandCompletions("")?.map(c => c.value), ["details", "compact-for"]);
   assert.deepEqual(commandCompletions("d"), [details]);
   assert.equal(commandCompletions("st"), null);
   assert.equal(commandCompletions("status"), null);
   assert.equal(commandCompletions("unknown"), null);
   assert.equal(commandCompletions("details "), null);
-  assert.equal(COMMAND_USAGE, "Usage: /nunc [details]");
+  assert.equal(COMMAND_USAGE, "Usage: /nunc [details | compact-for <provider/model-id>]");
 });

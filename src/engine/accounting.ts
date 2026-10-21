@@ -176,13 +176,14 @@ export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: Engin
   const memoryLimit = Math.floor(Math.min(config.memory.fraction * Math.max(0, available), config.memory.maxTokens ?? Infinity, memoryTarget(config)));
   const memoryReserveTokens = Math.max(memoryLimit, memoryTokens(currentSlots, config.imageTokens));
   const organizingTarget = Math.floor(Math.min(Math.max(0, available - config.growthTokens), config.memory.maxTokens ?? Infinity, memoryTarget(config)));
-  const fractionalKeep = Math.floor(config.keepRecentFraction * Math.min(currentHistoryTokens, Math.max(0, available - memoryReserveTokens)));
+  const historyBase = Math.min(currentHistoryTokens, Math.max(0, available - memoryReserveTokens));
+  const fractionalKeep = Math.floor(config.keepRecentFraction * historyBase);
   const maxFeasibleKeep = Math.max(0, available - memoryReserveTokens - config.growthTokens);
   const proportionalTarget = config.keepRecentTokens !== undefined
     ? Math.max(fractionalKeep, Math.min(config.keepRecentTokens, maxFeasibleKeep))
     : fractionalKeep;
   const keepTarget = Math.min(proportionalTarget, config.keepRecentTargetTokens ?? Infinity, maxFeasibleKeep);
-  return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, memoryReserveTokens, organizingTarget, keepTarget };
+  return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, memoryReserveTokens, organizingTarget, historyBase, keepTarget };
 }
 export function extractionOutputPlan(model: Model<Api>, extraction: EngineConfig["extraction"]) {
   const capacity = Math.min(model.maxTokens, extraction.outputLimit ?? model.maxTokens);

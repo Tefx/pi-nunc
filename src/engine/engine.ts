@@ -4,7 +4,7 @@ import { maintenanceFeedback, sameRejectedRequest } from "./calibration.js";
 import type { Complete, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
 import { decideToolResultCleanup, applyToolResultCleanup } from "./cleanup.js";
-import { chooseCut, extractionOutputPlan, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, requestTokens, unknownUsage } from "./accounting.js";
+import { mainAdmissionLimit, chooseCut, extractionOutputPlan, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies, resolveExtractionRequest } from "./request.js";
 import { EngineError, freezeCopy, integer, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
 
@@ -63,9 +63,38 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     for (const e of frozen.active) for (const m of e.messages) if (typeof m.content !== "string" && m.content.some(b => b.type === "image")) {
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
     }
-    const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, memoryLimit, memoryReserveTokens, organizingTarget, keepTarget } = memoryPlan(frozen.fixed, frozen.model, config, frozen.memory.slots,
+    const executionPlan = memoryPlan(frozen.fixed, frozen.model, config, frozen.memory.slots,
       historyPlanningEstimate(frozen.active, frozen.model, config.imageTokens).tokens);
-    const { cut, keptTokens } = chooseCut(frozen.active, cuts, fixedTokens, memoryReserveTokens, keepTarget, effectiveTrigger, config, frozen.model);
+    const target = frozen.target;
+    if (target) {
+      requireThat(record(target) && record(target.model) && nonempty(target.model.id) && nonempty(target.model.provider) &&
+        nonempty(target.model.api) && Array.isArray(target.model.input), "CONFIG", "Invalid target model");
+      validateConfig(target.config);
+      requireThat(config.extraction.toolResults === "full", "CONFIG", "Targeted compaction requires complete extraction sources");
+      requireThat(target.model.input.includes("text"), "UNSUPPORTED_INPUT", "Target model cannot accept text");
+    }
+    const planningModel = target?.model ?? frozen.model, planningConfig = target?.config ?? config;
+    const retentionPlan = target ? memoryPlan(frozen.fixed, planningModel, planningConfig, frozen.memory.slots,
+      historyPlanningEstimate(frozen.active, planningModel, planningConfig.imageTokens).tokens) : executionPlan;
+    const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens } = executionPlan;
+    const { memoryLimit, memoryReserveTokens, organizingTarget, keepTarget } = retentionPlan;
+    if (target) {
+      observations.target = { provider: target.model.provider, modelId: target.model.id,
+        inputLimit: mainAdmissionLimit(target.model, target.config.main), plannedInputLimit: retentionPlan.effectiveTrigger,
+        growthReserve: target.config.growthTokens, estimatedInputTokens: null, fits: false };
+      // No post-response recut. Reject a structurally impossible suffix before paying for extraction.
+      cuts = cuts.filter(cut => {
+        const suffix = frozen.active.slice(cut);
+        const mediaFits = target.model.input.includes("image") || !suffix.some(e => e.messages.some(m =>
+          Array.isArray(m.content) && m.content.some(b => b.type === "image")));
+        return mediaFits && mainPlanningEstimate(frozen.fixed, [], suffix, target.model, target.config.imageTokens,
+          target.config.main.extraInputTokens).tokens + target.config.growthTokens <= retentionPlan.effectiveTrigger;
+      });
+      requireThat(cuts.length > 0, "CAPACITY", "No legal retained suffix fits the target projection and growth reserve");
+    }
+    const { cut } = chooseCut(frozen.active, cuts, retentionPlan.fixedTokens, memoryReserveTokens, keepTarget,
+      retentionPlan.effectiveTrigger, planningConfig, planningModel);
+    const keptTokens = historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens).tokens;
     const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;
     let selectedSource = frozen.active;
@@ -188,9 +217,17 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     observations.accounting.memoryTokens = memoryTokens(applied.memory.slots, config.imageTokens);
     observations.accounting.memoryTargetExceeded = observations.accounting.memoryTokens > organizingTarget;
     observations.accounting.growthTokens = growth;
+    if (target && observations.target) {
+      const estimate = mainPlanningEstimate(frozen.fixed, applied.memory.slots, effectiveKept, target.model,
+        target.config.imageTokens, target.config.main.extraInputTokens).tokens;
+      observations.target.estimatedInputTokens = estimate;
+      observations.target.fits = estimate + target.config.growthTokens <= retentionPlan.effectiveTrigger;
+      requireThat(observations.target.fits, "CAPACITY", `Target projection ${estimate} plus growth reserve ${target.config.growthTokens} exceeds target planning limit ${retentionPlan.effectiveTrigger}; no checkpoint handed off`);
+    }
     // Historical F is not the next main request's loadout. The native provider
     // admission gates the actual continuation Context and lets Pi recover overflow.
-    // A successful extraction must not discard a valid M on a speculative forecast.
+    // Ordinary maintenance does not discard a valid M on this forecast.
+    // The explicit target transaction above additionally requires its requested projection to fit.
     cancelled(signal);
     observations.elapsedMs = performance.now() - start;
     return { ok: true, binding: frozen.binding, candidate: {

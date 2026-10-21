@@ -19,7 +19,7 @@ function contextDigest(input: Snapshot): string {
   // Cleanup eligibility and B/K placement can grow with a legal source append.
   // Neither changes the original source prefix; including them would cause a blind full resend.
   return digest({ fixed: { systemPrompt: input.fixed.systemPrompt, tools: input.fixed.tools }, memory: input.memory, policy: input.policy,
-    config: { ...input.config, extraction } });
+    config: { ...input.config, extraction }, ...(input.target ? { target: input.target } : {}) });
 }
 const ids = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0 && value.every(nonempty) && new Set(value).size === value.length;
 const hash = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);

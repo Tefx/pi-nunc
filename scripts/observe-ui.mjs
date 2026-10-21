@@ -230,7 +230,7 @@ try {
   await f.wait(() => diagnostics(f).length === statusAt + 1, "status event");
   const statusSlice = diagnostics(f).slice(statusAt);
   assert.equal(statusSlice.length, 1);
-  assert.equal(statusSlice[0].data.message, "Usage: /nunc [details]");
+  assert.equal(statusSlice[0].data.message, "Usage: /nunc [details | compact-for <provider/model-id>]");
   assert.equal(statusSlice[0].data.level, "warning");
   await p.send("/nunc");
   await f.wait(() => /\[Slots\]/.test(strip(p.stdout)), "overlay after status warning");
@@ -251,7 +251,7 @@ try {
   await f.wait(() => /→ warning/.test(frame(p, enterMark)), "entered Diagnostics");
   const entered = frame(p, enterMark);
   assert.match(entered, /→ warning/);
-  assert.match(entered, /Usage: \/nunc \[details\]/);
+  assert.match(entered, /Usage: \/nunc \[details \| compact-for/);
   assert.doesNotMatch(entered, /→ Diagnostics/);
   const returnMark = p.stdout.length;
   p.keys("\x1b");
@@ -267,7 +267,7 @@ try {
   await f.wait(() => diagnostics(f).length === nopeAt + 1, "unknown event");
   const nopeSlice = diagnostics(f).slice(nopeAt);
   assert.equal(nopeSlice.length, 1);
-  assert.equal(nopeSlice[0].data.message, "Usage: /nunc [details]");
+  assert.equal(nopeSlice[0].data.message, "Usage: /nunc [details | compact-for <provider/model-id>]");
   assert.equal(nopeSlice[0].data.level, "warning");
   p.keys("\x1b[200~中文粘贴\x1b[201~");
   await delay(150);
@@ -292,7 +292,7 @@ try {
     const shortStatusAt = diagnostics(short).length;
     await p2.send("/nunc status");
     await short.wait(() => diagnostics(short).length === shortStatusAt + 1, "short status event");
-    assert.equal(diagnostics(short).slice(shortStatusAt).at(-1).data.message, "Usage: /nunc [details]");
+    assert.equal(diagnostics(short).slice(shortStatusAt).at(-1).data.message, "Usage: /nunc [details | compact-for <provider/model-id>]");
     await p2.send("/nunc");
     await short.wait(() => /Nunc/.test(strip(p2.stdout)) && /close|esc|select/i.test(strip(p2.stdout)), "short overlay controls");
     const shortOverlay = p2.stdout.length;
@@ -310,7 +310,7 @@ try {
     await short.wait(() => /→ warning/.test(frame(p2, shortEnter)), "short entered Diagnostics");
     const shortEntered = frame(p2, shortEnter);
     assert.match(shortEntered, /→ warning/);
-    assert.match(shortEntered, /Usage: \/nunc \[details\]/);
+    assert.match(shortEntered, /Usage: \/nunc \[details \|[\s\S]*compact-for <provider\/model-id>\]/);
     assert.doesNotMatch(shortEntered, /→ Diagnostics/);
     const shortReturn = p2.stdout.length;
     p2.keys("\x1b");

@@ -61,14 +61,16 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       }
       requireValue(available > 0, "CALIBRATION", `Effective F exhausts the work budget: F=${fixed}, H=${trigger}, mainInputLimit=${mainInput}`);
     }
-    const targetPlan = typeof currentAccounting.memoryPlan === "function" ? currentAccounting.memoryPlan(source.fixed, model, config, source.memory.slots) : undefined;
-    const memoryLimit = targetPlan?.memoryLimit ?? Math.floor(Math.min(config.memory.fraction * available, config.memory.maxTokens ?? Infinity));
-    const memoryReserve = targetPlan?.memoryReserveTokens ?? memoryLimit;
-    const denominator = available - memoryReserve;
     const suffix = new Array<number>(active.length + 1).fill(0);
     for (let i = active.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + (typeof currentAccounting.historyPlanningEstimate === "function"
       ? currentAccounting.historyPlanningEstimate([active[i]!], model, config.imageTokens).tokens
       : active[i]!.messages.reduce((sum, message) => sum + messageTokens(message, config.imageTokens), 0));
+    const targetPlan = currentAccounting.memoryPlan(source.fixed, model, config, source.memory.slots, suffix[0]);
+    const memoryLimit = targetPlan.memoryLimit;
+    const memoryReserve = targetPlan.memoryReserveTokens ?? memoryLimit;
+    // Historical product builds ignore the history argument and expose no historyBase.
+    const denominator = targetPlan.historyBase ?? available - memoryReserve;
+    const organizingTarget = targetPlan.organizingTarget ?? memoryLimit;
     const feasible = cuts.filter(cut => fixed + memoryReserve + suffix[cut]! + config.growthTokens <= trigger);
     for (const [position, cut] of feasible.entries()) {
       if (target && active[cut]!.entryId !== target.firstKeptEntryId) continue;
@@ -82,10 +84,11 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       if (lower > upper) continue;
       const fraction = lower === upper ? lower : lower + (upper - lower) / 2;
       if (fraction < range.minFraction || fraction > range.maxFraction || fraction <= 0 || fraction >= 1) continue;
-      const keepTarget = Math.floor(fraction * denominator);
-      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, { ...config, keepRecentFraction: fraction }, model);
+      const selectedConfig = { ...config, keepRecentFraction: fraction };
+      const keepTarget = currentAccounting.memoryPlan(source.fixed, model, selectedConfig, source.memory.slots, suffix[0]).keepTarget;
+      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, selectedConfig, model);
       if (chosen.cut !== cut) continue; // Includes an empty intersection at an exclusive floating-point edge.
-      const context = extractionContext(source, cut, memoryLimit, active, []);
+      const context = extractionContext(source, cut, organizingTarget, active, []);
       const fullExtraction = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
       const mainBefore = typeof currentAccounting.mainPlanningEstimate === "function"
         ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).tokens
@@ -97,9 +100,9 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
         const reduction = reduceToolBodies(active, config.extraction.headTailChars);
         selectedSource = reduction.source; omissions = reduction.omissions;
-        extraction = requestTokens(extractionContext(source, cut, memoryLimit, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
+        extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
       }
-      const resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, memoryLimit, selectedSource, omissions, cap));
+      const resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap));
       if (resolved) extraction = resolved.extractionTokens;
       requireValue(extraction <= (resolved?.extractionInputLimit ?? extractionInput), "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
       return {

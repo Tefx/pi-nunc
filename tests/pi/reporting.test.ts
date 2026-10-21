@@ -31,7 +31,7 @@ test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unk
   assert.equal(view.current.budget.extractionOutputCapKnown, false);
   assert.equal(view.current.budget.extractionOutputAuto, true);
   await f.runtime.session.prompt("/nunc status");
-  assert.equal(reports.at(-1), "Usage: /nunc [details]");
+  assert.equal(reports.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
   assert.equal(f.faux.state.callCount, 0);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
 
@@ -90,13 +90,13 @@ test("complete reports do not enter diagnostic history or echo themselves", asyn
   } }] });
   t.after(() => f.close());
   await f.runtime.session.prompt("/nunc status");
-  assert.equal(reports.at(-1), "Usage: /nunc [details]");
+  assert.equal(reports.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
   const entries = f.runtime.session.sessionManager.getEntries();
   const calls = f.faux.state.callCount;
   for (let i = 0; i < DIAGNOSTIC_LIMIT + 5; i++) await f.runtime.session.prompt("/nunc details");
   const last = reports.at(-1)!;
-  assert.match(last, /Current warning: Usage: \/nunc \[details\]/);
-  assert.match(last, /warning: Usage: \/nunc \[details\]/);
+  assert.match(last, /Current warning: Usage: \/nunc \[details \| compact-for <provider\/model-id>\]/);
+  assert.match(last, /warning: Usage: \/nunc \[details \| compact-for <provider\/model-id>\]/);
   assert.equal((last.match(/Current budgets/g) ?? []).length, 1);
   assert.equal(f.faux.state.callCount, calls);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);

@@ -143,10 +143,15 @@ export async function prepareBoundary(input: {
       prepared.matching = { referenceSnapshot: ref?.snapshotId ?? "unobserved", requestedMemoryLimit: limit, requestedOutputCap: cap, limitations };
     }
     const projected = pi.project(input.active);
+    // Calibration installs an explicit fraction. Resolve that policy now, so
+    // default-only host floors/targets cannot leak into its placement forecast.
+    const initial = pi.engineConfig(config.nunc, model, config.compaction);
+    const calibrationConfig = pi.engineConfig({ ...config.nunc,
+      rolling: { ...config.nunc.rolling, keepRecentFraction: initial.keepRecentFraction } }, model, config.compaction);
     const source = { binding: { sessionId: "observer-arithmetic", leafId: branch.at(-1)!.id, generation: "prepared" }, model,
       fixed: input.fixed, memory: projected.memory, active: projected.active,
       eligibleKeptEntryIds: pi.eligibleStarts(branch, projected.active, projected.latestId),
-      config: pi.engineConfig(config.nunc, model, config.compaction), policy: await engine.loadPolicy({ ...config.nunc, configFile: join(input.repository, "nunc-config.json") }), signal: input.signal };
+      config: calibrationConfig, policy: await engine.loadPolicy({ ...config.nunc, configFile: join(input.repository, "nunc-config.json") }), signal: input.signal };
     try {
       prepared.calibration = calibrateRetention(source, control, turns, input.turnOrder,
         input.config.retentionCalibration ?? { minFraction: Number.EPSILON, maxFraction: 1 - Number.EPSILON },

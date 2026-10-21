@@ -145,6 +145,7 @@ export interface LastMainContext {
   payload?: LastMainPayload;
 }
 export interface LastMaintenanceContext {
+  target?: MaintenanceResult["observations"]["target"];
   scope: "last-maintenance";
   observedAt: number;
   sessionId: string;
@@ -321,6 +322,7 @@ export function createContextSurface(options: {
       if (!current || !frozen || current.native !== "pending") return;
       try {
         if (result.observations.accounting) current.accounting = structuredClone(result.observations.accounting);
+        if (result.observations.target) current.target = structuredClone(result.observations.target);
         if (result.observations.stopReason !== undefined) current.stopReason = result.observations.stopReason;
         if (result.ok) {
           current.engine = "ok";

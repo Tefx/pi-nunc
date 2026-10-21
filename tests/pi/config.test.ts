@@ -191,7 +191,7 @@ test("loaded /nunc command completes details by argument prefix without side eff
   assert(command?.getArgumentCompletions);
   const entries = f.runtime.session.sessionManager.getEntries();
   const details = { value: "details", label: "details", description: "Complete memory, budget, maintenance, and diagnostic report" };
-  assert.deepEqual(await command.getArgumentCompletions(""), [details]);
+  assert.deepEqual((await command.getArgumentCompletions(""))?.map(c => c.value), ["details", "compact-for"]);
   assert.deepEqual(await command.getArgumentCompletions(" d"), [details]);
   for (const prefix of ["d", "det", "details"]) {
     assert.deepEqual(await command.getArgumentCompletions(prefix), [details]);
@@ -224,9 +224,9 @@ test("registered /nunc emits one complete report and treats status as unknown wi
   assert.match(bare, /Maintenance input plan:/);
   assert.match(bare, /No maintenance record in this context/);
   await f.runtime.session.prompt("/nunc status");
-  assert.equal(messages.at(-1), "Usage: /nunc [details]");
+  assert.equal(messages.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
   await f.runtime.session.prompt("/nunc unknown");
-  assert.equal(messages.at(-1), "Usage: /nunc [details]");
+  assert.equal(messages.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
   assert.equal(f.faux.state.callCount, 0);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
   f.seed(); f.respond(memoryPatch);

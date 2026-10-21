@@ -8,6 +8,24 @@ The original core and subsequent native/cooperative compatibility acceptance are
 
 **Implemented:** [Stable memory placement](STABLE-MEMORY.md) keeps unchanged delivered M at a stable legal history boundary and carries explicit M location plus a request-local snapshot through admission and UI. CAS, source provenance, native tool associations, conservative receipt accounting and `previous_response_id` checks remain intact. Live observation uses Gemini first or bounded GPT Luna and never calls Astra.
 
+## Targeted compaction before switching models
+
+Use the current model to compact for another model's capacity:
+
+```text
+/nunc compact-for <provider/model-id>
+```
+
+In the native input editor, type `/nunc compact-for ` and use the completion menu. Candidates come from Pi's current model registry, including models registered later. Filtering matches provider, model ID or display name case-insensitively; the menu shows up to 50 sorted matches, so narrow the text when needed. Selection inserts the full `provider/model-id`, including any slashes within the ID. Exact qualified identities take precedence; an unqualified model ID is accepted only when unique. Target lookup performs no model request or authentication probe; catalog presence does not establish credentials for a later switch.
+
+Run this command only while idle with no queued messages or maintenance. It performs at most one extraction on the **currently selected model**, using its authentication, thinking and extraction limits. The target model supplies retention planning, memory organization and the final capacity projection, with its effective per-model Pi reserve/keep settings. An extraction-output override still applies to the execution model; it does not reserve output for an unissued extraction on the target. The command leaves the selected model and automatic-compaction setting unchanged. After a confirmed save, switch models manually through Pi.
+
+This explicit path requires full effective M/B/K sources: it disables the exceptional tool-body head/tail reduction and never omits reference K. Existing context edits and saved cleanup remain part of the effective source projection. If the execution model cannot accept the sources, native preparation finds no summarizable prefix, or no legal suffix fits the target, it fails without a new checkpoint. Required memory exceeding the final target projection also fails; it is not silently deleted and the cut is not moved after extraction. Ordinary `/compact` and automatic maintenance retain their existing policies.
+
+The target gate requires estimated final input plus growth reserve to fit the target's effective planning trigger. It uses the frozen current prompt/tools and model-aware history estimate, not a guaranteed future payload. Changed prompts, tools, images or new input can still exceed the target's actual admission limit. Cancellation or session/path/model/configuration changes discard the candidate; target catalog/settings changes are checked before handoff. Failed operations can append existing non-context calibration evidence but preserve saved memory/history. `/nunc details` reports the execution model, target projection and native save status separately.
+
+If you already switched to a model that cannot hold the maintenance sources, select a sufficiently large model first, run `compact-for`, then switch back. Nunc does not choose models, retry extraction or replay a user prompt automatically.
+
 ## Load and configure
 
 Build with the locked local tools (`npm run build`), then choose the extension explicitly for one Pi invocation:
@@ -17,7 +35,7 @@ Build with the locked local tools (`npm run build`), then choose the extension e
   -e /absolute/pi-nunc/dist/src/index.js --nunc-config /absolute/nunc.json
 ```
 
-`package.json` also declares `pi.extensions`. Omit the flag for Nunc defaults. Relative configuration paths resolve from Pi's cwd; `policyFile` resolves from the configuration file's directory. Nunc reads these files without writing them. In TUI, bare `/nunc` opens the Slots/Context overlay (default Slots). Non-TUI bare `/nunc` and `/nunc details` in every mode emit the same complete text report from `ContextSurface` and UI diagnostics: occupancy, current budgets including maintenance input, last-maintenance accounting (full→selected, headroom advice, over-plan, engine vs native save), and bounded recent diagnostics. `/nunc status` is removed and prints usage as an unknown argument. Numeric budgets use thousands separators. Read-only commands leave the transcript unchanged and do not record the report as a diagnostic. The native argument completion menu suggests only `details`. `ctx.hasUI` is not TUI; RPC/print/JSON keep text. F7 is unchanged. Remove the extension resource and use stock `/reload`, or start without it, to unload. Existing summaries remain readable by stock Pi. Manual edits not yet folded into a native compaction need this Nunc to take effect.
+`package.json` also declares `pi.extensions`. Omit the flag for Nunc defaults. Relative configuration paths resolve from Pi's cwd; `policyFile` resolves from the configuration file's directory. Nunc reads these files without writing them. In TUI, bare `/nunc` opens the Slots/Context overlay (default Slots). Non-TUI bare `/nunc` and `/nunc details` in every mode emit the same complete text report from `ContextSurface` and UI diagnostics: occupancy, current budgets including maintenance input, last-maintenance accounting (full→selected, headroom advice, over-plan, engine vs native save), and bounded recent diagnostics. `/nunc status` is removed and prints usage as an unknown argument. Numeric budgets use thousands separators. Read-only commands leave the transcript unchanged and do not record the report as a diagnostic. The native argument completion menu suggests `details` and `compact-for`; the latter completes target model identities from the current registry. `ctx.hasUI` is not TUI; RPC/print/JSON keep text. F7 is unchanged. Remove the extension resource and use stock `/reload`, or start without it, to unload. Existing summaries remain readable by stock Pi. Manual edits not yet folded into a native compaction need this Nunc to take effect.
 
 ```json
 {
