@@ -155,7 +155,7 @@ K 中实际交付的有效纠正可以立即更新旧 M；纠正按来源权限�
 
 区分工作触发线 H、M 的维护建议目标、独立保存硬上限和原文保留比例 q。L 由实际保留下来的 M/K 决定，不另设主请求的提前拒绝线。
 
-统一按完整请求输入的 token 口径核算（依据 `src/engine/accounting.ts:171-178` 的 `memoryPlan`）：
+统一按完整请求输入的 token 口径核算（依据 `src/engine/accounting.ts` 的 `memoryPlan`）：
 
 ```text
 mainInputLimit = inputLimit(model, config.main)
@@ -164,12 +164,13 @@ fixedTokens = requestTokens(mainContext(fixed, [], []), config.imageTokens) + co
 available = effectiveTrigger − fixedTokens（允许为负数；仅在下游计算中以 max(0, ...) 截断）
 memoryLimit = floor(min(config.memory.fraction × max(0, available), config.memory.maxTokens ?? Infinity, memoryTarget(config)))
 reserve = max(memoryLimit, memoryTokens(currentSlots))
-keepTarget = floor(q × max(0, available − reserve))（其中 q = config.keepRecentFraction）
+fractionalKeep = floor(q × min(当前历史规划占用, max(0, available − reserve)))（其中 q = config.keepRecentFraction）
+keepTarget = min(比例目标与可选宿主下限的组合, 可选历史软目标, max(0, available − reserve − growthTokens))
 M_hard = memory.hardMaxTokens（未显式配置时为 null，无硬上限）
 render(M_next) <= M_hard（仅在显式配置 M_hard 时约束候选准入；不追溯缩减已保存 M，亦不保证正确遗忘）
 ```
 
-依据 `accounting.ts:171-178`，`fixedTokens` 包含无记忆与活动消息的固定上下文请求估算及主请求包装开销：`requestTokens(mainContext(fixed, [], []), config.imageTokens) + config.main.extraInputTokens`。`available = effectiveTrigger - fixedTokens` 表达触发上限扣除固定开销后的可用空间，当固定开销超出触发阈值时允许为负数，仅在下游规划中通过 `max(0, available)` 截断。K 规划采用 `reserve = max(memoryLimit, memoryTokens(currentSlots))` 与 `keepTarget = floor(q * max(0, available - reserve))`，使存量 M 占用纳入 reserve 保障，避免挤压现有工作记忆；同时严格遵循 frozen cut / no-recut 原则：原文切点在提取前一旦冻结即不再重切，保持既有估算口径与运行机制不变。上述规划指导合法 K 的选择和 M 摘录；`memoryTarget(config)` 严格为 `config.memory?.targetTokens ?? 8192`（`accounting.ts:158`），M 的必需事实可超过建议软目标，只要不超过显式配置的独立保存硬上限。实际提取输入与主请求分别核算；历史 F 的预计 L/增长空间不提前拒绝已完成的有效候选，见 [CAPACITY.md](CAPACITY.md)。主动 manual patch 则按 `manual.ts:221-226, 339-348` 执行 `limit = min(memoryTarget, hard ?? Infinity)` 增长判定，仅对使 token 增长的变更应用预算拒绝，并在估算不可用与超出已知限额时分别以 `unknown-budget` 和 `overbudget` 诊断，非增长恢复与修正保持免除。memory.fraction 在 [0, 1) 内，q 在 (0, 1) 内，可选上限为正数。输出预算、thinking、多模态和 provider 的独立输入/输出限制按实际请求语义计算；最大输出能力不等于每次应该预留的输出量。
+依据 `accounting.ts:memoryPlan`，`fixedTokens` 包含无记忆与活动消息的固定上下文请求估算及主请求包装开销：`requestTokens(mainContext(fixed, [], []), config.imageTokens) + config.main.extraInputTokens`。`available = effectiveTrigger - fixedTokens` 表达触发上限扣除固定开销后的可用空间，当固定开销超出触发阈值时允许为负数，仅在下游规划中通过 `max(0, available)` 截断。K 规划采用 `reserve = max(memoryLimit, memoryTokens(currentSlots))`，比例基数限制为当前历史规划占用与可用历史空间的较小值；宿主下限、历史软目标和增长空间的组合见 [ENGINE.md](ENGINE.md#configuration-and-capacity)。默认历史软目标为 100000，显式比例不隐含该目标，显式 `rolling.targetTokens` 可覆盖。该目标不保证跨任意小窗口适配。存量 M 占用已纳入 reserve，规划 K 时为其预留空间。同时严格遵循 frozen cut / no-recut 原则：原文切点在提取前一旦冻结即不再重切，维持既有来源估算口径和提交机制。上述规划指导合法 K 的选择和 M 摘录；`memoryTarget(config)` 严格为 `config.memory?.targetTokens ?? 8192`（`accounting.ts:158`），M 的必需事实可超过建议软目标，只要不超过显式配置的独立保存硬上限。实际提取输入与主请求分别核算；历史 F 的预计 L/增长空间不提前拒绝已完成的有效候选，见 [CAPACITY.md](CAPACITY.md)。主动 manual patch 则按 `manual.ts:221-226, 339-348` 执行 `limit = min(memoryTarget, hard ?? Infinity)` 增长判定，仅对使 token 增长的变更应用预算拒绝，并在估算不可用与超出已知限额时分别以 `unknown-budget` 和 `overbudget` 诊断，非增长恢复与修正保持免除。memory.fraction 在 [0, 1) 内，q 在 (0, 1) 内，可选上限为正数。输出预算、thinking、多模态和 provider 的独立输入/输出限制按实际请求语义计算；最大输出能力不等于每次应该预留的输出量。
 
 主请求保留 Pi 实际 output/thinking 设置。已验证的原生按剩余上下文裁输出路径，以及不发送输出 cap 的 Codex/Responses 路径，以 compaction reserve 与最大输出能力的较小值作为输入规划余量，并覆盖序列化下限。维护默认独立预留 8192（包含 reasoning，且不超过模型能力）；API 支持时发送对应输出 cap，不支持时仅作为规划值。模型能力、规划余量、实际 cap 和费用授权分开。普通请求使用适用的 Pi usage 加新增输入估算，前缀或模型改变后重新估算；维护及候选 M/K 始终重新估算。无硬 tokenizer 上界保证，实际超窗仍交给原生有界恢复。具体接入见 [PI.md](PI.md)。
 
@@ -179,7 +180,7 @@ render(M_next) <= M_hard（仅在显式配置 M_hard 时约束候选准入；不
 
 q 要让 K 足以承接近期工作，同时释放足够空间。较大 q 增加连续原文，也提高平均输入长度和维护频率。默认 q 已在配置中由 `0.67` 改为 `0.5`，M 比例为 `0.1`；保留显式配置覆盖，不修改触发阈值。[稳定记忆增量 §8](STABLE-MEMORY.md#8-滚动窗口保留比例)已选择该工程折中值，验收必须比较实际释放空间、连续性与总成本，不能称为已证明最优值。
 
-按合法边界取整后，L 必须低于实际触发线，并留出继续增长的空间。调低 H 时同步重算 M/K，避免维护后立刻再次触发。单个不可分大消息无法满足时，明确报告限制。
+规划 K 时优先选择能让 L 低于触发线并留出增长空间的合法边界。历史 F 的候选预测不构成最终主请求准入：不可分单元、实际 M 或后续 F 变化均可能使预测目标无法达到；不能因此在提取后重切 K 或丢弃合法 M。调低 H 时同步重算 M/K，实际后续请求仍接受独立容量检查。
 
 模型切换时读取新的有效容量，重新核算两类请求及 M/K。大窗口切到小窗口可能连维护来源都装不下；应在可容纳的模型上先整理，或走 §5 的容量处理，不能只缩小最终 M 就声称完成适配。
 
@@ -204,12 +205,14 @@ q 要让 K 足以承接近期工作，同时释放足够空间。较大 q 增加
 
 ### 5.2 实际容量不足
 
-缓存过期、工具结果年龄大或看起来冗长，都不单独触发有损过滤。以下缩减只用于完整 extraction 实际无法容纳的情况，不修改普通主请求中的原文 K 或 D：
+缓存过期、工具结果年龄大或看起来冗长，都不单独触发有损过滤。当前实现选择工具正文 head/tail 缩减；未实现参考 K 省略。以下列出允许讨论的容量处理方式，不表示全部已实现或必须同时实现。缩减只用于完整 extraction 实际无法容纳的情况（含适用的先前容量拒绝证据），不修改普通主请求中的原文 K 或 D：
 
 1. 若实现已支持开销更小的完整请求形态，可以先尝试；不为此强制增加第二种请求实现。
 2. 完整输入仍无法容纳时，可按配置选择一种有界的缩减方法，例如对超长工具正文做有省略标记的 head/tail 处理，或减少 extraction 中用于参考的 K。保留最新用户要求、纠正和工具关联，实际返回 Pi 的 K 不因此修改。具体取舍服务于当前输入，不要求实现两种缩减方法，也不固定“永远先丢 K”的顺序。
 3. 不暗中截断用户指令、存量 M 或工具调用参数。记录哪些输入被省略，不能声称已核对不可见证据。
 4. 所选处理仍不能容纳时，显式取消并说明容量原因。顺序分块或多阶段提取的恢复流程不属于必要交付范围。
+
+参考 K 省略仍是未实施方案。实际 K 保持完整、保留全部用户消息及合法工具关联，都不能单独证明维护模型看到了全部有效纠正：用户采纳的验收条件可能只存在于被省略的工具结果中。省略说明只能披露缺口；若采用这种方案，必须先明确允许的信息缺失与保真边界，不能仅凭请求估算能放下就声称恢复成功。
 
 head/tail 可能丢失中部关键证据。图像、PDF、音频等内容优先使用目标 API 支持的原生块；文字占位符不能替代视觉或音频事实。不支持时说明限制。
 
@@ -320,6 +323,7 @@ Nunc 和验证默认继承 Pi 当前有效 model/provider/options/config，包�
 
 - policyFile 可省略，相对路径基准在实施时明确；推荐相对配置文件目录。
 - memory.maxTokens 可选，作为 M 维护建议目标的一部分；memory.targetTokens（默认 8192）由 memoryTarget(config) 读取作为整理软目标；未显式配置 hardMaxTokens 时硬上限为 null；显式配置 memory.hardMaxTokens 时独立限制提取候选准入，并在主动 patch 中作为增长上限 `min(memoryTarget, explicitHard ?? Infinity)`，但不追溯缩减已保存 M 亦不保证正确遗忘；主动 patch 中非增长恢复仍予允许。原有显式保存上限须迁移到 hardMaxTokens。
+- rolling.keepRecentFraction 默认 0.5；未显式配置比例时，历史软目标默认为 100000 tokens。显式正整数 rolling.targetTokens 可设置软目标；显式比例单独配置时不隐含该默认软目标。它们只影响保留规划，不降低维护模型的输入容量。
 - 自动维护启停及 H 使用 Pi 现有配置。cached tokens 计入所有容量检查。
 - extraction.toolResults 的 auto 表示完整优先、容量不足时有界处理；full 禁止工具正文截断。
 - 参数示例可调整；不提供任务类型路由、使用计数、衰减函数、权重 DSL 或跨 session 开关。

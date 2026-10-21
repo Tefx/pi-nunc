@@ -166,16 +166,18 @@ A = max(0, actual trigger - historical F)
 M_limit = floor(min(memory.fraction * A, optional memory.maxTokens, memory.targetTokens ?? 8192))
 M_reserve = max(M_limit, current saved M estimate)
 organizingTarget = floor(min(max(0, A - growthTokens), optional memory.maxTokens, memory.targetTokens ?? 8192))
-fractionalKeep = floor(keepRecentFraction * max(0, A - M_reserve))
+historyBase = min(current model-aware history estimate, max(0, A - M_reserve))
+fractionalKeep = floor(keepRecentFraction * historyBase)
 maxFeasibleKeep = max(0, A - M_reserve - growthTokens)
-K_target = max(fractionalKeep, min(keepRecentTokens, maxFeasibleKeep)) when host floor is supplied
-K_target = fractionalKeep otherwise
+proportionalTarget = max(fractionalKeep, min(keepRecentTokens, maxFeasibleKeep)) when host floor is supplied
+proportionalTarget = fractionalKeep otherwise
+K_target = min(proportionalTarget, keepRecentTargetTokens ?? Infinity, maxFeasibleKeep)
 M_hard = memory.hardMaxTokens when explicitly configured; otherwise none
 required may exceed organizingTarget; final M must fit explicit M_hard when present
 historical-F candidate L/growth is observational only
 ```
 
-The adapter supplies the host `keepRecentTokens` floor only when `rolling.keepRecentFraction` is not explicitly configured. An explicit fraction retains proportional behavior. `memoryLimit` observations keep the fractional planning baseline semantics; the maintenance prompt, optional-slot selection and `memoryTargetExceeded` use `organizingTarget` independently of that reserve baseline. The host floor is bounded by feasible space, and discrete legal cuts may select a different actual K size.
+The adapter supplies the host `keepRecentTokens` floor only when `rolling.keepRecentFraction` is not explicitly configured. An explicit fraction retains proportional behavior. The adapter defaults `keepRecentTargetTokens` to 100000 only when no explicit fraction is supplied; optional positive integer `rolling.targetTokens` overrides this soft target, including with an explicit fraction. This bounds default large-window retained history without shrinking the model's extraction capacity. 100000 is a working-history target, not a tokenizer bound or a guarantee of fitting another model. Legal indivisible units may exceed it. Maintenance supplies the actual history planning estimate, so low-water manual compaction scales the current history rather than unused model capacity. Non-maintenance `memoryPlan` callers without history retain capacity-only projections. `memoryLimit` observations keep the fractional planning baseline semantics; the maintenance prompt, optional-slot selection and `memoryTargetExceeded` use `organizingTarget` independently of that reserve baseline. The host floor is bounded by feasible space, and discrete legal cuts may select a different actual K size.
 
 `chooseCut` selects the nearest feasible legal suffix around the soft target, preferring the larger neighbor on ties only when historical F/M plus K and growth fit. With no feasible historical plan, the existing advisory fallback remains. B/K stay continuous and nonempty with complete tool units. The maintenance cut remains frozen through the response even if new M exceeds the planning reserve: additional unextracted history is never retired to make it fit. The larger saved M feeds the next maintenance reserve. Actual request input/output limits remain enforced, so elastic M does not promise unlimited physical capacity. One normal maintenance request, no extra compression pass or retry. Numeric `applyPatch` budgets retain their legacy explicit-hard-limit meaning; `{targetTokens, hardMaxTokens?}` selects elastic behavior. Observations separately record `memoryReserveTokens`, `memoryHardLimit` (null when absent), and `memoryTargetExceeded`; historical records without these fields stay unknown.
 
@@ -195,7 +197,7 @@ The optional main-only nativeOutputReserve selects planning headroom for verifie
 
 ### Capacity recovery and media
 
-Only after the **full extraction exceeds its input limit**, `auto` runs one pass over tool-result text blocks: keep `headTailChars` Unicode code points at each end, insert an omission marker and record entry/message/block indexes, tool-call ID and omitted count. It never truncates user/assistant text, tool arguments, M or native images, and never mutates the saved source or returned K. `full` disables this pass. If the reduced request still cannot fit, fail before making a request. There is no K-reference removal, sequential chunking or multi-stage repair path.
+When the **full extraction exceeds its calibrated input budget**, or applicable prior overflow evidence requires reduction, `auto` runs one pass over tool-result text blocks: keep `headTailChars` Unicode code points at each end, insert an omission marker and record entry/message/block indexes, tool-call ID and omitted count. It never truncates user/assistant text, tool arguments, M or native images, and never mutates the saved source or returned K. `full` disables this pass. If the reduced request still cannot fit, fail before making a request. There is no K-reference removal, sequential chunking or multi-stage repair path. Retaining original K in the next main request does not make omitted K evidence visible to the maintenance model. Even preserving all user messages and complete tool groups cannot establish that omitted tool results contain no adopted requirements or corrections. Reference-K reduction remains an unimplemented proposal with unresolved fidelity trade-offs; a smaller estimated request alone does not establish safe extraction, checkpoint persistence or successful continuation.
 
 Middle tool evidence can be lost in this exceptional path; omissions explicitly prevent a claim that unseen evidence was checked. Full-mode normal requests preserve all visible evidence, including bodies beyond Pi's default serializer limit.
 

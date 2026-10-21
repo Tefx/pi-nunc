@@ -8,7 +8,7 @@ import { EngineError, validateConfig } from "../engine/validation.js";
 export interface NuncConfig {
   policyFile?: string;
   memory?: { fraction?: number; maxTokens?: number; targetTokens?: number; hardMaxTokens?: number };
-  rolling?: { keepRecentFraction?: number };
+  rolling?: { keepRecentFraction?: number; targetTokens?: number };
   extraction?: { toolResults?: "auto" | "full"; headTailChars?: number; outputTokens?: number | "auto" };
   budget?: { safetyTokens?: number; growthTokens?: number; extraMainInputTokens?: number; extraExtractionInputTokens?: number; inputLimit?: number; imageTokens?: number };
 }
@@ -21,7 +21,7 @@ export function parseConfig(value: unknown): NuncConfig {
   const root = object(value, ["policyFile", "memory", "rolling", "extraction", "budget"], "nunc");
   if (root.policyFile !== undefined && (typeof root.policyFile !== "string" || !root.policyFile.trim())) throw new EngineError("CONFIG", "policyFile must be a nonempty path");
   const sections: Record<string, string[]> = {
-    memory: ["fraction", "maxTokens", "targetTokens", "hardMaxTokens"], rolling: ["keepRecentFraction"], extraction: ["toolResults", "headTailChars", "outputTokens"],
+    memory: ["fraction", "maxTokens", "targetTokens", "hardMaxTokens"], rolling: ["keepRecentFraction", "targetTokens"], extraction: ["toolResults", "headTailChars", "outputTokens"],
     budget: ["safetyTokens", "growthTokens", "extraMainInputTokens", "extraExtractionInputTokens", "inputLimit", "imageTokens"],
   };
   for (const [section, keys] of Object.entries(sections)) {
@@ -56,13 +56,14 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
       !Number.isSafeInteger(settings.keepRecentTokens) || settings.keepRecentTokens < 0 || settings.keepRecentTokens >= triggerTokens) {
     throw new EngineError("CONFIG", "Pi reserveTokens must leave a positive H, and 0 <= keepRecentTokens < H; lower keepRecentTokens with an earlier trigger");
   }
-  // These inspected Pi 0.85.1 streamSimple adapters clamp output to remaining
-  // context (Anthropic reclamps after thinking adjustment). Keep their defaults;
-  // input admission must not subtract the entire catalog output capability.
+  // These native streamSimple adapters clamp output to remaining context:
+  // Google uses buildBaseOptions; Anthropic reclamps after thinking adjustment.
+  // Keep their defaults; input admission must not subtract the full output cap.
   // Uncapped routes use planning headroom too, without claiming an output cap.
   // Other adapters retain fixed-reserve accounting until context sizing is verified.
   const nativeContextOutput = omitsSerializedOutputCap(model) ||
-    ["openai-completions", "openai-responses", "azure-openai-responses", "anthropic-messages"].includes(model.api);
+    ["openai-completions", "openai-responses", "azure-openai-responses", "anthropic-messages",
+      "google-generative-ai", "google-vertex"].includes(model.api);
   const mainOutput = model.maxTokens;
   const outputFloor = ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
   const mainReserve = Math.min(mainOutput, Math.max(outputFloor, settings.reserveTokens));
@@ -76,6 +77,8 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
       ...(config.memory?.hardMaxTokens === undefined ? {} : { hardMaxTokens: config.memory.hardMaxTokens }),
       ...(config.memory?.maxTokens === undefined ? {} : { maxTokens: config.memory.maxTokens }) },
     keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.5,
+    ...(config.rolling?.targetTokens !== undefined ? { keepRecentTargetTokens: config.rolling.targetTokens }
+      : config.rolling?.keepRecentFraction === undefined ? { keepRecentTargetTokens: 100000 } : {}),
     ...(config.rolling?.keepRecentFraction === undefined ? { keepRecentTokens: settings.keepRecentTokens } : {}),
     growthTokens: config.budget?.growthTokens ?? 1024,
     main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },

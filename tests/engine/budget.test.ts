@@ -32,26 +32,31 @@ test("accounts complete F/envelope/M/R and extraction controls, independent ceil
   assert.equal(a.extractionInputLimit, 50000 - 512);
   assert.equal(a.memoryTokens, memoryTokens(source.memory.slots));
   assert.equal(a.memoryLimit, Math.floor((a.effectiveTrigger - a.fixedTokens) * 0.1));
-  assert.equal(a.keepTarget, Math.floor((a.effectiveTrigger - a.fixedTokens - a.memoryLimit) * 0.67));
+  const historyTokens = source.active.flatMap(e => e.messages).reduce((n, m) => n + messageTokens(m), 0);
+  assert.equal(a.keepTarget, Math.floor(Math.min(historyTokens, a.effectiveTrigger - a.fixedTokens - a.memoryLimit) * 0.67));
   assert(a.fullExtractionTokens > a.mainBeforeTokens);
   assert(a.mainAfterTokens! < a.effectiveTrigger && a.growthTokens! >= 2000);
   assert.equal(result.observations.usage.contextInput, 175);
   assert.equal(result.observations.usage.totalTokens, 215); // reasoning is already included in output
 });
 
-test("default 0.5 retention fraction computes keepTarget with floor(0.5 * (A - M_limit)) without altering trigger or memoryLimit", async () => {
+test("default 0.5 retention fraction uses actual history below the trigger without altering memoryLimit", async () => {
   const source = await input();
   source.config.keepRecentFraction = 0.5;
   const result = await maintain(source, responder());
   assert(result.ok, result.ok ? "" : result.message);
   const a = result.observations.accounting!;
-  assert.equal(a.keepTarget, Math.floor((a.effectiveTrigger - a.fixedTokens - a.memoryLimit) * 0.5));
+  const historyTokens = source.active.flatMap(e => e.messages).reduce((n, m) => n + messageTokens(m), 0);
+  assert.equal(a.keepTarget, Math.floor(historyTokens * 0.5));
+  assert(a.keepTarget < (a.effectiveTrigger - a.fixedTokens - a.memoryLimit) * 0.5);
   assert.equal(a.memoryLimit, Math.floor((a.effectiveTrigger - a.fixedTokens) * 0.1));
   assert.equal(a.effectiveTrigger, source.config.triggerTokens);
 });
 
 test("maximum output capability is not automatically reserved; narrower main model capacity recomputes H/M/K", async () => {
-  const source = await input(); const large = await maintain(source, responder()); assert(large.ok);
+  const source = await input();
+  source.active = Array.from({ length: 8 }, (_, i) => user(`u${i}`, "history ".repeat(600)));
+  const large = await maintain(source, responder()); assert(large.ok);
   source.model.contextWindow = 25000; source.config.triggerTokens = 24000;
   const small = await maintain(source, responder());
   // Current full extraction fits despite insufficient hypothetical trigger headroom.

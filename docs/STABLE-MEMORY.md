@@ -201,11 +201,12 @@ U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含�
 
 ## 8. 滚动窗口保留比例
 
-默认值由 `rolling.keepRecentFraction: 0.67` 改为 `0.5`，继续使用现有公式：
+当前默认 `rolling.keepRecentFraction` 为 `0.5`。保留规划已加入实际历史基数、可选软目标及增长空间约束：
 
 ```text
 保留真实历史目标
-= floor(keepRecentFraction × max(0, available − memoryReserve))
+= min(比例目标与宿主下限的组合, rolling.targetTokens 软目标, 可行增长空间)
+比例目标 = floor(keepRecentFraction × min(当前实际历史规划占用, max(0, available − memoryReserve)))
 memoryReserve = max(memoryLimit, 当前已保存 M 的估值)
 memoryLimit = min(原有建议目标, memory.targetTokens ?? 8192)
 ```
@@ -215,9 +216,13 @@ memoryLimit = min(原有建议目标, memory.targetTokens ?? 8192)
 | 220,000 | 22,000 | 0.67 | 132,660 |
 | 220,000 | 22,000 | 0.5 | 99,000 |
 
+表中假定当前历史已达到可用历史预算，且软目标未收紧结果。默认比例下历史软目标为 100000 tokens，防止大窗口把默认保留目标推到近 500k；显式 `rolling.keepRecentFraction` 不隐含该上限，显式正整数 `rolling.targetTokens` 可另行设置。此值选择约 100k 的近期工作量作为默认工程折中，不保证任意小模型适配或最佳语义质量。原生触发阈值不变，维护前历史仍可能增长很大。
+
+低水位维护按当前历史计算比例，避免在大窗口上手动 `/compact` 仅因未用满容量而几乎不收缩。宿主保留下限、合法完整消息单元和冻结切点规则继续生效，不保证每次恰好缩减一半。
+
 表中 22,000 表示规划预留，例如已保存 M 的占用；新默认整理目标为 8192。必要项超目标时仍可完整保存，下一轮减少 K 预算；提取结束后不改变本轮切点或退休额外原文。显式 `memory.hardMaxTokens` 仍绑定且可能阻止维护。必要性按每轮有效目标与完成证据重新判断，无永久 pin。
 
-同预算下目标降低约 25.4%。`0.5` 是已选择的工程折中值，尚未证明最优。
+上表仅比较比例从 0.67 降到 0.5 时的结果，目标降低约 25.4%；实际历史基数或软目标成为约束时，不适用这个固定降幅。`0.5` 是已选择的工程折中值，尚未证明最优。
 
 不修改压缩触发阈值，不新增调度器。保留显式配置覆盖，不改写用户配置。继续保留合法完整消息单元；没有完整单元低于目标时，采用现有最小可行超目标后缀规则。相同比例差异不保证每次产生不同切点。
 

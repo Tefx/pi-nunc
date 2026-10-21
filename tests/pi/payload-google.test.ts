@@ -3,14 +3,21 @@ import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { normalizeContext, type Model, type Provider } from "@earendil-works/pi-ai";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
-import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import { googleVertexProvider } from "@earendil-works/pi-ai/providers/google-vertex";
+import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { messageTokens, textTokens } from "../../src/engine/accounting.js";
+import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { authorizePayload, classifyPayloadChange, jsonView, payloadMode } from "../../src/pi/payload.js";
 import { fixture } from "./fixtures.js";
 
-function googleSSE(text: string): string {
+function googleSSE(content: string | { functionCall: { id: string; name: string; args: Record<string, unknown> } }, usage: {
+  promptTokenCount: number; candidatesTokenCount: number; totalTokenCount: number; cachedContentTokenCount?: number;
+} = { promptTokenCount: 8, candidatesTokenCount: 4, totalTokenCount: 12 }): string {
   return `data: ${JSON.stringify({
-    candidates: [{ content: { role: "model", parts: [{ text }] }, finishReason: "STOP" }],
-    usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 4, totalTokenCount: 12 },
+    candidates: [{ content: { role: "model", parts: [typeof content === "string" ? { text: content } : content] }, finishReason: "STOP" }],
+    usageMetadata: usage,
   })}\n\n`;
 }
 
@@ -105,3 +112,101 @@ test("native Google serializer hits baseUrl loopback; nested control rewrite is 
   assert.equal(rejected.stopReason, "error");
   assert.equal(requests.length, 0);
 });
+
+for (const providerFactory of [googleProvider, googleVertexProvider]) {
+  for (const mode of ["auto-on", "auto-off", "explicit-limit", "window-overflow"] as const) {
+    const google: Provider = providerFactory();
+    test(`${google.id} native main capacity with ${mode} preserves output sizing and single tool delivery`, { timeout: 30000 }, async t => {
+      const catalog = google.getModels().find(m => m.id === "gemini-2.5-flash");
+      assert(catalog);
+      assert.equal(catalog.contextWindow, 1048576);
+      assert.equal(catalog.maxTokens, 65536);
+      const allowed = mode === "auto-on" || mode === "auto-off";
+      const enabled = mode === "auto-on";
+      // Calibrate the usage fixture to the exact admission boundary without freezing Pi's text heuristic.
+      const expectedInput = mode === "window-overflow" ? 1048576 : 988095;
+      const trailingTokens = messageTokens({ role: "user", content: [{ type: "text", text: "Continue" }], timestamp: 0 }) + textTokens("{}");
+      const promptTokens = expectedInput - trailingTokens - 4;
+      const bodies: { generationConfig: { maxOutputTokens: number }; contents: { parts: { text?: string }[] }[] }[] = [];
+      const server = createServer(async (req, res) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(Buffer.from(chunk));
+        bodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        res.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
+        res.end(bodies.length === 1
+          ? googleSSE("Usage anchor.", { promptTokenCount: promptTokens, candidatesTokenCount: 4, totalTokenCount: promptTokens + 4, cachedContentTokenCount: 960000 })
+          : bodies.length === 2
+            ? googleSSE({ functionCall: { id: "capacity-call", name: "capacity_probe", args: {} } })
+            : googleSSE("Tool result received."));
+      });
+      t.after(() => new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve())));
+      await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+      const address = server.address();
+      assert(address && typeof address === "object");
+      const model = { ...catalog, baseUrl: `http://127.0.0.1:${address.port}/${google.id === "google-vertex" ? "v1" : "v1beta"}` };
+      const admissions: AdmissionObservation[] = [];
+      const nativeEstimates: number[] = [];
+      let toolRuns = 0;
+      const f = await fixture({
+        enabled,
+        ...(mode === "explicit-limit" ? { config: { budget: { inputLimit: 982016 } } } : {}),
+        tools: [{ name: "capacity_probe", label: "Capacity probe", description: "Return one bounded test result", parameters: Type.Object({}),
+          execute: async () => { toolRuns++; return { content: [{ type: "text", text: "probe-ok" }], details: {} }; } }],
+        extras: [{ name: "google-capacity-observer", factory(pi) {
+          pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation));
+        } }],
+      });
+      t.after(() => f.close());
+      f.settings.applyOverrides({ compaction: { enabled, reserveTokens: 16384, keepRecentTokens: 20000 } });
+      const wrapped: Provider = {
+        ...google,
+        streamSimple: (_m, context, options) => {
+          nativeEstimates.push(estimateContextTokens(context).tokens);
+          return google.streamSimple(model, context, { ...options, apiKey: "offline-fixture-key", maxRetries: 0 });
+        },
+        stream: (_m, context, options) => google.stream(model, context, { ...options, apiKey: "offline-fixture-key", maxRetries: 0 } as Parameters<typeof google.stream>[2]),
+      };
+      new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+      await f.modelRuntime.setRuntimeApiKey(google.id, "offline-fixture-key");
+      await f.runtime.session.setModel(model);
+      await f.runtime.session.prompt("Establish native Google usage");
+      assert.equal(bodies.length, 1);
+      const anchor = f.runtime.session.messages.at(-1);
+      assert(anchor?.role === "assistant");
+      assert.equal(anchor.stopReason, "stop", anchor.errorMessage ?? "");
+      assert.equal(anchor.usage.cacheRead, 960000);
+      await f.runtime.session.prompt("Continue");
+      const near = admissions.find(o => o.kind === "main" && o.estimator === "pi-usage-backed");
+      assert(near, JSON.stringify(admissions));
+      assert.equal(near.inputTokens, expectedInput);
+      assert.equal(near.inputLimit, mode === "explicit-limit" ? 982016 : 1048575);
+      const last = f.runtime.session.messages.at(-1);
+      assert(last?.role === "assistant");
+      if (allowed) {
+        assert.equal(near.outcome, "delegate", last.errorMessage ?? "");
+        assert.equal(near.plannedInputLimit, 1031168);
+        assert.equal(near.outputReserveTokens, 16384);
+        assert.equal(last.stopReason, "stop", last.errorMessage ?? "");
+        assert.equal(bodies.length, 3, "one anchor, one tool call, one tool-result response");
+        assert.equal(toolRuns, 1);
+        assert.equal(bodies[0]!.generationConfig.maxOutputTokens, 65536);
+        const cap = bodies[1]!.generationConfig.maxOutputTokens;
+        assert(cap > 0 && cap < 65536, `native output cap ${cap}`);
+        assert.equal(nativeEstimates[1]! + cap + 4096, 1048576, "native serializer retains its context-sized output and safety margin");
+        const texts = bodies[2]!.contents.flatMap(c => c.parts.flatMap(p => p.text ? [p.text] : []));
+        assert.equal(texts.filter(text => text === "Continue").length, 1);
+        assert.equal(admissions.some(o => o.outcome === "reject"), false);
+      } else {
+        assert.equal(near.outcome, "reject");
+        assert.equal(near.code, "CAPACITY");
+        assert.equal(last.stopReason, "error");
+        assert.match(last.errorMessage ?? "", /context_length_exceeded: Nunc local CAPACITY/);
+        assert.equal(bodies.length, 1, "oversized follow-up never reaches HTTP");
+        assert.equal(toolRuns, 0);
+      }
+      assert.equal(f.events.length, 0, "no fabricated maintenance for the near-limit request");
+      assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
+      assert.equal(f.settings.getCompactionSettings(model).enabled, enabled);
+    });
+  }
+}

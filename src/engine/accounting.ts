@@ -165,7 +165,7 @@ export function omitsSerializedOutputCap(model: Model<Api>): boolean {
   return model.api === "openai-codex-responses" || (model.api === "openai-responses" && record(model.compat) && model.compat.supportsMaxOutputTokens === false);
 }
 /** Shared F/M planning numbers for maintenance and manual M edits. */
-export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: EngineConfig, currentSlots: Slot[] = []) {
+export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: EngineConfig, currentSlots: Slot[] = [], currentHistoryTokens = Infinity) {
   const mainInputLimit = inputLimit(model, config.main);
   const extractionInputLimit = inputLimit(model, extractionOutputPlan(model, config.extraction).budget);
   const effectiveTrigger = Math.min(config.triggerTokens, mainInputLimit);
@@ -176,11 +176,12 @@ export function memoryPlan(fixed: FixedContext, model: Model<Api>, config: Engin
   const memoryLimit = Math.floor(Math.min(config.memory.fraction * Math.max(0, available), config.memory.maxTokens ?? Infinity, memoryTarget(config)));
   const memoryReserveTokens = Math.max(memoryLimit, memoryTokens(currentSlots, config.imageTokens));
   const organizingTarget = Math.floor(Math.min(Math.max(0, available - config.growthTokens), config.memory.maxTokens ?? Infinity, memoryTarget(config)));
-  const fractionalKeep = Math.floor(config.keepRecentFraction * Math.max(0, available - memoryReserveTokens));
+  const fractionalKeep = Math.floor(config.keepRecentFraction * Math.min(currentHistoryTokens, Math.max(0, available - memoryReserveTokens)));
   const maxFeasibleKeep = Math.max(0, available - memoryReserveTokens - config.growthTokens);
-  const keepTarget = config.keepRecentTokens !== undefined
+  const proportionalTarget = config.keepRecentTokens !== undefined
     ? Math.max(fractionalKeep, Math.min(config.keepRecentTokens, maxFeasibleKeep))
     : fractionalKeep;
+  const keepTarget = Math.min(proportionalTarget, config.keepRecentTargetTokens ?? Infinity, maxFeasibleKeep);
   return { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, available, memoryLimit, memoryReserveTokens, organizingTarget, keepTarget };
 }
 export function extractionOutputPlan(model: Model<Api>, extraction: EngineConfig["extraction"]) {

@@ -63,7 +63,8 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     for (const e of frozen.active) for (const m of e.messages) if (typeof m.content !== "string" && m.content.some(b => b.type === "image")) {
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
     }
-    const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, memoryLimit, memoryReserveTokens, organizingTarget, keepTarget } = memoryPlan(frozen.fixed, frozen.model, config, frozen.memory.slots);
+    const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens, memoryLimit, memoryReserveTokens, organizingTarget, keepTarget } = memoryPlan(frozen.fixed, frozen.model, config, frozen.memory.slots,
+      historyPlanningEstimate(frozen.active, frozen.model, config.imageTokens).tokens);
     const { cut, keptTokens } = chooseCut(frozen.active, cuts, fixedTokens, memoryReserveTokens, keepTarget, effectiveTrigger, config, frozen.model);
     const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;

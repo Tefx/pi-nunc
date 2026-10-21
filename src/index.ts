@@ -10,7 +10,7 @@ import { maintenanceCalibrationRecord } from "./engine/calibration.js";
 import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration } from "./pi/calibration.js";
 import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
-import { omitsSerializedOutputCap } from "./engine/accounting.js";
+import { mainAdmissionLimit, mainContext, requestTokens, omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
 import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, eligibleUsageEntryIds, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
@@ -369,7 +369,18 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_before_tree", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_tree", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("session_shutdown", (_event, ctx) => { memory.endFreeze(); invalidate(); dropAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
-  pi.on("model_select", (_event, ctx) => { invalidate(); admission.ensure(ctx); ui.refresh(ctx); });
+  pi.on("model_select", (_event, ctx) => {
+    invalidate(); admission.ensure(ctx); ui.refresh(ctx);
+    if (!ctx.model) return;
+    try {
+      const config = engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, ctx.model, settings(ctx).compaction);
+      const projected = project(ctx.sessionManager.buildContextEntries());
+      const estimate = requestTokens(mainContext(fixed(ctx), projected.memory.slots, effectiveActive(projected, cleanupEnabled(ctx))), config.imageTokens)
+        + config.main.extraInputTokens;
+      const limit = mainAdmissionLimit(ctx.model, config.main);
+      if (estimate > limit) notify(ctx, `Selected model context estimate ${estimate} exceeds input limit ${limit}. Native automatic recovery may require compaction; success is not guaranteed. With automatic compaction disabled, compact explicitly or choose a larger model. This is a projection, not the next provider payload.`);
+    } catch (error) { notify(ctx, error instanceof Error ? error.message : "Cannot estimate selected model capacity"); }
+  });
   pi.on("thinking_level_select", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("agent_settled", (_event, ctx) => { admission.settled(); ui.refresh(ctx); });
   pi.on("message_end", (event, ctx) => {

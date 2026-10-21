@@ -35,6 +35,17 @@ test("native main admission is independent of the soft planning reserve; explici
   assert.equal(mainAdmissionLimit(codex, config.main), 250000);
   const capped = { ...codex, api: "openai-responses" };
   assert.equal(mainAdmissionLimit(capped, engineConfig({}, capped, { reserveTokens: 16384, keepRecentTokens: 20000 }).main), 271984);
+  for (const api of ["google-generative-ai", "google-vertex"] as const) {
+    const google = { ...codex, api, contextWindow: 1048576, maxTokens: 65536 };
+    const defaults = engineConfig({}, google, { reserveTokens: 16384, keepRecentTokens: 20000 });
+    assert.equal(defaults.main.nativeOutputReserve, 16384);
+    assert.equal(inputLimit(google, defaults.main), 1031168);
+    assert.equal(mainAdmissionLimit(google, defaults.main), 1048575);
+    const explicit = engineConfig({ budget: { inputLimit: 982016 } }, google, { reserveTokens: 16384, keepRecentTokens: 20000 });
+    assert.equal(mainAdmissionLimit(google, explicit.main), 982016);
+    assert.equal(inputLimit(google, defaults.extraction), 1039360);
+    assert.equal(inputLimit(google, explicit.extraction), 980992);
+  }
   const unknown = { ...codex, api: "fixture-unknown" };
   const fixed = engineConfig({}, unknown, { reserveTokens: 16384, keepRecentTokens: 20000 }).main;
   assert.equal(mainAdmissionLimit(unknown, fixed), inputLimit(unknown, fixed));

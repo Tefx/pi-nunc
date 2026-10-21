@@ -8,6 +8,8 @@ Pi owns normal compaction scheduling, output sizing and provider overflow recove
 
 On the already supported native context-clamped and uncapped routes, main admission uses `min(model.contextWindow - serializerOutputFloor, configured inputLimit)`; the floor is 16 for capped Responses and 1 otherwise. The explicit input limit remains binding. The native serializer still owns the actual output cap; uncapped routes retain no cap. Unknown context-sizing routes retain fixed-output-reserve accounting until their native behavior is verified.
 
+Google Generative AI and Google Vertex are verified context-clamped routes: Pi AI 1.1.0 and 1.3.0 use `streamSimple → buildBaseOptions → clampMaxTokensToContext`, then serialize the resulting `maxOutputTokens`. Nunc leaves that output sizing and Pi's compaction settings unchanged. With a 1048576-token window, 65536 output capability, Pi reserve 16384 and Nunc safety 1024, the memory/input planning target is 1031168 and main admission is 1048575. The reported usage-backed estimate 988095 delegates instead of hitting the old fixed-output-reserve guard at 982016. Explicit input limits and actual model-window overruns still reject before HTTP; extraction retains its independent output and safety reserves.
+
 For the default 272000-window Codex route:
 
 - Pi compaction threshold: 255616.
@@ -40,6 +42,14 @@ Actual capacity errors retain native bounded overflow and threshold recovery. In
 
 Stock Pi can return before `session_before_compact` when its default character-based preparation finds no summarizable prefix. This project cannot fix that host path. The repair avoids entering it merely because a request exceeds Nunc's soft planning target. A complete extraction `stop` is not discarded because reported input+cache exceeds the catalog window; that path cancelled auto-compaction and retried the same oversized turn. Explicit extraction `inputLimit`, output caps and any explicit saved-M hard cap still bind. Default-target overflow alone saves a complete required candidate; current saved-M occupancy reduces the next history target. This never moves the current cut after extraction or adds a maintenance retry. True oversized/unretirable input or a failed native/provider recovery can still require operator intervention; no automatic-recovery guarantee is claimed.
 
+## Cross-window retention and current recovery limits
+
+Current Nunc retention planning applies the fraction to the smaller of actual history occupancy and available history capacity. The default soft retained-history target is 100000 tokens; explicit fraction-only configuration omits that default target, and `rolling.targetTokens` can set a positive target independently. These are planning preferences subject to legal boundaries, not a hard cap on saved history. They improve low-water manual compaction and bound the default large-window target without changing Pi's trigger or the extraction model's capacity. The complete equations and override rules are in [ENGINE.md](ENGINE.md#configuration-and-capacity).
+
+Model selection reports an oversized current projection without reversing selection or starting maintenance. A smaller retained-history target does not make an already oversized extraction request fit: extraction still reads the frozen M/B/K with the existing bounded tool-body handling. If that request cannot fit the selected model, maintenance fails without a new checkpoint. Automatic compaction disabled remains disabled.
+
+Reference-K omission and an explicit command to compact for a different target model are proposals, not shipped recovery paths. The former can hide corrections or adopted requirements from maintenance even when the actual retained K is unchanged; the latter requires separate execution and target budgets. Neither is established by the current retention and diagnostic changes. Local engine and native-host fixture checks exercise retention, checkpoint persistence and zero-dispatch selection diagnostics; request-sizing probes alone do not establish semantic quality or live cross-window recovery.
+
 ## Maintenance feedback and explicit recovery
 
 Each `maintain` call generates at most one model request. `maxRetries: 0` disables provider retries; Nunc does not resubmit full, reduced, malformed, disconnected or cancelled requests. A provider rejection cancels native compaction and leaves old M, original source and the checkpoint unchanged. `nunc:maintenance` remains attempt evidence, not a save receipt. Failure may append a lightweight `nunc.maintenance-calibration` custom entry containing overflow and/or measured input evidence. Plain custom state is excluded from model context and `project.active`; it neither retires history nor changes M.
@@ -61,6 +71,7 @@ In-flight planning sets `calibratedUndercountTokens` to the maximum of the appli
 ## Regression evidence required
 
 - Exact `254598` usage-backed request delegates under defaults instead of producing local CAPACITY.
+- Exact `988095` usage-backed Google Generative AI and Vertex requests reach native loopback transport with auto-compaction enabled and disabled. Native output caps shrink to remaining context, each tool executes once, and no extra maintenance or prompt delivery occurs. Explicit input limits and model-window overruns remain zero-send rejections.
 - High usage/short visible history with keep=20000, auto enabled and disabled; no fabricated maintenance or duplicate input.
 - Fresh estimates and supported payload growth can cross the planning target while fitting main admission.
 - Explicit input limits and model-window overruns still reject before transport.
