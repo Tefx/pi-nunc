@@ -250,7 +250,7 @@ test("native grammar declaration is sent as grammar, without replacing it with J
 });
 
 test("Pi 0.99 codemode sends its native Lark grammar through Nunc's actual request", async t => {
-  const { createCodemodeExtension } = await import(new URL("../../../node_modules/@earendil-works/pi-coding-agent/dist/extensions/codemode/index.js", import.meta.url).href);
+  const { createCodemodeExtension } = await import("@earendil-works/pi-coding-agent");
   const run = await nativeMain(t, () => "observe", undefined, undefined, [
     { name: "stock-codemode", factory: createCodemodeExtension() },
     { name: "activate-codemode", factory(pi) { pi.on("before_agent_start", () => { pi.setActiveTools(["codemode"]); }); } },

@@ -41,7 +41,7 @@ By default, Nunc manages `M` only during compaction without changing the model's
 | --- | --- |
 | Node | `26.7.0` (`.node-version`) |
 | npm | `11.19.0` |
-| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | Runtime: stable `^1.0.3`; devDependencies pinned to `1.1.0` |
+| Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | Runtime: stable `^1.0.3`; devDependencies pinned to `1.4.0` |
 
 Runtime constraints:
 

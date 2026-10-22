@@ -66,7 +66,7 @@ function serializedResponsesEvidence(request: RequestObservation, payload: any):
   // Other tool encodings need their own mapping. Ignoring one could fabricate
   // a complete call/result correspondence.
   if (actual.some(item => typeof item.type === "string" && /call|tool/i.test(item.type) &&
-    item.type !== "function_call" && item.type !== "function_call_output")) return {};
+    item.type !== "function_call" && item.type !== "function_call_output" && item.type !== "additional_tools")) return {};
   const expectedCalls = request.context.messages.flatMap(message => message.role === "assistant"
     ? message.content.filter(block => block.type === "toolCall") : []);
   const expectedResults = request.context.messages.filter(message => message.role === "toolResult");

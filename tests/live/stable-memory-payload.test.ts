@@ -49,7 +49,9 @@ test("native Codex Responses binds M and every function call/result to the actua
   assert.equal(change(input => { input.push({ type: "function_call_output", call_id: "extra", output: "No result provided" }); }).synthetic, true);
   assert.equal(change(input => { input[1].arguments = '{"path":"other.txt"}'; }).synthetic, true);
   assert.equal(change(input => { input[3].content[0].text = "stale M"; }).memory, false);
+  assert.deepEqual(change(input => { input.unshift({ type: "additional_tools", role: "developer", tools: [{ type: "function", name: "read" }] }); }), { synthetic: false, memory: true });
   assert.equal(change(input => { input[1].type = "custom_tool_call"; }).synthetic, undefined);
+  assert.equal(change(input => { input.push({ type: "tool_search_call", call_id: "search-1" }); }).synthetic, undefined);
   const absent = structuredClone(base); delete absent.finalPayload;
   assert.equal(serializedEvidence(absent).synthetic, undefined);
 });

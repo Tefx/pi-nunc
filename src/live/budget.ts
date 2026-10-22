@@ -3,6 +3,13 @@ import { resolve } from "node:path";
 import { getCurrentTools, type Api, type ApiStreamOptions, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
+
+declare module "@earendil-works/pi-ai/providers/compat-schema" {
+  interface OpenAICompletionsCompat { supportsMaxOutputTokens?: boolean; }
+  interface MistralConversationsCompat { supportsMaxOutputTokens?: boolean; }
+  interface AnthropicMessagesCompat { supportsMaxOutputTokens?: boolean; }
+  interface BedrockCompat { supportsMaxOutputTokens?: boolean; }
+}
 import type { UsageObservation } from "../engine/types.js";
 import { outputCapState } from "../pi/payload.js";
 import { canonical, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
@@ -439,7 +446,12 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
             else requireValue(caps.value > 0 && caps.value <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
             if (options.requireThinkingLevel) {
               let payloadEffort: string | undefined;
-              if (object(body.reasoning) && typeof (body.reasoning as any).effort === "string") {
+              const configUpdates = Array.isArray((body as any).input)
+                ? (body as any).input.filter((item: any) => object(item) && item.type === "configuration_update" && object(item.reasoning) && typeof (item.reasoning as any).effort === "string")
+                : [];
+              if (configUpdates.length > 0) {
+                payloadEffort = (configUpdates.at(-1).reasoning as any).effort;
+              } else if (object(body.reasoning) && typeof (body.reasoning as any).effort === "string") {
                 payloadEffort = (body.reasoning as any).effort;
               } else if (typeof (body as any).reasoning_effort === "string") {
                 payloadEffort = (body as any).reasoning_effort;

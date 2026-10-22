@@ -1,6 +1,6 @@
 # Local development
 
-Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **1.1.0**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
+Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **1.4.0**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
 
 Tests bind receipts/CLI imports to actual locked/installed versions, never a release-specific constant. Estimated-size fixtures use the public SDK text/image heuristic, including per-image rounding, so a minor change in Pi’s estimates does not silently invalidate a retained-unit or boundary precondition. Known framing/receipt algebra remains checked independently. Compatibility policy tests cover future stable1.x inputs, rejected major/prerelease/malformed inputs, required API absence and packaging/lock contracts; real-host suites establish behavior on the actual installed SDK.
 
@@ -48,7 +48,7 @@ Tracked comparison tests load `$PWD/.scratch/baseline-70dacad` as the historical
 - compiled `dist/src/index.js` built against the baseline's tracked source
 - that tree’s lock pins `@earendil-works/pi-coding-agent` **0.85.1**, with matching isolated `node_modules`
 
-The candidate checkout is the isolated native-compatibility worktree and has its own locked development Pi dependencies (currently **1.1.0**). Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
+The candidate checkout is the isolated native-compatibility worktree and has its own locked development Pi dependencies (currently **1.4.0**). Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
 
 ```sh
 git rev-parse --verify 70dacad1f065a70b29f565b5bfcf02d31cec2bdc

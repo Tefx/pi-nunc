@@ -89,7 +89,7 @@ B 在当前维护请求中仍可读，只有候选通过验证并提交后才从
 | `utils.js` / `extractFileOpsFromMessage`、`computeFileLists`；`compact()` | 从 `read/write/edit` 调用的 `path` 累计文件记录，追加 read/modified 清单 | 路径和恢复入口有实际续做价值；调用记录不等于操作成功，也不覆盖任意 shell 文件操作 |
 | `utils.js` / `serializeConversation` | 每条工具结果仅保留前 2,000 字符 | 保留 Nunc 的完整来源优势；其有标记缩减仍只在 extraction 实际超限时发生 |
 
-原生普通摘要输出上限为 `min(floor(0.8 × reserveTokens), model.maxTokens)`；默认 reserve 为 16,384 时，普通摘要请求上限为 13,107，仍受实际模型/API 限制。切轮前缀使用另一预算，原生 split-turn 可以产生两次摘要请求。Nunc 当前维护规划默认 `min(8192, model.maxTokens)`，uncapped API 不据此产生输出 cap。比较必须报告这些差异，不能把更大的输出预算算作提示词收益。
+历史原生 Pi（`<=1.3.0`）普通摘要输出上限为 `min(floor(0.8 × reserveTokens), model.maxTokens)`（默认 reserve 为 16,384 时上限为 13,107），而 Pi `1.4.0+` 取消固定摘要 reserve 上限并直接使用模型输出上限（按剩余上下文夹紧的 `model.maxTokens`），仍受实际模型/API 限制。切轮前缀使用另一预算，原生 split-turn 可以产生两次摘要请求。Nunc 当前维护规划默认 `min(8192, model.maxTokens)`，uncapped API 不据此产生输出 cap。比较必须报告这些差异，不能把更大的输出预算算作提示词收益。
 
 原生 structured summary 是比较基线，不要求 Nunc 改成每次重写整份摘要。原生文件清单可能持续增长；本设计不承诺在有界 M 中无限累计所有历史路径。
 

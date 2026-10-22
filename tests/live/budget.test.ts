@@ -558,3 +558,85 @@ test("wallclock deadline from first dispatch and interval elapsed time; expired 
     assert(elapsed >= 60000, "elapsed time includes interval before invocation");
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
+
+test("requireThinkingLevel inspects trailing configuration_update effort on openai-responses and falls back to top-level effort", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const base = openaiProvider();
+    const catalog = base.getModels().find(m => m.id === "gpt-5.4");
+    assert(catalog);
+    const model = { ...catalog, reasoning: true };
+    const limits = { ...input.limits, maxCalls: 10, maxTotalTokens: 1000000, maxOutputTokens: 16384 };
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "thinking.jsonl"), limits, Date.now() + 10000, new AbortController().signal);
+    const sseOk = () => new Response(
+      [
+        'event: response.completed',
+        'data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"ok","annotations":[]}]}],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":15}}}',
+        '',
+        '',
+      ].join("\n"),
+      { status: 200, headers: { "content-type": "text/event-stream" } }
+    );
+    let sends = 0;
+    const provider = boundedProvider(base, [model], ledger, {
+      requireThinkingLevel: "low",
+      fetch: async () => { sends++; return sseOk(); },
+    });
+
+    // 1. Mid-convo configuration_update with effort "low" while top-level reasoning.effort is "medium" -> accepted
+    const okMsg = await provider.streamSimple(model, context, {
+      maxTokens: 1000,
+      reasoning: "low",
+      apiKey: "sk-offline-fixture-key",
+      onPayload: (payload) => {
+        const body = payload as Record<string, any>;
+        body.reasoning = { effort: "medium" };
+        body.input = [...(Array.isArray(body.input) ? body.input : []), { type: "configuration_update", reasoning: { effort: "low" } }];
+        return body;
+      },
+    }).result();
+    assert.equal(okMsg.stopReason, "stop", okMsg.errorMessage ?? "expected stop");
+    assert.equal(sends, 1);
+
+    // 2. Top-level reasoning.effort without configuration_update -> accepted when matching "low"
+    const topOkMsg = await provider.streamSimple(model, context, {
+      maxTokens: 1000,
+      reasoning: "low",
+      apiKey: "sk-offline-fixture-key",
+      onPayload: (payload) => {
+        const body = payload as Record<string, any>;
+        body.reasoning = { effort: "low" };
+        if (Array.isArray(body.input)) body.input = body.input.filter((item: any) => item?.type !== "configuration_update");
+        return body;
+      },
+    }).result();
+    assert.equal(topOkMsg.stopReason, "stop", topOkMsg.errorMessage ?? "expected stop");
+    assert.equal(sends, 2);
+
+    // 3. Trailing configuration_update with effort "high" when "low" is required -> rejected before HTTP with THINKING_UNAPPLIED
+    const badLedger = new BudgetLedger(join(input.target.stateRoot, "thinking-bad.jsonl"), limits, Date.now() + 10000, new AbortController().signal);
+    const badProvider = boundedProvider(base, [model], badLedger, {
+      requireThinkingLevel: "low",
+      fetch: async () => { sends++; return sseOk(); },
+    });
+    const badMsg = await badProvider.streamSimple(model, context, {
+      maxTokens: 1000,
+      reasoning: "low",
+      apiKey: "sk-offline-fixture-key",
+      onPayload: (payload) => {
+        const body = payload as Record<string, any>;
+        body.reasoning = { effort: "low" };
+        body.input = [
+          ...(Array.isArray(body.input) ? body.input.filter((item: any) => item?.type !== "configuration_update") : []),
+          { type: "configuration_update", reasoning: { effort: "low" } },
+          { type: "configuration_update", reasoning: { effort: "high" } },
+        ];
+        return body;
+      },
+    }).result();
+    assert.equal(badMsg.stopReason, "error");
+    assert.equal(sends, 2, "must reject before HTTP when trailing configuration_update effort mismatches");
+    const badTerm = readLedger(badLedger.path).find((r): r is CallEnd => r.kind === "terminal");
+    assert.equal(badTerm?.diagnostic?.code, "THINKING_UNAPPLIED");
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});

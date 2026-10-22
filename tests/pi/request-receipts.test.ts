@@ -67,6 +67,7 @@ async function receiptsFixture(t: { after: (fn: () => Promise<void>) => void }, 
       pi.on("agent_settled", () => resolveSettled());
       pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
       pi.on("before_agent_start", event => {
+        if ((event as { messageType?: string }).messageType !== undefined && (event as { messageType?: string }).messageType !== "user") return undefined;
         beforeStarts++;
         return extra?.onStart ? extra.onStart(event) : { systemPrompt: event.systemPrompt + MARKER };
       });
