@@ -7657,3 +7657,78 @@ phases:
       265/265 tests pass, and Step 3 pathway-auditor Frozen-Ledger Delta review validated
       via review_report_validator.py (valid:true, binding_checked:true, evidence_disposition:POSITIVE_EVIDENCE,
       COMPLETED+PROVEN). Cleaned up worktree .vectl/worktrees/code-hygiene.trim-and-wire.
+- id: pi-1-4-compat
+  name: Pi 1.4.0 兼容性修复与依赖基线升级
+  status: pending
+  gate: Orchestrator 在唯一 implementation 步骤 pi-1-4-compat.upgrade 完成程序中执行最终整合检验与离线回归验证：确认
+    M1-M3 与 R1-R3 全部合同项、package.json/package-lock.json 依赖锁定及 scripts/check.mjs all
+    完整离线测试库存 100% 通过并合入 main 分支；不设独立 gate 步骤。
+  depends_on:
+  - code-hygiene
+  steps:
+  - id: pi-1-4-compat.upgrade
+    name: Pi 1.4.0 兼容性适配与 devDependencies 升级
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/stable-memory-observation.ts\", \"src/live/budget.ts\"\
+      , \"tests/live/stable-memory-payload.test.ts\", \"tests/live/budget.test.ts\"\
+      , \"tests/pi/request-receipts.test.ts\", \"tests/pi/payload.test.ts\", \"package.json\"\
+      , \"package-lock.json\", \"README.md\", \"docs/DEVELOPMENT.md\", \"docs/PI.md\"\
+      , \"docs/EXTRACTION.md\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".vectl/**\", \".git/**\", \".pi/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\nDeliver: 完成 Pi 1.4.0 兼容性修复、开发依赖升级与文档同步交付（M1-M3 与 R1-R3）：\n1. M1（src/live/stable-memory-observation.ts\
+      \ & tests/live/stable-memory-payload.test.ts）：在 serializedResponsesEvidence\
+      \ 中允许 Responses type: \"additional_tools\" 声明项，使 Pi 1.4.0 在 supportsMidConvoSystemMessages\
+      \ && supportsAdditionalTools 模型（gpt-6-*）上生成的内联工具声明不会导致 serializedResponsesEvidence\
+      \ 返回 {}（UNPROVEN），同时继续拒绝未映射的调用/结果项类型（custom_tool_call、tool_search_call 等）。\n\
+      2. M2（tests/pi/request-receipts.test.ts）：在 receiptsFixture 的 before_agent_start\
+      \ 钩子中仅当 event.messageType === \"user\"（或 event.messageType 缺省）时应用用户轮次 MARKER\
+      \ 覆盖，对齐 Pi 1.2.0+ 在空闲 sendMessage(..., { triggerTurn: true }) 下的 BeforeAgentStartEvent\
+      \ 联合类型语义。\n3. M3（package.json、package-lock.json、README.md、docs/DEVELOPMENT.md、docs/PI.md）：将锁定的\
+      \ devDependencies（@earendil-works/pi-ai、@earendil-works/pi-coding-agent、@earendil-works/pi-tui）从\
+      \ 1.1.0 升级到 1.4.0，并将 typebox 升级到 1.3.27，更新 package-lock.json 与版本说明文档，同时保持 SUPPORTED_PI_RANGE\
+      \ = \"^1.0.3\" 与 @earendil-works/pi-ai/compat 运行时兼容性不变。\n4. R1（src/live/budget.ts\
+      \ & tests/live/budget.test.ts）：在 boundedProvider（options.requireThinkingLevel）中优先检查\
+      \ body.input 尾部的 type: \"configuration_update\" 项（Pi 1.3.0/1.4.0 在使用 API key\
+      \ 的 OpenAI Responses GPT-6 模型上用于保持缓存的 thinking level 更新），再回退到顶层 body.reasoning.effort\
+      \ / body.reasoning_effort。\n5. R2（tests/pi/payload.test.ts）：从 @earendil-works/pi-coding-agent\
+      \ 公共入口导入 createCodemodeExtension，替代相对路径 ../../../node_modules/... 深层导入。\n6.\
+      \ R3（docs/EXTRACTION.md）：更新 docs/EXTRACTION.md 中的原生摘要输出上限说明，在保留历史 0.8 * reserveTokens\
+      \ 基线说明的同时反映 Pi 1.4.0 基于模型上限的摘要行为。\n\nBoundary: owner 为 node-typescript-engineer；属于本仓库可\
+      \ Git 回退的源码、测试、依赖锁与文档更新事务。保持 SUPPORTED_PI_RANGE = \"^1.0.3\" 与 @earendil-works/pi-ai/compat\
+      \ 运行时兼容；严禁触碰 .pi/nunc-recovery.json、全局 Pi 安装或凭据，不执行付费外部模型调用，不发布或 push 远端。\n\n\
+      Admit: 依赖 code-hygiene 阶段已完成的 main 基线；Orchestrator 在本唯一 implementation 步骤完成程序中执行最终集成检查与验证（参照\
+      \ nunc-native-grammar 与 code-hygiene），不设独立 review、verification 或 gate 步骤。\n\n\
+      Recovery: 若依赖升级、代码修改或测试调整引发构建或离线回归失败，在同一步骤内定位并修复；所有未合并改动可通过 Git worktree 回退，确保已提交历史与保护路径完好无损。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: integrated-offline-inventory\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node,\
+      \ scripts/check.mjs, all]\n    exit_code: 0\n    inventory: [\"tests/**/*.test.ts\"\
+      ]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\", \"package.json\"\
+      , \"package-lock.json\"]\n```\n验证要求：\n1. M1 单元测试验证 serializedResponsesEvidence\
+      \ 接受 type: \"additional_tools\" 声明项并产出有效观测证据，且对 custom_tool_call、tool_search_call\
+      \ 等未映射调用/结果项仍返回 {}（UNPROVEN）。\n2. M2 测试验证 tests/pi/request-receipts.test.ts\
+      \ 在 Pi 1.4.0 下处理空闲 sendMessage(..., { triggerTurn: true }) 与用户消息轮次时 before_agent_start\
+      \ 钩子行为与断言全部通过。\n3. M3 检查 package.json 与 package-lock.json 中 @earendil-works/pi-ai、@earendil-works/pi-coding-agent、@earendil-works/pi-tui\
+      \ 为 1.4.0，typebox 为 1.3.27，SUPPORTED_PI_RANGE 仍为 \"^1.0.3\"，且 README.md、docs/DEVELOPMENT.md、docs/PI.md\
+      \ 版本描述一致。\n4. R1 单元测试验证 boundedProvider(options.requireThinkingLevel) 能识别 body.input\
+      \ 尾部的 type: \"configuration_update\" thinking level，并在无此项时正确回退至顶层 body.reasoning.effort\
+      \ / body.reasoning_effort。\n5. R2 与 R3 检查 tests/pi/payload.test.ts 通过 @earendil-works/pi-coding-agent\
+      \ 公共入口导入 createCodemodeExtension，且 docs/EXTRACTION.md 已补充 Pi 1.4.0 模型上限摘要行为说明与\
+      \ 0.8 * reserveTokens 历史基线说明。\n6. 执行 npm run build 与 scripts/check.mjs all 全部通过（exit\
+      \ 0），Orchestrator 在步骤完成时完成最终整合检验。"
+    refs:
+    - src/live/stable-memory-observation.ts
+    - src/live/budget.ts
+    - tests/live/stable-memory-payload.test.ts
+    - tests/live/budget.test.ts
+    - tests/pi/request-receipts.test.ts
+    - tests/pi/payload.test.ts
+    - package.json
+    - package-lock.json
+    - README.md
+    - docs/DEVELOPMENT.md
+    - docs/PI.md
+    - docs/EXTRACTION.md
+    - scripts/check.mjs
+    agent: node-typescript-engineer
