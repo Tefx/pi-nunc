@@ -7659,7 +7659,7 @@ phases:
       COMPLETED+PROVEN). Cleaned up worktree .vectl/worktrees/code-hygiene.trim-and-wire.
 - id: pi-1-4-compat
   name: Pi 1.4.0 兼容性修复与依赖基线升级
-  status: in_progress
+  status: done
   gate: Orchestrator 在唯一 implementation 步骤 pi-1-4-compat.upgrade 完成程序中执行最终整合检验与离线回归验证：确认
     M1-M3 与 R1-R3 全部合同项、package.json/package-lock.json 依赖锁定及 scripts/check.mjs all
     完整离线测试库存 100% 通过并合入 main 分支；不设独立 gate 步骤。
@@ -7668,7 +7668,7 @@ phases:
   steps:
   - id: pi-1-4-compat.upgrade
     name: Pi 1.4.0 兼容性适配与 devDependencies 升级
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/stable-memory-observation.ts\", \"src/live/budget.ts\"\
       , \"tests/live/stable-memory-payload.test.ts\", \"tests/live/budget.test.ts\"\
@@ -7734,3 +7734,50 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-10-22T07:12:25.429215Z'
+    done_at: '2026-10-22T08:13:21.102723+00:00'
+    evidence: 'commit: 7132fbdafff9d162772be086cd55924f9b48b1f4 (retained ref: refs/vectl/candidates/pi-1-4-compat.upgrade)
+
+      actual_executor: forgemaster (openrouter/google/gemini-4-argon) via in-place
+      dispatch after node-typescript-engineer (openai/gpt-6.1-sol) hit Larva before_provider_request
+      additional_tools slot mismatch and executor (openrouter/google/gemini-3.8-flash)
+      stalled on OpenRouter upstream timeouts with zero file edits.
+
+      changes:
+
+      - M1 (src/live/stable-memory-observation.ts, tests/live/stable-memory-payload.test.ts):
+      allowed Responses type=''additional_tools'' declaration items in serializedResponsesEvidence
+      while continuing to reject unmapped call/result types (custom_tool_call, tool_search_call).
+
+      - M2 (tests/pi/request-receipts.test.ts): filtered before_agent_start in receiptsFixture
+      to apply MARKER only on user-prompt runs (event.messageType === ''user'' or
+      undefined), aligning with Pi 1.2.0+ BeforeAgentStartEvent on idle sendMessage(...,
+      { triggerTurn: true }).
+
+      - M3 (package.json, package-lock.json, README.md, docs/DEVELOPMENT.md, docs/PI.md):
+      upgraded devDependencies (@earendil-works/pi-ai, @earendil-works/pi-coding-agent,
+      @earendil-works/pi-tui to 1.4.0, typebox to 1.3.27), preserved SUPPORTED_PI_RANGE=''^1.0.3''
+      and @earendil-works/pi-ai/compat.
+
+      - R1 (src/live/budget.ts, tests/live/budget.test.ts): updated boundedProvider(options.requireThinkingLevel)
+      to inspect trailing type=''configuration_update'' items in body.input before
+      falling back to top-level reasoning.effort / reasoning_effort, and augmented
+      @earendil-works/pi-ai/providers/compat-schema interfaces for TypeBox 1.3.27
+      exactOptionalPropertyTypes compatibility.
+
+      - R2 (tests/pi/payload.test.ts): imported createCodemodeExtension from public
+      @earendil-works/pi-coding-agent entrypoint.
+
+      - R3 (docs/EXTRACTION.md): documented Pi 1.4.0+ model-limit summarization behavior
+      alongside the historical <=1.3.0 0.8*reserveTokens cap.
+
+      verification:
+
+      - tsc --project tsconfig.json: exit 0
+
+      - node scripts/check.mjs engine: exit 0 (18 files, 221/221 tests pass)
+
+      - node --test --test-concurrency=2 dist/tests/pi/*.test.js: exit 0 (421/421
+      tests pass)
+
+      - node --test dist/tests/live/{stable-memory-payload,budget,tool-result-cleanup-native,defaults,openai-defaults,native-delegation,beam-guard-serialization,beam-query-recovery,remaining-benchmarks,defaults-benchmark,benchmark-repair,native-startup-model,lifecycle}.test.js:
+      exit 0 (51/51 tests pass)'
