@@ -7659,7 +7659,7 @@ phases:
       COMPLETED+PROVEN). Cleaned up worktree .vectl/worktrees/code-hygiene.trim-and-wire.
 - id: pi-1-4-compat
   name: Pi 1.4.0 兼容性修复与依赖基线升级
-  status: pending
+  status: in_progress
   gate: Orchestrator 在唯一 implementation 步骤 pi-1-4-compat.upgrade 完成程序中执行最终整合检验与离线回归验证：确认
     M1-M3 与 R1-R3 全部合同项、package.json/package-lock.json 依赖锁定及 scripts/check.mjs all
     完整离线测试库存 100% 通过并合入 main 分支；不设独立 gate 步骤。
@@ -7668,7 +7668,7 @@ phases:
   steps:
   - id: pi-1-4-compat.upgrade
     name: Pi 1.4.0 兼容性适配与 devDependencies 升级
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/stable-memory-observation.ts\", \"src/live/budget.ts\"\
       , \"tests/live/stable-memory-payload.test.ts\", \"tests/live/budget.test.ts\"\
@@ -7732,3 +7732,5 @@ phases:
     - docs/EXTRACTION.md
     - scripts/check.mjs
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-10-22T07:12:25.429215Z'
