@@ -2,9 +2,9 @@ import { test } from "node:test";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { maintain } from "../../src/engine/engine.js";
-import { activeUsageUndercount, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
-import { extractionContext, resolveExtractionRequest } from "../../src/engine/request.js";
-import { inputLimit, mainPlanningEstimate, requestTokens } from "../../src/engine/accounting.js";
+import { activeUsageObservation, activeUsageUndercount, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
+import { extractionContext, reduceToolBodies, resolveExtractionRequest } from "../../src/engine/request.js";
+import { inputLimit, mainPlanningEstimate, messagePlanningEstimate, requestTokens } from "../../src/engine/accounting.js";
 import { answer, assistant, input, noChange, responder, sourceRecords, tool, user } from "./fixtures.js";
 import type { MaintenanceInput, MaintenanceResult, ModelRequest } from "../../src/engine/types.js";
 
@@ -63,6 +63,7 @@ for (const invalid of ["model", "provider", "api", "aborted", "error", "ineligib
     if (invalid === "fractional") message.usage.cacheRead = 0.5;
     if (invalid === "missing") Reflect.deleteProperty(message.usage, "totalTokens");
     if (invalid === "zero") Object.assign(message.usage, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 });
+    assert.equal(activeUsageObservation(value), undefined);
     assert.equal(activeUsageUndercount(value), 0);
     const result = await maintain(value, responder());
     assert(result.ok, result.ok ? "" : result.message);
@@ -347,6 +348,75 @@ test("a measured correction can change the resolved reduced cap once; the next i
   const blocked = await maintain(value, async () => assert.fail("the same newly resolved reduced cap must never resend"));
   assert(!blocked.ok); assert.equal(blocked.code, "CAPACITY"); assert.equal(blocked.observations.requests, 0);
   assert.equal(blocked.observations.accounting!.calibratedUndercountTokens, 900);
+});
+
+test("fresh post-checkpoint zero usage supersedes rebound error while raw provenance survives", async () => {
+  const value = await source();
+  const result = await maintain(value, async request => measured(request, 37173, JSON.stringify({ add: [], remove: [], priority: ["s1"], required: [] })));
+  assert(result.ok, result.ok ? "" : result.message);
+  const saved = maintenanceCalibrationRecord(value, result)!;
+  value.active = structuredClone(result.candidate.kept); value.memory = result.candidate.memory; value.calibration = [saved];
+  value.eligibleUsageEntryIds = [];
+  assert.equal(maintenanceFeedback(value).maintenanceUndercountTokens, 37173);
+  const fresh = answer(); fresh.timestamp = 10;
+  value.active.push({ entryId: "fresh", sourceRole: "assistant", messages: [fresh] });
+  value.eligibleUsageEntryIds = ["fresh"];
+  const observation = activeUsageObservation(value)!;
+  assert.equal(observation.entryIndex, saved.sourceEntryIds.length);
+  assert.equal(observation.rawUndercountTokens, 0);
+  const feedback = maintenanceFeedback(value);
+  assert.equal(feedback.rawMaintenanceUndercountTokens, 37173);
+  assert.equal(feedback.maintenanceUndercountTokens, 0);
+  assert.equal(feedback.calibratedUndercountTokens, 0);
+  assert.deepEqual(feedback.measurement, saved.measurement);
+  value.eligibleUsageEntryIds = [];
+  assert.equal(maintenanceFeedback(value).maintenanceUndercountTokens, 37173, "missing fresh usage retains unreduced fallback");
+});
+
+for (const output of [8000, 20]) test(`signed anchor output ${output} normalizes only its own positive proxy excess`, async () => {
+  const value = await input(); value.model.api = "openai-responses";
+  const signed = (id: string, tokens: number) => {
+    const message = answer(undefined, value.model);
+    message.content = [{ type: "text", text: "visible".repeat(20) }, { type: "thinking", thinking: "", thinkingSignature: JSON.stringify({ type: "reasoning", id, encrypted_content: "opaque", summary: [] }) }];
+    message.usage = { ...message.usage, input: 12000, output: tokens, reasoning: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 12000 + tokens };
+    return { entryId: id, sourceRole: "assistant" as const, messages: [message] };
+  };
+  value.active = [user("old", "source"), signed("earlier", 19000), signed("anchor", output), user("latest", "Continue")];
+  value.eligibleKeptEntryIds = ["latest"]; value.eligibleUsageEntryIds = ["anchor"];
+  const prefixPlan = mainPlanningEstimate(value.fixed, value.memory.slots, value.active.slice(0, 3), value.model);
+  const anchor = value.active[2]!.messages[0]!;
+  const anchorPlan = messagePlanningEstimate(anchor, value.model);
+  assert.equal(anchorPlan.additionalTokens > 0, output === 8000);
+  const expected = 12000 + output - anchorPlan.additionalTokens - prefixPlan.visibleTokens;
+  assert(expected > 0);
+  assert.equal(activeUsageUndercount(value), expected);
+  const result = await maintain(value, responder());
+  assert(result.ok, result.ok ? "" : result.message);
+  const a = result.observations.accounting!;
+  assert.equal(a.normalExtractionAtTrigger, a.fullExtractionTokens - a.planning!.before.visibleTokens + a.effectiveTrigger);
+  assert.equal(a.mainBeforeTokens, a.planning!.before.tokens, "retention keeps the forecast proxy");
+  const earlier = value.active[1]!.messages[0]!; assert(earlier.role === "assistant"); earlier.usage.output = 29000;
+  assert.equal(activeUsageUndercount(value), expected, "earlier forecast output cannot conceal observed error");
+  const again = await maintain(value, responder());
+  assert.equal(again.observations.accounting!.normalExtractionAtTrigger, a.normalExtractionAtTrigger);
+});
+
+test("rebound reduction transfer counts surviving measured K, excluding retired B and appended D", async () => {
+  const value = await source();
+  const result = await maintain(value, async request => measured(request, 700, JSON.stringify({ add: [], remove: [], priority: ["s1"], required: [] })));
+  assert(result.ok, result.ok ? "" : result.message);
+  const saved = maintenanceCalibrationRecord(value, result)!;
+  value.active = structuredClone(result.candidate.kept); value.memory = result.candidate.memory; value.calibration = [saved];
+  value.eligibleUsageEntryIds = [];
+  const reduced = reduceToolBodies(value.active, 200).source;
+  const before = maintenanceFeedback(value, reduced, 999999);
+  const survivingVisible = mainPlanningEstimate(value.fixed, value.memory.slots, reduced, value.model, undefined, value.config.extraction.extraInputTokens).visibleTokens;
+  assert.equal(before.maintenanceUndercountTokens, Math.ceil(700 * Math.min(1, survivingVisible / saved.measurement!.estimatedInputTokens)));
+  assert(before.maintenanceUndercountTokens < 700);
+  value.active.push(user("unmeasured-D", "unmeasured".repeat(3000)));
+  reduced.push(structuredClone(value.active.at(-1)!));
+  assert.equal(maintenanceFeedback(value, reduced, 999999).maintenanceUndercountTokens, before.maintenanceUndercountTokens);
+  assert.equal(maintenanceFeedback(value).maintenanceUndercountTokens, 700);
 });
 
 test("malformed saved calibration is ignored and successful calibration rebinds to unchanged original K", async () => {

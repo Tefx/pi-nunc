@@ -11,7 +11,7 @@ const memory = (text: string) => ({ version: 1 as const, slots: [{ id: "s1", tex
 function contextFor(entries: SessionEntry[], slots: Array<{ id: string; text: string }>): Context {
   const visible = entries.filter(e => e.type === "message" && e.message.role === "user");
   return { messages: [{ role: "user", timestamp: 0, content: [
-    { type: "text", text: JSON.stringify({ source: "F/M", F: { systemPrompt: "", tools: [] }, M: slots, omissions: [] }) },
+    { type: "text", text: JSON.stringify({ source: "F/M", F: { systemPrompt: "", tools: [] }, M: slots }) },
     ...visible.map((e, i) => {
       assert(e.type === "message" && e.message.role === "user");
       return { type: "text" as const, text: JSON.stringify({ region: i === visible.length - 1 ? "K" : "B", entryId: e.id, messages: [{ role: "user", content: e.message.content }] }) };

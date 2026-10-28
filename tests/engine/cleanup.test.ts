@@ -24,8 +24,48 @@ import {
   type ToolResultDecision,
   type ToolResultEdit,
 } from "../../src/engine/index.js";
-import { extractionContext } from "../../src/engine/request.js";
-import { input, responder, tool, user, assistant } from "./fixtures.js";
+import { extractionContext, readSourceRecords, reduceToolBodies } from "../../src/engine/request.js";
+import { memoryPlan, requestTokens } from "../../src/engine/accounting.js";
+import { answer, input, responder, tool, user, assistant } from "./fixtures.js";
+
+for (const reduced of [false, true]) test(`capacity suppresses cleanup candidates on ${reduced ? "reduced" : "full"} source and rejects unsolicited edits`, async () => {
+  const value = await input();
+  value.active = [user("old", "Older source"),
+    assistant("large-call", [{ type: "toolCall", id: "big", name: "read", arguments: {} }]),
+    tool("large-body", "big", "unreduced evidence ".repeat(1500)),
+    user("current", "Keep current work"),
+    assistant("small-call", [{ type: "toolCall", id: "small", name: "read", arguments: {} }]),
+    tool("small-body", "small", "x".repeat(450))];
+  value.eligibleKeptEntryIds = ["current"];
+  value.eligibleUsageEntryIds = [];
+  value.cleanupCandidateScope = [{ entryId: "small-body", messageIndex: 0 }];
+  value.config.extraction.toolResults = "auto";
+  const plan = memoryPlan(value.fixed, value.model, value.config, value.memory.slots);
+  const candidate = reduced ? reduceToolBodies(value.active, value.config.extraction.headTailChars) : { source: value.active, omissions: [] };
+  const withCandidates = extractionContext(value, 3, plan.organizingTarget, candidate.source, candidate.omissions);
+  const without = extractionContext(value, 3, plan.organizingTarget, candidate.source, candidate.omissions, undefined, false);
+  const tokens = requestTokens(without);
+  assert(requestTokens(withCandidates) > tokens);
+  value.config.extraction.inputLimit = tokens + value.config.extraction.safetyTokens;
+  const result = await maintain(value, async request => {
+    const message = request.context.messages[0]!; assert(Array.isArray(message.content));
+    const records = message.content.flatMap(block => block.type === "text" ? readSourceRecords(block.text) : []);
+    const fm = records.find(record => record.source === "F/M")!;
+    assert.equal("omissions" in fm, false);
+    assert.equal(message.content.some(block => block.type === "text" && block.text.startsWith('{"cleanupCandidates":')), false);
+    assert(!JSON.stringify(request.context.systemPrompt).includes("You may include toolResultEdits for the supplied eligible candidates."));
+    assert.equal(JSON.stringify(request.context).includes("[Nunc omitted"), reduced);
+    return answer({ add: [{ key: "note", text: "Continue current work with complete evidence." }], remove: [], priority: ["note"], required: ["note"], toolResultEdits: [{ entryId: "small-body", messageIndex: 0, action: "omit" }] }, request.model);
+  });
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(result.observations.requests, 1);
+  assert.equal(result.observations.omissions.length, reduced ? 1 : 0);
+  assert.equal(result.observations.accounting!.extractionTokens, tokens);
+  assert.equal(result.candidate.toolResultCleanup!.applied.length, 0);
+  assert.equal(result.candidate.toolResultCleanup!.skipped.length, 1);
+  assert.equal(result.candidate.toolResultCleanup!.skipped[0]!.reason, "not_in_candidate_scope");
+  assert.equal(messageText(result.candidate.kept.at(-1)!.messages[0]!), "x".repeat(450));
+});
 
 function messageText(msg: ActiveEntry["messages"][number]): string {
   if (typeof msg.content === "string") return msg.content;

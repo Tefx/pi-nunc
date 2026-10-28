@@ -97,21 +97,23 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     const keptTokens = historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens).tokens;
     const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;
+    const mainBeforeVisibleTokens = beforePlan.visibleTokens;
     let selectedSource = frozen.active;
-    let context = extractionContext(frozen, cut, organizingTarget, selectedSource, []);
+    let includeCleanupCandidates = true;
+    let context = extractionContext(frozen, cut, organizingTarget, selectedSource, [], undefined, includeCleanupCandidates);
     const fullExtractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
-    const feedback = maintenanceFeedback(frozen);
+    const feedback = maintenanceFeedback(frozen, selectedSource, fullExtractionTokens);
     let calibratedUndercountTokens = feedback.calibratedUndercountTokens;
     // The trigger already uses provider tokens; shared main/extraction error cancels here.
     const triggerExtraUndercount = Math.max(0, feedback.maintenanceUndercountTokens - feedback.activeUndercountTokens);
     // Sustainable-trigger advice must never veto an executable current request.
-    const normalExtractionAtTrigger = fullExtractionTokens + triggerExtraUndercount - mainBeforeTokens + effectiveTrigger;
+    const normalExtractionAtTrigger = fullExtractionTokens + triggerExtraUndercount - mainBeforeVisibleTokens + effectiveTrigger;
     const outputPlan = extractionOutputPlan(frozen.model, config.extraction);
     const outputCapTokens = outputPlan.uncapped ? null : outputPlan.floor;
     observations.accounting = {
       estimator: "pi-heuristic", outputReserveTokens: outputPlan.floor, outputCapTokens, outputDesiredTokens: outputPlan.desired,
       normalHeadroomSufficient: normalExtractionAtTrigger <= extractionInputLimit,
-      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens + triggerExtraUndercount - mainBeforeTokens)),
+      suggestedReserveTokens: Math.max(1, Math.ceil(frozen.model.contextWindow - extractionInputLimit + fullExtractionTokens + triggerExtraUndercount - mainBeforeVisibleTokens)),
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
       effectiveTrigger, memoryLimit, memoryReserveTokens, memoryHardLimit: hardMemoryLimit(config), memoryTargetExceeded: false, keepTarget, keptTokens,
@@ -122,20 +124,44 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       normalExtractionAtTrigger, mainAfterTokens: null, memoryTokens: null, growthTokens: null,
     };
     const knownOverflow = feedback.full !== undefined || feedback.reduced !== undefined;
-    if ((fullExtractionTokens + calibratedUndercountTokens > extractionInputLimit || knownOverflow) && config.extraction.toolResults === "auto") {
+    if (!knownOverflow && observations.accounting.extractionPlanningTokens! > extractionInputLimit) {
+      const withoutCandidatesContext = extractionContext(frozen, cut, organizingTarget, selectedSource, [], undefined, false);
+      const withoutCandidatesTokens = requestTokens(withoutCandidatesContext, config.imageTokens) + config.extraction.extraInputTokens;
+      const withoutCandidatesUndercount = maintenanceFeedback(frozen, selectedSource, withoutCandidatesTokens).calibratedUndercountTokens;
+      if (withoutCandidatesTokens + withoutCandidatesUndercount <= extractionInputLimit) {
+        includeCleanupCandidates = false;
+        context = withoutCandidatesContext;
+        calibratedUndercountTokens = withoutCandidatesUndercount;
+        Object.assign(observations.accounting, { calibratedUndercountTokens,
+          extractionUncertainties: calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [],
+          extractionTokens: withoutCandidatesTokens, extractionPlanningTokens: withoutCandidatesTokens + calibratedUndercountTokens });
+      }
+    }
+    if ((observations.accounting.extractionPlanningTokens! > extractionInputLimit || knownOverflow) && config.extraction.toolResults === "auto") {
       const reduced = reduceToolBodies(frozen.active, config.extraction.headTailChars);
       observations.omissions = reduced.omissions;
       selectedSource = reduced.source;
-      context = extractionContext(frozen, cut, organizingTarget, selectedSource, reduced.omissions);
-      calibratedUndercountTokens = maintenanceFeedback(frozen, selectedSource).calibratedUndercountTokens;
+      includeCleanupCandidates = true;
+      context = extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, undefined, true);
+      const reducedTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
+      calibratedUndercountTokens = maintenanceFeedback(frozen, selectedSource, reducedTokens).calibratedUndercountTokens;
       observations.accounting.calibratedUndercountTokens = calibratedUndercountTokens;
       observations.accounting.extractionUncertainties = calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [];
-      observations.accounting.extractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
+      observations.accounting.extractionTokens = reducedTokens;
       observations.accounting.extractionPlanningTokens = observations.accounting.extractionTokens + calibratedUndercountTokens;
       requireThat(!knownOverflow || reduced.omissions.length > 0, "CAPACITY", "Provider already rejected this source; the single tool-body reduction made no omissions. Change source or capacity before explicit maintenance");
+      if (observations.accounting.extractionPlanningTokens! > extractionInputLimit) {
+        includeCleanupCandidates = false;
+        context = extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, undefined, false);
+        const reducedNoCandTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
+        calibratedUndercountTokens = maintenanceFeedback(frozen, selectedSource, reducedNoCandTokens).calibratedUndercountTokens;
+        Object.assign(observations.accounting, { calibratedUndercountTokens,
+          extractionUncertainties: calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [],
+          extractionTokens: reducedNoCandTokens, extractionPlanningTokens: reducedNoCandTokens + calibratedUndercountTokens });
+      }
     }
     requireThat(observations.accounting.extractionPlanningTokens! <= extractionInputLimit, "CAPACITY", "Full extraction cannot fit; selected bounded handling is disabled or insufficient. No candidate is handed off");
-    const resolved = resolveExtractionRequest(frozen, cap => extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, cap), selectedSource);
+    const resolved = resolveExtractionRequest(frozen, cap => extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, cap, includeCleanupCandidates), selectedSource);
     context = resolved.context;
     Object.assign(observations.accounting, { outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens,
       outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy,
@@ -196,7 +222,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
 
     const cleanupResult = decideToolResultCleanup({
       active: frozen.active,
-      candidateScope: frozen.cleanupCandidateScope,
+      candidateScope: includeCleanupCandidates ? frozen.cleanupCandidateScope : [],
       retainedEntries: kept,
       initialMemory: frozen.memory,
       finalMemory: applied.memory,

@@ -1,4 +1,5 @@
 import * as accounting from "../engine/accounting.js";
+import { maintenanceFeedback } from "../engine/calibration.js";
 import * as request from "../engine/request.js";
 import * as validation from "../engine/validation.js";
 import type { MaintenanceInput, Omission } from "../engine/types.js";
@@ -93,18 +94,50 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       const mainBefore = typeof currentAccounting.mainPlanningEstimate === "function"
         ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).tokens
         : requestTokens(mainContext(source.fixed, source.memory.slots, active), config.imageTokens) + config.main.extraInputTokens;
-      const normalAtTrigger = fullExtraction - mainBefore + trigger;
+      const fullFeedback = !target ? maintenanceFeedback(source, active, fullExtraction) : undefined;
+      const mainBeforeVisible = !target ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).visibleTokens : mainBefore;
+      const triggerExtraUndercount = fullFeedback ? Math.max(0, fullFeedback.maintenanceUndercountTokens - fullFeedback.activeUndercountTokens) : 0;
+      const normalAtTrigger = fullExtraction + triggerExtraUndercount - mainBeforeVisible + trigger;
       // Trigger headroom is advisory. Calibrate against the actual extraction below.
       let extraction = fullExtraction, selectedSource = active;
       let omissions: Omission[] = [];
-      if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
-        const reduction = reduceToolBodies(active, config.extraction.headTailChars);
-        selectedSource = reduction.source; omissions = reduction.omissions;
-        extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
+      let includeCleanupCandidates = true;
+      let resolved: ReturnType<typeof request.resolveExtractionRequest> | undefined;
+      if (target) {
+        if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
+          const reduction = reduceToolBodies(active, config.extraction.headTailChars);
+          selectedSource = reduction.source; omissions = reduction.omissions;
+          extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
+        }
+        resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap));
+      } else {
+        let undercount = fullFeedback!.calibratedUndercountTokens;
+        const knownOverflow = fullFeedback!.full !== undefined || fullFeedback!.reduced !== undefined;
+        if (!knownOverflow && extraction + undercount > extractionInput) {
+          const tokens = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, [], undefined, false), config.imageTokens) + config.extraction.extraInputTokens;
+          const correction = maintenanceFeedback(source, selectedSource, tokens).calibratedUndercountTokens;
+          if (tokens + correction <= extractionInput) {
+            includeCleanupCandidates = false; extraction = tokens; undercount = correction;
+          }
+        }
+        if ((extraction + undercount > extractionInput || knownOverflow) && config.extraction.toolResults === "auto") {
+          const reduction = reduceToolBodies(active, config.extraction.headTailChars);
+          selectedSource = reduction.source; omissions = reduction.omissions;
+          includeCleanupCandidates = true;
+          extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions, undefined, true), config.imageTokens) + config.extraction.extraInputTokens;
+          undercount = maintenanceFeedback(source, selectedSource, extraction).calibratedUndercountTokens;
+          requireValue(!knownOverflow || omissions.length > 0, "CALIBRATION", "Provider already rejected this source; reduction made no omissions");
+          if (extraction + undercount > extractionInput) {
+            includeCleanupCandidates = false;
+            extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions, undefined, false), config.imageTokens) + config.extraction.extraInputTokens;
+            undercount = maintenanceFeedback(source, selectedSource, extraction).calibratedUndercountTokens;
+          }
+        }
+        requireValue(extraction + undercount <= extractionInput, "CALIBRATION", "Selected calibrated extraction cannot fit; no maintenance call made");
+        resolved = resolveExtractionRequest(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap, includeCleanupCandidates), selectedSource);
       }
-      const resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap));
       if (resolved) extraction = resolved.extractionTokens;
-      requireValue(extraction <= (resolved?.extractionInputLimit ?? extractionInput), "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
+      requireValue((resolved?.extractionPlanningTokens ?? extraction) <= (resolved?.extractionInputLimit ?? extractionInput), "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
       return {
         afterTurn: (control.afterTurn ?? control.duringTurn)!, firstKeptEntryId: active[cut]!.entryId, previousFraction: config.keepRecentFraction, selectedFraction: fraction, authorizedRange: { ...range },
         model: { provider: model.provider, id: model.id, contextWindow: model.contextWindow },

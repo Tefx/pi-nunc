@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
 import { applyToolResultCleanup } from "./cleanup.js";
-import { mainPlanningEstimate } from "./accounting.js";
+import { mainPlanningEstimate, messagePlanningEstimate } from "./accounting.js";
 import { integer, nonempty, record } from "./validation.js";
 
 type Snapshot = Omit<MaintenanceInput, "signal" | "binding" | "eligibleKeptEntryIds">;
@@ -69,10 +69,17 @@ export function selectMaintenanceCalibration(input: Snapshot, records: readonly 
     });
 }
 
+export interface ActiveUsageObservation {
+  entryIndex: number;
+  messageIndex: number;
+  rawUndercountTokens: number;
+  undercountTokens: number;
+}
+
 /** Current-prefix provider usage bounds heuristic error without becoming persisted maintenance evidence. */
-export function activeUsageUndercount(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active): number {
+export function activeUsageObservation(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active): ActiveUsageObservation | undefined {
   const eligible = input.eligibleUsageEntryIds === undefined ? undefined : new Set(input.eligibleUsageEntryIds);
-  if (!eligible && input.active.some(entry => entry.outputUsageUnavailable)) return 0;
+  if (!eligible && input.active.some(entry => entry.outputUsageUnavailable)) return undefined;
   let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
   let anchor: { entryIndex: number; messageIndex: number; usageTokens: number } | undefined;
   for (const [entryIndex, entry] of input.active.entries()) {
@@ -87,26 +94,66 @@ export function activeUsageUndercount(input: Snapshot, selectedSource: readonly 
       latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
     }
   }
-  if (!anchor) return 0;
-  const prefixTokens = (source: readonly ActiveEntry[]) => mainPlanningEstimate(input.fixed, input.memory.slots,
-    [...source.slice(0, anchor.entryIndex), { ...source[anchor.entryIndex]!, messages: source[anchor.entryIndex]!.messages.slice(0, anchor.messageIndex + 1) }],
-    input.model, input.config.imageTokens, input.config.main.extraInputTokens).tokens;
-  const fullPrefixTokens = prefixTokens(input.active);
-  const rawUndercount = Math.max(0, anchor.usageTokens - fullPrefixTokens);
-  if (rawUndercount === 0 || fullPrefixTokens <= 0) return 0;
-  if (selectedSource === input.active) return rawUndercount;
-  return Math.ceil(rawUndercount * Math.min(1, prefixTokens(selectedSource) / fullPrefixTokens));
+  if (!anchor) return undefined;
+  const prefixEntries = (source: readonly ActiveEntry[]) => [
+    ...source.slice(0, anchor.entryIndex),
+    { ...source[anchor.entryIndex]!, messages: source[anchor.entryIndex]!.messages.slice(0, anchor.messageIndex + 1) },
+  ];
+  const fullPlan = mainPlanningEstimate(input.fixed, input.memory.slots, prefixEntries(input.active),
+    input.model, input.config.imageTokens, input.config.main.extraInputTokens);
+  const anchorEntry = input.active[anchor.entryIndex]!;
+  const anchorMessage = anchorEntry.messages[anchor.messageIndex]!;
+  const anchorPlan = messagePlanningEstimate(anchorMessage, input.model, input.config.imageTokens, anchorEntry.outputUsageUnavailable);
+  // Normalize only this anchor's encrypted-reasoning proxy; earlier forecast-only
+  // response-output proxies cannot reduce observed visible-equivalent error.
+  const visibleUsageTokens = Math.max(0, anchor.usageTokens - anchorPlan.additionalTokens);
+  const fullPrefixTokens = fullPlan.visibleTokens;
+  const rawUndercount = Math.max(0, visibleUsageTokens - fullPrefixTokens);
+  const undercountTokens = rawUndercount === 0 || fullPrefixTokens <= 0 || selectedSource === input.active
+    ? rawUndercount
+    : Math.ceil(rawUndercount * Math.min(1, mainPlanningEstimate(input.fixed, input.memory.slots, prefixEntries(selectedSource),
+      input.model, input.config.imageTokens, input.config.main.extraInputTokens).visibleTokens / fullPrefixTokens));
+  return { entryIndex: anchor.entryIndex, messageIndex: anchor.messageIndex, rawUndercountTokens: rawUndercount, undercountTokens };
 }
 
-export function maintenanceFeedback(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active) {
+export function activeUsageUndercount(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active): number {
+  return activeUsageObservation(input, selectedSource)?.undercountTokens ?? 0;
+}
+
+export function maintenanceFeedback(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active, candidateExtractionTokens?: number) {
   const selected = selectMaintenanceCalibration(input);
-  const measurement = selected.findLast(value => value.measurement)?.measurement;
-  const maintenanceUndercountTokens = measurement?.undercountTokens ?? 0;
-  const activeUndercountTokens = activeUsageUndercount(input, selectedSource);
+  const measuredRecord = selected.findLast(value => value.measurement);
+  const measurement = measuredRecord?.measurement;
+  const activeObs = activeUsageObservation(input, selectedSource);
+  const rawMaintenanceUndercountTokens = measurement?.undercountTokens ?? 0;
+  let maintenanceUndercountTokens = 0;
+  if (measuredRecord && measurement && measurement.undercountTokens > 0) {
+    const rebound = measuredRecord.sourceEntryIds.length < measurement.sourceEntryIds.length ||
+      measuredRecord.sourceEntryIds.some((id, index) => measurement.sourceEntryIds[index] !== id);
+    if (rebound && activeObs !== undefined && activeObs.entryIndex >= measuredRecord.sourceEntryIds.length) {
+      maintenanceUndercountTokens = activeObs.undercountTokens;
+    } else if (selectedSource === input.active) {
+      maintenanceUndercountTokens = measurement.undercountTokens;
+    } else {
+      const measuredIds = new Set(measurement.sourceEntryIds);
+      const survivingActive = input.active.filter(entry => measuredIds.has(entry.entryId));
+      const survivingSelected = selectedSource.filter(entry => measuredIds.has(entry.entryId));
+      if (survivingSelected.length > 0 && measurement.estimatedInputTokens > 0) {
+        const candidateTokens = !rebound && survivingActive.length === measurement.sourceEntryIds.length &&
+          input.active.length === measurement.sourceEntryIds.length && candidateExtractionTokens !== undefined
+          ? candidateExtractionTokens
+          : mainPlanningEstimate(input.fixed, input.memory.slots, survivingSelected,
+            input.model, input.config.imageTokens, input.config.extraction.extraInputTokens).visibleTokens;
+        const ratio = Math.min(1, Math.max(0, candidateTokens) / measurement.estimatedInputTokens);
+        maintenanceUndercountTokens = Math.ceil(measurement.undercountTokens * ratio);
+      }
+    }
+  }
+  const activeUndercountTokens = activeObs?.undercountTokens ?? 0;
   return { full: selected.findLast(value => value.providerOverflow?.mode === "full")?.providerOverflow,
     reduced: selected.findLast(value => value.providerOverflow?.mode === "reduced")?.providerOverflow,
     calibratedUndercountTokens: Math.max(maintenanceUndercountTokens, activeUndercountTokens),
-    maintenanceUndercountTokens, activeUndercountTokens, measurement };
+    maintenanceUndercountTokens, rawMaintenanceUndercountTokens, activeUndercountTokens, measurement };
 }
 
 export function sameRejectedRequest(overflow: ProviderOverflow | undefined, active: readonly ActiveEntry[], resolved: { extractionInputLimit: number; outputTokens: number }): boolean {

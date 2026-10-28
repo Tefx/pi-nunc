@@ -295,7 +295,8 @@ export default function nunc(pi: ExtensionAPI): void {
         return context;
       });
       callStartedAt = Date.now();
-      const response = await admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens, signal: combined });
+      const response = await admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens,
+        ...(resolved.calibratedUndercountTokens > 0 ? { calibratedUndercountTokens: resolved.calibratedUndercountTokens } : {}), signal: combined });
       observedResponse = true;
       try { pi.events.emit("nunc:ui-cleanup-usage", { status: "response", model: { provider: frozen.model.provider, id: frozen.model.id },
         elapsedMs: Date.now() - callStartedAt, outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens, outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy, stopReason: record(response) ? response.stopReason : null,

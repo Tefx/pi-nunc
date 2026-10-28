@@ -33,6 +33,35 @@ test("first native compact reduces tool bodies from current-prefix main usage wi
   assert.equal(checkpoints(f).length, 1);
 });
 
+test("fresh native post-checkpoint zero undercount supersedes 37,173 without rewriting the stored measurement", async t => {
+  const f = await fixture(); t.after(() => f.close()); seed(f);
+  let sends = 0;
+  new ModelRegistry(f.modelRuntime).registerProvider({ ...f.faux.provider,
+    stream(model, context) {
+      sends++;
+      const message = { ...memoryPatch(context), api: model.api, provider: model.provider, model: model.id };
+      const actual = requestTokens(context) + 37173;
+      message.usage = { ...message.usage, input: actual, cacheRead: 0, cacheWrite: 0, output: 40, totalTokens: actual + 40 };
+      const events = createAssistantMessageEventStream(); events.push({ type: "done", reason: "stop", message }); events.end(message); return events;
+    },
+  });
+  await f.runtime.session.compact();
+  const first = f.events.at(-1)!.result; assert(first.ok);
+  assert.equal(first.observations.maintenanceCalibration!.undercountTokens, 37173);
+  const stored = (checkpoints(f).at(-1)!.details as { maintenanceCalibration: MaintenanceCalibrationRecord }).maintenanceCalibration;
+  assert.equal(stored.measurement!.undercountTokens, 37173);
+  const manager = f.runtime.session.sessionManager;
+  manager.appendMessage({ ...answer({}, f.faux.getModel()), timestamp: Date.now() });
+  await f.runtime.session.compact();
+  const next = f.events.at(-1)!.result;
+  assert(next.ok, next.ok ? "" : next.message);
+  assert.equal(sends, 2);
+  assert.equal(next.observations.accounting!.calibratedUndercountTokens, 0);
+  assert.equal(next.observations.accounting!.extractionPlanningTokens, next.observations.accounting!.extractionTokens);
+  assert.equal(next.observations.maintenanceCalibration!.undercountTokens, 37173, "new raw usage remains independently measured");
+  assert.equal(stored.measurement!.undercountTokens, 37173);
+});
+
 test("native usage eligibility excludes retained K and every anchor before the last active context edit", async t => {
   const f = await fixture(); t.after(() => f.close()); const { body } = seed(f);
   const manager = f.runtime.session.sessionManager;

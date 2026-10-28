@@ -88,12 +88,12 @@ export function readSourceRecords(text: string): Record<string, unknown>[] {
 }
 
 /** Explicit transcript: F/M appear once; no active business tool definitions at dispatch. */
-export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: number, memoryLimit: number, source: ActiveEntry[], omissions: Omission[], outputTokens = input.config.extraction.outputTokens): Context {
+export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: number, memoryLimit: number, source: ActiveEntry[], omissions: Omission[], outputTokens = input.config.extraction.outputTokens, includeCleanupCandidates = true): Context {
   // Fixed-width auto values keep the complete estimate unchanged when the cap resolves.
   const outputText = input.config.extraction.outputAuto ? String(outputTokens).padStart(5, "0") : String(outputTokens);
   // Filter safe cleanup candidates: must be enabled, explicitly scoped in candidateScope,
   // present in retained K, free of omissions, and free of non-text/mixed blocks.
-  const cleanupEnabled = input.config.toolResultCleanup !== false;
+  const cleanupEnabled = includeCleanupCandidates && input.config.toolResultCleanup !== false;
   const candidateScopeSet = new Set<string>();
   if (cleanupEnabled && Array.isArray(input.cleanupCandidateScope)) {
     for (const ref of input.cleanupCandidateScope) {
@@ -142,7 +142,7 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
   // First F/M block stays stable ahead of transcript without varying annotations
   const tools = input.fixed.tools.map(t => ({ name: t.name, description: t.description,
     ...(record(t.parameters) && record(t.parameters.properties) ? { parameterKeys: Object.keys(t.parameters.properties) } : {}) }));
-  const fmPayload: Record<string, unknown> = { source: "F/M", F: { ...input.fixed, tools }, M: input.memory.slots, omissions };
+  const fmPayload: Record<string, unknown> = { source: "F/M", F: { ...input.fixed, tools }, M: input.memory.slots };
 
   // Varying candidates and tail instruction are placed AFTER the existing transcript
   const trailingBlocks: (TextContent | ImageContent)[] = [];
@@ -176,8 +176,9 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
 export function resolveExtractionRequest(input: Omit<MaintenanceInput, "signal">, build: (outputTokens: number) => Context, selectedSource: readonly ActiveEntry[] = input.active) {
   const { budget, automatic, desired, uncapped } = extractionOutputPlan(input.model, input.config.extraction);
   let context = build(desired);
-  const calibratedUndercountTokens = maintenanceFeedback(input, selectedSource).calibratedUndercountTokens;
-  const tokens = requestTokens(context, input.config.imageTokens) + budget.extraInputTokens + calibratedUndercountTokens;
+  const rawTokens = requestTokens(context, input.config.imageTokens) + budget.extraInputTokens;
+  const calibratedUndercountTokens = maintenanceFeedback(input, selectedSource, rawTokens).calibratedUndercountTokens;
+  const tokens = rawTokens + calibratedUndercountTokens;
   // Check the minimum first, including applicable maintenance and active-prefix usage.
   requireThat(tokens <= inputLimit(input.model, budget), "CAPACITY", "Complete extraction cannot fit its minimum output reserve, safety and maintenance calibration");
   const outputTokens = automatic ? Math.min(desired, Math.floor(input.model.contextWindow - tokens - budget.safetyTokens)) : budget.outputTokens;
