@@ -7935,7 +7935,7 @@ phases:
       and offline Pi test suite dist/tests/pi/*.test.js (exit 0, 428 tests).'
   - id: nunc-slot-provenance.gate
     name: 槽位溯源与策略单源分离阶段整合验收
-    status: pending
+    status: claimed
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"policies/default.md\", \"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
@@ -7984,3 +7984,5 @@ phases:
     depends_on:
     - nunc-slot-provenance.implement-provenance-and-policy
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-08T10:48:55.443409Z'
