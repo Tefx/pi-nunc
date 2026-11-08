@@ -1,6 +1,6 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, PlanningEstimate, Slot } from "../engine/index.js";
+import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, PlanningEstimate, Slot, SlotProvenance } from "../engine/index.js";
 import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
@@ -62,7 +62,7 @@ export interface ContextLayout {
   planning?: PlanningEstimate;
   system: { text: string; tokens: number };
   tools: ToolsLayer;
-  memory?: { slots: Slot[]; tokens: number; envelopeTokens: number };
+  memory?: { slots: Slot[]; tokens: number; envelopeTokens: number; slotProvenance?: Record<string, SlotProvenance> };
   entries?: ContextEntry[];
   messages: ContextMessage[];
   messageCount: number;
@@ -158,6 +158,7 @@ export interface LastMaintenanceContext {
   invalidated?: true;
   before: {
     memory: Memory;
+    slotProvenance?: Record<string, SlotProvenance>;
     entries: ContextEntry[];
     messages: ContextMessage[];
     system: { text: string; tokens: number };
@@ -180,7 +181,7 @@ export interface ContextSurface {
 }
 export interface ContextObserver extends ContextSurface {
   observeAdmission(event: AdmissionLayoutEvent): void;
-  beginMaintenance(input: { ctx: ExtensionContext; model: Model<Api>; fixed: FixedContext; memory: Memory; active: ActiveEntry[]; reason: string; config?: EngineConfig }): void;
+  beginMaintenance(input: { ctx: ExtensionContext; model: Model<Api>; fixed: FixedContext; memory: Memory; active: ActiveEntry[]; reason: string; config?: EngineConfig; slotProvenance?: Record<string, SlotProvenance> }): void;
   noteEngine(result: MaintenanceResult): void;
   noteNative(status: "saved" | "failed"): void;
   noteInvalidated(): void;
@@ -218,7 +219,7 @@ export function createContextSurface(options: {
       }
       const active = effectiveActive(projected, memory.cleanup?.enabled ?? false);
       const memoryIndex = currentMemoryIndex(sessionId, memory.memory, active);
-      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model);
+      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model, memory.slotProvenance);
       const current: CurrentContext = {
         scope: "current",
         sessionId,
@@ -295,6 +296,7 @@ export function createContextSurface(options: {
           reason: input.reason,
           fixed,
           memory: structuredClone(input.memory),
+          ...(input.slotProvenance ? { slotProvenance: structuredClone(input.slotProvenance) } : {}),
           active: structuredClone(input.active),
           ...(imageTokens === undefined ? {} : { imageTokens }),
         };
@@ -308,6 +310,7 @@ export function createContextSurface(options: {
           native: "pending",
           before: {
             memory: state.frozen.memory,
+            ...(state.frozen.slotProvenance ? { slotProvenance: state.frozen.slotProvenance } : {}),
             entries: inspected.entries,
             messages: inspected.messages,
             system: { text: fixed.systemPrompt, tokens: textTokens(fixed.systemPrompt) },
@@ -382,6 +385,7 @@ interface FrozenMaintenance {
   reason: string;
   fixed: FixedContext;
   memory: Memory;
+  slotProvenance?: Record<string, SlotProvenance>;
   active: ActiveEntry[];
   imageTokens?: number;
 }
@@ -479,11 +483,12 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
   } catch { /* Leave cut unknown rather than invent a partition. */ }
 }
 
-function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>): ContextLayout {
+function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>, slotProvenance?: Record<string, SlotProvenance>): ContextLayout {
   const inspected = inspectEntries(active, imageTokens, model);
   const tools = toolLayer(fixed.tools, fixed.toolState === "partial");
   const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
-  const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0 };
+  const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0,
+    ...(slotProvenance ? { slotProvenance: structuredClone(slotProvenance) } : {}) };
   const packagingTokens = 64 + extraInputTokens;
   const known = knownSum([
     { tokens: textTokens(fixed.systemPrompt), unknown: false },

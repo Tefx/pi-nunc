@@ -89,7 +89,10 @@ test("known cache usage occupies context; partial, invalid and unreported usage 
 });
 
 test("source accounting never uses stale/cache/unknown assistant usage as a zero-size shortcut", async () => {
-  const source = await input(); const first = await maintain(source, responder()); assert(first.ok);
+  const source = await input();
+  // Leave room for the full policy plus cache-derived calibration; this test isolates source accounting, not capacity admission.
+  source.model.contextWindow = 80000;
+  const first = await maintain(source, responder()); assert(first.ok, first.ok ? "" : first.message);
   const assistant = source.active[1]!.messages[0]!; assert(assistant.role === "assistant");
   Object.assign(assistant, { usage: undefined });
   const unknown = await maintain(source, responder()); assert(unknown.ok);

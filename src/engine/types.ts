@@ -2,6 +2,14 @@ import type { Api, Context, Message, Model, Tool } from "@earendil-works/pi-ai";
 
 export interface Slot { id: string; text: string }
 export interface Memory { version: 1; slots: Slot[]; nextId: number }
+export interface SlotProvenance {
+  /** Persisted user-message entries on the selected branch strictly after the slot's origin commit up to the observation leaf. */
+  unmodifiedTurns: number;
+  /** Committed compaction entries on the selected branch strictly after the slot's origin commit up to the observation leaf. */
+  unmodifiedCompactions: number;
+  /** True iff the slot's origin commit is a manual memory entry located at or after the first active entry in R. */
+  originInActiveWindow: boolean;
+}
 /** One indivisible, context-visible host entry. No old compaction entries. */
 export interface ActiveEntry {
   entryId: string;
@@ -53,6 +61,7 @@ export interface EngineConfig {
   toolResultCleanup?: boolean;
 }
 export interface MaintenanceInput {
+  slotProvenance?: Record<string, SlotProvenance>;
   binding: Binding;
   model: Model<Api>;
   /** Explicit compact-for only: execution remains on model; target owns retention and final projection checks. */

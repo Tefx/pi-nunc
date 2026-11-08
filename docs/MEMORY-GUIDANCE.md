@@ -8,6 +8,40 @@ This document specifies accepted guidance refinements for Nunc's active working 
 
 ---
 
+## Slot provenance and applicability
+
+The shared writing, narration-language, formatting and applicability policy has one source: the
+`## Shared writing and applicability policy` section in `policies/default.md`.
+`src/engine/policy.ts` extracts that section for direct memory-patch guidance; maintenance
+uses the same built-in policy. Missing, duplicate, empty or invalid UTF-8 built-in guidance
+fails closed with a configuration error.
+
+`nunc_memory_read` and successful `nunc_memory_patch` results (including no-ops) expose
+`slotProvenance`, keyed by existing slot ID when the origin can be determined:
+- `unmodifiedTurns`: persisted user-message entries strictly after the origin commit on the selected branch.
+- `unmodifiedCompactions`: committed compactions strictly after that origin.
+- `originInActiveWindow`: whether the origin is a manual memory commit at or after the first active entry in R.
+
+An origin is the start of the current uninterrupted sequence of commits with exactly the same
+slot ID and text. An edit, removal/re-addition or return to an earlier body resets it.
+A corrupt historical boundary makes continuity unknown; affected slots are omitted rather
+than assigned a guessed age. These values are derived observations, never persisted slot
+fields, expiration rules or grounds for deleting enduring constraints and deterministic facts.
+Saved provisional external/runtime failures and temporary workarounds remain scoped;
+re-verify current state with ordinary tools before using one to bypass a required capability.
+Counters inform that assessment and do not replace live verification.
+
+Maintenance freezes provenance from the source branch before asynchronous policy loading.
+`extractionContext` includes nonempty provenance in the final instruction block immediately
+before the current slot IDs, leaving the initial F/M payload and cleanup candidates unchanged.
+The context panel exposes current provenance and the frozen maintenance-before observation;
+last-main, candidate and after views do not infer provenance for unobserved states.
+
+The overlay's Slots list, preview header and Current memory tree show compact badges:
+`Xc · Yt`, with ` · outside-window` when the origin is outside active R.
+Current slots whose continuity is unknown show `age unknown`; synthetic views without
+provenance retain their original display. Badges do not alter stored text or editor drafts.
+
 ## 0. Current correction: complete-task retention
 
 **Current status:** The user authorized resumed implementation. `nunc-task-retention.semantics` delivers candidate policy/request/tool guidance and incremental task/oracle assets; runner support, integration and behavioral acceptance remain pending. The status statement and §§1–3 below record the earlier guidance delivery and its historical evaluation scope; they do not establish this correction's delivery or authorize a new Gemini run.

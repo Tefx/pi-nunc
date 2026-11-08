@@ -1,13 +1,21 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PolicySnapshot } from "./types.js";
 import { EngineError, nonempty, requireThat } from "./validation.js";
 
-/** Shared guidance for maintenance and direct Agent writes; UI-authored bodies stay verbatim. */
-export const MEMORY_WRITING_GUIDANCE = `Choose the narration language from the user's substantive instructions and conversation continuity, unless an explicit memory-language preference overrides it. Distinguish the language the user communicates in from the language of supplied material or a requested document. Tool results, SDK excerpts, quotations, code, brief acknowledgments and old slot prose do not establish a memory-language preference. A foreign-language document request applies to that document, not all M. Preserve paths, commands, APIs, formal names, exact quotations and machine-consumed labels verbatim. Save an explicit preference as ordinary memory if needed; no separate locale state.
-Write directly readable prose with normal word spaces, punctuation, paragraphs and appropriate Markdown. Within a self-contained slot, clear headings or lists may share repeated subjects, relations or qualifiers while keeping each exact object/value association and condition clear; do not expand every fact into repetitive full sentences. Consolidate obsolete revisions only within their valid scope. Never join words, splice language fragments, omit negations/units/qualifiers, double-escape newlines, or change the selected narration language or use telegraphic fragments to fit a budget.
-Inspect all active slots in the existing maintenance or necessary patch. Repair language, readability and content violations under existing IDs, preserving order and all still-valid facts, quantities, permissions, unresolved work and dependencies. Old prose in another language is not compliant merely because it is already saved. Reuse compliant bodies unchanged; necessary repairs are exceptions to avoiding routine polishing, no-op rewrites and mass reformatting. Work only on active M, not history or frozen evidence; no separate formatting calls or every-turn rewrites. Failure keeps old M. User-confirmed UI bodies stay verbatim and cleanup cannot revise selected M.`;
+/** Extract the one shared level-two section, stopping before the next peer heading. */
+export function extractSharedWritingGuidance(policyMarkdown: string): string {
+  const headings = [...policyMarkdown.matchAll(/^## Shared writing and applicability policy\r?$/gm)];
+  requireThat(headings.length === 1, "CONFIG", "Built-in policy must contain exactly one Shared writing and applicability policy section");
+  const heading = headings[0]!;
+  const rest = policyMarkdown.slice(heading.index! + heading[0].length);
+  const next = rest.search(/^#{1,2} /m);
+  const body = (next < 0 ? rest : rest.slice(0, next)).trim();
+  requireThat(nonempty(body), "CONFIG", "Shared writing and applicability policy is empty");
+  return body;
+}
 
 /** Supports emitted dist/src/engine as well as direct source loading by Pi's TS loader. */
 const root = new URL(import.meta.url.includes("/dist/src/engine/") ? "../../../" : "../../", import.meta.url);
@@ -18,6 +26,7 @@ export async function loadPolicy(options: { policyFile?: string; configFile?: st
   }
   const builtin = await text(new URL("policies/default.md", root));
   requireThat(nonempty(builtin), "CONFIG", "Built-in policy is empty");
+  extractSharedWritingGuidance(builtin);
   let user = "";
   if (options.policyFile !== undefined) {
     requireThat(nonempty(options.policyFile), "CONFIG", "policyFile must be nonempty");
@@ -28,3 +37,13 @@ export async function loadPolicy(options: { policyFile?: string; configFile?: st
   return Object.freeze({ builtin, user });
 }
 export const builtinPolicyPath = fileURLToPath(new URL("policies/default.md", root));
+
+/** Shared guidance for maintenance and direct Agent writes; UI-authored bodies stay verbatim. */
+export const MEMORY_WRITING_GUIDANCE = (() => {
+  try {
+    return extractSharedWritingGuidance(new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(builtinPolicyPath)));
+  } catch (cause) {
+    if (cause instanceof EngineError) throw cause;
+    throw new EngineError("CONFIG", `Cannot load UTF-8 policy: ${builtinPolicyPath}`, { cause });
+  }
+})();

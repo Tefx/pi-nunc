@@ -73,3 +73,24 @@ test("final tail binds update/remove to exact current IDs, including empty M", a
     assert(tail.endsWith(`Current M slot IDs: ${JSON.stringify(slots.map(slot => slot.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`));
   }
 });
+
+test("provenance varies only the final instruction and preserves cleanup position and ID suffix", async () => {
+  const s = await input();
+  s.memory = { version: 1, slots: [{ id: "s1", text: "A stable fact." }], nextId: 2 };
+  s.config.toolResultCleanup = true;
+  s.active.push({ entryId: "tool", sourceRole: "toolResult", messages: [{
+    role: "toolResult", toolName: "read", toolCallId: "c1", isError: false,
+    content: [{ type: "text", text: "Evidence body" }], timestamp: 0,
+  }] });
+  s.cleanupCandidateScope = [{ entryId: "tool", messageIndex: 0 }];
+  const before = textBlocks(extractionContext(s, 1, 8192, s.active, []));
+  const suffix = before.at(-1)!.slice(before.at(-1)!.indexOf("Current M slot IDs:"));
+  s.slotProvenance = { s1: { unmodifiedTurns: 5, unmodifiedCompactions: 2, originInActiveWindow: false } };
+  const after = textBlocks(extractionContext(s, 1, 8192, s.active, []));
+  assert.deepEqual(after.slice(0, -1), before.slice(0, -1), "F/M, B/K and cleanup candidate block stay byte-identical");
+  assert.deepEqual(JSON.parse(after.at(-2)!).cleanupCandidates, [{ entryId: "tool", messageIndex: 0, toolName: "read", toolCallId: "c1", textLength: 13 }]);
+  assert(after.at(-1)!.includes(`Current M slot provenance: ${JSON.stringify(s.slotProvenance)}. Current M slot IDs:`));
+  assert(after.at(-1)!.endsWith(suffix));
+  s.slotProvenance = {};
+  assert.deepEqual(textBlocks(extractionContext(s, 1, 8192, s.active, [])), before);
+});

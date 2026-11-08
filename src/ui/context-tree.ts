@@ -1,5 +1,5 @@
 import type { ContextLayout, ContextMessage, ContextView, CurrentContext, LastMainContext, LastMaintenanceContext } from "../pi/context.js";
-import type { Slot } from "../engine/index.js";
+import type { Slot, SlotProvenance } from "../engine/index.js";
 import { budgetLines, firstLine, maintenanceLines, memoryOccupancy, planningLines, thousands, type DiagnosticNote } from "./status.js";
 
 export interface CtxNode {
@@ -179,7 +179,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
     preview: [def.name, def.description, def.unknown ? "estimate unknown" : `${thousands(def.tokens ?? 0)} tok`, JSON.stringify(def.parameters), ...(def.constrainedSampling === undefined ? [] : [`Constrained sampling: ${JSON.stringify(def.constrainedSampling)}`])].join("\n"),
     children: [],
   }));
-  const mIds = slotChildren(`${prefix}:M`, slots ?? [], add);
+  const mIds = slotChildren(`${prefix}:M`, slots ?? [], add, layout.memory?.slotProvenance, prefix === "current");
   const rIds = messageChildren(prefix, layout.messages, layout.associations, add);
   return [
     add({
@@ -232,7 +232,7 @@ function frozenChildren(prefix: string, before: LastMaintenanceContext["before"]
       label: "M",
       description: `${before.memory.slots.length} slots`,
       preview: `${before.memory.slots.length} slots`,
-      children: slotChildren(`${prefix}:M`, before.memory.slots, add),
+      children: slotChildren(`${prefix}:M`, before.memory.slots, add, before.slotProvenance, false),
     }),
     add({
       id: `${prefix}:R`,
@@ -253,15 +253,28 @@ function frozenChildren(prefix: string, before: LastMaintenanceContext["before"]
   ];
 }
 
-function slotChildren(prefix: string, slots: readonly Slot[], add: (node: CtxNode) => string): string[] {
-  return slots.map(slot => add({
-    id: `${prefix}:${slot.id}`,
-    label: slot.id,
-    description: slot.text.replace(/\s+/g, " ").trim(),
-    preview: slot.text,
-    ...(prefix === "current:M" ? { jumpSlot: slot.id } : {}),
-    children: [],
-  }));
+export function formatSlotProvenance(slotId: string, slotProvenance?: Record<string, SlotProvenance>, allowUnknown = false): string | undefined {
+  if (!slotProvenance) return undefined;
+  if (Object.hasOwn(slotProvenance, slotId)) {
+    const p = slotProvenance[slotId]!;
+    return `${p.unmodifiedCompactions}c · ${p.unmodifiedTurns}t${p.originInActiveWindow ? "" : " · outside-window"}`;
+  }
+  return allowUnknown ? "age unknown" : undefined;
+}
+
+function slotChildren(prefix: string, slots: readonly Slot[], add: (node: CtxNode) => string, slotProvenance?: Record<string, SlotProvenance>, allowUnknown = false): string[] {
+  return slots.map(slot => {
+    const badge = formatSlotProvenance(slot.id, slotProvenance, allowUnknown);
+    const body = slot.text.replace(/\s+/g, " ").trim();
+    return add({
+      id: `${prefix}:${slot.id}`,
+      label: slot.id,
+      description: badge ? `[${badge}] ${body}` : body,
+      preview: slot.text,
+      ...(prefix === "current:M" ? { jumpSlot: slot.id } : {}),
+      children: [],
+    });
+  });
 }
 
 function messageChildren(prefix: string, messages: readonly ContextMessage[], associations: ContextLayout["associations"], add: (node: CtxNode) => string): string[] {

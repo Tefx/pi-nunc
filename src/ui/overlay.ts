@@ -24,7 +24,7 @@ import type { ContextSurface, ContextView } from "../pi/context.js";
 import { unknownBudget } from "../pi/context.js";
 import type { MemorySurface, MemoryView } from "../pi/manual.js";
 import type { Memory } from "../engine/index.js";
-import { buildContextNodes, CONTEXT_ROOT_IDS, type CtxNode } from "./context-tree.js";
+import { formatSlotProvenance, buildContextNodes, CONTEXT_ROOT_IDS, type CtxNode } from "./context-tree.js";
 import { UNLOAD_LIMIT, firstLine, thousands, type DiagnosticNote } from "./status.js";
 
 export type OverlayTab = "slots" | "context";
@@ -557,7 +557,11 @@ export class NuncOverlay implements Focusable {
     const query = this.search.getValue().trim().toLowerCase();
     return this.memoryView.memory.slots
       .filter(slot => !query || slot.id.toLowerCase().includes(query) || slot.text.toLowerCase().includes(query))
-      .map(slot => ({ value: slot.id, label: slot.id, description: slot.text.replace(/\s+/g, " ").trim() }));
+      .map(slot => {
+        const badge = formatSlotProvenance(slot.id, this.memoryView.slotProvenance, true);
+        const body = slot.text.replace(/\s+/g, " ").trim();
+        return { value: slot.id, label: slot.id, description: badge ? `[${badge}] ${body}` : body };
+      });
   }
 
   private contextItems(): SelectItem[] {
@@ -702,14 +706,22 @@ export class NuncOverlay implements Focusable {
       const id = this.list.getSelectedItem()?.value;
       const slot = this.memoryView.memory.slots.find(item => item.id === id);
       if (!slot) return [theme.fg("muted", " ")];
-      const header = theme.fg("accent", theme.bold(slot.id));
+      const badge = formatSlotProvenance(slot.id, this.memoryView.slotProvenance, true);
+      const rawHeader = badge
+        ? `${theme.fg("accent", theme.bold(slot.id))}  ${theme.fg("dim", badge)}`
+        : theme.fg("accent", theme.bold(slot.id));
+      const header = truncateToWidth(rawHeader, contentWidth);
       const md = new Markdown(slot.text, 0, 0, this.mdTheme);
       return [header, ...md.render(contentWidth)];
     }
     const node = this.currentNode();
     if (!node || !node.preview) return [theme.fg("muted", " ")];
     if (node.jumpSlot) {
-      const header = theme.fg("accent", theme.bold(node.jumpSlot));
+      const badge = formatSlotProvenance(node.jumpSlot, this.contextView.current.layout.memory?.slotProvenance, true);
+      const rawHeader = badge
+        ? `${theme.fg("accent", theme.bold(node.jumpSlot))}  ${theme.fg("dim", badge)}`
+        : theme.fg("accent", theme.bold(node.jumpSlot));
+      const header = truncateToWidth(rawHeader, contentWidth);
       const md = new Markdown(node.preview, 0, 0, this.mdTheme);
       return [header, ...md.render(contentWidth)];
     }

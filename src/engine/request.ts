@@ -128,6 +128,7 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
   }
 
   const hasCleanup = safeCandidates.length > 0;
+  const hasProvenance = input.slotProvenance && Object.keys(input.slotProvenance).length > 0;
 
   const hardLimit = hardMemoryLimit(input.config);
   const hardConstraint = hardLimit === null
@@ -154,7 +155,7 @@ export function extractionContext(input: Omit<MaintenanceInput, "signal">, cut: 
   }
   trailingBlocks.push({
     type: "text",
-    text: `Submit incremental memory changes with complete priority and required references under the contract.${hasCleanup ? " You may include toolResultEdits for the supplied eligible candidates." : ""} Return only the JSON object. Current M slot IDs: ${JSON.stringify(input.memory.slots.map(s => s.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`,
+    text: `Submit incremental memory changes with complete priority and required references under the contract.${hasCleanup ? " You may include toolResultEdits for the supplied eligible candidates." : ""} Return only the JSON object. ${hasProvenance ? `Current M slot provenance: ${JSON.stringify(input.slotProvenance)}. ` : ""}Current M slot IDs: ${JSON.stringify(input.memory.slots.map(s => s.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`,
   });
 
   return {

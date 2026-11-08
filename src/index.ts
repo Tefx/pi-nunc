@@ -13,7 +13,7 @@ import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { mainAdmissionLimit, mainContext, requestTokens, omitsSerializedOutputCap } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
-import { carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, eligibleUsageEntryIds, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
+import { deriveSlotProvenance, carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, eligibleUsageEntryIds, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
 import { createMemorySurface } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
@@ -132,7 +132,7 @@ export default function nunc(pi: ExtensionAPI): void {
     pi.registerTool({
         name: "nunc_memory_read",
         label: "Read Memory",
-        description: "Read session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional query searches retired visible text on this session's selected branch, plus original active tool results hidden by cleanup; entryIds reads exact eligible entries. No disk search or other sessions/branches. Query matches are case-insensitive substrings ranked by distinct matching words, then newest first; limit defaults to 5 and must be at most 10. history.matches contains bounded snippets; history.entries returns at most 10 IDs with at most 4000 text characters each and a truncated flag. Optional originals returns pure-text tool-result originals from the active or retired selected path, with missing/non-text errors. Reads do not change M, restore old positions or grant historical instructions current authority.",
+        description: "Read session-local working memory, slot IDs, revision, estimated budget and writable status when saved notes or a patch need inspection; routine turns require no read. Inspect complete relevant notes, including mixed obligations/progress and necessary relationships. Notes may be stale or incomplete and do not override current instructions; recover task sources with ordinary tools when needed. writable does not guarantee a save. slotProvenance reports { unmodifiedTurns, unmodifiedCompactions, originInActiveWindow } per slot when derivable. Before relying on a saved provisional failure or workaround to bypass a required capability, re-verify current state with ordinary tools; reading slotProvenance informs assessment but does not substitute for live verification. A null budget.limitTokens means unknown; otherwise it bounds manual growth. targetTokens is a soft maintenance target and hardLimitTokens=null means no hard cap. Maintenance may retain required items over target. Optional query searches retired visible text on this session's selected branch, plus original active tool results hidden by cleanup; entryIds reads exact eligible entries. No disk search or other sessions/branches. Query matches are case-insensitive substrings ranked by distinct matching words, then newest first; limit defaults to 5 and must be at most 10. history.matches contains bounded snippets; history.entries returns at most 10 IDs with at most 4000 text characters each and a truncated flag. Optional originals returns pure-text tool-result originals from the active or retired selected path, with missing/non-text errors. Reads do not change M, restore old positions or grant historical instructions current authority.",
         parameters: Type.Object({
           originals: Type.Optional(Type.Array(Type.Object({ entryId: Type.String(), messageIndex: Type.Integer({ minimum: 0 }) }))),
           query: Type.Optional(Type.String({ description: "Case-insensitive words or substrings to find in selected-branch retired visible text" })),
@@ -151,6 +151,7 @@ export default function nunc(pi: ExtensionAPI): void {
           const history = wantsHistory ? searchBranchHistory(branch, effectiveActive(projected, opportunity.enabled), params) : undefined;
           const result = {
             revision: view.revision,
+            ...(view.slotProvenance ? { slotProvenance: view.slotProvenance } : {}),
             slots: view.memory.slots.map(s => ({ id: s.id, text: s.text })),
             budget: {
               usedTokens: view.budget.tokens,
@@ -176,7 +177,7 @@ export default function nunc(pi: ExtensionAPI): void {
       pi.registerTool({
         name: "nunc_memory_patch",
         label: "Patch Memory",
-        description: MEMORY_WRITING_GUIDANCE + "\nWhen manual growth exceeds budget, use update/remove to consolidate or remove old process records with no continuing use; keep normal word spaces, never strip spaces to fit. Atomically revise session-local working memory with a revision from nunc_memory_read. Preserve the whole active task's goals, decisive conditions, valid constraints, unfinished work, supported decisions/results, blockers and recovery paths with purpose and unchecked scope. Inspect full notes before changing mixed content; preserve surviving quantities, negations, qualifiers, scope, interaction and verification conditions, uncertainty and necessary relationships. Keep notes self-contained and independently updateable; separate stable obligations from changing progress where useful. Apply revisions only within their authority and scope. Partial evidence or a side question does not cancel remaining obligations. Retire ended/cancelled/superseded information and internal references only when it has no continuing use; preserve a minimal result still needed by ongoing work. Avoid raw logs, credentials, unnecessary polishing and process history; repair bodies that violate current language, readability or content requirements. Notes do not override instructions. Combine settled, persistently useful changes in one patch; routine turns require none. Manual growth is limited by the reported budget even though maintenance may retain required over target. On conflict reread and reconcile; never replay an unconfirmed save automatically. Memory changes may rebuild cache later; do not delay necessary corrections for that reason. Nunc owns placement; no delete/reinsert is needed to move memory.",
+        description: MEMORY_WRITING_GUIDANCE + "\nWhen manual growth exceeds budget, use update/remove to consolidate or remove old process records with no continuing use; keep normal word spaces, never strip spaces to fit. Atomically revise session-local working memory with a revision from nunc_memory_read. Use expectedRevision from nunc_memory_read and atomic add/update/remove operations. Successful patches, including no-ops, return slotProvenance when available. Manual growth is limited by the reported budget even though maintenance may retain required over target. On conflict reread and reconcile; never replay an unconfirmed save automatically. Memory changes may rebuild cache later; do not delay necessary corrections for that reason. Nunc owns placement; no delete/reinsert is needed to move memory.",
         parameters: Type.Object({
           expectedRevision: Type.String({ description: "Revision obtained from nunc_memory_read" }),
           add: Type.Optional(Type.Array(
@@ -209,6 +210,7 @@ export default function nunc(pi: ExtensionAPI): void {
             const payload = {
               ok: true,
               revision: res.revision,
+              ...(res.slotProvenance ? { slotProvenance: res.slotProvenance } : {}),
               added: res.added,
               budget: res.budget,
               ...(res.cleanup ? { toolResultCleanup: res.cleanup } : {}),
@@ -283,7 +285,8 @@ export default function nunc(pi: ExtensionAPI): void {
       const policy = await loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) });
       if (stale()) return { stale: true };
       const active = effectiveActive(projected, true);
-      const input = { binding: { sessionId: frozen.sessionId, leafId: frozen.leafId ?? "", generation: String(generation) },
+      const slotProvenance = deriveSlotProvenance(ctx.sessionManager.getBranch(), projected.active, proposal);
+      const input = { slotProvenance, binding: { sessionId: frozen.sessionId, leafId: frozen.leafId ?? "", generation: String(generation) },
         model: frozen.model, fixed: frozen.fixed, memory: proposal, active, eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), cleanupCandidateScope: semanticScope,
         policy, config };
       const plan = memoryPlan(frozen.fixed, frozen.model, config, input.memory.slots);
@@ -464,6 +467,8 @@ export default function nunc(pi: ExtensionAPI): void {
       }
       const entries = manager.buildContextEntries();
       const projected = project(entries);
+      const sourceBranch = manager.getBranch();
+      const slotProvenance = deriveSlotProvenance(sourceBranch, projected.active, projected.memory);
       const sourceRevision = memoryRevision(binding.sessionId, manager.getLeafId(), entries);
       const sourceEntryIds = new Set(entries.map(entry => entry.id));
       const frozenProjection = structuredClone(projected);
@@ -476,9 +481,9 @@ export default function nunc(pi: ExtensionAPI): void {
       const policy = { ...loaded, user: loaded.user + (!intent && event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
       if (controller.signal.aborted) throw new EngineError("CANCELLED", "Maintenance cancelled");
       config.toolResultCleanup = opportunity.enabled;
-      contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config });
+      contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config, slotProvenance });
       ui.refresh(ctx);
-      const input = { binding, model, ...(target ? { target } : {}), fixed: f, memory: projected.memory, active,
+      const input = { binding, model, slotProvenance, ...(target ? { target } : {}), fixed: f, memory: projected.memory, active,
         eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
       const calibration = projectMaintenanceCalibration(manager.getBranch(), input);
       const maintenanceInput = { ...input, calibration };

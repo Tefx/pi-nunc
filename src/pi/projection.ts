@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { ActiveEntry, Memory, ToolResultDecision, ToolResultRef } from "../engine/index.js";
+import type { ActiveEntry, Memory, Slot, SlotProvenance, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { applyToolResultCleanup, emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
 import { messageTextContent } from "../engine/cleanup.js";
 import { isSystemMessage } from "../engine/accounting.js";
@@ -104,6 +104,54 @@ function checkpointMemory(latest: Extract<SessionEntry, { type: "compaction" }>)
     return { version: 1, nextId: 1, slots: [{ id: "legacy", text: latest.summary }] };
   }
   return emptyMemory();
+}
+
+/** Derive unchanged-body continuity from commits on the selected branch, never persisted age. */
+export function deriveSlotProvenance(branch: readonly SessionEntry[], active: readonly ActiveEntry[], memory: Memory): Record<string, SlotProvenance> {
+  const result: Record<string, SlotProvenance> = Object.create(null);
+  if (!memory.slots.length || !branch.length) return result;
+  const commits: { branchIndex: number; entry: SessionEntry; slots: Slot[] | null }[] = [];
+  for (let idx = 0; idx < branch.length; idx++) {
+    const entry = branch[idx]!;
+    if (entry.type === "compaction") {
+      try { commits.push({ branchIndex: idx, entry, slots: checkpointMemory(entry).slots }); }
+      catch { commits.push({ branchIndex: idx, entry, slots: null }); }
+    } else if (isManualMemoryEntry(entry)) {
+      try { commits.push({ branchIndex: idx, entry, slots: decodeManualMemory(entry.data).slots }); }
+      catch { commits.push({ branchIndex: idx, entry, slots: null }); }
+    }
+  }
+  if (commits.length === 0) return result;
+  const activeIds = new Set(active.map(e => e.entryId));
+  const foundActive = branch.findIndex(e => activeIds.has(e.id));
+  const firstActiveIndex = foundActive >= 0 ? foundActive : branch.length;
+  for (const slot of memory.slots) {
+    const latest = commits[commits.length - 1]!;
+    if (!latest.slots || !latest.slots.some(s => s.id === slot.id && s.text === slot.text)) continue;
+    let origin = commits.length - 1;
+    let unknownBoundary = false;
+    while (origin > 0) {
+      const prev = commits[origin - 1]!;
+      if (prev.slots === null) { unknownBoundary = true; break; }
+      if (!prev.slots.some(s => s.id === slot.id && s.text === slot.text)) break;
+      origin--;
+    }
+    if (unknownBoundary) continue;
+    const originCommit = commits[origin]!;
+    const originBranchIndex = originCommit.branchIndex;
+    let unmodifiedTurns = 0, unmodifiedCompactions = 0;
+    for (let idx = originBranchIndex + 1; idx < branch.length; idx++) {
+      const entry = branch[idx]!;
+      if (entry.type === "message" && entry.message.role === "user") unmodifiedTurns++;
+      if (entry.type === "compaction") unmodifiedCompactions++;
+    }
+    const originInActiveWindow = originCommit.entry.type !== "compaction" && originBranchIndex >= firstActiveIndex;
+    Object.defineProperty(result, slot.id, {
+      value: { unmodifiedTurns, unmodifiedCompactions, originInActiveWindow },
+      enumerable: true, writable: true, configurable: true,
+    });
+  }
+  return result;
 }
 
 /** Entries after the latest native checkpoint on the selected path. Kept-range history is not replayed. */

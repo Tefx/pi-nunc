@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, TuiMainScreen, getKeybindings, setKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, visibleWidth, KeybindingsManager, TUI_KEYBINDINGS, TuiMainScreen, getKeybindings, setKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { buildContextNodes } from "../../src/ui/context-tree.js";
 import { NuncOverlay } from "../../src/ui/overlay.js";
 import { NuncUi } from "../../src/ui/index.js";
 import type { Accounting } from "../../src/engine/index.js";
@@ -40,7 +41,7 @@ function fixture(options: { rows?: number; text?: string; failure?: string; unco
       layout: {
         system: { text: "SYSTEM_BODY", tokens: 3 },
         tools: { count: 1, names: ["tool"], tokens: 4, unknown: false, definitions: [{ name: "tool", description: "Readable tool", parameters: { type: "object" }, tokens: 4, unknown: false }] },
-        memory: { slots: view.memory.slots, tokens: 20, envelopeTokens: 1 },
+        memory: { slots: view.memory.slots, tokens: 20, envelopeTokens: 1, ...(view.slotProvenance ? { slotProvenance: view.slotProvenance } : {}) },
         messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0,
         heuristic: { tokens: 27, unknown: false }, associations: [],
       },
@@ -88,7 +89,7 @@ function fixture(options: { rows?: number; text?: string; failure?: string; unco
     keybindings: options.keybindings ?? new KeybindingsManager(TUI_KEYBINDINGS),
     done() { overlay.dispose(); },
   });
-  return { overlay, memory, ctx, saves, statuses, get view() { return view; }, set view(next: MemoryView) { view = next; } };
+  return { overlay, memory, ctx, contextView, saves, statuses, get view() { return view; }, set view(next: MemoryView) { view = next; } };
 }
 
 test("rejected and occupied submits keep the full editor draft", () => {
@@ -712,3 +713,49 @@ test("normalized, SGR and X10 wheels clamp preview without entering search", () 
   assert.match(render(), /\d+–\d+ \/ \d+/);
 });
 
+
+test("slot provenance badges reach list and preview without changing raw drafts or narrow panel geometry", () => {
+  const raw = "**Saved**  text\n\n- Keep punctuation and spaces.";
+  const f = fixture({ text: raw });
+  f.view.slotProvenance = { s1: { unmodifiedCompactions: 2, unmodifiedTurns: 5, originInActiveWindow: false } };
+  f.overlay.sync();
+  const wide = clean(f.overlay.render(120));
+  assert(wide.includes("[2c · 5t · outside-window]"), "Slots list shows provenance before the collapsed body");
+  assert(wide.includes("s1  2c · 5t · outside-window"), "Slots preview header has the same badge");
+  const nodes = buildContextNodes(f.contextView(), []);
+  assert.equal(nodes.get("current:M:s1")?.description, "[2c · 5t · outside-window] **Saved** text - Keep punctuation and spaces.");
+  assert.equal(nodes.get("current:M:s1")?.preview, raw, "context preview remains the unmodified Markdown body");
+  assert.match(nodes.get("current:M:s2")?.description ?? "", /^\[age unknown\]/);
+  assert(!nodes.get("maint:candidate:s2")?.description?.includes("age unknown"));
+  f.overlay.handleInput("\t");
+  f.overlay.handleInput("\r"); // Current
+  f.overlay.handleInput("\x1b[B");
+  f.overlay.handleInput("\x1b[B"); // M
+  f.overlay.handleInput("\r");
+  assert.match(clean(f.overlay.render(120)), /s1  2c · 5t · outside-window/);
+  f.overlay.handleInput("\t"); // Slots
+  f.overlay.handleInput("\r");
+  assert.equal(f.overlay.draftText(), raw, "editor must never receive a badge");
+  f.overlay.dispose();
+
+  const unknown = fixture();
+  unknown.view.slotProvenance = {};
+  unknown.overlay.sync();
+  assert.match(clean(unknown.overlay.render(120)), /\[age unknown\]/);
+  assert.match(clean(unknown.overlay.render(120)), /s1  age unknown/);
+  unknown.overlay.dispose();
+
+  const plain = fixture({ rows: 12 });
+  const baselineRows = plain.overlay.render(36).length;
+  plain.view.slotProvenance = { s1: { unmodifiedCompactions: 2, unmodifiedTurns: 5, originInActiveWindow: false } };
+  plain.overlay.sync();
+  for (const provenance of [plain.view.slotProvenance, {}]) {
+    plain.view.slotProvenance = provenance;
+    plain.overlay.sync();
+    const narrow = plain.overlay.render(36);
+    assert.equal(narrow.length, baselineRows, "badge truncation cannot add rows at 36x12");
+    assert(narrow.length <= 12);
+    assert(narrow.every(line => visibleWidth(line) <= 36), "ANSI-safe truncation respects terminal width");
+  }
+  plain.overlay.dispose();
+});

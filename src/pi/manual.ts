@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, Memory, Slot, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
+import type { FixedContext, Memory, Slot, SlotProvenance, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { decideToolResultCleanup, hardMemoryLimit, memoryTarget, memoryTokens } from "../engine/index.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
 import { readConfig, type HostCompactionSettings } from "./config.js";
-import { MANUAL_MEMORY_TYPE, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions } from "./projection.js";
+import { MANUAL_MEMORY_TYPE, deriveSlotProvenance, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions } from "./projection.js";
 
 export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed" | "cancelled";
 
@@ -19,6 +19,7 @@ export interface MemoryBudgetView {
   overLimit: boolean;
 }
 export interface MemoryView {
+  slotProvenance?: Record<string, SlotProvenance>;
   cleanup?: { enabled: boolean; saved: number; applied: number; unavailable: string[] };
   revision: string;
   memory: Memory;
@@ -41,7 +42,7 @@ export interface MemoryPatchParams {
 }
 
 export type MemoryPatchResult =
-  | { ok: true; revision: string; added: Record<string, string>; budget: { usedTokens: number; limitTokens: number | null }; memory: Memory; cleanup?: ToolResultCleanupResult }
+  | { ok: true; revision: string; added: Record<string, string>; budget: { usedTokens: number; limitTokens: number | null }; memory: Memory; cleanup?: ToolResultCleanupResult; slotProvenance?: Record<string, SlotProvenance> }
   | { ok: false; code: ManualSaveCode; message: string; view: MemoryView };
 
 export interface MemorySurface {
@@ -71,12 +72,14 @@ export function createMemorySurface(options: {
     if (state.occupied && ctx.isIdle()) { state.occupied = false; state.ignoreFailed = 0; }
     const entries = ctx.sessionManager.buildContextEntries();
     const projected = project(entries);
+    const slotProvenance = deriveSlotProvenance(ctx.sessionManager.getBranch(), projected.active, projected.memory);
     const budget = measureBudget(ctx, options, projected.memory.slots);
     const enabled = options.cleanup?.(ctx, projected.memory, projected.active, projected.cleanup).enabled ?? false;
     return {
       cleanup: { enabled, saved: projected.cleanup.length, applied: enabled ? projected.cleanup.length : 0, unavailable: projected.unavailable },
       revision: memoryRevision(ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), entries),
       memory: projected.memory,
+      slotProvenance,
       status: { occupied: state.occupied, unconfirmed: sessionUnconfirmed(ctx.sessionManager) },
       budget,
       contextLayout: {
@@ -232,6 +235,7 @@ export function createMemorySurface(options: {
           ok: true,
           revision: current.revision,
           memory: current.memory,
+          ...(current.slotProvenance ? { slotProvenance: current.slotProvenance } : {}),
           added: addedMap,
           budget: { usedTokens: current.budget.tokens, limitTokens: current.budget.limit },
         };
@@ -278,6 +282,7 @@ export function createMemorySurface(options: {
         ok: true,
         revision: saved.revision,
         memory: saved.memory,
+        ...(saved.slotProvenance ? { slotProvenance: saved.slotProvenance } : {}),
         added: addedMap,
         budget: { usedTokens: saved.budget.tokens, limitTokens: saved.budget.limit },
         cleanup,
