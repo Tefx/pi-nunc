@@ -7781,3 +7781,190 @@ phases:
 
       - node --test dist/tests/live/{stable-memory-payload,budget,tool-result-cleanup-native,defaults,openai-defaults,native-delegation,beam-guard-serialization,beam-query-recovery,remaining-benchmarks,defaults-benchmark,benchmark-repair,native-startup-model,lifecycle}.test.js:
       exit 0 (51/51 tests pass)'
+- id: nunc-slot-provenance
+  name: 槽位溯源感知机制、策略单源分离与面板紧凑展示
+  status: pending
+  gate: nunc-slot-provenance.gate 由 gate-reviewer 对 nunc-slot-provenance.implement-provenance-and-policy
+    的整合提交与确定性离线测试证据（npm run build、engine 与 pi 确定性测试）作唯一阶段验收判断，确认策略单源提取、槽位溯源推导、消费端接线与快照隔离、UI
+    面板紧凑徽章展示及文档与测试 100% 满足合同且无阻断缺陷；严禁引入或要求概率性 live-LLM 测试收敛。
+  depends_on:
+  - pi-1-4-compat
+  steps:
+  - id: nunc-slot-provenance.implement-provenance-and-policy
+    name: 实现槽位溯源推导、策略单源提取、全链路接线与面板紧凑展示
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"policies/default.md\", \"src/engine/policy.ts\", \"src/engine/types.ts\"\
+      , \"src/engine/index.ts\", \"src/engine/request.ts\", \"src/pi/projection.ts\"\
+      , \"src/pi/index.ts\", \"src/pi/manual.ts\", \"src/pi/context.ts\", \"src/index.ts\"\
+      , \"src/ui/overlay.ts\", \"src/ui/context-tree.ts\", \"docs/MEMORY-GUIDANCE.md\"\
+      , \"tests/engine/**\", \"tests/pi/**\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".env\", \"\
+      .env.*\", \"**/auth.json\"]\n\nDeliver: 交付 Nunc Slot Provenance & Policy Separation（nunc-slot-provenance）全部\
+      \ 5 项合同与确定性验证：\n1. Policy Single Source（`policies/default.md` & `src/engine/policy.ts`）：\n\
+      \   - 在 `policies/default.md` 中新增 `## Shared writing and applicability policy`\
+      \ 章节，作为语义写作、保留、临时观测范围界定与适用性复核指导的唯一权威来源（与“无年龄衰减”规则保持一致：槽位年龄绝不自动删除持久目标或确定性事实，但会标记未经复核的临时/运行时观测与步骤局部变通方案，使其绝不被作为无条件永久禁令保留或遵从；读取\
+      \ `slotProvenance` 计数器仅辅助评估，绝不替代在绕过必需能力前使用常规工具重新验证）。\n   - 在 `src/engine/policy.ts`\
+      \ 中，加载时使用致命 UTF-8 解码（`new TextDecoder(\"utf-8\", { fatal: true })`）从 `policies/default.md`\
+      \ 提取 `MEMORY_WRITING_GUIDANCE`；若缺失、UTF-8 格式错误、为空或存在歧义，抛出 `EngineError(\"CONFIG\"\
+      , ...)`。移除 TypeScript（`src/engine/policy.ts` 与 `src/index.ts`）中重复硬编码的语义策略散文。\n\
+      2. Slot Provenance Derivation（`src/engine/types.ts` & `src/pi/projection.ts`）：\n\
+      \   - 保持持久化 `Slot { id, text }`、`Memory { version: 1, slots, nextId }` 以及规范\
+      \ `renderMemory(slots)` / `withEffectiveMemory()` 载体 100% 不变。\n   - 在 `src/engine/types.ts`\
+      \ 中定义 `SlotProvenance { unmodifiedTurns: number; unmodifiedCompactions: number;\
+      \ originInActiveWindow: boolean }` 并从 `src/engine/index.ts` 重新导出。\n   - 在 `src/pi/projection.ts`（并从\
+      \ `src/pi/index.ts` 导出）实现并导出 `deriveSlotProvenance(branch: readonly SessionEntry[],\
+      \ active: readonly ActiveEntry[], memory: Memory): Record<string, SlotProvenance>`：\n\
+      \     - 返回无原型映射（`Object.create(null)`）。\n     - 按时间顺序遍历 `branch`，收集 0 索引的含记忆条目（`compaction`\
+      \ 通过 `checkpointMemory`、`nunc.memory` 通过 `decodeManualMemory`；对损坏的历史条目标记 `slots:\
+      \ null` 而不抛出异常）。\n     - 对 `memory.slots` 中的每个 `slot`：要求 `commits.length > 0`\
+      \ 且 `commits[commits.length - 1].slots` 包含精确 `{ id: slot.id, text: slot.text\
+      \ }`，否则省略 `slot.id`。从 `origin = commits.length - 1` 向下回溯至 `0`，当 `commits[origin\
+      \ - 1]` 具有非 null 的 `slots` 且包含精确 `{ id: slot.id, text: slot.text }` 时继续回溯；若\
+      \ `commits[origin - 1].slots === null`（损坏边界），省略 `slot.id`。到达 `origin === 0`\
+      \ 或首个不含该精确对的有效前驱提交时，确立 `commits[origin]` 为起源提交（origin commit）。\n     - 统计 `unmodifiedTurns`（满足\
+      \ `originBranchIndex < idx < branch.length` 且 `entry.type === \"message\" &&\
+      \ entry.message.role === \"user\"` 的已持久化条目数）、`unmodifiedCompactions`（满足 `originBranchIndex\
+      \ < idx < branch.length` 且 `entry.type === \"compaction\"` 的条目数）以及 `originInActiveWindow`（`commits[origin].entry.type\
+      \ !== \"compaction\" && originBranchIndex >= firstActiveIndex`，其中 `firstActiveIndex`\
+      \ 为 `active` 中最早的分支索引，若 `active` 为空则为 `branch.length`）。\n3. Consumer Wiring\
+      \ & Snapshot Isolation（`src/pi/manual.ts`, `src/engine/request.ts`, `src/pi/context.ts`,\
+      \ `src/index.ts`）：\n   - `MemoryView` 与 `MemoryPatchResult`（含 `src/pi/manual.ts`\
+      \ 中的提前 no-op 返回与已提交返回）均包含 `slotProvenance?: Record<string, SlotProvenance>`。\n\
+      \   - `nunc_memory_read` 与 `nunc_memory_patch`（`src/index.ts`）返回顶层 `slotProvenance`，同时保持\
+      \ `slots: [{ id, text }]` 不变。\n   - `MaintenanceInput`（`src/engine/types.ts`）新增可选\
+      \ `slotProvenance?: Record<string, SlotProvenance>`。\n   - 在 `session_before_compact`（`src/index.ts`）中，在\
+      \ `await loadPolicy(...)` **之前**同步捕获 `sourceBranch = manager.getBranch()` 并推导\
+      \ `slotProvenance`（保留 `await` 之后的 `const branch = manager.getBranch()` 实时检查不变），将\
+      \ `slotProvenance` 同时传给 `contextView.beginMaintenance()` 与 `MaintenanceInput`。在\
+      \ `prepareUiCleanup` 中，针对 `proposal` 推导 `slotProvenance`。\n   - 在 `extractionContext`（`src/engine/request.ts`）中，当\
+      \ `input.slotProvenance` 存在条目时，在末尾指令块（`content.at(-1)`）的 `Current M slot IDs:`\
+      \ **之前**插入 `Current M slot provenance: ${JSON.stringify(input.slotProvenance)}.\
+      \ `，保持 `fmPayload`（`content[0]`）、`cleanupCandidates`（`content.at(-2)`）以及末尾 `Current\
+      \ M slot IDs: ...` 后缀完整不变。\n   - 在 `src/pi/context.ts` 中，为 `ContextLayout.memory`（在\
+      \ `current.layout.memory` 上填充）和 `LastMaintenanceContext[\"before\"]`（通过 `beginMaintenance`\
+      \ 与 `FrozenMaintenance`，使用 `structuredClone` 克隆）挂载可选 `slotProvenance`，并在 `lastMain`、`maint:candidate`\
+      \ 与 `maint:after` 上省略该字段。\n4. Concise UI Panel Display（`src/ui/overlay.ts` &\
+      \ `src/ui/context-tree.ts`）：\n   - 使用 `Object.hasOwn(slotProvenance, slot.id)`\
+      \ 查找并格式化徽章为 `${p.unmodifiedCompactions}c · ${p.unmodifiedTurns}t${p.originInActiveWindow\
+      \ ? \"\" : \" · outside-window\"}`（在实时 `Current` 视图中，当非空分支提交历史因损坏历史边界省略某槽位、但\
+      \ `memoryView` / `current.layout.memory` 上存在 `slotProvenance` 映射时，显示 `age unknown`；当合成夹具或未提交候选上\
+      \ `slotProvenance` 为 `undefined` 时，完全省略徽章）。\n   - 在 `slotItems()` 描述（`src/ui/overlay.ts`）与\
+      \ `slotChildren()` 描述（`src/ui/context-tree.ts`）前添加 `[${badge}] ` 前缀，并在 `getPreviewLines()`（`src/ui/overlay.ts`）现有\
+      \ `slot.id` 预览标题行末尾追加 `  ${theme.fg(\"dim\", badge)}`（使用 `truncateToWidth(...,\
+      \ contentWidth)` 截断），不增加行数且不修改 `slot.text` 或编辑器草稿。\n5. Documentation & Deterministic\
+      \ Verification（`docs/MEMORY-GUIDANCE.md`, `tests/engine/*`, `tests/pi/*`）：\n\
+      \   - 更新 `docs/MEMORY-GUIDANCE.md`，记录 `slotProvenance`、UI 徽章与策略分离设计。\n   - 新增聚焦的确定性测试，覆盖：单源策略提取与致命\
+      \ UTF-8/缺失章节失败；`deriveSlotProvenance`（首次提交起源、多轮次与多 compaction 递增、`A -> B ->\
+      \ A` 重置、删除后再添加重置、其他槽位编辑保留当前槽位起源、损坏历史边界省略、`__proto__` 槽位 ID 安全性）；`nunc_memory_read`\
+      \ 及 no-op/已提交 `nunc_memory_patch` 返回 `slotProvenance`；`await` 前 compaction 冻结隔离；`extractionContext`\
+      \ 溯源注入并保持后缀合同；以及 36x12 下 UI 面板徽章渲染/截断且不影响编辑器草稿。\n   - 运行确定性构建与单元/集成检查（`npm run\
+      \ build` 及确定性 `tests/engine/*.test.ts` + `tests/pi/*.test.ts`）；**严禁运行或新增概率性\
+      \ live-LLM 基准测试**。\n\nBoundary: owner 为 `node-typescript-engineer`；属于本仓库可 Git\
+      \ 回退的策略、源码、文档与确定性测试变更事务。保持持久化 `Slot` / `Memory` 结构及 `renderMemory(slots)` /\
+      \ `withEffectiveMemory()` 载体 100% 不变；不触碰 `.pi/`、全局配置或外部凭据，不执行任何外部付费/概率性 live-LLM\
+      \ 调用。\n\nAdmit: 依赖 `pi-1-4-compat` 已完成的 main 基线；完成后交由 `nunc-slot-provenance.gate`\
+      \ 执行阶段验收判断。\n\nRecovery: 若构建或确定性测试失败，在同一步骤工作树内定位并修复；所有未合并修改均可通过 Git worktree\
+      \ 安全回退，不污染已提交历史或保护路径。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: engine-deterministic-checks\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node,\
+      \ scripts/check.mjs, engine]\n    exit_code: 0\n    inventory: [\"tests/engine/*.test.ts\"\
+      ]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\", \"package.json\"\
+      , \"package-lock.json\"]\n  - id: pi-deterministic-checks\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, NODE_DISABLE_COMPILE_CACHE=1,\
+      \ node, --test, --test-concurrency=2, dist/tests/pi/*.test.js]\n    exit_code:\
+      \ 0\n    inventory: [\"tests/pi/*.test.ts\"]\n    setup_refs: [\"docs/DEVELOPMENT.md\"\
+      , \".node-version\", \"package.json\", \"package-lock.json\"]\n```\n验证要求：\n\
+      1. 验证 `policies/default.md` 新增 `## Shared writing and applicability policy`\
+      \ 章节，`src/engine/policy.ts` 通过 `new TextDecoder(\"utf-8\", { fatal: true })`\
+      \ 提取 `MEMORY_WRITING_GUIDANCE`，在缺失/非法 UTF-8/空内容或歧义时抛出 `EngineError(\"CONFIG\"\
+      , ...)`，且 `src/engine/policy.ts` 与 `src/index.ts` 已移除重复硬编码策略散文。\n2. 验证 `deriveSlotProvenance`\
+      \ 返回 `Object.create(null)` 映射，准确计算 `unmodifiedTurns`、`unmodifiedCompactions`\
+      \ 与 `originInActiveWindow`，并覆盖首次提交起源、多轮次/多 compaction 递增、`A -> B -> A` 重置、删除重加重置、其他槽位编辑保留起源、损坏历史边界省略及\
+      \ `__proto__` 槽位 ID 安全性，且 `Slot` / `Memory` / `renderMemory` / `withEffectiveMemory`\
+      \ 保持不变。\n3. 验证 `nunc_memory_read`、no-op 与已提交 `nunc_memory_patch` 返回顶层 `slotProvenance`；`session_before_compact`\
+      \ 在 `await loadPolicy(...)` 前同步捕获 `sourceBranch` 推导 `slotProvenance` 并传入 `beginMaintenance`\
+      \ 与 `MaintenanceInput`；`extractionContext` 在 `Current M slot IDs:` 前注入 `Current\
+      \ M slot provenance: ...` 且保留末尾后缀合同；`ContextLayout.memory` 与 `LastMaintenanceContext[\"\
+      before\"]` 含 `slotProvenance` 而 `lastMain`、`maint:candidate`、`maint:after` 省略。\n\
+      4. 验证 `src/ui/overlay.ts` 与 `src/ui/context-tree.ts` 紧凑徽章格式、`age unknown` 回退、`undefined`\
+      \ 省略、`getPreviewLines()` 标题行尾部 `truncateToWidth(..., contentWidth)` 渲染及 36x12\
+      \ 下不增加行数、不污染 `slot.text` 或编辑器草稿。\n5. 验证 `docs/MEMORY-GUIDANCE.md` 已同步更新，`npm\
+      \ run build` 及确定性 `tests/engine/*.test.ts` + `tests/pi/*.test.ts` 全部通过（exit\
+      \ 0），且未新增或执行任何概率性 live-LLM 测试。"
+    refs:
+    - policies/default.md
+    - src/engine/policy.ts
+    - src/engine/types.ts
+    - src/engine/index.ts
+    - src/engine/request.ts
+    - src/pi/projection.ts
+    - src/pi/index.ts
+    - src/pi/manual.ts
+    - src/pi/context.ts
+    - src/index.ts
+    - src/ui/overlay.ts
+    - src/ui/context-tree.ts
+    - docs/MEMORY-GUIDANCE.md
+    - tests/engine/policy.test.ts
+    - tests/pi/projection.test.ts
+    - tests/pi/manual-memory.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/ui-panel.test.ts
+    - tests/pi/overlay.test.ts
+    - scripts/check.mjs
+    - package.json
+    - tsconfig.json
+    agent: node-typescript-engineer
+  - id: nunc-slot-provenance.gate
+    name: 槽位溯源与策略单源分离阶段整合验收
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"policies/default.md\", \"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
+      , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\",\
+      \ \".git/**\", \".pi/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver:\
+      \ 对 `nunc-slot-provenance` 阶段的唯一实现步骤 `nunc-slot-provenance.implement-provenance-and-policy`\
+      \ 的整合提交与确定性测试证据作阶段验收判断（`PHASE_GATE`），确认策略单源提取、槽位溯源推导、消费端接线与快照隔离、UI 面板紧凑徽章展示及文档与确定性测试全部满足合同且无阻断缺陷。\n\
+      \nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
+      \ `plan.yaml`，不运行或要求任何概率性 live-LLM 基准测试或外部付费模型调用。\n\nAdmit: 包含 `nunc-slot-provenance`\
+      \ 阶段的终端成果 `nunc-slot-provenance.implement-provenance-and-policy`；消费绑定于最终整合不可变提交（immutable\
+      \ git commit）的代码差异与确定性离线检查证据（`npm run build`、`tests/engine/*.test.ts`、`tests/pi/*.test.ts`），验证\
+      \ `pi-1-4-compat` 基线之上的跨模块一致性；排除任何概率性 live-LLM 评测与非本阶段范围改动。\n\nRecovery: 若发现任何未满足的合同项、确定性测试缺口或回归缺陷，返回明确的问题列表；由\
+      \ Orchestrator 按规则通过 writable 修复步骤闭环后以 Delta 模式复核，任一阻断项未解决前不予通过。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: engine-deterministic-checks\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node,\
+      \ scripts/check.mjs, engine]\n    exit_code: 0\n  - id: pi-deterministic-checks\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, NODE_DISABLE_COMPILE_CACHE=1, node, --test, --test-concurrency=2,\
+      \ dist/tests/pi/*.test.js]\n    exit_code: 0\nreview:\n  kind: PHASE_GATE\n\
+      \  mode: FULL\n  phases: [nunc-slot-provenance]\n```\n核验绑定于最终整合不可变提交的 5 项交付合同（策略单源提取、槽位溯源推导、消费端接线与快照隔离、UI\
+      \ 面板紧凑展示、文档与确定性测试）全部满足且确定性构建/测试 100% 通过，不执行或要求概率性 live-LLM 测试。"
+    refs:
+    - policies/default.md
+    - src/engine/policy.ts
+    - src/engine/types.ts
+    - src/engine/index.ts
+    - src/engine/request.ts
+    - src/pi/projection.ts
+    - src/pi/index.ts
+    - src/pi/manual.ts
+    - src/pi/context.ts
+    - src/index.ts
+    - src/ui/overlay.ts
+    - src/ui/context-tree.ts
+    - docs/MEMORY-GUIDANCE.md
+    - tests/engine/policy.test.ts
+    - tests/pi/projection.test.ts
+    - tests/pi/manual-memory.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/ui-panel.test.ts
+    - tests/pi/overlay.test.ts
+    - scripts/check.mjs
+    - package.json
+    - tsconfig.json
+    depends_on:
+    - nunc-slot-provenance.implement-provenance-and-policy
+    agent: gate-reviewer
