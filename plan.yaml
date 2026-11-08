@@ -7783,7 +7783,7 @@ phases:
       exit 0 (51/51 tests pass)'
 - id: nunc-slot-provenance
   name: 槽位溯源感知机制、策略单源分离与面板紧凑展示
-  status: pending
+  status: in_progress
   gate: nunc-slot-provenance.gate 由 gate-reviewer 对 nunc-slot-provenance.implement-provenance-and-policy
     的整合提交与确定性离线测试证据（npm run build、engine 与 pi 确定性测试）作唯一阶段验收判断，确认策略单源提取、槽位溯源推导、消费端接线与快照隔离、UI
     面板紧凑徽章展示及文档与测试 100% 满足合同且无阻断缺陷；严禁引入或要求概率性 live-LLM 测试收敛。
@@ -7792,7 +7792,7 @@ phases:
   steps:
   - id: nunc-slot-provenance.implement-provenance-and-policy
     name: 实现槽位溯源推导、策略单源提取、全链路接线与面板紧凑展示
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/policy.ts\", \"src/engine/types.ts\"\
       , \"src/engine/index.ts\", \"src/engine/request.ts\", \"src/pi/projection.ts\"\
@@ -7917,6 +7917,8 @@ phases:
     - package.json
     - tsconfig.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-08T10:32:36.258258Z'
   - id: nunc-slot-provenance.gate
     name: 槽位溯源与策略单源分离阶段整合验收
     status: pending
