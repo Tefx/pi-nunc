@@ -7792,7 +7792,7 @@ phases:
   steps:
   - id: nunc-slot-provenance.implement-provenance-and-policy
     name: 实现槽位溯源推导、策略单源提取、全链路接线与面板紧凑展示
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"policies/default.md\", \"src/engine/policy.ts\", \"src/engine/types.ts\"\
       , \"src/engine/index.ts\", \"src/engine/request.ts\", \"src/pi/projection.ts\"\
@@ -7919,6 +7919,20 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-08T10:32:36.258258Z'
+    done_at: '2026-11-08T10:48:41.840728+00:00'
+    evidence: 'Integrated commit 27f31327f86bded9e0ff9c9c177fc7f179d3dc51 (retained
+      ref refs/vectl/retained/nunc-slot-provenance.implement-provenance-and-policy)
+      from isolated worktree (.vectl/worktrees/nunc-slot-provenance.implement-provenance-and-policy
+      removed; reclaimed ~8.8 MB free space). Delivered single-source writing & applicability
+      policy extraction in policies/default.md and src/engine/policy.ts with fatal
+      UTF-8 and section validation, branch-derived SlotProvenance (unmodifiedTurns,
+      unmodifiedCompactions, originInActiveWindow) in src/pi/projection.ts preserving
+      canonical Slot/Memory/renderMemory/withEffectiveMemory, consumer wiring in nunc_memory_read,
+      committed/no-op nunc_memory_patch, pre-await frozen compaction extractionContext,
+      and Current/LastMaintenance.before context views, concise UI badges in src/ui/overlay.ts
+      and src/ui/context-tree.ts, and docs/MEMORY-GUIDANCE.md updates. Verified deterministic
+      checks: npm run build (exit 0), node scripts/check.mjs engine (exit 0, 230 tests),
+      and offline Pi test suite dist/tests/pi/*.test.js (exit 0, 428 tests).'
   - id: nunc-slot-provenance.gate
     name: 槽位溯源与策略单源分离阶段整合验收
     status: pending
