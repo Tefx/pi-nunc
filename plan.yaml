@@ -7783,7 +7783,7 @@ phases:
       exit 0 (51/51 tests pass)'
 - id: nunc-slot-provenance
   name: 槽位溯源感知机制、策略单源分离与面板紧凑展示
-  status: in_progress
+  status: done
   gate: nunc-slot-provenance.gate 由 gate-reviewer 对 nunc-slot-provenance.implement-provenance-and-policy
     的整合提交与确定性离线测试证据（npm run build、engine 与 pi 确定性测试）作唯一阶段验收判断，确认策略单源提取、槽位溯源推导、消费端接线与快照隔离、UI
     面板紧凑徽章展示及文档与测试 100% 满足合同且无阻断缺陷；严禁引入或要求概率性 live-LLM 测试收敛。
@@ -7935,7 +7935,7 @@ phases:
       and offline Pi test suite dist/tests/pi/*.test.js (exit 0, 428 tests).'
   - id: nunc-slot-provenance.gate
     name: 槽位溯源与策略单源分离阶段整合验收
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"policies/default.md\", \"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
@@ -7986,3 +7986,11 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-08T10:48:55.443409Z'
+    done_at: '2026-11-08T10:56:53.166002+00:00'
+    evidence: 'Validated gate.report.v2 (status: PASS, evidence_disposition: POSITIVE_GATE_EVIDENCE,
+      valid: true, binding_checked: true) via review_report_validator.py against binding.json
+      for target_ref git:ceb8f6cdd05bd705c2e505cec7cabcddcfe01a39 (implementation
+      commit 27f31327f86bded9e0ff9c9c177fc7f179d3dc51). All 5 requirements (REQ-1-POLICY-SINGLE-SOURCE
+      through REQ-5-DETERMINISTIC-VERIFICATION-AND-DOCS) are PROVEN with zero findings;
+      npm run build (exit 0), engine deterministic checks (230/230 passed), and pi
+      deterministic checks (428/428 passed) succeeded.'
