@@ -7996,7 +7996,7 @@ phases:
       deterministic checks (428/428 passed) succeeded.'
 - id: nunc-capacity-root-cause
   name: Nunc 本地 CAPACITY 误拒三大根因修复与收据、保留及提取校准收敛
-  status: in_progress
+  status: done
   gate: nunc-capacity-root-cause.gate 由 gate-reviewer 对 nunc-capacity-root-cause.implement-capacity-fixes
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 tests/pi/larva.integration.ts）作唯一阶段验收判断，确认主请求准入边界、收据工作记忆单次计费、提取自动输出上限与瞬态流断连重试、保留规划公式保持
     HEAD 不变及文档与测试 100% 满足合同且无阻断缺陷。
@@ -8138,7 +8138,7 @@ phases:
       - docs/CAPACITY.md, docs/PI.md, docs/ACTIVE-MEMORY.md, docs/STABLE-MEMORY.md'
   - id: nunc-capacity-root-cause.gate
     name: Nunc 本地 CAPACITY 根因修复阶段整合验收
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"scripts/observe-capacity-recurrence.mjs\"\
       , \"scripts/observe-lifecycle.mjs\", \"package.json\", \"package-lock.json\"\
@@ -8197,3 +8197,39 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-09T13:38:55.459593Z'
+    done_at: '2026-11-09T13:45:06.387339+00:00'
+    evidence: 'Artifact:
+
+      - Gate report: /Users/tefx/Projects/pi-nunc/.scratch/gate-report-nunc-capacity-root-cause.json
+      (schema_version: gate.report.v2, status: PASS, review_kind: PHASE_GATE, review_mode:
+      FULL, target_ref: git:04d6ba8c0caae5c934f0d17dbb1fe582d5b837a0)
+
+      - Caller binding: /Users/tefx/Projects/pi-nunc/.scratch/gate-binding-nunc-capacity-root-cause.json
+
+      - Implementation commit: e7c2062bc16c173dcbe62ee13484c36f8f865c5a
+
+
+      Verification:
+
+      - Run: python3 ~/.pi/agent/scripts/review_report_validator.py --kind gate --binding
+      /Users/tefx/Projects/pi-nunc/.scratch/gate-binding-nunc-capacity-root-cause.json
+      /Users/tefx/Projects/pi-nunc/.scratch/gate-report-nunc-capacity-root-cause.json
+      -> exit 0 (valid: true, binding_checked: true, evidence_disposition: POSITIVE_GATE_EVIDENCE)
+
+      - Run: npm run build -> exit 0
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      node scripts/check.mjs all -> exit 0 (946 passed, 0 failed across 108 test files)
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test dist/tests/pi/larva.integration.js -> exit 0 (9 passed, 0 failed)
+
+      - Requirements proven: REQ-1-MAIN-ADMISSION-BOUNDARY, REQ-2-RECEIPT-SINGLE-COUNT-M,
+      REQ-3-EXTRACTION-CAP-AND-RETRY, REQ-4-RETENTION-PLANNING-INVARIANT, REQ-5-BUILD-TESTS-AND-DOCS
+
+
+      Spec link:
+
+      - plan.yaml#nunc-capacity-root-cause, docs/CAPACITY.md, docs/PI.md, docs/ACTIVE-MEMORY.md,
+      docs/STABLE-MEMORY.md'
