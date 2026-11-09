@@ -8010,7 +8010,7 @@ phases:
   steps:
   - id: nunc-capacity-root-cause.implement-capacity-fixes
     name: 实现主准入边界、收据 M 单次计费与提取输出上限/瞬态流重试
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/**\", \"src/engine/**\", \"src/index.ts\", \"docs/**\"\
       , \"tests/pi/**\", \"tests/engine/**\", \"tests/live/**\", \"scripts/observe-capacity-recurrence.mjs\"\
@@ -8106,6 +8106,8 @@ phases:
     - package.json
     - tsconfig.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-09T13:25:01.730539Z'
   - id: nunc-capacity-root-cause.gate
     name: Nunc 本地 CAPACITY 根因修复阶段整合验收
     status: pending
