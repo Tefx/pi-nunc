@@ -1,7 +1,13 @@
 {
   "name": "pi-nunc",
-  "version": "0.2.1",
-  "private": true,
+  "version": "0.2.2",
+  "description": "In-session rolling context and working memory extension for Pi.",
+  "keywords": ["pi-package", "pi-extension", "pi"],
+  "files": ["dist/src", "policies", "README.md"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tefx/pi-nunc.git"
+  },
   "type": "module",
   "engines": {
     "node": "26.7.0",
@@ -30,7 +36,8 @@
   "scripts": {
     "check:engine": "node scripts/check.mjs engine",
     "check": "node scripts/check.mjs all",
-    "build": "node node_modules/typescript/bin/tsc --project tsconfig.json"
+    "build": "node node_modules/typescript/bin/tsc --project tsconfig.json",
+    "prepack": "npm run build"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
