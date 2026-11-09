@@ -7994,3 +7994,165 @@ phases:
       through REQ-5-DETERMINISTIC-VERIFICATION-AND-DOCS) are PROVEN with zero findings;
       npm run build (exit 0), engine deterministic checks (230/230 passed), and pi
       deterministic checks (428/428 passed) succeeded.'
+- id: nunc-capacity-root-cause
+  name: Nunc 本地 CAPACITY 误拒四大根因修复与收据、保留及提取校准收敛
+  status: pending
+  gate: nunc-capacity-root-cause.gate 由 gate-reviewer 对 nunc-capacity-root-cause.implement-capacity-fixes
+    的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 tests/pi/larva.integration.ts）作唯一阶段验收判断，确认主请求准入边界、收据工作记忆单次计费、活动用量误差扣减保留规划、提取自动输出上限与瞬态流断连重试及文档与测试
+    100% 满足合同且无阻断缺陷。
+  context: 针对 Nunc 本地 CAPACITY 误拒的四项根因（未校准默认主准入硬拒绝、收据工作记忆 M 重复计费、活动用量误差未扣减保留规划、自动提取输出上限及瞬态流断连重试缺失），由单一步骤
+    nunc-capacity-root-cause.implement-capacity-fixes 在同一源码/测试/文档事务内完成修复与全量离线回归验证，并由
+    nunc-capacity-root-cause.gate 执行唯一阶段整合验收。
+  depends_on:
+  - nunc-slot-provenance
+  steps:
+  - id: nunc-capacity-root-cause.implement-capacity-fixes
+    name: 实现主准入边界、收据 M 单次计费、活动误差保留扣减与提取输出上限/瞬态流重试
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/pi/**\", \"src/engine/**\", \"src/index.ts\", \"docs/**\"\
+      , \"tests/pi/**\", \"tests/engine/**\", \"tests/live/**\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 在单一源码、测试与文档事务中完整交付\
+      \ Nunc 本地 CAPACITY 误拒四项根因修复与确定性回归验证：\n1. Fix 1 — 主请求准入权限边界（`src/pi/admission.ts`,\
+      \ `src/pi/payload.ts`, `docs/CAPACITY.md`, `docs/PI.md`）：\n   - 停止在未显式配置 `config.main.inputLimit`（`config.budget.inputLimit`）时将未校准的默认主请求估算（`pi-heuristic`\
+      \ 或模型目录窗口 `mainAdmissionLimit`）作为 HTTP 前本地硬 `CAPACITY` 拒绝条件。\n   - 仅当满足以下任一条件时对\
+      \ `main` 请求执行本地 HTTP 前 `CAPACITY` 拒绝：\n     (a) 显式配置了 `config.budget.inputLimit`（即\
+      \ `config.main.inputLimit !== undefined`）且估算输入或 `onPayload` 增长超出该显式限制；\n   \
+      \  (b) 在 `authorizePayload()` 中，`onPayload` 改动导致原生序列化输出截断（native serialized\
+      \ output clamping）后溢出 `model.contextWindow`（如 `nativeOccupied + nativeAdded\
+      \ + serializedOutput > args.model.contextWindow`）。\n   - 完整保留所有结构化检查、工具调用/结果关联、多媒体能力检查、模型一致性、取消优先级、Larva\
+      \ 系统提示词解析、收据追踪以及 `inputExceededPlan` 诊断观测；保持 `maintenance` 请求准入检查严格不变。\n2. Fix\
+      \ 2 — 收据中工作记忆 M 的单次计费（`src/pi/admission.ts`, `docs/ACTIVE-MEMORY.md`, `docs/STABLE-MEMORY.md`）：\n\
+      \   - 在 `MainSnapshot` 与 `MainReceipt` 中绑定已发送载体的渲染文本（`mContent`）与 `mTokens`。\n\
+      \   - 在 `selectReceipt()` 中，当命中 `best` 收据时：\n     - 若 `best.receipt.hasM ===\
+      \ true` 且 `mContent` 未变（`best.receipt.mContent === currentMContent`），额外计入 `0`\
+      \ 个 M token（因为 `best.uTokens` 已包含已投递的 M）；\n     - 若 `best.receipt.hasM === true`\
+      \ 且 `mContent` 已通过 `nunc_memory_patch` 等发生改变，仅计入正向替换增量 `Math.max(0, currentMTokens\
+      \ - best.receipt.mTokens)`；\n     - 若 `best.receipt.hasM === false`，计入完整的 `currentMTokens`。\n\
+      \   - 同步更新 `tests/pi/active-memory.test.ts` 及相关收据与容量测试。\n3. Fix 3 — 将活动用量校准误差反馈至保留规划（`src/engine/accounting.ts`,\
+      \ `src/engine/engine.ts`）：\n   - 在 `maintain()` 中，于调用 `memoryPlan()` 和 `chooseCut()`\
+      \ 之前计算 `activeUsageUndercount(frozen)`。\n   - 将观测到的主前缀低估量（`activeUndercount`）从可用容量与可行切分过滤条件中扣除（即\
+      \ `fixedTokens + activeUndercount + memoryLimit + c.keptTokens + config.growthTokens\
+      \ <= trigger`），同时保留 `chooseCut()` 在无候选满足不等式时回退至合法切分（legal cuts）的既有兜底语义。\n4.\
+      \ Fix 4 — 有界自动提取输出上限与瞬态流断连重试（`src/engine/accounting.ts`, `src/engine/pi-model.ts`,\
+      \ `src/engine/calibration.ts`, `src/index.ts`）：\n   - (a) 在 `extractionOutputPlan()`（`src/engine/accounting.ts`）中恢复\
+      \ `const desired = automatic ? Math.min(32768, capacity) : extraction.outputTokens;`（与\
+      \ `docs/CAPACITY.md:45` 一致），保留显式 `outputTokens` / `outputLimit` 覆盖语义，并更新 `tests/engine/defaults.test.ts`。\n\
+      \   - (b) 对齐 Pi 原生 `completeSummarization`：在单次消费的 `admission.complete` ALS 作用域之外包装维护提取完成调用（使每次重试均获得全新的维护\
+      \ ALS 票据），使用有界重试（`@earendil-works/pi-ai` 的 `retryAssistantCall` 或等价机制，最多重试 2\
+      \ 次）且严格限于瞬态传输/流中断错误（如 `stream ended before a terminal response event`、`terminated`、`Connection\
+      \ error`、HTTP 429/5xx）；严禁对 `stopReason === \"length\"`、格式错误的 JSON、确定性 HTTP `400`\
+      \ 溢出或用户取消进行重试。\n   - (c) 将 `maintenanceCalibrationRecord`（`src/engine/calibration.ts`）中的\
+      \ `result.observations.requests !== 1` 放宽为 `result.observations.requests < 1`（即\
+      \ `observations.requests >= 1` 时允许持久化），确保经历瞬态重试后的校准记录仍能保存，并更新 `tests/engine/pi-model.test.ts`、`tests/engine/calibration.test.ts`\
+      \ 与 `docs/CAPACITY.md`。\n\nBoundary: owner 为 `node-typescript-engineer`；属于本仓库可\
+      \ Git 回退的源码、测试与文档变更事务。不触碰 `.pi/`、全局配置或外部凭据，不执行任何外部付费 live-LLM 调用。\n\nAdmit:\
+      \ 依赖 `nunc-slot-provenance` 已完成的基线；完成后通过 `npm run build`、`node scripts/check.mjs\
+      \ all` 与 `tests/pi/larva.integration.ts` 验证，并交由 `nunc-capacity-root-cause.gate`\
+      \ 验收。\n\nRecovery: 若构建或测试失败，在同一步骤隔离工作树内定位并修复；未合并改动可通过 Git worktree 安全回退，不污染主分支历史或受保护路径。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n    inventory: [\"tests/engine/*.test.ts\", \"tests/pi/*.test.ts\"\
+      , \"tests/live/*.test.ts\"]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\"\
+      , \"package.json\", \"package-lock.json\"]\n  - id: actual-larva-integration\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\n    inventory:\
+      \ [\"tests/pi/larva.integration.ts\"]\n```\n验证要求：\n1. 验证 Fix 1：未配置显式 `config.main.inputLimit`\
+      \ 时，默认 `main` 请求不再因 `pi-heuristic` 或目录窗口 `mainAdmissionLimit` 触发 HTTP 前本地 `CAPACITY`\
+      \ 拒绝；显式配置 `config.main.inputLimit` 或 `authorizePayload()` 中原生输出截断后超出 `model.contextWindow`\
+      \ 时仍严格拒绝；结构检查、收据、`inputExceededPlan` 与 `maintenance` 准入保持完整。\n2. 验证 Fix 2：`MainSnapshot`\
+      \ / `MainReceipt` 绑定 `mContent` 与 `mTokens`；`selectReceipt()` 在 `hasM === true`\
+      \ 且 `mContent` 未变时不重复计入 M token，在 `mContent` 变更时仅计入 `Math.max(0, currentMTokens\
+      \ - best.receipt.mTokens)`，在 `hasM === false` 时计入 `currentMTokens`。\n3. 验证 Fix\
+      \ 3：`maintain()` 在 `memoryPlan()` 与 `chooseCut()` 前计算 `activeUsageUndercount(frozen)`\
+      \ 并从可用容量及可行切分过滤条件（`fixedTokens + activeUndercount + memoryLimit + c.keptTokens\
+      \ + config.growthTokens <= trigger`）中扣除，同时保留无满足候选时回退合法切分的兜底行为。\n4. 验证 Fix 4：`extractionOutputPlan()`\
+      \ 自动模式恢复 `desired = Math.min(32768, capacity)`；维护完成调用在 `admission.complete`\
+      \ 外部包装有界瞬态流重试（最多 2 次重试，每次获取新 ALS 票据，不重试 `length`/非法 JSON/400 溢出/用户取消）；`maintenanceCalibrationRecord`\
+      \ 在 `observations.requests >= 1` 时仍生成校准记录。\n5. 验证 `npm run build`、`node scripts/check.mjs\
+      \ all` 与 `tests/pi/larva.integration.ts` 全部通过（exit 0），相关文档（`docs/CAPACITY.md`,\
+      \ `docs/PI.md`, `docs/ACTIVE-MEMORY.md`, `docs/STABLE-MEMORY.md`）同步更新。"
+    refs:
+    - src/pi/admission.ts
+    - src/pi/payload.ts
+    - src/engine/accounting.ts
+    - src/engine/engine.ts
+    - src/engine/pi-model.ts
+    - src/engine/calibration.ts
+    - src/index.ts
+    - docs/CAPACITY.md
+    - docs/PI.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/STABLE-MEMORY.md
+    - tests/pi/admission.test.ts
+    - tests/pi/capacity.test.ts
+    - tests/pi/payload.test.ts
+    - tests/pi/active-memory.test.ts
+    - tests/pi/request-receipts.test.ts
+    - tests/pi/larva.integration.ts
+    - tests/engine/defaults.test.ts
+    - tests/engine/pi-model.test.ts
+    - tests/engine/calibration.test.ts
+    - tests/engine/capacity-redesign.test.ts
+    - scripts/check.mjs
+    - package.json
+    - tsconfig.json
+    agent: node-typescript-engineer
+  - id: nunc-capacity-root-cause.gate
+    name: Nunc 本地 CAPACITY 根因修复阶段整合验收
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\"\
+      , \"package-lock.json\", \".node-version\", \"tsconfig.json\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 对 `nunc-capacity-root-cause`\
+      \ 阶段的唯一实现步骤 `nunc-capacity-root-cause.implement-capacity-fixes` 的整合提交与确定性离线测试证据作唯一阶段验收判断（`PHASE_GATE`），确认四项\
+      \ CAPACITY 根因修复（主准入权限边界、收据工作记忆 M 单次计费、活动用量误差扣减保留规划、自动提取输出上限与瞬态流重试）及单元测试、集成测试与文档更新全部满足合同且无阻断缺陷。\n\
+      \nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
+      \ `plan.yaml`，不运行任何外部付费 live-LLM 调用。\n\nAdmit: 包含 `nunc-capacity-root-cause`\
+      \ 阶段的终端实现成果 `nunc-capacity-root-cause.implement-capacity-fixes`；消费绑定于最终整合不可变提交（immutable\
+      \ git commit）的代码差异与确定性离线验证证据（`npm run build`、`node scripts/check.mjs all`、`tests/pi/larva.integration.ts`），验证在\
+      \ `nunc-slot-provenance` 基线之上的跨模块一致性；排除非本阶段范围改动与外部付费模型调用。\n\nRecovery: 若发现任何未满足的合同项、测试缺口或回归缺陷，返回明确的问题列表；由\
+      \ Orchestrator 按规则通过同阶段修复闭环后以 Delta 模式复核，任一阻断项未解决前不予通过。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\nreview:\n\
+      \  kind: PHASE_GATE\n  mode: FULL\n  phases: [nunc-capacity-root-cause]\n```\n\
+      核验绑定于最终整合不可变提交的 4 项 CAPACITY 根因修复合同、文档同步更新与确定性构建/离线全量回归测试（`npm run build`、`node\
+      \ scripts/check.mjs all`、`tests/pi/larva.integration.ts`）100% 通过且无回归缺陷。"
+    refs:
+    - src/pi/admission.ts
+    - src/pi/payload.ts
+    - src/engine/accounting.ts
+    - src/engine/engine.ts
+    - src/engine/pi-model.ts
+    - src/engine/calibration.ts
+    - src/index.ts
+    - docs/CAPACITY.md
+    - docs/PI.md
+    - docs/ACTIVE-MEMORY.md
+    - docs/STABLE-MEMORY.md
+    - tests/pi/admission.test.ts
+    - tests/pi/capacity.test.ts
+    - tests/pi/payload.test.ts
+    - tests/pi/active-memory.test.ts
+    - tests/pi/request-receipts.test.ts
+    - tests/pi/larva.integration.ts
+    - tests/engine/defaults.test.ts
+    - tests/engine/pi-model.test.ts
+    - tests/engine/calibration.test.ts
+    - tests/engine/capacity-redesign.test.ts
+    - scripts/check.mjs
+    - package.json
+    - tsconfig.json
+    depends_on:
+    - nunc-capacity-root-cause.implement-capacity-fixes
+    agent: gate-reviewer
