@@ -8010,7 +8010,7 @@ phases:
   steps:
   - id: nunc-capacity-root-cause.implement-capacity-fixes
     name: 实现主准入边界、收据 M 单次计费与提取输出上限/瞬态流重试
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/**\", \"src/engine/**\", \"src/index.ts\", \"docs/**\"\
       , \"tests/pi/**\", \"tests/engine/**\", \"tests/live/**\", \"scripts/observe-capacity-recurrence.mjs\"\
@@ -8108,6 +8108,34 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-09T13:25:01.730539Z'
+    done_at: '2026-11-09T13:38:42.693070+00:00'
+    evidence: 'Artifact:
+
+      - Commit: e7c2062bc16c173dcbe62ee13484c36f8f865c5a (rebased from candidate e6a3dcd8543289db360a28d370a8e136ac8088c1;
+      retained ref refs/vectl/candidates/nunc-capacity-root-cause.implement-capacity-fixes)
+
+      - Modified files (31): src/pi/admission.ts, src/pi/payload.ts, src/engine/accounting.ts,
+      src/engine/calibration.ts, src/engine/engine.ts, src/engine/pi-model.ts, src/index.ts,
+      docs/CAPACITY.md, docs/PI.md, docs/ACTIVE-MEMORY.md, docs/STABLE-MEMORY.md,
+      scripts/observe-capacity-recurrence.mjs, scripts/observe-lifecycle.mjs, tests/engine/{calibration,capacity-redesign,defaults,pi-model}.test.ts,
+      tests/live/{same-task-history,task-retention-branches}.test.ts, tests/pi/{active-memory,admission,capacity,cleanup-integration,context-view,maintenance-calibration,native-lifecycle,openai-native-migration,payload-google,payload,projection-binding,request-receipts}.test.ts
+
+
+      Verification:
+
+      - Run: npm run build -> exit 0
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      node scripts/check.mjs all -> exit 0 (946 passed, 0 failed across 108 test files)
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test dist/tests/pi/larva.integration.js -> exit 0 (9 passed, 0 failed)
+
+
+      Spec link:
+
+      - docs/CAPACITY.md, docs/PI.md, docs/ACTIVE-MEMORY.md, docs/STABLE-MEMORY.md'
   - id: nunc-capacity-root-cause.gate
     name: Nunc 本地 CAPACITY 根因修复阶段整合验收
     status: pending
