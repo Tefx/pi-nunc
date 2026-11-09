@@ -8338,7 +8338,7 @@ phases:
       - Phase nunc-npm-loader-compat / step nunc-npm-loader-compat.remove-subpath-imports'
   - id: nunc-npm-loader-compat.gate
     name: Pi 扩展加载器虚拟模块白名单兼容阶段整合验收
-    status: pending
+    status: claimed
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\", \"package-lock.json\"\
       , \".node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
@@ -8380,3 +8380,5 @@ phases:
     depends_on:
     - nunc-npm-loader-compat.remove-subpath-imports
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-09T16:08:21.998959Z'
