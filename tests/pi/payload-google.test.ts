@@ -121,7 +121,7 @@ for (const providerFactory of [googleProvider, googleVertexProvider]) {
       assert(catalog);
       assert.equal(catalog.contextWindow, 1048576);
       assert.equal(catalog.maxTokens, 65536);
-      const allowed = mode === "auto-on" || mode === "auto-off";
+      const allowed = mode !== "explicit-limit";
       const enabled = mode === "auto-on";
       // Calibrate the usage fixture to the exact admission boundary without freezing Pi's text heuristic.
       const expectedInput = mode === "window-overflow" ? 1048576 : 988095;
@@ -192,7 +192,12 @@ for (const providerFactory of [googleProvider, googleVertexProvider]) {
         assert.equal(bodies[0]!.generationConfig.maxOutputTokens, 65536);
         const cap = bodies[1]!.generationConfig.maxOutputTokens;
         assert(cap > 0 && cap < 65536, `native output cap ${cap}`);
-        assert.equal(nativeEstimates[1]! + cap + 4096, 1048576, "native serializer retains its context-sized output and safety margin");
+        if (mode === "window-overflow") {
+          assert.equal(near.inputExceededPlan, true);
+          assert.equal(cap, 1, "native serializer floors output when its own estimate exceeds the window");
+        } else {
+          assert.equal(nativeEstimates[1]! + cap + 4096, 1048576, "native serializer retains its context-sized output and safety margin");
+        }
         const texts = bodies[2]!.contents.flatMap(c => c.parts.flatMap(p => p.text ? [p.text] : []));
         assert.equal(texts.filter(text => text === "Continue").length, 1);
         assert.equal(admissions.some(o => o.outcome === "reject"), false);

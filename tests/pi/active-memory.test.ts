@@ -9,7 +9,7 @@ import { injectedCarrierIndex } from "./carrier-fixture.js";
 import { project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fixture, memoryPatch, preparedSurface } from "./fixtures.js";
 
 function mains(observations: AdmissionObservation[]) {
   return observations.filter(o => o.kind === "main");
@@ -247,6 +247,8 @@ test("no-op patch does not append entry, bump revision, or invalidate receipt", 
   const last = mains(admissions).at(-1);
   assert.equal(last?.estimator, "pi-usage-backed");
   assert.equal(last?.estimateReason, "matching-receipt");
+  assert(last.receiptBreakdown!.currentMTokens > 0);
+  assert.equal(last.receiptBreakdown!.additionalMTokens, 0, "unchanged delivered M is already in U");
 });
 
 test("budget constraints: unknown budget blocks growth, overbudget blocks growth but permits shrinking", async t => {
@@ -445,7 +447,27 @@ test("four receipt formula cases: empty->empty, empty->nonempty, nonempty->empty
     const delta = r.slice(anchorIndex + 1).reduce((sum, message) => sum + messageTokens(message), 0);
     assert.equal(observation.receiptBreakdown!.observedU, u);
     assert.equal(observation.receiptBreakdown!.deltaRTokens, delta);
-    assert.equal(observation.inputTokens, u + delta + currentM + extraMainInputTokens + textTokens("{}"));
+    const additionalM: number = index === 1 ? currentM : index === 2 ? Math.max(0, currentM - adm3.receiptBreakdown!.currentMTokens) : 0;
+    assert.equal(observation.receiptBreakdown!.additionalMTokens, additionalM);
+    assert.equal(observation.inputTokens, u + delta + additionalM + extraMainInputTokens + textTokens("{}"));
+  }
+});
+
+test("changed same-sized and shrinking M never charges the full carrier again", async t => {
+  const env = await preparedSurface(t, { flagValues: [["nunc-memory-tools", "true"]] });
+  const surface = env.memory(), ctx = env.ctx();
+  assert(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "note", text: "Long memory ".repeat(80) }] }).ok);
+  await env.f.runtime.session.prompt("Establish long M");
+  let previous = memoryTokens(surface.read(ctx).memory.slots);
+  for (const text of ["short note A", "short note B", "x", "Long replacement ".repeat(100)]) {
+    assert(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, update: [{ id: "s1", text }] }).ok);
+    await env.f.runtime.session.prompt("Continue with revised M");
+    const current = memoryTokens(surface.read(ctx).memory.slots);
+    const last = mains(env.admissions).at(-1)!;
+    assert.equal(last.estimator, "pi-usage-backed");
+    assert.equal(last.receiptBreakdown?.additionalMTokens, Math.max(0, current - previous));
+    assert.equal(last.receiptBreakdown?.currentMTokens, current);
+    previous = current;
   }
 });
 

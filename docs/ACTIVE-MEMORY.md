@@ -87,24 +87,26 @@
 
 复用条件：同模型/有效 F/tools；旧 R 是新 R 的未改写前缀；对应成功 assistant 在新 R 中紧随旧 R 的真实响应锚点，身份/content/usage 均匹配；响应成功且 usage 可用，generation/绑定仍有效。不能再用含旧尾 M 的 messageCount 定位响应。若没有唯一有效的本次 R/M 关联，不猜测、不借不匹配 usage。
 
-### 5.2 第一版公式
+### 5.2 Single-count receipt formula
 
-记 U 为 receipt 对应成功响应报告的上下文 token 总量：旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 是 output 的组成部分，不另加一次。ΔR 是新 R 中位于该 assistant 锚点之后的消息；T(M) 是当前尾部完整载体的 Nunc 估算，包含包装，空 M 时严格为 0。
+Let U be the matched response's input + cacheRead + cacheWrite + output. Reasoning is already part of output. ΔR contains real messages after that response anchor. T(M) estimates the complete current carrier, including wrapping; empty M has zero carrier cost.
 
-**usage-backed 输入估算 = U + estimate(ΔR) + T(当前 M) + 当前明确配置/metadata 的原有额外计费。**
+`usage-backed input = U + estimate(ΔR) + additionalM + configured extras/metadata`
 
-不再次估算锚点 assistant，因为其 output 已在 U 内。不从 U 中扣除启发式旧 M，不重复添加固定 F/tools。继续现有原语对媒体、framing、显式额外输入及 metadata 计费和校验，不改变 output/headroom/硬上限政策。
+Both MainSnapshot and MainReceipt bind the rendered sent `mContent` and `mTokens`. The completion uses that immutable sent snapshot, even when a memory patch lands in flight.
 
-| 旧 M | 当前 M | 当前 M 项 | 保守余量 |
-| --- | --- | --- | --- |
-| 空 | 空 | 0 | 无 M 余量，不计不存在的空载体 |
-| 空 | 非空 | 完整 T(当前 M) | U 中没有旧 M |
-| 非空 | 空 | 0 | U 内保留旧 M 的实际贡献 |
-| 非空 | 非空（相同或不同） | 完整 T(当前 M) | U 内保留旧 M 的实际贡献 |
+| Sent M | Current M | additionalM |
+| --- | --- | --- |
+| Empty | Empty | 0 |
+| Empty | Nonempty | T(current M) |
+| Nonempty | Identical rendered content | 0 |
+| Nonempty | Changed content | max(0, T(current M) - sent mTokens) |
+| Nonempty | Empty | 0 |
 
-余量只随所选 receipt 保留一次，不递归累积：每次新 receipt 的 U 来自新的实际成功响应，绝不能把上次 Nunc 估算当作新 U。可选用较早仍匹配的 receipt，但必须从它的真实锚点计算完整 ΔR，不能偷换为后来不匹配的低 usage。
+U already includes delivered M. Replacement charges only positive growth; shrinking or removing M never subtracts its heuristic old cost from measured U. Do not add F/tools or the anchor response again. Each subsequent receipt uses actual new provider U, never the previous Nunc estimate. An earlier compatible receipt must include all ΔR after its own anchor.
 
-没有适用 receipt 时重新估算实际 F/R/M。所有估算仍是 planning heuristic，不承诺 provider tokenizer 硬上界。保守余量在临界容量下可能触发原生 overflow；不能降低检查强度、抬高上限或更改 Pi 软触发线掩盖它。诊断中区分 observed U、估算新增 R、当前 M 与保留旧 M 余量；旧 M 的精确 token 贡献未知，展示只能标注估算，不能伪造实测分项。
+Without a compatible receipt, estimate the actual complete Context. Diagnostics distinguish observedU, deltaRTokens, full currentMTokens, charged additionalMTokens, and the retained old-M estimate. These remain heuristic observations. Default main estimates do not authorize local capacity rejection; explicit input limits and native clamped payload-growth checks remain binding. See [capacity ownership](CAPACITY.md).
+
 
 ### 5.3 失效与并发
 

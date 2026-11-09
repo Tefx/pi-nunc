@@ -38,21 +38,21 @@ test("complete frozen source, IDs, tools, media, wrapping and extras determine a
     const result = await maintain(s, async request => {
       calls++;
       const tokens = requestTokens(request.context, 2048) + 411;
-      assert.equal(request.outputTokens, Math.min(s.model.maxTokens, s.model.contextWindow - tokens - 1024));
+      assert.equal(request.outputTokens, Math.min(32768, s.model.maxTokens, s.model.contextWindow - tokens - 1024));
       assert.match(request.context.systemPrompt!, new RegExp(`Serialized output cap: ${String(request.outputTokens).padStart(5, "0")}`));
       return answer({ add: [], remove: [], priority: ["s1"], required: ["s1"] }, request.model);
     });
     if (headroom < 8192) { assert(!result.ok); assert.equal(result.code, "CAPACITY"); assert.equal(calls, 0); }
-    else { assert(result.ok, result.ok ? "" : result.message); assert.equal(calls, 1); assert.equal(result.observations.accounting!.outputReserveTokens, Math.min(s.model.maxTokens, headroom)); assert.equal(result.observations.omissions.length, 0); }
+    else { assert(result.ok, result.ok ? "" : result.message); assert.equal(calls, 1); assert.equal(result.observations.accounting!.outputReserveTokens, Math.min(32768, s.model.maxTokens, headroom)); assert.equal(result.observations.omissions.length, 0); }
   }
 });
 test("capability, independent input/output limits, explicit numbers and uncapped native route retain their meanings", async () => {
   const s = await automatic();
   const build = (cap: number) => extractionContext(s, 2, 8192, s.active, [], cap);
   let r = resolveExtractionRequest(s, build);
-  assert.equal(r.outputTokens, 64000); assert.equal(r.outputDesiredTokens, 64000); assert.equal(r.outputLimitedBy, "capability");
+  assert.equal(r.outputTokens, 32768); assert.equal(r.outputDesiredTokens, 32768); assert.equal(r.outputLimitedBy, "capability");
   s.config.extraction.outputLimit = 48000;
-  r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 48000); assert.equal(r.outputLimitedBy, "capability");
+  r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 32768); assert.equal(r.outputLimitedBy, "capability");
   s.config.extraction.outputLimit = 4000;
   r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 4000);
   delete s.config.extraction.outputLimit; s.config.extraction.outputAuto = false; s.config.extraction.outputTokens = 16000;
@@ -66,13 +66,15 @@ test("capability, independent input/output limits, explicit numbers and uncapped
     r = resolveExtractionRequest(s, build); assert.equal(r.outputTokens, 8192); assert.equal(r.outputCapTokens, null);
   }
 });
-test("six-digit model capability is reduced only by complete input headroom and final request is checked", async () => {
+test("six-digit model capability retains the bounded automatic cap and explicit output can exceed it", async () => {
   const s = await automatic(); s.model.maxTokens = 128000; s.model.contextWindow = 100000;
   s.config.extraction.extraInputTokens = 300;
   const build = (cap: number) => extractionContext(s, 2, 8192, s.active, [], cap);
   const before = structuredClone(s.active), r = resolveExtractionRequest(s, build);
-  assert.equal(r.outputDesiredTokens, 128000); assert.equal(r.outputLimitedBy, "window");
-  assert(r.outputTokens > 32768); assert(r.outputTokens < 128000);
+  assert.equal(r.outputDesiredTokens, 32768); assert.equal(r.outputLimitedBy, "capability");
+  assert.equal(r.outputTokens, 32768);
+  s.config.extraction.outputAuto = false; s.config.extraction.outputTokens = 48000;
+  assert.equal(resolveExtractionRequest(s, build).outputTokens, 48000);
   assert.equal(r.extractionTokens, requestTokens(r.context) + 300);
   assert(r.extractionTokens + r.outputTokens + s.config.extraction.safetyTokens <= s.model.contextWindow);
   assert.deepEqual(s.active, before);

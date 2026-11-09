@@ -3,10 +3,43 @@ import assert from "node:assert/strict";
 import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { engineConfig } from "../../src/pi/config.js";
-import { admissionEstimate, inputLimit, mainAdmissionLimit, requestTokens, textTokens } from "../../src/engine/accounting.js";
+import { admissionEstimate, chooseCut, historyPlanningEstimate, inputLimit, mainAdmissionLimit, mainPlanningEstimate, memoryPlan, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { maintain } from "../../src/engine/engine.js";
 import { extractionContext, readSourceRecords } from "../../src/engine/request.js";
 import { answer, input, user } from "./fixtures.js";
+
+test("full-prefix usage undercount calibrates extraction without charging retired B to retained K", async () => {
+  const s = await input();
+  s.config.triggerTokens = 10000; s.config.keepRecentFraction = .9;
+  const anchor = answer();
+  s.active = [user("old", "x".repeat(4000)), { entryId: "usage", sourceRole: "assistant", messages: [anchor] },
+    ...Array.from({ length: 5 }, (_, i) => user(`tail-${i}`, "y".repeat(4000)))];
+  const prefix = mainPlanningEstimate(s.fixed, [], s.active.slice(0, 2), s.model).visibleTokens;
+  const undercount = 12000;
+  anchor.usage = { ...anchor.usage, input: prefix + undercount - 40, output: 40, cacheRead: 0, cacheWrite: 0, totalTokens: prefix + undercount };
+  assert(anchor.usage.totalTokens > s.config.triggerTokens);
+  const history = historyPlanningEstimate(s.active, s.model).tokens;
+  const plainPlan = memoryPlan(s.fixed, s.model, s.config, [], history);
+  assert.equal(plainPlan.available, plainPlan.effectiveTrigger - plainPlan.fixedTokens);
+  const observed = await maintain(s, async request => {
+    assert.equal(request.calibratedUndercountTokens, undercount);
+    return answer(undefined, request.model);
+  });
+  assert(observed.ok, observed.ok ? "" : observed.message);
+  const accounting = observed.observations.accounting!;
+  assert.equal(accounting.memoryLimit, plainPlan.memoryLimit);
+  assert.equal(accounting.keepTarget, plainPlan.keepTarget);
+  assert.equal(accounting.calibratedUndercountTokens, undercount);
+  assert.equal(accounting.extractionPlanningTokens, accounting.extractionTokens + undercount);
+  assert(accounting.fixedTokens + accounting.memoryReserveTokens! + accounting.keptTokens + s.config.growthTokens <= accounting.effectiveTrigger);
+  s.eligibleUsageEntryIds = [];
+  const uncalibrated = await maintain(s, async request => answer(undefined, request.model));
+  assert(uncalibrated.ok);
+  assert.deepEqual(observed.candidate.kept, uncalibrated.candidate.kept);
+  assert.equal(uncalibrated.observations.accounting!.calibratedUndercountTokens, 0);
+  const fallback = chooseCut(s.active, [2, 3, 4], 20000, 1000, 0, 10000, s.config, s.model);
+  assert.equal(fallback.cut, 4, "no feasible candidate must retain the existing legal-cut fallback");
+});
 
 const codex = openaiCodexProvider().getModels().find(m => m.id === "gpt-6-astra")!;
 test("native Codex defaults separate output capability, planning reserve and absent cap", async () => {

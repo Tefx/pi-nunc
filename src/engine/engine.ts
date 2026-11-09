@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { retryMaintenanceComplete } from "./pi-model.js";
 import { isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
 import { maintenanceFeedback, sameRejectedRequest } from "./calibration.js";
 import type { Complete, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
@@ -23,7 +24,7 @@ async function withCancellation<T>(work: () => Promise<T>, signal: AbortSignal):
   finally { signal.removeEventListener("abort", onAbort); }
 }
 
-/** No persistence or business tools. Exactly zero or one model request; no repair/replay. */
+/** No persistence or business tools. One extraction, with bounded transient transport retry; no repair/replay. */
 export async function maintain(input: MaintenanceInput, complete: Complete): Promise<MaintenanceResult> {
   const start = performance.now();
   const signal = input.signal;
@@ -171,8 +172,12 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     requireThat(!sameRejectedRequest(mode === "reduced" ? feedback.reduced : feedback.full, frozen.active, resolved), "CAPACITY",
       `Provider already rejected the same ${mode} maintenance source and effective limits; no request dispatched. Change source, reduction or capacity before explicit maintenance`);
     cancelled(signal);
-    observations.requests = 1;
-    const response = await withCancellation(() => complete({ model: frozen.model, context: freezeCopy(context), outputTokens: resolved.outputTokens,
+    // Retry outside complete's single-use admission scope: every attempt gets a fresh ticket.
+    const extractionComplete = retryMaintenanceComplete(request => {
+      observations.requests++;
+      return complete(request);
+    });
+    const response = await withCancellation(() => extractionComplete({ model: frozen.model, context: freezeCopy(context), outputTokens: resolved.outputTokens,
       ...(resolved.calibratedUndercountTokens > 0 ? { calibratedUndercountTokens: resolved.calibratedUndercountTokens } : {}), signal }), signal);
     if (record(response)) {
       observations.usage = observeUsage(response.usage);

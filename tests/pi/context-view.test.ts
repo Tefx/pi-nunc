@@ -184,7 +184,7 @@ test("planned and enforced limits stay distinct; plan overrun can still delegate
 });
 
 test("rejected requests are not sent; candidate is not saved; fail/cancel have no after layout", async t => {
-  const { f, context, ctx } = await prepared(t, { extras: [{ name: "oversize", factory(pi) {
+  const { f, context, ctx } = await prepared(t, { config: { budget: { inputLimit: 50000 } }, extras: [{ name: "oversize", factory(pi) {
     pi.on("context", event => ({ messages: [...event.messages, { role: "user", content: "n".repeat(320000), timestamp: 3 }] }));
   } }] });
   await f.runtime.session.prompt("Stay within the current model");

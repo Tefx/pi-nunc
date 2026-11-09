@@ -28,6 +28,7 @@ interface MainReceipt {
   rMessages: unknown;
   rCount: number;
   mTokens: number;
+  mContent: string;
   hasM: boolean;
   response: unknown;
 }
@@ -40,6 +41,7 @@ interface MainSnapshot {
   rMessages: unknown;
   rCount: number;
   mTokens: number;
+  mContent: string;
   hasM: boolean;
   generation: number;
   payloadBound: boolean;
@@ -61,6 +63,7 @@ export interface ReceiptBreakdown {
   observedU: number;
   deltaRTokens: number;
   currentMTokens: number;
+  additionalMTokens: number;
   retainedOldMMargin: boolean;
   oldMTokensEstimate?: number;
 }
@@ -305,6 +308,7 @@ export class Admission {
     let validAssociation = false;
     let rMessages: Context["messages"] = [];
     let currentMTokens = 0;
+    let currentMContent = "";
     let hasM = false;
 
     if (binding && ctx && binding.sessionId === ctx.sessionManager.getSessionId() &&
@@ -320,6 +324,7 @@ export class Admission {
             : effectiveContext.messages.find(isNuncCarrier))
         : undefined;
       rMessages = carrier ? conversationMessages.filter(m => m !== carrier) : conversationMessages;
+      currentMContent = hasM ? renderMemory(binding.memory.slots) : "";
       currentMTokens = hasM ? memoryTokens(binding.memory.slots, imageTokens) : 0;
     }
 
@@ -358,11 +363,16 @@ export class Admission {
     }
 
     if (best) {
-      const receiptTokens = best.uTokens + best.deltaRTokens + currentMTokens;
+      // U already contains delivered M. Never subtract old occupancy on shrinkage.
+      const additionalMTokens = best.receipt.hasM
+        ? best.receipt.mContent === currentMContent ? 0 : Math.max(0, currentMTokens - best.receipt.mTokens)
+        : currentMTokens;
+      const receiptTokens = best.uTokens + best.deltaRTokens + additionalMTokens;
       const receiptBreakdown: ReceiptBreakdown = {
         observedU: best.uTokens,
         deltaRTokens: best.deltaRTokens,
         currentMTokens,
+        additionalMTokens,
         retainedOldMMargin: best.receipt.hasM,
         ...(best.receipt.hasM ? { oldMTokensEstimate: best.receipt.mTokens } : {}),
       };
@@ -407,6 +417,7 @@ export class Admission {
         rMessages: snapshot.rMessages,
         rCount: snapshot.rCount,
         mTokens: snapshot.mTokens,
+        mContent: snapshot.mContent,
         hasM: snapshot.hasM,
         response: this.responseView(message),
       });
@@ -542,6 +553,7 @@ export class Admission {
     if (ownedMaintenance) scope.used = true;
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
     let initialMetadataTokens = 0;
+    let enforceInputLimit = true;
     let budgetObservation: Pick<AdmissionObservation, "resolution" | "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages" | "receiptBreakdown" | "memoryIndex" | "memoryContent"> = {};
     let snapshot: MainSnapshot | undefined;
     let projection: AdmissionLayoutEvent["projection"];
@@ -633,8 +645,9 @@ export class Admission {
             memoryContent: binding.memory.slots.length ? renderMemory(binding.memory.slots) : "" } : {}),
         };
         limit = mainAdmissionLimit(model, config.main);
+        enforceInputLimit = config.main.inputLimit !== undefined;
         if (selected.validAssociation) projection = { memory: structuredClone(binding!.memory), rCount: selected.rMessages.length, ...(deliveredMemoryIndex !== undefined ? { memoryIndex: deliveredMemoryIndex } : {}) };
-        if (inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
+        if (enforceInputLimit && inputTokens > limit) throw new EngineError("CAPACITY", `Delivered input estimate ${inputTokens} exceeds main input limit ${limit} (${estimator}); native recovery requires automatic compaction and a summarizable prefix. Otherwise compact explicitly, reduce input or select a larger model`);
         if (selected.validAssociation) {
           const snapshotPrompt = getCurrentSystemPrompt(effectiveContext.messages);
           const snapshotTools = getCurrentTools(effectiveContext.messages);
@@ -646,6 +659,7 @@ export class Admission {
             rMessages: jsonView(selected.rMessages),
             rCount: selected.rMessages.length,
             mTokens: selected.currentMTokens,
+            mContent: selected.hasM ? renderMemory(binding!.memory.slots) : "",
             hasM: selected.hasM,
             generation: this.generation,
             payloadBound: true,
@@ -706,7 +720,7 @@ export class Admission {
         if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
         const layout = { ctx, model, context: effectiveContext, payloadGrowth, initialMetadataTokens, ...(projection ? { projection } : {}) };
         try {
-          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main" });
+          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, enforceInputLimit, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main" });
           this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
           return replacement;
         } catch (error) {

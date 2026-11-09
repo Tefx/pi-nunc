@@ -42,6 +42,7 @@ function mains(observations: AdmissionObservation[]) {
 }
 
 async function receiptsFixture(t: { after: (fn: () => Promise<void>) => void }, extra?: {
+  inputLimit?: number;
   onStart?: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined;
   payload?: (pi: ExtensionAPI) => void;
 }) {
@@ -52,6 +53,7 @@ async function receiptsFixture(t: { after: (fn: () => Promise<void>) => void }, 
   let toolRuns = 0;
   let beforeStarts = 0;
   const f = await fixture({
+    ...(extra?.inputLimit !== undefined ? { config: { budget: { inputLimit: extra.inputLimit } } } : {}),
     tools: [{
       name: "probe", label: "probe", description: "Return bounded offline test text",
       parameters: Type.Object({}),
@@ -144,8 +146,8 @@ test("user then idle custom then real tool then second callback reuses the earli
   }
 });
 
-test("matching receipt still charges trailing growth and rejects a real over-limit with zero HTTP", async t => {
-  const env = await receiptsFixture(t);
+test("matching receipt still charges trailing growth and rejects an explicit over-limit with zero HTTP", async t => {
+  const env = await receiptsFixture(t, { inputLimit: 50000 });
   await env.f.runtime.session.prompt("Prefix");
   const calls = env.f.faux.state.callCount;
   assert.equal(calls, 1);
@@ -157,6 +159,18 @@ test("matching receipt still charges trailing growth and rejects a real over-lim
   const assistant = env.f.runtime.session.messages.at(-1);
   assert(assistant?.role === "assistant");
   assert.match(assistant.errorMessage ?? "", /exceeds main input limit/);
+});
+
+test("a default usage-backed estimate above the catalog window still delegates", async t => {
+  const env = await receiptsFixture(t);
+  await env.f.runtime.session.prompt("Establish measured prefix");
+  await env.f.runtime.session.prompt("Continue " + "x".repeat(250000));
+  const last = mains(env.observations).at(-1)!;
+  assert.equal(last.estimator, "pi-usage-backed");
+  assert(last.inputTokens! > 60000);
+  assert.equal(last.inputExceededPlan, true);
+  assert.equal(last.outcome, "delegate");
+  assert.equal(env.f.calls.length, 2);
 });
 
 test("changed F with no matching receipt estimates freshly", async t => {
@@ -187,6 +201,7 @@ test("failed and unissued responses do not become receipts", async t => {
 
   let pad = true;
   const oversize = await receiptsFixture(t, {
+    inputLimit: 50000,
     payload(pi) {
       pi.on("context", event => {
         if (!pad) return;
@@ -300,7 +315,7 @@ test("public context rewrite of returned usage cannot reuse that receipt", async
 test("public context rewrite of the response anchor over limit sends zero additional transport", async t => {
   let rewrite = false;
   const observations: AdmissionObservation[] = [];
-  const f = await fixture({ extras: [{ name: "anchor-content-rewrite", factory(pi) {
+  const f = await fixture({ config: { budget: { inputLimit: 50000 } }, extras: [{ name: "anchor-content-rewrite", factory(pi) {
     pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
     pi.on("context", event => {
       if (!rewrite) return;

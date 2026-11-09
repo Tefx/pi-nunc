@@ -103,10 +103,10 @@ for (const reopen of [false, true]) test(`compaction cleanup without a sent-M an
   assert.deepEqual(sentResult.content, [{ type: "text", text: after.cleanup[0]!.text }]);
 });
 
-test("disabling cleanup restores raw capacity accounting and refuses an oversized native request", async t => {
+test("disabling cleanup restores raw capacity accounting and refuses an explicit input-limit overrun", async t => {
   let ctx: ExtensionContext | undefined;
   const admission: unknown[] = [];
-  const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } },
+  const f = await fixture({ config: { budget: { inputLimit: 50000 } }, diskSettings: true, globalSettings: { nunc: { memoryTools: true } },
     extras: [{ name: "capture-cleanup-capacity", factory(pi) {
       pi.on("session_start", (_event, current) => { ctx = current; });
       pi.events.on("nunc:admission", event => { admission.push(event); });

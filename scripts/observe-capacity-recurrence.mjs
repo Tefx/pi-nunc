@@ -12,7 +12,7 @@ for (const test of [
   { name: 'payload-crosses-plan', enabled: true, append: true },
   { name: 'fresh-crosses-plan', enabled: false, fresh: true },
   { name: 'explicit-limit-binds', enabled: false, inputLimit: 254595, reject: true },
-  { name: 'model-window-binds', enabled: false, receipt: 272000, reject: true },
+  { name: 'model-window-diagnostic', enabled: false, receipt: 272000 },
 ]) {
   const f = await new StockFixture().setup({
     api: 'openai-codex-responses',
@@ -49,9 +49,10 @@ for (const test of [
       assert.equal(observation.plannedInputLimit, 254592);
       assert.equal(observation.inputExceededPlan, true);
       assert.equal(observation.estimator, test.fresh ? 'pi-heuristic' : 'pi-usage-backed');
-      // Receipt254497 + prior output50 + one user-message frame/content.
+      // Matched receipt input + prior output50 + one user-message frame/content.
       const trailing = 32 + estimateTextTokens('user') + 16 + estimateTextTokens('next') + estimateTextTokens('{}');
-      if (!test.fresh && !test.append) assert.equal(observation.inputTokens, 254497 + 50 + trailing);
+      if (!test.fresh && !test.append) assert.equal(observation.inputTokens, (test.receipt ?? 254497) + 50 + trailing);
+      if (test.receipt) assert(observation.inputTokens > 272000, 'default catalog overrun remains diagnostic');
       if (test.append) {
         assert.equal(observations.filter(o => !o.payload).at(-1).inputTokens, 254489 + 50 + trailing);
         assert(observation.inputTokens > observation.plannedInputLimit);

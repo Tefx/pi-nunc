@@ -129,11 +129,15 @@ try {
   await f.wait(() => f.requests.length > beforeMaintenance, 'maintenance HTTP pending');
   await p.command('abort'); await rejectedCompact; f.release('maintenance');
   assert.deepEqual((await p.command('get_entries')).entries.filter(e => e.type === 'compaction'), old);
-  // No legal retiring prefix / indivisible input are bounded native failures.
+  // Default oversized input reaches native transport without a synthetic local overflow.
   await p.command('new_session'); await p.command('set_auto_compaction', { enabled: true });
   const irreducible = f.requests.length; await p.prompt('Indivisible ' + 'I'.repeat(240000));
-  assert.equal(f.requests.length, irreducible); assert.equal((await p.command('get_entries')).entries.filter(e => e.type === 'compaction').length, 0);
+  assert.equal(f.requests.length, irreducible + 1);
+  const oversizedEntries = (await p.command('get_entries')).entries;
+  assert.equal(oversizedEntries.filter(e => e.type === 'compaction').length, 0);
+  assert.equal(oversizedEntries.filter(e => e.type === 'message' && e.message.role === 'user' && text(e.message).startsWith('Indivisible ')).length, 1);
+  assert.equal(oversizedEntries.at(-1).message.stopReason, 'stop');
   await p.quit();
-  outcome = { status: 'PROVEN_CONTROLLED', checkpoints: 3, overlappingOlderCheckpoint: true, actualRestartReload: true, modelCloneForkNewTree: true, threshold: true, disabledAuto: true, irreducibleInput: true, extractionFailureAndCancellation: true, independentRawDelegated: true, providerReplacementAndComposition: true, payloadMutationAndSamplingRejected: true, requests: f.requests.length, memoryQuality: 'UNPROVEN: controlled protocol responses' };
+  outcome = { status: 'PROVEN_CONTROLLED', checkpoints: 3, overlappingOlderCheckpoint: true, actualRestartReload: true, modelCloneForkNewTree: true, threshold: true, disabledAuto: true, defaultOversizedInputDelegated: true, extractionFailureAndCancellation: true, independentRawDelegated: true, providerReplacementAndComposition: true, payloadMutationAndSamplingRejected: true, requests: f.requests.length, memoryQuality: 'UNPROVEN: controlled protocol responses' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
 finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rm, writeFile } from "node:fs/promises";
+import { setImmediate as flush } from "node:timers/promises";
 import { createAssistantMessageEventStream, fauxAssistantMessage, type AssistantMessage } from "@earendil-works/pi-ai";
 import { ModelRegistry, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/calibration.js";
@@ -209,13 +210,23 @@ for (const change of ["selected-branch", "same-id-content-edit", "model"] as con
 
 for (const error of ["429 token limit exceeded", "ECONNRESET: connection closed"]) test(`native ${error} records no context refusal`, async t => {
   const f = await fixture({ configFlag: false }); t.after(() => f.close()); const { before } = seed(f);
-  f.respond(() => fauxAssistantMessage("", { stopReason: "error", errorMessage: error }));
-  await assert.rejects(f.runtime.session.compact(), /cancel/i);
+  let attempts = 0;
+  const started = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  f.respond(() => {
+    started[attempts++]?.resolve();
+    return fauxAssistantMessage("", { stopReason: "error", errorMessage: error });
+  });
+  const pending = assert.rejects(f.runtime.session.compact(), /cancel/i);
+  await started[0]!.promise; await flush();
+  t.mock.timers.tick(1000); await started[1]!.promise; await flush(); t.mock.timers.tick(2000);
+  await pending;
+  assert.equal(f.events.at(-1)!.result.observations.requests, 3);
   assert.equal(f.events.at(-1)!.result.observations.providerOverflow, undefined);
   assert.equal(checkpoints(f).length, 0); assert.deepEqual(project(f.runtime.session.sessionManager.buildContextEntries()), before);
   f.respond(memoryPatch);
   await f.runtime.session.compact();
-  assert.equal(f.calls.length, 2); assert.deepEqual(f.events.at(-1)!.result.observations.omissions, []);
+  assert.equal(f.calls.length, 4); assert.deepEqual(f.events.at(-1)!.result.observations.omissions, []);
 });
 
 test("native cancellation wins over a late provider refusal and does not poison the next explicit attempt", async t => {

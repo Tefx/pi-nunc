@@ -135,7 +135,7 @@ test("later context hooks may add or drop their own messages; independent raw ca
 });
 
 test("later context that exceeds the actual main budget is rejected with zero provider calls", async t => {
-  const f = await fixture({ extras: [{ name: "oversize", factory(pi) {
+  const f = await fixture({ config: { budget: { inputLimit: 50000 } }, extras: [{ name: "oversize", factory(pi) {
     pi.on("context", event => ({ messages: [...event.messages, { role: "user", content: "n".repeat(320000), timestamp: 3 }] }));
   } }] });
   t.after(() => f.close());

@@ -181,23 +181,22 @@ UI 可以继续使用 F/R/M 分类，但必须说明分类与实际请求顺序�
 
 Maintenance 继续使用原有 M/B/K 提取协议，不把主请求载体布局机械搬入维护提示。
 
-### 7.2 保留既有保守 receipt 公式
-
-本次不调整原有容量保护语义：
+### 7.2 Single-count working memory in usage receipts
 
 ```text
-usage-backed 估算
-= 旧请求及响应的实测 U
-+ 响应锚点之后的新增真实历史估算
-+ 当前完整 M 估算
-+ 原有配置及 metadata 额外计量
+usage-backed input
+= measured U from the matched request and response
++ estimated real history after its response anchor
++ additional M occupancy
++ configured extras and metadata
 ```
 
-U 为旧 input（含 cacheRead/cacheWrite）加旧 output；reasoning 已包含在 output 中。U 内保留旧 M 的实际贡献，不扣除启发式估算的旧 M；不重复添加 F，不重复估算已计入 U 的响应，不把上次 Nunc 估算递归当成新 U。空 M 的当前载体项为零。
+U includes old input/cache and output, including reasoning. A receipt binds rendered sent `mContent` and `mTokens`. If it delivered M and the rendered content is unchanged, additional M is zero. Changed content adds only `max(0, currentMTokens - sentMTokens)`; a receipt sent without M adds the full current carrier. Empty M contributes zero. Shrinking/removing M never subtracts heuristic old occupancy from U. Do not add F or the response anchor again, or recursively reuse an earlier Nunc estimate as U.
 
-无有效请求关联时，重新估算实际完整 Context。保留模型、有效 F、tools、真实历史前缀、成功响应和 payload 绑定校验。保留在途请求发送时的 M 快照，不能在完成时重读新 M。单纯 M 更新不无条件清空仍适用的 receipt；路径、配置等变化继续按原适用规则处理。
+Keep model, effective F/tools, real-history prefix, successful response and payload binding checks. Missing association requires fresh whole-Context accounting. Completion records the in-flight request's sent M snapshot, without rereading current M. M-only edits preserve compatible receipts; lifecycle and configuration invalidation retain their existing behavior.
 
-服务端缓存命中与本地 usage receipt 复用分别验证。所有估算仍是 planning heuristic，不是 provider tokenizer 的硬上界。**不修改 Pi 的 `previous_response_id` 输入一致性检查**，也不抬高容量上限或改变输出/维护/取消保护来隐藏估算问题。
+Memory placement and revision changes alone do not change the rendered-content comparison. Cache reuse and local receipt reuse remain separate claims. The estimates supply no tokenizer upper-bound guarantee. Pi's `previous_response_id` consistency checks, native output sizing, maintenance admission and cancellation protections remain unchanged. See [main admission authority](CAPACITY.md).
+
 
 ## 8. 滚动窗口保留比例
 

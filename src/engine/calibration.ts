@@ -164,7 +164,7 @@ export function sameRejectedRequest(overflow: ProviderOverflow | undefined, acti
 /** Failed attempts save evidence only. Successful native handoffs rebind the measured correction to original K,
  * whose source is still active after compaction, while retaining the measured request's original provenance. */
 export function maintenanceCalibrationRecord(input: Snapshot, result: MaintenanceResult): MaintenanceCalibrationRecord | undefined {
-  if (result.observations.requests !== 1) return;
+  if (result.observations.requests < 1) return;
   const providerOverflow = result.ok ? undefined : result.observations.providerOverflow;
   const measurement = result.observations.maintenanceCalibration ?? (result.ok ? maintenanceFeedback(input).measurement : undefined);
   if (!providerOverflow && !measurement) return;

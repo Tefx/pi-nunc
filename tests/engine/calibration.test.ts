@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import { createHash } from "node:crypto";
+import { setImmediate as flush } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { maintain } from "../../src/engine/engine.js";
 import { activeUsageObservation, activeUsageUndercount, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
@@ -42,7 +43,8 @@ test("first threshold maintenance calibrates the 1M window from assistant usage 
   assert(accounting.fullExtractionTokens + rawDelta > initialLimit);
   assert.equal(accounting.normalExtractionAtTrigger, accounting.fullExtractionTokens - accounting.mainBeforeTokens + accounting.effectiveTrigger);
   assert.equal(accounting.extractionPlanningTokens, accounting.extractionTokens + accounting.calibratedUndercountTokens!);
-  assert.equal(accounting.outputLimitedBy, "window");
+  assert.equal(accounting.outputLimitedBy, "capability");
+  assert.equal(accounting.outputReserveTokens, 32768);
   assert.equal(result.observations.maintenanceCalibration?.actualInputTokens, 175, "persist only maintenance response input");
 });
 
@@ -104,6 +106,23 @@ for (const eligible of [["missing"], ["old", "old"], "old"]) test(`invalid usage
   Object.assign(value, { eligibleUsageEntryIds: eligible });
   const result = await maintain(value, async () => assert.fail("invalid host scope cannot dispatch"));
   assert(!result.ok); assert.equal(result.code, "INPUT"); assert.equal(result.observations.requests, 0);
+});
+
+test("maintenance calibration persists the final successful measurement after transient retries", async t => {
+  const value = await input(); let attempts = 0;
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const pending = maintain(value, async request => ++attempts === 1
+    ? { ...answer(), stopReason: "error", errorMessage: "terminated", usage: undefined }
+    : measured(request, 900, JSON.stringify(noChange)));
+  await flush(); t.mock.timers.tick(1000);
+  const result = await pending;
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(result.observations.requests, 2);
+  const saved = maintenanceCalibrationRecord(value, result);
+  assert.equal(saved?.measurement?.undercountTokens, 900);
+  assert.equal(saved?.providerOverflow, undefined);
+  const zeroRequests = { ...result, observations: { ...result.observations, requests: 0 } };
+  assert.equal(maintenanceCalibrationRecord(value, zeroRequests), undefined);
 });
 
 const providerError = "400 INVALID_ARGUMENT: The input token count exceeds the maximum number of tokens allowed 60000.";
@@ -237,10 +256,14 @@ for (const change of ["model", "provider", "api", "branch", "edit", "prefix", "w
 }
 
 for (const error of ["429 token limit exceeded", "HTTP 429: too many tokens", "Error code: 429 - too many tokens", "Rate limit: too many tokens", "ECONNRESET: connection reset", "fetch failed"]) {
-  test(`${error} is not provider context overflow`, async () => {
+  test(`${error} is transient, bounded, and not provider context overflow`, async t => {
     const value = await source();
-    const result = await maintain(value, async request => ({ ...overflow(request), errorMessage: error }));
-    assert(!result.ok); assert.equal(result.observations.requests, 1); assert.equal(result.observations.providerOverflow, undefined);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pending = maintain(value, async request => ({ ...overflow(request), errorMessage: error }));
+    await flush(); t.mock.timers.tick(1000);
+    await flush(); t.mock.timers.tick(2000);
+    const result = await pending;
+    assert(!result.ok); assert.equal(result.observations.requests, 3); assert.equal(result.observations.providerOverflow, undefined);
     assert.equal(maintenanceCalibrationRecord(value, result), undefined);
   });
 }
@@ -269,6 +292,7 @@ function measured(request: ModelRequest, delta: number, content = "invalid JSON"
 test("maintenance-only undercount includes cache writes, is additive in precheck and resolved auto cap, and is never recursively subtracted", async () => {
   const value = await source();
   value.model.maxTokens = 59000;
+  value.model.contextWindow = 40000; // Make complete-request headroom, not the automatic 32768 ceiling, bind.
   value.config.extraction.outputAuto = true;
   const failed = await maintain(value, async request => measured(request, 2000));
   assert(!failed.ok); assert.equal(failed.code, "RESPONSE");
@@ -336,7 +360,7 @@ test("SDK length overflow is evidence; complete stops above catalog occupancy st
 });
 
 test("a measured correction can change the resolved reduced cap once; the next identical refusal then blocks", async () => {
-  const value = await source(); value.model.maxTokens = 59000; value.config.extraction.outputAuto = true;
+  const value = await source(); value.model.maxTokens = 59000; value.model.contextWindow = 40000; value.config.extraction.outputAuto = true;
   remember(value, await maintain(value, async request => overflow(request)));
   const measuredReduced = await maintain(value, async request => ({ ...measured(request, 900), stopReason: "error", errorMessage: providerError }));
   assert.equal(measuredReduced.observations.providerOverflow?.mode, "reduced");

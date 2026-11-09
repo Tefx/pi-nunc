@@ -1,10 +1,60 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { setImmediate as flush } from "node:timers/promises";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertOnlyCalibrationAppend, fixture, memoryPatch } from "./fixtures.js";
 import { answer, sourceRecords } from "../engine/fixtures.js";
 import { project } from "../../src/pi/projection.js";
 import { Type } from "typebox";
+import type { AdmissionObservation } from "../../src/pi/admission.js";
+
+for (const inputLimit of [undefined, 50000]) test(`main heuristic beyond catalog window uses explicit authority: ${inputLimit ?? "default"}`, async t => {
+  const observations: AdmissionObservation[] = [];
+  const f = await fixture({
+    ...(inputLimit === undefined ? {} : { config: { budget: { inputLimit } } }),
+    extras: [{ name: "large-request", factory(pi) {
+      pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
+      pi.on("context", event => ({ messages: [...event.messages, { role: "user", content: "x".repeat(280000), timestamp: 1 }] }));
+    } }],
+  });
+  t.after(() => f.close());
+  await f.runtime.session.prompt("Continue without changing native scheduling");
+  const last = observations.filter(o => o.kind === "main").at(-1)!;
+  assert(last.inputTokens! > 60000);
+  assert.equal(last.inputExceededPlan, true);
+  assert.equal(last.estimator, "pi-heuristic");
+  assert.equal(last.outcome, inputLimit === undefined ? "delegate" : "reject");
+  assert.equal(f.calls.length, inputLimit === undefined ? 1 : 0);
+  assert.equal(f.events.length, 0, "disabled automatic compaction stays disabled");
+});
+
+test("transient extraction stream retries get fresh maintenance admission tickets and one checkpoint", async t => {
+  const f = await fixture();
+  t.after(() => f.close());
+  f.seed();
+  let attempts = 0;
+  const started = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  f.respond(context => {
+    attempts++;
+    started[attempts - 1]?.resolve();
+    return attempts < 3
+      ? fauxAssistantMessage("", { stopReason: "error", errorMessage: attempts === 1 ? "stream ended before a terminal response event" : "Connection error" })
+      : memoryPatch(context);
+  });
+  const pending = f.runtime.session.compact();
+  await started[0]!.promise; await flush(); t.mock.timers.tick(1000);
+  await started[1]!.promise; await flush(); t.mock.timers.tick(2000);
+  await pending;
+  assert.equal(attempts, 3);
+  assert.equal(f.calls.length, 3);
+  assert.equal(f.events.length, 1);
+  assert(f.events[0]!.result.ok);
+  assert.equal(f.events[0]!.result.observations.requests, 3);
+  assert.deepEqual(f.calls[0], f.calls[1]);
+  assert.deepEqual(f.calls[1], f.calls[2]);
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 1);
+});
 
 test("a native image tool result continues the actual host tool loop without an image budget", async t => {
   const image = { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" };

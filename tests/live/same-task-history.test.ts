@@ -357,10 +357,10 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
-  // At the first read, candidate F is 3387/1014 with memory tools on/off; K=667.
-  // H=5300/2930 pays F + M + K + growth but excludes the unfinished user boundary.
+  // At the first read, candidate F is 3469/1014 with memory tools on/off; K=667.
+  // H=5400/2930 pays F + M + K + growth but excludes the unfinished user boundary.
   // Later cuts must still commit and continue under the same real host checks below.
-  const reserveTokens = group === "candidate" ? (tools ? 54700 : 57070) : 36000;
+  const reserveTokens = group === "candidate" ? (tools ? 54600 : 57070) : 36000;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
     comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "refs/nunc/task-retention-pre-change" } } },

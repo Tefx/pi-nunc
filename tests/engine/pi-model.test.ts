@@ -1,10 +1,62 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { setImmediate as flush } from "node:timers/promises";
 import { fauxAssistantMessage, fauxProvider, getCurrentTools, InMemoryCredentialStore, type OpenAICompletionsOptions } from "@earendil-works/pi-ai";
 import { ModelRegistry, ModelRuntime, convertToLlm } from "@earendil-works/pi-coding-agent";
 import { maintain, memoryMessage, piComplete, renderMemory } from "pi-nunc/engine";
 import { semanticEvidence } from "../../src/live/scenarios.js";
-import { input, noChange, sourceRecords } from "./fixtures.js";
+import { answer, input, noChange, sourceRecords } from "./fixtures.js";
+import { retryMaintenanceComplete } from "../../src/engine/pi-model.js";
+
+for (const failure of ["stream ended before a terminal response event", "terminated", "Connection error", "ECONNRESET: connection closed", "HTTP 429", "HTTP 503"]) {
+  test(`bounded extraction retry recovers ${failure} with unchanged request`, async () => {
+    const s = await input();
+    const request = { model: s.model, context: { messages: [] }, outputTokens: 4096, signal: s.signal };
+    let attempts = 0;
+    const response = await retryMaintenanceComplete(async actual => {
+      assert.equal(actual, request);
+      return ++attempts < 3 ? { ...answer(), stopReason: "error", errorMessage: failure } : answer();
+    }, 0)(request);
+    assert.deepEqual(response, answer());
+    assert.equal(attempts, 3);
+    attempts = 0;
+    await retryMaintenanceComplete(async () => { attempts++; throw new Error(failure); }, 0)(request).then(
+      () => assert.fail("exhausted throw must remain an error"), error => assert.equal(error.message, failure));
+    assert.equal(attempts, 3);
+  });
+}
+for (const failure of [
+  { stopReason: "length", errorMessage: "terminated" },
+  { stopReason: "stop", content: [{ type: "text", text: "invalid JSON" }] },
+  { stopReason: "error", errorMessage: "400 context_length_exceeded: Connection error" },
+  { stopReason: "error", errorMessage: "400 server error: input overflow" },
+  { stopReason: "error", errorMessage: "429 insufficient_quota" },
+  { stopReason: "aborted", errorMessage: "Connection error" },
+]) test(`deterministic or cancelled extraction never retries: ${JSON.stringify(failure)}`, async () => {
+  const s = await input(); let calls = 0;
+  const response = { ...answer(), ...failure };
+  assert.equal(await retryMaintenanceComplete(async () => { calls++; return response; }, 0)({
+    model: s.model, context: { messages: [] }, outputTokens: 4096, signal: s.signal,
+  }), response);
+  assert.equal(calls, 1);
+});
+
+test("cancellation during retry backoff terminates without another transport", async t => {
+  const s = await input(), controller = new AbortController(); let calls = 0;
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const complete = retryMaintenanceComplete(async () => {
+    calls++;
+    return { ...answer(), stopReason: "error", errorMessage: "terminated" };
+  });
+  const request = { model: s.model, context: { messages: [] }, outputTokens: 4096, signal: controller.signal };
+  const pending = complete(request);
+  await flush(); // First error has reached the abortable backoff timer.
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(calls, 1);
+  await assert.rejects(complete(request), { name: "AbortError" });
+  assert.equal(calls, 1, "already-cancelled calls never start transport");
+});
 
 test("maintenance forwards selected thinking through real native OpenRouter Completions serialization", async () => {
   const credentials = new InMemoryCredentialStore();

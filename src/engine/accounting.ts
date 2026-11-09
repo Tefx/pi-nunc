@@ -190,7 +190,7 @@ export function extractionOutputPlan(model: Model<Api>, extraction: EngineConfig
   const uncapped = extraction.outputUncapped === true || omitsSerializedOutputCap(model);
   const automatic = extraction.outputAuto === true && !uncapped;
   const floor = automatic ? Math.min(8192, capacity) : extraction.outputTokens;
-  const desired = automatic ? capacity : extraction.outputTokens;
+  const desired = automatic ? Math.min(32768, capacity) : extraction.outputTokens;
   return { budget: { ...extraction, outputTokens: floor }, floor, desired, capacity, automatic, uncapped };
 }
 export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
@@ -208,9 +208,9 @@ export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
   requireThat(limit > 0, "CAPACITY", "Output and safety reserves leave no input capacity");
   return limit;
 }
-/** Main transport guard, distinct from the memory/retention planning target.
- * Native context-sized/uncapped output stays Pi-owned; do not turn its trigger
- * reserve into an earlier local overflow. Explicit input limits still bind. */
+/** Main comparison boundary, distinct from the memory/retention planning target.
+ * This number alone grants no hard-rejection authority: admission enforces it only
+ * with an explicit input limit. Native output sizing/overflow stays Pi-owned. */
 export function mainAdmissionLimit(model: Model<Api>, budget: RequestBudget): number {
   const planned = inputLimit(model, budget); // Validate the shared budget contract.
   if (budget.nativeOutputReserve === undefined) return planned;

@@ -12,7 +12,7 @@ import { fixture } from "./fixtures.js";
 
 // Only transport is controlled: the loader, context hooks, Provider and native
 // Responses serializer all execute. Both provider methods use this fetch.
-async function nativeFixture(t: { after: (f: () => Promise<void>) => void }, hook?: (pi: ExtensionAPI) => void) {
+async function nativeFixture(t: { after: (f: () => Promise<void>) => void }, hook?: (pi: ExtensionAPI) => void, inputLimit?: number) {
   const observations: AdmissionObservation[] = [];
   const bodies: any[] = [];
   const contexts: Context[] = [];
@@ -20,7 +20,7 @@ async function nativeFixture(t: { after: (f: () => Promise<void>) => void }, hoo
   let surface: MemorySurface;
   let contextView: ContextSurface;
   let nested: ((model: Model<any>, context: Context, options: any) => Promise<void>) | undefined;
-  const f = await fixture({ extras: [{ name: "projection-binding-observer", factory(pi) {
+  const f = await fixture({ ...(inputLimit === undefined ? {} : { config: { budget: { inputLimit } } }), extras: [{ name: "projection-binding-observer", factory(pi) {
     pi.events.on("nunc:admission", v => observations.push(v as AdmissionObservation));
     pi.on("session_start", (_e, c) => { ctx = c; });
     surface = memorySurface(pi)!;
@@ -95,6 +95,7 @@ for (const hasM of [false, true]) test(`native projection survives earlier unkno
   assert.equal(n.last().estimator, "pi-usage-backed");
   assert.equal(n.last().receiptBreakdown?.observedU, 107);
   assert.equal(n.last().receiptBreakdown?.currentMTokens, memoryTokens(n.surface().read(n.ctx()).memory.slots));
+  assert.equal(n.last().receiptBreakdown?.additionalMTokens, 0);
   assert.equal(n.last().receiptBreakdown?.retainedOldMMargin, hasM);
 });
 
@@ -141,7 +142,7 @@ test("native later context hook edits the identical carrier before serialization
       carrier.content = [{ type: "text", text: replacement }];
       return { messages: event.messages };
     });
-  });
+  }, 100000);
   n.note("small M");
   await n.f.runtime.session.prompt("establish small receipt");
   replacement = "changed before native serialization ".repeat(1000);
@@ -167,7 +168,7 @@ test("native later context hook edits the identical carrier before serialization
   assert(!restoredBody.includes("changed before native serialization"));
 });
 
-test("native in-flight M update leaves Last main on sent M, Current on new M, and next receipt uses full new M", { timeout: 15000 }, async t => {
+test("native in-flight M update leaves Last main on sent M, Current on new M, and next receipt charges only positive replacement growth", { timeout: 15000 }, async t => {
   const n = await nativeFixture(t);
   n.note("sent M1");
   const old = n.surface().read(n.ctx()).memory;

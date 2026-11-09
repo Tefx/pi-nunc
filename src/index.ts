@@ -487,6 +487,7 @@ export default function nunc(pi: ExtensionAPI): void {
         eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
       const calibration = projectMaintenanceCalibration(manager.getBranch(), input);
       const maintenanceInput = { ...input, calibration };
+      // maintain owns bounded transport retries; each call enters a fresh admission ALS scope.
       const result = await maintain(maintenanceInput, admission.complete(piComplete(ctx.modelRegistry, thinking)));
       contextView.noteEngine(result);
       ui.refresh(ctx);

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { clampThinkingLevel } from "@earendil-works/pi-ai/compat";
-import { EngineError } from "./validation.js";
+import { EngineError, record } from "./validation.js";
 import type { Complete } from "./types.js";
 
 /** Read only public native auth metadata, never the credential or an API-key prefix.
@@ -26,6 +27,35 @@ export function piComplete(registry: Pick<ModelRegistry, "complete">, thinking?:
     sessionId: randomUUID(),
     ...rawThinking(model, thinking),
   });
+}
+/** Retrying must wrap Admission.complete, never run inside its single-use ALS ticket.
+ * Only transport interruptions/throttling/server failures qualify; parsing and length
+ * failures stay terminal. The delay is injectable for time-decoupled local tests. */
+export function retryMaintenanceComplete(complete: Complete, baseDelayMs = 1000): Complete {
+  return async request => {
+    for (let attempt = 0; ; attempt++) {
+      request.signal.throwIfAborted();
+      let response: unknown;
+      try { response = await complete(request); }
+      catch (error) {
+        if (request.signal.aborted || attempt >= 2 || !(error instanceof Error) ||
+            error.name === "AbortError" || !transientTransportError(error.message)) throw error;
+        await delay(baseDelayMs * 2 ** attempt, undefined, { signal: request.signal });
+        continue;
+      }
+      if (request.signal.aborted || attempt >= 2 || !record(response) || response.role !== "assistant" ||
+          response.model !== request.model.id || response.provider !== request.model.provider || response.api !== request.model.api ||
+          (response.responseModel !== undefined && response.responseModel !== request.model.id) ||
+          response.stopReason !== "error" ||
+          typeof response.errorMessage !== "string" || !transientTransportError(response.errorMessage)) return response;
+      await delay(baseDelayMs * 2 ** attempt, undefined, { signal: request.signal });
+    }
+  };
+}
+function transientTransportError(message: string): boolean {
+  // A status-bearing deterministic failure wins over incidental retry-like wording.
+  if (/\b4(?!29\b)\d{2}\b|Nunc local|context[_ ]length|context window|overflow|malformed|invalid json|quota|billing|usage.limit|out of budget|available balance|cancel|abort/i.test(message)) return false;
+  return /\b(?:429|5\d{2})\b|rate.?limit|too many requests|stream ended before (?:a terminal response event|message_stop)|stream (?:was interrupted|disconnected before completion)|terminated|connection.?(?:error|lost|refused|reset|closed)|network.?error|fetch failed|socket hang up|other side closed|upstream_stream_read_error/i.test(message);
 }
 function rawThinking(model: Model<Api>, thinking?: ModelThinkingLevel): { reasoningEffort?: Exclude<ModelThinkingLevel, "off"> } {
   if (thinking === undefined || !["openai-completions", "openai-responses", "openai-codex-responses", "azure-openai-responses"].includes(model.api)) return {};

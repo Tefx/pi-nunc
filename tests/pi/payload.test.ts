@@ -12,6 +12,20 @@ function authPayload(args: Omit<Parameters<typeof authorizePayload>[0], "context
   authorizePayload({ ...args, context: { messages: [] } });
 }
 
+test("uncalibrated main input is diagnostic while explicit limits and native clamped output room bind", () => {
+  const base = { model: model.id, stream: true, max_tokens: 16, messages: [{ role: "user", content: "a" }] };
+  const after = { ...base, messages: [{ role: "user", content: [{ type: "text", text: "a" }, { type: "text", text: "tail".repeat(40) }] }] };
+  const delta = classifyPayloadChange(base, after, "replacement");
+  const args = { model, delta, before: base, after, inputTokens: 100000, inputLimit: 1000, authorizedOutput: 16,
+    context: { messages: [{ role: "user" as const, content: "a", timestamp: 0 }] }, allowSystemInstructionRewrite: true };
+  assert.doesNotThrow(() => authorizePayload({ ...args, enforceInputLimit: false }));
+  assert.throws(() => authorizePayload({ ...args, enforceInputLimit: true }), /remaining safe input/);
+  assert.throws(() => authorizePayload({ ...args, model: { ...model, contextWindow: 50 }, enforceInputLimit: false }), /native output clamp/);
+  const metadata = { ...base, metadata: { note: "x".repeat(1000) } };
+  assert.throws(() => authorizePayload({ ...args, model: { ...model, contextWindow: 100 }, after: metadata,
+    delta: classifyPayloadChange(base, metadata, "replacement"), enforceInputLimit: false }), /native output clamp/);
+});
+
 class SdkParams {
   model = "engine-test";
   stream = true;

@@ -298,6 +298,8 @@ export function authorizePayload(args: {
   after: unknown;
   inputTokens: number;
   inputLimit: number;
+  /** False only for main requests without an explicitly configured input limit. */
+  enforceInputLimit?: boolean;
   authorizedOutput: number;
   context: Context;
   /** Explicit main-session authorization; maintenance keeps its fixed instructions. */
@@ -340,7 +342,7 @@ export function authorizePayload(args: {
   if (append.ok || rewrite.ok) {
     if (structural.some(c => c !== "input")) throw new EngineError("CONFIG", `Nunc: unvalidated payload ${structural.join(",")} rewrite; request was not sent`);
     const added = Math.max(args.delta.grewTokens, args.delta.inputGrewTokens, append.ok ? append.addedTokens : 0, rewrite.ok ? rewrite.addedTokens : 0);
-    if (args.inputTokens + added > args.inputLimit) {
+    if (args.enforceInputLimit !== false && args.inputTokens + added > args.inputLimit) {
       throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining safe input; request was not sent`);
     }
     const serializedOutput = args.delta.outputAfter ?? args.delta.outputBefore;
@@ -354,7 +356,12 @@ export function authorizePayload(args: {
     return;
   }
   if (structural.length) throw new EngineError("CONFIG", `Nunc: unvalidated payload ${structural.join(",")} rewrite; request was not sent`);
-  if (args.delta.grewTokens > 0 && args.inputTokens + args.delta.grewTokens > args.inputLimit) {
+  if (args.enforceInputLimit !== false && args.delta.grewTokens > 0 && args.inputTokens + args.delta.grewTokens > args.inputLimit) {
     throw new EngineError("CAPACITY", `Payload input growth ${args.delta.grewTokens} exceeds remaining safe input; request was not sent`);
+  }
+  const serializedOutput = args.delta.outputAfter ?? args.delta.outputBefore;
+  if (args.allowSystemInstructionRewrite && args.delta.grewTokens > 0 && serializedOutput !== undefined &&
+      estimateContextTokens(args.context.messages).tokens + args.delta.grewTokens + serializedOutput > args.model.contextWindow) {
+    throw new EngineError("CAPACITY", "Payload growth exceeds remaining context after native output clamp; request was not sent");
   }
 }
