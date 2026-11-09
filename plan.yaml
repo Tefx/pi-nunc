@@ -8138,7 +8138,7 @@ phases:
       - docs/CAPACITY.md, docs/PI.md, docs/ACTIVE-MEMORY.md, docs/STABLE-MEMORY.md'
   - id: nunc-capacity-root-cause.gate
     name: Nunc 本地 CAPACITY 根因修复阶段整合验收
-    status: pending
+    status: claimed
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"scripts/observe-capacity-recurrence.mjs\"\
       , \"scripts/observe-lifecycle.mjs\", \"package.json\", \"package-lock.json\"\
@@ -8195,3 +8195,5 @@ phases:
     depends_on:
     - nunc-capacity-root-cause.implement-capacity-fixes
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-09T13:38:55.459593Z'
