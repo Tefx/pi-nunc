@@ -8235,7 +8235,7 @@ phases:
       docs/STABLE-MEMORY.md'
 - id: nunc-npm-loader-compat
   name: Pi 扩展加载器虚拟模块白名单兼容修复与无 node_modules 解包加载验证
-  status: pending
+  status: in_progress
   gate: nunc-npm-loader-compat.gate 由 gate-reviewer 对 nunc-npm-loader-compat.remove-subpath-imports
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认所有运行时
     @earendil-works/pi-ai/utils/* 子路径导入均已移除、dist/src/**/*.js 的全部 @earendil-works/*
@@ -8251,7 +8251,7 @@ phases:
   steps:
   - id: nunc-npm-loader-compat.remove-subpath-imports
     name: 移除 @earendil-works/pi-ai/utils/* 运行时子路径导入并新增扩展加载器白名单回归测试
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/accounting.ts\", \"src/pi/payload.ts\", \"src/live/budget.ts\"\
       , \"tests/pi/compat.test.ts\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -8303,6 +8303,8 @@ phases:
     - package.json
     - tsconfig.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-09T15:34:13.919473Z'
   - id: nunc-npm-loader-compat.gate
     name: Pi 扩展加载器虚拟模块白名单兼容阶段整合验收
     status: pending
