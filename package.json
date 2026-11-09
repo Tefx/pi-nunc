@@ -1,6 +1,6 @@
 {
   "name": "pi-nunc",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "In-session rolling context and working memory extension for Pi.",
   "keywords": ["pi-package", "pi-extension", "pi"],
   "files": ["dist/src", "policies", "README.md"],
