@@ -8233,3 +8233,117 @@ phases:
 
       - plan.yaml#nunc-capacity-root-cause, docs/CAPACITY.md, docs/PI.md, docs/ACTIVE-MEMORY.md,
       docs/STABLE-MEMORY.md'
+- id: nunc-npm-loader-compat
+  name: Pi 扩展加载器虚拟模块白名单兼容修复与无 node_modules 解包加载验证
+  status: pending
+  gate: nunc-npm-loader-compat.gate 由 gate-reviewer 对 nunc-npm-loader-compat.remove-subpath-imports
+    的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认所有运行时
+    @earendil-works/pi-ai/utils/* 子路径导入均已移除、dist/src/**/*.js 的全部 @earendil-works/*
+    导入严格在 Pi 扩展加载器虚拟模块白名单内、无本地 node_modules 的外部解包目录下加载 dist/src/index.js 成功且无阻断回归。
+  context: 在发布 v0.2.3 npm 包前，消除 Nunc 运行时对不在 Pi 扩展加载器虚拟模块映射白名单（@earendil-works/pi-coding-agent,
+    @earendil-works/pi-agent-core, @earendil-works/pi-tui, @earendil-works/pi-ai,
+    @earendil-works/pi-ai/compat, @earendil-works/pi-ai/models, @earendil-works/pi-ai/oauth,
+    @earendil-works/pi-ai/providers/all）内的 @earendil-works/pi-ai/utils/* 子路径导入，并在
+    tests/pi/compat.test.ts 中加入针对 dist/src/**/*.js 导出模块说明符白名单及无本地 node_modules 解包加载
+    dist/src/index.js 的回归测试，由 nunc-npm-loader-compat.gate 完成阶段整合验收。
+  depends_on:
+  - nunc-capacity-root-cause
+  steps:
+  - id: nunc-npm-loader-compat.remove-subpath-imports
+    name: 移除 @earendil-works/pi-ai/utils/* 运行时子路径导入并新增扩展加载器白名单回归测试
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/engine/accounting.ts\", \"src/pi/payload.ts\", \"src/live/budget.ts\"\
+      , \"tests/pi/compat.test.ts\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\"\
+      , \"**/auth.json\"]\n\nDeliver: 在单一源码与测试事务中移除所有不在 Pi 扩展加载器虚拟模块白名单内的 `@earendil-works/pi-ai/utils/*`\
+      \ 运行时子路径导入，并补充打包加载兼容回归测试：\n1. 移除 `src/` 下所有 `@earendil-works/pi-ai/utils/*`\
+      \ 运行时导入：\n   - 在 `src/engine/accounting.ts` 内部实现并导出 `calculateContextTokens`、`estimateTextTokens`、`estimateTextAndImageContentTokens`\
+      \ 与 `estimateContextTokens`（复用从 `@earendil-works/pi-ai` 导入的 `getSystemMessageText`，常量\
+      \ `CHARS_PER_TOKEN = 3.5` 与 `ESTIMATED_IMAGE_CHARS = 4800`，与 `@earendil-works/pi-ai`\
+      \ 1.4.0/1.5.0 语义完全一致），并在 `src/pi/payload.ts` 中改为从 `../engine/accounting.js`\
+      \ 导入 `estimateContextTokens` 与 `estimateTextTokens`。\n   - 在 `src/live/budget.ts`\
+      \ 中将 `AssistantMessageEventStream` 改为从 `@earendil-works/pi-ai` 导入（替代 `@earendil-works/pi-ai/utils/event-stream`）。\n\
+      2. 在 `tests/pi/compat.test.ts` 中新增回归测试：\n   - 扫描构建产物 `dist/src/**/*.js`，验证其中每一个\
+      \ `@earendil-works/*` 模块导入说明符均严格属于 Pi 扩展加载器虚拟模块允许列表（`@earendil-works/pi-coding-agent`、`@earendil-works/pi-agent-core`、`@earendil-works/pi-tui`、`@earendil-works/pi-ai`、`@earendil-works/pi-ai/compat`、`@earendil-works/pi-ai/models`、`@earendil-works/pi-ai/oauth`、`@earendil-works/pi-ai/providers/all`）。\n\
+      \   - 验证在仓库外无本地 `node_modules` 的隔离解包目录中通过 Pi 扩展加载器（或等价虚拟模块解析环境）加载 `dist/src/index.js`\
+      \ 成功。\n3. 运行并通过 `npm run build`、`node scripts/check.mjs all` 与 `dist/tests/pi/larva.integration.js`。\n\
+      \nBoundary: owner 为 `node-typescript-engineer`；属于本仓库可 Git 回退的源码与测试变更事务。不修改版本号或执行\
+      \ `npm publish` / Git tag，不触碰 `.pi/` 或外部凭据，不运行任何外部付费 live-LLM 调用。\n\nAdmit:\
+      \ 依赖 `nunc-capacity-root-cause` 已完成的基线；完成后通过 `npm run build`、`node scripts/check.mjs\
+      \ all` 与 `dist/tests/pi/larva.integration.js` 验证，并交由 `nunc-npm-loader-compat.gate`\
+      \ 验收。\n\nRecovery: 若构建或测试失败，在隔离工作树内定位并修复；未合并改动可通过 Git worktree 安全回退，不污染主分支历史或受保护路径。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n    inventory: [\"tests/engine/*.test.ts\", \"tests/pi/*.test.ts\"\
+      , \"tests/live/*.test.ts\"]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\"\
+      , \"package.json\", \"package-lock.json\"]\n  - id: actual-larva-integration\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\n    inventory:\
+      \ [\"tests/pi/larva.integration.ts\"]\n```\n验证要求：\n1. `src/engine/accounting.ts`\
+      \ 内部实现 `calculateContextTokens`、`estimateTextTokens`、`estimateTextAndImageContentTokens`\
+      \ 与 `estimateContextTokens`（`CHARS_PER_TOKEN = 3.5`、`ESTIMATED_IMAGE_CHARS =\
+      \ 4800`，与 `@earendil-works/pi-ai` 1.4.0/1.5.0 语义完全一致），`src/pi/payload.ts` 从\
+      \ `../engine/accounting.js` 导入，`src/live/budget.ts` 从 `@earendil-works/pi-ai`\
+      \ 导入 `AssistantMessageEventStream`。\n2. `tests/pi/compat.test.ts` 验证所有 `dist/src/**/*.js`\
+      \ 中的 `@earendil-works/*` 导入说明符严格在 Pi 扩展加载器虚拟模块白名单内，且在仓库外无本地 `node_modules` 解包环境下加载\
+      \ `dist/src/index.js` 成功。\n3. `npm run build`、`node scripts/check.mjs all` 与\
+      \ `dist/tests/pi/larva.integration.js` 全部通过（exit 0）。"
+    refs:
+    - src/engine/accounting.ts
+    - src/pi/payload.ts
+    - src/live/budget.ts
+    - src/index.ts
+    - tests/pi/compat.test.ts
+    - tests/pi/larva.integration.ts
+    - scripts/check.mjs
+    - package.json
+    - tsconfig.json
+    agent: node-typescript-engineer
+  - id: nunc-npm-loader-compat.gate
+    name: Pi 扩展加载器虚拟模块白名单兼容阶段整合验收
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"src/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\", \"package-lock.json\"\
+      , \".node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 对 `nunc-npm-loader-compat`\
+      \ 阶段的唯一实现步骤 `nunc-npm-loader-compat.remove-subpath-imports` 的整合提交与确定性离线测试证据作唯一阶段验收判断（`PHASE_GATE`），确认运行时\
+      \ `@earendil-works/pi-ai/utils/*` 子路径导入已完全消除、`src/engine/accounting.ts` 内置估算函数与\
+      \ `@earendil-works/pi-ai` 1.4.0/1.5.0 语义完全一致、`tests/pi/compat.test.ts` 对 `dist/src/**/*.js`\
+      \ 白名单说明符及仓库外无本地 `node_modules` 解包加载 `dist/src/index.js` 的回归测试有效，且全量离线验证通过无回归缺陷。\n\
+      \nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
+      \ `plan.yaml`，不运行任何外部付费 live-LLM 调用。\n\nAdmit: 包含 `nunc-npm-loader-compat` 阶段的终端实现成果\
+      \ `nunc-npm-loader-compat.remove-subpath-imports`；消费绑定于最终整合不可变提交（immutable git\
+      \ commit）的代码差异与确定性离线验证证据（`npm run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`），验证在\
+      \ `nunc-capacity-root-cause` 基线之上的兼容性与完整性；排除非本阶段范围改动与外部付费模型调用。\n\nRecovery:\
+      \ 若发现任何未满足的合同项、残留非白名单子路径导入、测试缺口或回归缺陷，返回明确的问题列表；由 Orchestrator 按规则通过同阶段修复闭环后以\
+      \ Delta 模式复核，任一阻断项未解决前不予通过。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\nreview:\n\
+      \  kind: PHASE_GATE\n  mode: FULL\n  phases: [nunc-npm-loader-compat]\n```\n\
+      核验绑定于最终整合不可变提交的 `@earendil-works/pi-ai/utils/*` 子路径导入移除、`src/engine/accounting.ts`\
+      \ 估算语义等价、`tests/pi/compat.test.ts` 白名单及无本地 `node_modules` 解包加载测试，以及确定性构建/离线全量回归测试（`npm\
+      \ run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`）100%\
+      \ 通过且无回归缺陷。"
+    refs:
+    - src/engine/accounting.ts
+    - src/pi/payload.ts
+    - src/live/budget.ts
+    - src/index.ts
+    - tests/pi/compat.test.ts
+    - tests/pi/larva.integration.ts
+    - scripts/check.mjs
+    - package.json
+    - tsconfig.json
+    depends_on:
+    - nunc-npm-loader-compat.remove-subpath-imports
+    agent: gate-reviewer
