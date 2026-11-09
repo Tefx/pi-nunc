@@ -8235,7 +8235,7 @@ phases:
       docs/STABLE-MEMORY.md'
 - id: nunc-npm-loader-compat
   name: Pi 扩展加载器虚拟模块白名单兼容修复与无 node_modules 解包加载验证
-  status: in_progress
+  status: done
   gate: nunc-npm-loader-compat.gate 由 gate-reviewer 对 nunc-npm-loader-compat.remove-subpath-imports
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认所有运行时
     @earendil-works/pi-ai/utils/* 子路径导入均已移除、dist/src/**/*.js 的全部 @earendil-works/*
@@ -8338,7 +8338,7 @@ phases:
       - Phase nunc-npm-loader-compat / step nunc-npm-loader-compat.remove-subpath-imports'
   - id: nunc-npm-loader-compat.gate
     name: Pi 扩展加载器虚拟模块白名单兼容阶段整合验收
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\", \"package-lock.json\"\
       , \".node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
@@ -8382,3 +8382,40 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-09T16:08:21.998959Z'
+    done_at: '2026-11-09T16:12:16.122873+00:00'
+    evidence: 'Artifact:
+
+      - Gate report: gate.report.v2 PASS on target_ref git:1ab435176234efdeda12d36f734689dc152a411c
+      (implementation commit 847d2e64799415068e409aa558ee753b26de1307)
+
+      - Validator: python3 ~/.pi/agent/scripts/review_report_validator.py --kind gate
+      --binding /tmp/nunc-gate-cfpM35/binding.json /tmp/nunc-gate-cfpM35/report.json
+      -> exit 0 (valid: true, binding_checked: true, evidence_disposition: POSITIVE_GATE_EVIDENCE)
+
+
+      Verification:
+
+      - REQ-1-REMOVE-RUNTIME-SUBPATH-IMPORTS: PROVEN (zero @earendil-works/pi-ai/utils/*
+      imports under src/; src/live/budget.ts imports createAssistantMessageEventStream
+      and type AssistantMessageEventStream from @earendil-works/pi-ai; src/pi/payload.ts
+      imports estimators from ../engine/accounting.js)
+
+      - REQ-2-LOCAL-ACCOUNTING-ESTIMATORS-PARITY: PROVEN (src/engine/accounting.ts
+      implements and exports calculateContextTokens, estimateTextTokens, estimateTextAndImageContentTokens,
+      estimateContextTokens with CHARS_PER_TOKEN = 3.5 and ESTIMATED_IMAGE_CHARS =
+      4800, matching @earendil-works/pi-ai 1.4.0/1.5.0 semantics identically)
+
+      - REQ-3-COMPAT-REGRESSION-TESTS-ALLOWLIST-AND-UNPACKED-LOAD: PROVEN (tests/pi/compat.test.ts
+      scans dist/src/**/*.js AST imports against the exact 8-module Pi extension loader
+      virtual module allowlist and verifies DefaultResourceLoader loads unpacked dist/src/index.js
+      outside the repository with no local or ancestor node_modules)
+
+      - REQ-4-DETERMINISTIC-OFFLINE-VERIFICATION-PASS: PROVEN (npm run build exit
+      0; node scripts/check.mjs all exit 0 with 949 passed across 108 files, 0 failed/skipped;
+      dist/tests/pi/larva.integration.js exit 0 with 9 passed; dist/tests/pi/compat.test.js
+      exit 0 with 7 passed)
+
+
+      Spec link:
+
+      - Phase nunc-npm-loader-compat / step nunc-npm-loader-compat.gate'
