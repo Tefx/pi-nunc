@@ -1,7 +1,6 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getCurrentTools, type Api, type ApiStreamOptions, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
-import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
+import { createAssistantMessageEventStream, getCurrentTools, type Api, type ApiStreamOptions, type AssistantMessage, type AssistantMessageEventStream, type Context, type Model, type Provider, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
 import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
 
 declare module "@earendil-works/pi-ai/providers/compat-schema" {
@@ -398,7 +397,7 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
 export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; subscriptionBilling?: (model: Model<Api>) => boolean; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
   function stream(model: Model<Api>, context: Context | TranscriptContext, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
-    const output = new AssistantMessageEventStream();
+    const output = createAssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
     void (async () => {
       let reservation: CallRecord | undefined, finished = false, ended = false;

@@ -1,6 +1,5 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
-import { estimateContextTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { estimateContextTokens, estimateTextTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { canonical, EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";

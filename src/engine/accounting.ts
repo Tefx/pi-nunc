@@ -1,8 +1,71 @@
-import { calculateContextTokens, estimateTextTokens, estimateTextAndImageContentTokens, estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { getSystemMessageText, normalizeContext, type Api, type Context, type Message, type Model, type SystemMessage } from "@earendil-works/pi-ai";
+import { getSystemMessageText, normalizeContext, type Api, type Context, type ImageContent, type Message, type Model, type SystemMessage, type TextContent, type TranscriptContext, type Usage } from "@earendil-works/pi-ai";
 import type { ActiveEntry, EngineConfig, FixedContext, PlanningEstimate, RequestBudget, Slot, UsageObservation } from "./types.js";
 import { memoryMessage } from "./memory.js";
 import { integer, record, requireThat } from "./validation.js";
+
+// Pi 1.4/1.5 planning semantics, kept local because the extension loader only
+// supplies public Pi entry points, not pi-ai/utils subpaths.
+const CHARS_PER_TOKEN = 3.5;
+const ESTIMATED_IMAGE_CHARS = 4800;
+
+export function calculateContextTokens(usage: Usage): number {
+  return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+}
+function safeJsonStringify(value: unknown): string {
+  try { return JSON.stringify(value) ?? "undefined"; }
+  catch { return "[unserializable]"; }
+}
+export function estimateTextTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+export function estimateTextAndImageContentTokens(content: string | Array<TextContent | ImageContent>): number {
+  const chars = typeof content === "string" ? content.length
+    : content.reduce((sum, block) => sum + (block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS), 0);
+  return Math.ceil(chars / CHARS_PER_TOKEN);
+}
+function estimateToolsTokens(tools: SystemMessage["toolsAdded"] | SystemMessage["toolsRemoved"]): number {
+  return !tools || tools.length === 0 ? 0 : estimateTextTokens(safeJsonStringify(tools));
+}
+function estimateMessageTokens(message: Message): number {
+  if (message.role === "system") {
+    return estimateTextTokens(getSystemMessageText(message)) + estimateToolsTokens(message.toolsAdded) + estimateToolsTokens(message.toolsRemoved);
+  }
+  if (message.role === "user" || message.role === "toolResult") return estimateTextAndImageContentTokens(message.content);
+  let chars = 0;
+  for (const block of message.content) {
+    if (block.type === "text") chars += block.text.length;
+    else if (block.type === "thinking") chars += block.thinking.length;
+    else chars += block.name.length + safeJsonStringify(block.arguments).length;
+  }
+  return Math.ceil(chars / CHARS_PER_TOKEN);
+}
+interface ContextUsageEstimate {
+  tokens: number;
+  usageTokens: number;
+  trailingTokens: number;
+  lastUsageIndex: number | null;
+}
+export function estimateContextTokens(context: TranscriptContext | readonly Message[]): ContextUsageEstimate {
+  const messages = "messages" in context ? context.messages : context;
+  let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
+  let usageInfo: { usage: Usage; index: number } | undefined;
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i]!;
+    if (message.role === "assistant" && message.timestamp >= latestPrefixTimestamp &&
+        message.stopReason !== "aborted" && message.stopReason !== "error" && calculateContextTokens(message.usage) > 0) {
+      usageInfo = { usage: message.usage, index: i };
+    }
+    latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
+  }
+  if (usageInfo) {
+    const usageTokens = calculateContextTokens(usageInfo.usage);
+    let trailingTokens = 0;
+    for (let i = usageInfo.index + 1; i < messages.length; i++) trailingTokens += estimateMessageTokens(messages[i]!);
+    return { tokens: usageTokens + trailingTokens, usageTokens, trailingTokens, lastUsageIndex: usageInfo.index };
+  }
+  const tokens = messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
+  return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
+}
 
 /** Pi's planning heuristic, NOT a tokenizer or a hard upper bound. */
 export function textTokens(text: string): number { return estimateTextTokens(text); }
