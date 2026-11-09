@@ -8251,7 +8251,7 @@ phases:
   steps:
   - id: nunc-npm-loader-compat.remove-subpath-imports
     name: 移除 @earendil-works/pi-ai/utils/* 运行时子路径导入并新增扩展加载器白名单回归测试
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/accounting.ts\", \"src/pi/payload.ts\", \"src/live/budget.ts\"\
       , \"tests/pi/compat.test.ts\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -8305,6 +8305,37 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-09T15:34:13.919473Z'
+    done_at: '2026-11-09T16:08:03.777371+00:00'
+    evidence: 'Artifact:
+
+      - Commit: 847d2e64799415068e409aa558ee753b26de1307 (retained ref: refs/vectl/candidates/nunc-npm-loader-compat.remove-subpath-imports)
+
+      - Changed files: src/engine/accounting.ts, src/pi/payload.ts, src/live/budget.ts,
+      tests/pi/compat.test.ts
+
+
+      Verification:
+
+      - Run: npm run build -> exit 0
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      node scripts/check.mjs all -> exit 0 (949 passed across 108 test files, 0 failed,
+      0 skipped; log: /tmp/nunc-npm-loader-compat-check-all-847d2e6.log)
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test dist/tests/pi/larva.integration.js -> exit 0 (9 passed, 0 failed)
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      node --test dist/tests/pi/compat.test.js -> exit 0 (7 passed, including AST
+      scan of dist/src/**/*.js against Pi loader virtual module allowlist and DefaultResourceLoader
+      loading unpacked dist/src/index.js outside the repository with no local or ancestor
+      node_modules)
+
+
+      Spec link:
+
+      - Phase nunc-npm-loader-compat / step nunc-npm-loader-compat.remove-subpath-imports'
   - id: nunc-npm-loader-compat.gate
     name: Pi 扩展加载器虚拟模块白名单兼容阶段整合验收
     status: pending
