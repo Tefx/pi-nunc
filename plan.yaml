@@ -7996,7 +7996,7 @@ phases:
       deterministic checks (428/428 passed) succeeded.'
 - id: nunc-capacity-root-cause
   name: Nunc 本地 CAPACITY 误拒四大根因修复与收据、保留及提取校准收敛
-  status: pending
+  status: in_progress
   gate: nunc-capacity-root-cause.gate 由 gate-reviewer 对 nunc-capacity-root-cause.implement-capacity-fixes
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 tests/pi/larva.integration.ts）作唯一阶段验收判断，确认主请求准入边界、收据工作记忆单次计费、活动用量误差扣减保留规划、提取自动输出上限与瞬态流断连重试及文档与测试
     100% 满足合同且无阻断缺陷。
@@ -8008,7 +8008,7 @@ phases:
   steps:
   - id: nunc-capacity-root-cause.implement-capacity-fixes
     name: 实现主准入边界、收据 M 单次计费、活动误差保留扣减与提取输出上限/瞬态流重试
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/**\", \"src/engine/**\", \"src/index.ts\", \"docs/**\"\
       , \"tests/pi/**\", \"tests/engine/**\", \"tests/live/**\"]\n  blocked_paths:\
@@ -8102,6 +8102,8 @@ phases:
     - package.json
     - tsconfig.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-09T12:17:04.500662Z'
   - id: nunc-capacity-root-cause.gate
     name: Nunc 本地 CAPACITY 根因修复阶段整合验收
     status: pending
