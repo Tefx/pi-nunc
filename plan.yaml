@@ -8421,7 +8421,7 @@ phases:
       - Phase nunc-npm-loader-compat / step nunc-npm-loader-compat.gate'
 - id: nunc-admission-retention-hardening
   name: 主准入输出上限收紧、按比例保留与无变更机械清理及 Larva 分类诊断加固
-  status: pending
+  status: in_progress
   gate: nunc-admission-retention-hardening.gate 由 gate-reviewer 对 nunc-admission-retention-hardening.implement-hardening
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认共享路由/输出底线原语、主请求授权后最佳努力输出上限收紧、按比例默认保留上限与
     M 未变时原生压缩机械清理及压缩后跑道诊断、Larva 不可用安全分类诊断（resolutionDetail）、Pi 扩展加载器虚拟模块白名单不变量及 5
@@ -8443,7 +8443,7 @@ phases:
   steps:
   - id: nunc-admission-retention-hardening.implement-hardening
     name: 实现主准入输出上限收紧、按比例保留与压缩机械清理及 Larva 分类诊断加固
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/**\", \"src/engine/**\", \"src/ui/**\", \"src/index.ts\"\
       , \"docs/**\", \"tests/pi/**\", \"tests/engine/**\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -8602,6 +8602,8 @@ phases:
     - package.json
     - tsconfig.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-13T19:02:18.354275Z'
   - id: nunc-admission-retention-hardening.gate
     name: 主准入输出上限收紧、按比例保留与 Larva 分类诊断加固阶段整合验收
     status: pending
