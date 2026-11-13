@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import { createAgentSessionFromServices, createAgentSessionServices, createEventBus, ModelRuntime, SessionManager, SettingsManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
+import { mainContext, requestTokens } from "../../src/engine/accounting.js";
+import { bindHostSettings } from "../../src/pi/index.js";
 import { repository } from "./fixtures.js";
 import { loadScenario, type ScenarioInput } from "../../src/live/scenarios.js";
 import { sameTaskHistoryChecks, sameTaskHistoryEffects, deriveExpectedRecords, taskRead } from "../../src/live/task-retention.js";
@@ -357,10 +359,42 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
-  // At the first read, candidate F is 3469/1014 with memory tools on/off; K=667.
-  // H=5400/2930 pays F + M + K + growth but excludes the unfinished user boundary.
-  // Later cuts must still commit and continue under the same real host checks below.
-  const reserveTokens = group === "candidate" ? (tools ? 54600 : 57070) : 36000;
+  let reserveTokens = 36000;
+  if (group === "candidate") try {
+    // Measure the real host prompt and tool declarations at NativeHost's task cwd,
+    // without sending a request or consulting ambient credentials/resources.
+    const cwd = join(stateRoot, "g4-same-task-history/task");
+    const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
+    const eventBus = createEventBus();
+    const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false } });
+    bindHostSettings(eventBus, settingsManager);
+    const services = await createAgentSessionServices({ cwd, agentDir: join(f.state, "agent"), modelRuntime,
+      settingsManager,
+      ...(tools ? { extensionFlagValues: new Map([["nunc-memory-tools", true]]) } : {}),
+      resourceLoaderOptions: { eventBus, additionalExtensionPaths: [join(repository, "dist/src/index.js")], noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+        systemPrompt: "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty." } });
+    assert.deepEqual(services.resourceLoader.getExtensions().errors, []);
+    const activeTools = ["read", "write", "edit", "bash", ...(tools ? ["nunc_memory_read", "nunc_memory_patch"] : [])];
+    const { session } = await createAgentSessionFromServices({ services, sessionManager: SessionManager.create(cwd, join(f.state, "measurement-sessions")), model, tools: activeTools });
+    try {
+      await session.bindExtensions({ mode: "json", onError: error => { throw new Error(error.error); } });
+      session.setActiveToolsByName(activeTools);
+      assert.deepEqual(session.getActiveToolNames(), activeTools);
+      const fixed = { systemPrompt: session.systemPrompt, tools: activeTools.map(name => {
+        const tool = session.agent.state.tools.find(t => t.name === name)!;
+        return { name, description: tool.description, parameters: tool.parameters,
+          ...(tool.constrainedSampling === undefined ? {} : { constrainedSampling: tool.constrainedSampling }) };
+      }) };
+      // H - F = 1905 yields M=190 and K capacity=691 after growth=1024:
+      // centered between the retained read (667) and unfinished user boundary (715).
+      reserveTokens = model.contextWindow - requestTokens(mainContext(fixed, [], []), undefined) - 1905;
+    } finally {
+      session.dispose();
+    }
+  } catch (error) {
+    await f.close();
+    throw error;
+  }
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
     comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" } } },
