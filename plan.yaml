@@ -8675,7 +8675,7 @@ phases:
     agent: gate-reviewer
 - id: nunc-toolchain-portability
   name: 工具链 SemVer 版本范围与对比基线跨机可移植性加固
-  status: in_progress
+  status: done
   gate: nunc-toolchain-portability.gate 由 gate-reviewer 对 nunc-toolchain-portability.implement-portability
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all、dist/tests/pi/larva.integration.js
     及 package-lock.json 依赖解析零改动校验）作唯一阶段验收判断，确认 Node/npm SemVer 范围策略（^26.7.0 / ^11.19.0）、check.mjs
@@ -8826,7 +8826,7 @@ phases:
       - git diff --check -> exit 0; managed plan.yaml untouched by candidate.'
   - id: nunc-toolchain-portability.gate
     name: 工具链 SemVer 版本范围与对比基线跨机可移植性阶段整合验收
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"package.json\", \"package-lock.json\", \".node-version\", \"scripts/check.mjs\"\
       , \"src/live/**\", \"tests/engine/**\", \"tests/live/**\", \"docs/DEVELOPMENT.md\"\
@@ -8877,3 +8877,20 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-13T19:55:20.504632Z'
+    done_at: '2026-11-13T19:59:27.272586+00:00'
+    evidence: 'Validated FULL PHASE_GATE PASS on bound commit 5c55dbf79d256699bb9d218bd3c9889b0b934f2c
+      (product commit 62f6cf901f2a85eca5f25158d089eba6d75d216f).
+
+      Validator result: valid=true, binding_checked=true, evidence_disposition=POSITIVE_GATE_EVIDENCE,
+      errors=[].
+
+      Binding & report: /tmp/nunc-portability-gate-zcI1dr/{review-binding.json,gate-report.json}.
+
+      All 5 requirements PROVEN: SemVer range policy (^26.7.0 / ^11.19.0, .node-version=26,
+      package.json version 0.2.3 & devDependencies unchanged, package-lock.json only
+      packages[""].engines aligned), check.mjs + preflight SemVer validation & observed
+      version binding into Receipt.node/digest, clone-portable 1d4fc4a210b64f71871ab3f5c10093215a25990c
+      baseline OID, synchronized docs/tests, and deterministic verification (npm run
+      build exit 0, 54/54 targeted runner+contract tests, 9/9 larva.integration.js
+      at bound HEAD, and applicable 949/949 full check.mjs all across 108 files with
+      2 optional external Dasein skips).'
