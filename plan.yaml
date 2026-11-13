@@ -8675,7 +8675,7 @@ phases:
     agent: gate-reviewer
 - id: nunc-toolchain-portability
   name: 工具链 SemVer 版本范围与对比基线跨机可移植性加固
-  status: pending
+  status: in_progress
   gate: nunc-toolchain-portability.gate 由 gate-reviewer 对 nunc-toolchain-portability.implement-portability
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all、dist/tests/pi/larva.integration.js
     及 package-lock.json 依赖解析零改动校验）作唯一阶段验收判断，确认 Node/npm SemVer 范围策略（^26.7.0 / ^11.19.0）、check.mjs
@@ -8695,7 +8695,7 @@ phases:
   steps:
   - id: nunc-toolchain-portability.implement-portability
     name: 实现工具链 SemVer 版本范围策略、实测版本收据与可克隆基线 OID
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"package.json\", \"package-lock.json\", \".node-version\"\
       , \"scripts/check.mjs\", \"src/live/**\", \"tests/engine/**\", \"tests/live/**\"\
@@ -8780,6 +8780,8 @@ phases:
     - tests/live/same-task-history.test.ts
     - tests/pi/larva.integration.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-13T19:38:24.914271Z'
   - id: nunc-toolchain-portability.gate
     name: 工具链 SemVer 版本范围与对比基线跨机可移植性阶段整合验收
     status: pending
