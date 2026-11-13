@@ -8419,3 +8419,255 @@ phases:
       Spec link:
 
       - Phase nunc-npm-loader-compat / step nunc-npm-loader-compat.gate'
+- id: nunc-admission-retention-hardening
+  name: 主准入输出上限收紧、按比例保留与无变更机械清理及 Larva 分类诊断加固
+  status: pending
+  gate: nunc-admission-retention-hardening.gate 由 gate-reviewer 对 nunc-admission-retention-hardening.implement-hardening
+    的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认共享路由/输出底线原语、主请求授权后最佳努力输出上限收紧、按比例默认保留上限与
+    M 未变时原生压缩机械清理及压缩后跑道诊断、Larva 不可用安全分类诊断（resolutionDetail）、Pi 扩展加载器虚拟模块白名单不变量及 5
+    份文档与回归测试 100% 满足 docs/ADMISSION-RETENTION-HARDENING.md 绑定合同且无阻断回归。
+  context: 依据已验收的设计规范 docs/ADMISSION-RETENTION-HARDENING.md，在单一源码、测试与文档事务（nunc-admission-retention-hardening.implement-hardening）中解决
+    v0.2.3 生产遥测暴露的三类问题：（1）统一共享路由无输出上限谓词 omitsRouteOutputCap(model, registry) 与序列化输出底线
+    outputFloor(model)，对有上限主路由的超大模型目录 maxTokens（>= 0.8 * contextWindow）发出有界单次告警，并在
+    authorizePayload 之后对无正数绑定 thinking 预算的有上限主请求执行不重复计入收据前缀的保守最佳努力输出上限收紧（保留 safeFloor，超底线时交由
+    Pi 原生溢出/阈值压缩而不伪造本地 CAPACITY 错误）；（2）在未显式配置 rolling.targetTokens 或 rolling.keepRecentFraction
+    时将默认 keepRecentTargetTokens 收敛为 Math.min(100000, Math.max(1, settings.keepRecentTokens,
+    Math.floor(triggerTokens * 0.25)))，允许原生压缩维护（maintain）在 M 未改变时对保留区 R（candidateScope
+    ∩ retainedEntries）执行确定性无损机械清理并严格保持 semanticEdits 的 m_unchanged 跳过原因优先级，同时在 /nunc
+    details 与单次告警中基于现有 accounting 字段暴露独立的压缩后增长跑道（post-compaction growth runway）诊断；（3）在不削弱
+    fail-closed CONFIG 拒绝与 4 值 resolution 联合类型的前提下，通过精确白名单映射安全分类 token（resolutionDetail）并在错误消息与全部观测/UI
+    表面对称暴露；全程严格遵守 Pi 扩展加载器虚拟模块导入白名单并同步更新 5 份契约文档与回归测试，由 nunc-admission-retention-hardening.gate
+    执行唯一阶段整合验收。
+  depends_on:
+  - nunc-npm-loader-compat
+  steps:
+  - id: nunc-admission-retention-hardening.implement-hardening
+    name: 实现主准入输出上限收紧、按比例保留与压缩机械清理及 Larva 分类诊断加固
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/pi/**\", \"src/engine/**\", \"src/ui/**\", \"src/index.ts\"\
+      , \"docs/**\", \"tests/pi/**\", \"tests/engine/**\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 依据已验收的设计规范 `docs/ADMISSION-RETENTION-HARDENING.md`，在单一源码、测试与文档事务中完整交付主请求输出上限收紧、按比例默认保留与压缩机械清理、压缩后跑道诊断及\
+      \ Larva 不可用安全分类诊断，同时严格保持 Pi 扩展加载器虚拟模块导入白名单不变量：\n1. 共享路由上限与输出底线原语（`src/engine/accounting.ts`,\
+      \ `src/pi/config.ts`, `src/pi/payload.ts`, `src/pi/admission.ts`, `src/index.ts`）：\n\
+      \   - 定义并复用统一的无输出上限路由谓词 `omitsRouteOutputCap(model, registry)`：当且仅当 `omitsSerializedOutputCap(model)`\
+      \ 或 `model.api === \"openai-responses\" && subscriptionBilling(model, registry)`\
+      \ 时返回 `true`；`src/index.ts` 与 `src/pi/admission.ts` 的所有调用点均须使用该谓词，消除单独使用 `subscriptionBilling`\
+      \ 将 Anthropic OAuth 误判为省略 `max_tokens` 的不一致。\n   - 定义并跨 `src/engine/accounting.ts`、`src/pi/config.ts`、`src/pi/payload.ts`\
+      \ 与 `src/pi/admission.ts` 复用统一的序列化输出底线辅助函数 `outputFloor(model)`（`openai-responses`\
+      \ 与 `azure-openai-responses` 为 `16`，其余路由为 `1`）。\n   - 在 `src/index.ts` 中合并启动（`session_start`）与模型切换（`model_select`）模型级诊断检查，按\
+      \ `${model.provider}/${model.id}` 在当前会话生命周期内去重（仅在会话重置边界清理，不在 `thinking_level_select`\
+      \ 时清空）。\n   - 扩展加载器兼容不变量：`src/` 下所有运行时导入必须严格保持在 `tests/pi/compat.test.ts` 验证的\
+      \ Pi 扩展加载器虚拟模块白名单内。\n2. 主请求超大目录输出上限过度预留缓解（Issue A，`src/index.ts`, `src/pi/admission.ts`,\
+      \ `src/pi/payload.ts`）：\n   - 模型诊断告警：在 `session_start` 与 `model_select` 时，若\
+      \ `!omitsRouteOutputCap(model, registry)` 且 `model.maxTokens >= 0.8 * model.contextWindow`，发出有界单次诊断告警，提示超大模型目录输出上限在密集输入下可能触发过早的提供商拒绝。\n\
+      \   - 授权后最佳努力输出上限收紧（仅限有上限 `main` 路由）：\n     - 执行顺序：在 `Admission` 的 `onPayload`\
+      \ 包装器中，严格在 `authorizePayload` 完成全部 `before_provider_request` 钩子改动校验**之后**执行收紧，确保下游钩子的超预算修改仍被拒绝而不被掩盖。\n\
+      \     - 作用范围与 thinking 预算耦合守卫：覆盖 `outputCapPaths()` 识别的所有已存在序列化输出上限字段（`max_tokens`、`max_output_tokens`、`max_completion_tokens`、`generationConfig.maxOutputTokens`、`config.maxOutputTokens`）。若\
+      \ `!omitsRouteOutputCap(model, registry)` 为假、`outputCapState(after)` 不为 `\"\
+      value\"`，或 payload 携带任何严格正数的耦合 thinking 预算（`thinking.budget_tokens > 0`、`{,config.,generationConfig.}thinkingConfig.thinkingBudget\
+      \ > 0` 或 `{,thinking.}thinking_budget / thinking_token_budget / thinking_budget_tokens\
+      \ > 0`），则跳过收紧；零预算（如 thinking 为 `\"off\"` 时 Gemini 的 `thinkingBudget: 0`）不得阻断收紧。\n\
+      \     - 保守输入上界（禁止前缀重复计费）：命中 `selected.receipt` 时，从已由提供商实测的 `receiptBreakdown.observedU`\
+      \ 出发（严禁对已序列化前缀乘系数或重复计费），仅对未测尾部项（`deltaR`、`additionalM`、`initialMetadataTokens`\
+      \ 及 `onPayload` 增长）叠加最坏情况上界（`<= 1 token/char`，如 `Math.max(messageTokens, charLength)`）；未命中收据时，对序列化输入字段（`messages`/`input`/`contents`、`system`/`instructions`、`tools`/`functions`）加元数据/增长计算最坏情况上界（`<=\
+      \ 1 token/char`）。\n     - 安全运行底线与不可行边界：令 `safeFloor = Math.min(serializedCap,\
+      \ Math.max(outputFloor(model), reserveTokens, Math.min(32768, Math.floor(model.contextWindow\
+      \ * 0.25))))`（其中 `reserveTokens = model.contextWindow - config.triggerTokens`）。仅当\
+      \ `conservativeInput + serializedCap > model.contextWindow` 且 `model.contextWindow\
+      \ - conservativeInput - safetyMargin >= safeFloor` 时，在克隆的 payload 上将序列化输出上限路径收紧为\
+      \ `Math.max(safeFloor, model.contextWindow - conservativeInput - safetyMargin)`\
+      \ 并从 `onPayload` 返回该修改后的 payload（即使下游钩子返回 `undefined`）。当剩余保守裕量低于 `safeFloor`\
+      \ 时，保持 `serializedCap` 原样不变，交由 Pi 原生溢出/阈值压缩处理真实满窗口情形，严禁据此伪造默认本地 `CAPACITY` 错误。\n\
+      \     - 观测与收据完整性：在发出 `nunc:admission` / 布局观测前将 `AdmissionObservation.outputCapTokens`\
+      \ 更新为最终发送的上限值；保持 `observation.mode` 与 `observation.categories` 仅描述下游钩子改动，且在仅收紧输出上限时保留\
+      \ `MainSnapshot.payloadBound`。\n3. 按比例默认保留上限、M 未变时的原生压缩机械清理与压缩后跑道诊断（Issue B，`src/pi/config.ts`,\
+      \ `src/engine/cleanup.ts`, `src/engine/engine.ts`, `src/pi/manual.ts`, `src/ui/status.ts`,\
+      \ `src/index.ts`）：\n   - 按比例默认 `keepRecentTargetTokens`：在 `src/pi/config.ts`（`engineConfig()`）中，当\
+      \ `rolling.targetTokens` 与 `rolling.keepRecentFraction` 均未显式配置时，将 `keepRecentTargetTokens`\
+      \ 设为 `Math.min(100000, Math.max(1, settings.keepRecentTokens, Math.floor(triggerTokens\
+      \ * 0.25)))`；显式配置 `rolling.targetTokens` 或 `rolling.keepRecentFraction` 时完全保留既有语义，并在\
+      \ `>= 400K` / `1M` 窗口下保留 `100,000` 上限。\n   - M 未改变时的压缩范围机械清理：不在两次压缩之间的普通 `context`\
+      \ 投影中自动改写活动 `R`（保护提供商提示词缓存前缀与 `MainReceipt` 前缀匹配），且保持手动 `nunc_memory_patch`（`src/pi/manual.ts`）在\
+      \ `M` 未变时返回 no-op 而不提交纯清理记录；在 `decideToolResultCleanup`（`src/engine/cleanup.ts`）中扩展显式\
+      \ opt-in 选项并由原生压缩（`maintain`）启用，使确定性无损机械规则（`strip_boilerplate`、`deduplicate`、`compact_toc`、`compact_json`、`clean_terminal`）在\
+      \ `!mChanged` 时仍对 `candidateScope` 与 `retainedEntries` 的交集执行。\n   - 跳过原因优先级：当\
+      \ `disabled` 为真时，对任何 `semanticEdits` 立即返回 `not_in_candidate_scope`；否则当 `!mChanged`\
+      \ 时，在过滤 `candidateScopeSet` **之前**先为 `semanticEdits` 中的每一项记录 `reason: \"m_unchanged\"\
+      ` 并将 `candidateSemanticEdits` 置空，随后在启用 opt-in 时执行机械规则。\n   - 独立的压缩后增长跑道（post-compaction\
+      \ runway）诊断：保持 `normalHeadroomSufficient` 严格专用于正常触发提取可行性；直接由现有 `accounting.mainAfterTokens`、`accounting.effectiveTrigger`\
+      \ 与 `accounting.growthTokens` 推导压缩后增长跑道（不在 `Accounting` 上增加冗余字段），在 `/nunc details`（`maintenanceLines`）中展示该候选预测，并在预计压缩后跑道狭窄（如\
+      \ `< 0.35 * effectiveTrigger`）时发出单次告警（`runwayWarned`，在 `invalidate()` 中与 `headroomWarned`\
+      \ 一同重置）；严禁针对压缩后跑道狭窄建议调高 `compaction.reserveTokens`。\n4. Larva 不可用状态的安全分类诊断（Issue\
+      \ C，`src/pi/admission.ts`, `src/pi/context.ts`, `src/ui/status.ts`, `src/ui/context-tree.ts`,\
+      \ `src/index.ts`）：\n   - 保持 fail-closed 拒绝与 `resolution` 联合类型：对 `{ status: \"\
+      unavailable\", reason }` 维持硬 `CONFIG` 拒绝（零回退到未投影提示词），并保持 4 值 `resolution` 字段（`\"\
+      resolved\" | \"legacy-no-reply\" | \"unavailable\" | \"protocol-error\"`）对既有消费者与测试完全兼容。\n\
+      \   - 安全分类字段 `resolutionDetail`：将 Larva `unavailable` 的 `reason` 严格按精确白名单映射为固定安全\
+      \ token（`\"not ready\"`、`\"damaged managed boundaries\"`、`\"ambiguous managed\
+      \ boundaries\"`、`\"damaged legacy boundaries\"`、`\"invalid request\"`），将其他任何非空合法\
+      \ `unavailable` reason 映射为 `\"unavailable\"`（绝不将未知非空 reason 误判为协议错误，也绝不回显或截断不可信文本）；将\
+      \ `protocol-error` 失败映射为 `\"duplicate-reply\"`、`\"invalid-payload\"` 或 `\"dispatch-error\"\
+      `。\n   - 对称报告：保持 `\"Larva system prompt is currently unavailable\"` 作为 `unavailable`\
+      \ 时 `EngineError(\"CONFIG\", ...)` 消息的前缀（后接 ` (${detail})`），并在 `AdmissionObservation`、`LastMainContext`（`src/pi/context.ts`）、`/nunc\
+      \ details`（`src/ui/status.ts`）、F7 Context tree `Last main`（`src/ui/context-tree.ts`）与\
+      \ `ui.noteDiagnostic`（`src/index.ts`）上一致暴露 `resolutionDetail`。\n5. 文档与测试同步更新（`docs/PI.md`,\
+      \ `docs/ENGINE.md`, `docs/CAPACITY.md`, `docs/TOOL-RESULT-CLEANUP.md`, `docs/LARVA-PROMPT.md`,\
+      \ `tests/pi/**`, `tests/engine/**`）：\n   - 同步更新 `docs/PI.md`、`docs/ENGINE.md`、`docs/CAPACITY.md`、`docs/TOOL-RESULT-CLEANUP.md`\
+      \ 与 `docs/LARVA-PROMPT.md`。\n   - 更新 `tests/pi/config.test.ts` 中默认全窗口 `keepTarget`\
+      \ 期望值（当 `triggerTokens = 24000` 时为 `6000`），并补充覆盖上述全部新后置条件的行为回归测试，不弱化任何既有断言。\n\
+      \nImplementation Notes (Non-Binding):\n- `src/pi/admission.ts`（`Admission.enter`,\
+      \ `onPayload`）：`config = this.config(ctx, model)` 已在 `onPayload` 前解析，可直接复用 `model.contextWindow\
+      \ - config.triggerTokens` 作为 `reserveTokens`；收紧输出上限时需克隆 payload 容器及 `outputCapPaths()`\
+      \ 沿途的嵌套 `config`/`generationConfig` 对象，避免在 `replacement === undefined` 时原地修改调用方持有的引用。\n\
+      - `tests/pi/payload-google.test.ts` 与 `scripts/observe-grok-budget.mjs`：确保命中收据的\
+      \ `observedU + delta` 不会在 `gemini-2.5-flash`（`observedU = 988,041`, `cap = 56,436`）上触发误收紧，且\
+      \ Turn 1 未测输入的 `<= 1 token/char` 估算在 `grok-4.6` 上保留 `firstCap > 400,000`。\n\
+      - `src/engine/cleanup.ts`（`decideToolResultCleanup`）：确保当 `cleanupCandidateScope`\
+      \ 为空且 `M` 未变时，`tests/engine/cleanup.test.ts` 仍报告 `\"m_unchanged\"` 而非 `\"not_in_candidate_scope\"\
+      `。\n\nBoundary: owner 为 `node-typescript-engineer`；属于本仓库可 Git 回退的源码、测试与文档变更事务。不修改\
+      \ Pi core 或 `@earendil-works/pi-ai`，不触碰 `.pi/`、全局配置或外部凭据，不运行任何外部付费 live-LLM\
+      \ 调用。\n\nAdmit: 依赖 `nunc-npm-loader-compat` 已完成的基线与已验收规范 `docs/ADMISSION-RETENTION-HARDENING.md`；完成后通过\
+      \ `npm run build`、`node scripts/check.mjs all` 与 `dist/tests/pi/larva.integration.js`\
+      \ 验证，并交由 `nunc-admission-retention-hardening.gate` 验收。\n\nRecovery: 若构建或测试失败，在同一步骤隔离工作树内定位并修复；未合并改动可通过\
+      \ Git worktree 安全回退，不污染主分支历史或受保护路径。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n    inventory: [\"tests/engine/*.test.ts\", \"tests/pi/*.test.ts\"\
+      , \"tests/live/*.test.ts\"]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\"\
+      , \"package.json\", \"package-lock.json\"]\n  - id: actual-larva-integration\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\n    inventory:\
+      \ [\"tests/pi/larva.integration.ts\"]\n```\n验证要求：\n1. 验证共享原语与加载器兼容：`omitsRouteOutputCap(model,\
+      \ registry)` 与 `outputFloor(model)` 在所有目标模块统一复用；启动与 `model_select` 诊断按 `${model.provider}/${model.id}`\
+      \ 在会话内去重且不受 `thinking_level_select` 影响；`tests/pi/compat.test.ts` 继续证明 `dist/src/**/*.js`\
+      \ 的全部 `@earendil-works/*` 导入严格处于 Pi 扩展加载器虚拟模块白名单内。\n2. 验证 Issue A（主请求输出上限过度预留缓解）：有上限路由在\
+      \ `model.maxTokens >= 0.8 * model.contextWindow` 时发出单次告警；`onPayload` 严格在 `authorizePayload`\
+      \ 之后对无正数耦合 thinking 预算的有上限 `main` 请求执行不重复计入收据前缀的保守收紧（零 thinking 预算如 `thinkingBudget:\
+      \ 0` 不阻断收紧，保留 `safeFloor`，裕量低于 `safeFloor` 时保持原值且不伪造本地 `CAPACITY` 错误，克隆 payload\
+      \ 避免原地修改，更新 `AdmissionObservation.outputCapTokens` 并保留 `MainSnapshot.payloadBound`）。\n\
+      3. 验证 Issue B（按比例保留、无变更压缩机械清理与跑道诊断）：未配置 `rolling.targetTokens` 与 `rolling.keepRecentFraction`\
+      \ 时 `keepRecentTargetTokens = Math.min(100000, Math.max(1, settings.keepRecentTokens,\
+      \ Math.floor(triggerTokens * 0.25)))`（显式配置语义不变）；原生压缩（`maintain`）在 `!mChanged`\
+      \ 时对 `candidateScope ∩ retainedEntries` 执行确定性无损机械清理，普通 `context` 投影与手动 `nunc_memory_patch`\
+      \ 在 `!mChanged` 时不改写/不提交，且 `semanticEdits` 严格保持 `disabled -> not_in_candidate_scope`、`!mChanged\
+      \ -> m_unchanged` 的跳过原因优先级；`/nunc details` 与单次告警（`runwayWarned`）基于现有 `accounting`\
+      \ 字段暴露压缩后增长跑道且不建议调高 `compaction.reserveTokens`。\n4. 验证 Issue C（Larva 分类诊断）：保持\
+      \ `unavailable` 硬 `CONFIG` 拒绝与 4 值 `resolution` 联合类型；`resolutionDetail` 严格按精确白名单映射\
+      \ `unavailable` reason（未知非空合法 reason 映射为 `\"unavailable\"` 且不回显不可信文本）及 `protocol-error`\
+      \ 细类，并在 `EngineError` 消息前缀 `\"Larva system prompt is currently unavailable (${detail})\"\
+      `、`AdmissionObservation`、`LastMainContext`、`/nunc details`、F7 Context tree 与\
+      \ `ui.noteDiagnostic` 对称暴露。\n5. 验证 `npm run build`、`node scripts/check.mjs all`\
+      \ 与 `dist/tests/pi/larva.integration.js` 全部通过（exit 0），5 份文档（`docs/PI.md`, `docs/ENGINE.md`,\
+      \ `docs/CAPACITY.md`, `docs/TOOL-RESULT-CLEANUP.md`, `docs/LARVA-PROMPT.md`）同步更新。"
+    refs:
+    - docs/ADMISSION-RETENTION-HARDENING.md
+    - docs/PI.md
+    - docs/ENGINE.md
+    - docs/CAPACITY.md
+    - docs/TOOL-RESULT-CLEANUP.md
+    - docs/LARVA-PROMPT.md
+    - src/index.ts
+    - src/pi/admission.ts
+    - src/pi/config.ts
+    - src/pi/context.ts
+    - src/pi/manual.ts
+    - src/pi/payload.ts
+    - src/engine/accounting.ts
+    - src/engine/cleanup.ts
+    - src/engine/engine.ts
+    - src/engine/types.ts
+    - src/ui/status.ts
+    - src/ui/context-tree.ts
+    - tests/pi/admission.test.ts
+    - tests/pi/capacity.test.ts
+    - tests/pi/cleanup-integration.test.ts
+    - tests/pi/compat.test.ts
+    - tests/pi/config.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/larva-prompt.test.ts
+    - tests/pi/larva.integration.ts
+    - tests/pi/payload-google.test.ts
+    - tests/pi/payload.test.ts
+    - tests/pi/reporting.test.ts
+    - tests/engine/cleanup.test.ts
+    - tests/engine/defaults.test.ts
+    - tests/engine/retention-target.test.ts
+    - scripts/check.mjs
+    - scripts/observe-grok-budget.mjs
+    - package.json
+    - tsconfig.json
+    agent: node-typescript-engineer
+  - id: nunc-admission-retention-hardening.gate
+    name: 主准入输出上限收紧、按比例保留与 Larva 分类诊断加固阶段整合验收
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"scripts/observe-grok-budget.mjs\"\
+      , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\",\
+      \ \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      ]\n\nDeliver: 对 `nunc-admission-retention-hardening` 阶段的唯一实现步骤 `nunc-admission-retention-hardening.implement-hardening`\
+      \ 的整合提交与确定性离线测试证据作唯一阶段验收判断（`PHASE_GATE`），确认 `docs/ADMISSION-RETENTION-HARDENING.md`\
+      \ 规定的全部 5 项绑定合同（共享路由上限与输出底线原语及 Pi 扩展加载器虚拟模块白名单不变量、主请求授权后最佳努力输出上限收紧、按比例默认保留上限与\
+      \ M 未变时原生压缩机械清理及压缩后跑道诊断、Larva 不可用安全分类诊断 `resolutionDetail`、5 份契约文档与回归测试同步更新）全部满足且无阻断缺陷。\n\
+      \nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
+      \ `plan.yaml`，不运行任何外部付费 live-LLM 调用。\n\nAdmit: 包含 `nunc-admission-retention-hardening`\
+      \ 阶段的终端实现成果 `nunc-admission-retention-hardening.implement-hardening`；消费绑定于最终整合不可变提交（immutable\
+      \ git commit）的代码差异与确定性离线验证证据（`npm run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`），验证在\
+      \ `nunc-npm-loader-compat` 基线之上的跨模块一致性；排除非本阶段范围改动与外部付费模型调用。\n\nRecovery: 若发现任何未满足的合同项、白名单导入违规、测试缺口或回归缺陷，返回明确的问题列表；由\
+      \ Orchestrator 按规则通过同阶段修复闭环后以 Delta 模式复核，任一阻断项未解决前不予通过。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\nreview:\n\
+      \  kind: PHASE_GATE\n  mode: FULL\n  phases: [nunc-admission-retention-hardening]\n\
+      ```\n核验绑定于最终整合不可变提交的 `docs/ADMISSION-RETENTION-HARDENING.md` 全部 5 项绑定合同、Pi 扩展加载器虚拟模块白名单不变量、5\
+      \ 份契约文档同步更新与确定性构建/离线全量回归测试（`npm run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`）100%\
+      \ 通过且无回归缺陷。"
+    refs:
+    - docs/ADMISSION-RETENTION-HARDENING.md
+    - docs/PI.md
+    - docs/ENGINE.md
+    - docs/CAPACITY.md
+    - docs/TOOL-RESULT-CLEANUP.md
+    - docs/LARVA-PROMPT.md
+    - src/index.ts
+    - src/pi/admission.ts
+    - src/pi/config.ts
+    - src/pi/context.ts
+    - src/pi/manual.ts
+    - src/pi/payload.ts
+    - src/engine/accounting.ts
+    - src/engine/cleanup.ts
+    - src/engine/engine.ts
+    - src/engine/types.ts
+    - src/ui/status.ts
+    - src/ui/context-tree.ts
+    - tests/pi/admission.test.ts
+    - tests/pi/capacity.test.ts
+    - tests/pi/cleanup-integration.test.ts
+    - tests/pi/compat.test.ts
+    - tests/pi/config.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/larva-prompt.test.ts
+    - tests/pi/larva.integration.ts
+    - tests/pi/payload-google.test.ts
+    - tests/pi/payload.test.ts
+    - tests/pi/reporting.test.ts
+    - tests/engine/cleanup.test.ts
+    - tests/engine/defaults.test.ts
+    - tests/engine/retention-target.test.ts
+    - scripts/check.mjs
+    - scripts/observe-grok-budget.mjs
+    - package.json
+    - tsconfig.json
+    depends_on:
+    - nunc-admission-retention-hardening.implement-hardening
+    agent: gate-reviewer
