@@ -363,7 +363,7 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
   const reserveTokens = group === "candidate" ? (tools ? 54600 : 57070) : 36000;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
-    comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "refs/nunc/task-retention-pre-change" } } },
+    comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" } } },
     overrides: [{ requirement: "maintenance-thinking", maintenanceThinking: "low", reason: "Controlled low-effort native serializer proof" }, ...(tools ? [] : [{ requirement: "memory-tools-off", memoryTools: false, reason: "Actual tools-off comparison" }])],
     limits: { maxCalls: 50, maxTotalTokens: 4000000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
     scenarios: [{ id: "g4", variant: "same-task-history", config: { compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };

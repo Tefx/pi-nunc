@@ -91,7 +91,7 @@ test("native-resolved metadata rejects changed endpoint/capacity, unavailable mo
 });
 test("tracked fixture yields effect-free receipt bound to scenario/config/limits/target", async () => {
   const input = await fixture(), receipt = await preflight(input, repository);
-  assert.equal(receipt.callsMade, 0); input.receipt = receipt;
+  assert.equal(receipt.callsMade, 0); assert.equal(receipt.node, process.versions.node); input.receipt = receipt;
   assert.deepEqual(await preflight(input, repository), receipt);
   await assert.rejects(lstat(input.target.stateRoot), { code: "ENOENT" });
   const changed = structuredClone(input); changed.limits.maxCalls = 21;
@@ -104,6 +104,24 @@ test("tracked fixture yields effect-free receipt bound to scenario/config/limits
   await assert.rejects(preflight(disabled, repository), /does not match/);
   const target = structuredClone(input); target.target.stateRoot += "-other";
   await assert.rejects(preflight(target, repository), /does not match/);
+});
+test("preflight accepts compatible Node versions and binds each observed runtime into its receipt", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.versions, "node")!;
+  const input = await fixture();
+  try {
+    Object.defineProperty(process.versions, "node", { value: "26.7.0" });
+    const floor = await preflight(input, repository);
+    assert.equal(floor.node, "26.7.0");
+    Object.defineProperty(process.versions, "node", { value: "26.13.0" });
+    const upgraded = await preflight(input, repository);
+    assert.equal(upgraded.node, "26.13.0");
+    assert.notEqual(upgraded.binding, floor.binding);
+    await assert.rejects(preflight({ ...input, receipt: floor }, repository), /does not match/);
+    for (const version of ["26.6.9", "25.7.0", "27.0.0", "26.7", "26.7.x", "26.7.0-rc.1", "26.13.0-nightly"]) {
+      Object.defineProperty(process.versions, "node", { value: version });
+      await assert.rejects(preflight(input, repository), /Use Node/);
+    }
+  } finally { Object.defineProperty(process.versions, "node", descriptor); }
 });
 test("public CLI rejects empty stdin/unknown args; real preflight consumes tracked fixture", async () => {
   const script = join(repository, "scripts/verify-live.mjs"), input = await fixture();

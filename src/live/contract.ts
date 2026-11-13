@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { satisfiesStableCaret } from "./toolchain.js";
 import { canonical } from "../engine/validation.js";
 export { canonical } from "../engine/validation.js";
 import { execFileSync } from "node:child_process";
@@ -316,8 +317,8 @@ export function selectedModels(input: RunInput): Model<Api>[] {
 }
 export async function preflight(input: RunInput, repository: string, existingOwnedWorker = false): Promise<Receipt> {
   await validateTarget(input, repository, existingOwnedWorker); selectedModels(input);
-  const node = (await readFile(join(repository, ".node-version"), "utf8")).trim();
-  requireValue(process.versions.node === node && !process.env.NODE_OPTIONS, "ENVIRONMENT", `Use Node ${node} with NODE_OPTIONS unset`);
+  const node = process.versions.node;
+  requireValue(satisfiesStableCaret(node, "^26.7.0") && !process.env.NODE_OPTIONS, "ENVIRONMENT", "Use Node ^26.7.0 with NODE_OPTIONS unset");
   const lock = JSON.parse(await readFile(join(repository, "package-lock.json"), "utf8"));
   const piVersion = lock.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
   requireValue(isSupportedPiVersion(piVersion), "DEPENDENCY", `Locked Pi must satisfy ${SUPPORTED_PI_RANGE}; found ${String(piVersion)}`);

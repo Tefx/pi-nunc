@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { satisfiesStableCaret } from "../src/live/toolchain.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fail = message => { console.error(`check: ${message}`); process.exit(1); };
@@ -9,8 +10,7 @@ const json = path => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 const pkg = json("package.json");
 const selected = process.argv.slice(2);
 if (selected.length !== 1 || !["engine", "all"].includes(selected[0])) fail("Expected nonempty selection: engine or all.");
-const version = readFileSync(resolve(root, ".node-version"), "utf8").trim();
-if (process.versions.node !== version || pkg.engines.node !== version) fail(`Requires selected Node ${version}; found ${process.versions.node}`);
+if (!satisfiesStableCaret(process.versions.node, pkg.engines.node)) fail(`Requires Node ${pkg.engines.node}; found ${process.versions.node}`);
 if (process.env.NODE_OPTIONS) fail("Unset NODE_OPTIONS for reproducible checks");
 const lock = json("package-lock.json");
 for (const name of Object.keys(pkg.devDependencies)) {
@@ -19,10 +19,15 @@ for (const name of Object.keys(pkg.devDependencies)) {
   const wanted = lock.packages?.[`node_modules/${name}`]?.version;
   if (!wanted || json(path).version !== wanted) fail(`Local ${name} differs from the tracked lock`);
 }
-const npmCli = [resolve(dirname(process.execPath), "../lib/node_modules/npm/bin/npm-cli.js"), "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"].find(p => existsSync(p));
-if (!npmCli) fail("Missing selected npm CLI; no automatic installation");
-const npm = spawnSync(process.execPath, [npmCli, "--version"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: resolve(root, ".npm-cache"), npm_config_update_notifier: "false" } });
-if (npm.status !== 0 || npm.stdout.trim() !== pkg.engines.npm) fail(`Requires npm ${pkg.engines.npm}; found ${npm.stdout?.trim() || npm.error || npm.status}`);
+const nodeDirectories = [dirname(process.execPath), dirname(realpathSync(process.execPath))];
+const npmCli = [...nodeDirectories.flatMap(dir => [
+  resolve(dir, "../lib/node_modules/npm/bin/npm-cli.js"),
+  resolve(dir, "node_modules/npm/bin/npm-cli.js"),
+]), "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"].find(p => existsSync(p));
+const npm = spawnSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, "--version"] : ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: resolve(root, ".npm-cache"), npm_config_update_notifier: "false" } });
+const npmVersion = npm.stdout?.trim() ?? "";
+if (npm.status !== 0 || !satisfiesStableCaret(npmVersion, pkg.engines.npm)) fail(`Requires npm ${pkg.engines.npm}; found ${npmVersion || npm.error || npm.status}`);
+console.log(`check: observed Node ${process.versions.node}, npm ${npmVersion}`);
 const tests = readdirSync(resolve(root, "tests"), { recursive: true }).filter(name => name.endsWith(".test.ts") && (selected[0] === "all" || name.startsWith("engine/"))).sort();
 if (tests.length === 0) fail("Empty test selection");
 if (selected[0] === "all") for (const suite of ["engine", "pi", "live"]) {
@@ -40,4 +45,4 @@ for (const test of compiled) if (!existsSync(resolve(root, test))) fail(`Missing
 const concurrency = process.env.NUNC_TEST_CONCURRENCY ?? "2";
 if (!["1", "2"].includes(concurrency)) fail("NUNC_TEST_CONCURRENCY must be 1 or 2");
 run(["--test", `--test-concurrency=${concurrency}`, ...compiled]);
-console.log(`${selected[0]} checks completed (${tests.length} test files). ${selected[0] === "all" ? "Actual stock CLI/RPC/TUI, native transports/auth delegation and JSONL with controlled services; bounded preflight stdin included." : "Engine/model bridge with controlled service only."} Real-model task effectiveness remains separately authorized evidence.`);
+console.log(`${selected[0]} checks completed (${tests.length} test files; Node ${process.versions.node}, npm ${npmVersion}). ${selected[0] === "all" ? "Actual stock CLI/RPC/TUI, native transports/auth delegation and JSONL with controlled services; bounded preflight stdin included." : "Engine/model bridge with controlled service only."} Real-model task effectiveness remains separately authorized evidence.`);

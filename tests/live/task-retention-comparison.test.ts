@@ -16,7 +16,7 @@ test("public comparison binds explicit pre-change ref and executes scoped-task h
   const selection = { target: { repository, stateRoot: join(f.dir, "nunc-live-compare"), cleanup: "retain" },
     limits: { maxCalls: 120, maxTotalTokens: 9600000, maxOutputTokens: 20000, maxDurationMs: 140000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios: [{ id: "g3", variant: "scoped-tasks" }],
     overrides: [{ requirement: "task-retention-luna", reason: "Controlled comparison with explicit isolated model/config", model: { provider: "openrouter", id: model.id }, thinking: "low", config }, { requirement: "maintenance-thinking", reason: "Observe actual low serialization", maintenanceThinking: "low" }],
-    comparison: { modes: ["defaults", "matched"], targets: { native: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "refs/nunc/task-retention-pre-change" }, candidate: { repository } } } };
+    comparison: { modes: ["defaults", "matched"], targets: { native: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" }, candidate: { repository } } } };
   let turn = "", step = 0;
   f.limits.maxCalls = 120; f.limits.maxTotalTokens = 9600000;
   const tool = (name: string, input: any) => ({ tool: { name, input } });
@@ -51,7 +51,7 @@ test("public comparison binds explicit pre-change ref and executes scoped-task h
     await writeFile(join(f.dir, "comparison-result.json"), JSON.stringify(result));
     assert.equal(result.code, 0, JSON.stringify({ code: result.code, reason: result.report?.reason, matrix: result.report?.matrix?.map((m: any) => ({ group: m.group, status: m.status, reason: m.reason })) }));
     assert.equal(result.report.matrix.length, 6);
-    const expected = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "refs/nunc/task-retention-pre-change"], { encoding: "utf8", env: { ...process.env, DEVELOPER_DIR: "/Library/Developer/CommandLineTools" } }).trim();
+    const expected = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "1d4fc4a210b64f71871ab3f5c10093215a25990c"], { encoding: "utf8", env: { ...process.env, DEVELOPER_DIR: "/Library/Developer/CommandLineTools" } }).trim();
     for (const mode of result.report.comparison.modes) {
       assert.equal(mode.groups.current.revision, expected);
       assert.notEqual(mode.groups.current.revision, mode.groups.candidate.revision);

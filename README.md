@@ -39,8 +39,8 @@ By default, Nunc manages `M` only during compaction without changing the model's
 
 | Dependency | Version |
 | --- | --- |
-| Node | `26.7.0` (`.node-version`) |
-| npm | `11.19.0` |
+| Node | Stable `^26.7.0` (`.node-version`: `26`) |
+| npm | Stable `^11.19.0` |
 | Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | Runtime: stable `^1.0.3`; devDependencies pinned to `1.4.0` |
 
 Runtime constraints:
@@ -122,7 +122,14 @@ Example `nunc.json` (overriding `rolling.keepRecentFraction` from `0.5` to `0.67
 
 ## Development
 
-`npm ci` and `npm run build` compile the extension. Running the full check suite (`scripts/check.mjs all`) additionally requires the pinned Node/npm versions, a local comparison baseline checkout, POSIX PTYs, and `/usr/bin/python3`. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/LIVE.md](docs/LIVE.md).
+`npm ci` and `npm run build` compile the extension. Running the full check suite (`scripts/check.mjs all`) additionally requires Node/npm satisfying `^26.7.0` / `^11.19.0`, local comparison baseline checkouts, POSIX PTYs, and `/usr/bin/python3`. Older, cross-major, malformed and prerelease versions are rejected. Checks report the actual observed Node/npm versions; live preflight records the observed Node version in its receipt and SHA-256 binding, invalidating earlier receipts after a runtime change. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/LIVE.md](docs/LIVE.md).
+
+The scoped-task comparison uses the immutable main-history commit for `.scratch/prechange` (separate from `.scratch/baseline-70dacad`):
+
+```sh
+git worktree add --detach .scratch/prechange 1d4fc4a210b64f71871ab3f5c10093215a25990c
+(cd .scratch/prechange && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
+```
 
 ## Documentation
 

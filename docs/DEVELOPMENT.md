@@ -1,6 +1,6 @@
 # Local development
 
-Selected targets: Node **26.7.0**, npm **11.19.0**, Pi/pi-ai **1.4.0**, TypeScript **5.9.3**, Node types **26.4.1**. The package is private ESM with strict TypeScript and Node's native test runner. These exact versions define the checked environment; no minimum-version claim is made. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
+Toolchain ranges: Node **^26.7.0**, npm **^11.19.0**; `.node-version` selects major **26**. Only stable numeric SemVer triples at or above each floor within the same major are accepted; older, cross-major, malformed and prerelease versions are rejected. Pi/pi-ai **1.4.0**, TypeScript **5.9.3** and Node types **26.4.1** remain exact development pins. The package is private ESM with strict TypeScript and Node's native test runner. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
 
 Tests bind receipts/CLI imports to actual locked/installed versions, never a release-specific constant. Estimated-size fixtures use the public SDK text/image heuristic, including per-image rounding, so a minor change in Pi’s estimates does not silently invalidate a retained-unit or boundary precondition. Known framing/receipt algebra remains checked independently. Compatibility policy tests cover future stable1.x inputs, rejected major/prerelease/malformed inputs, required API absence and packaging/lock contracts; real-host suites establish behavior on the actual installed SDK.
 
@@ -10,26 +10,25 @@ Tests bind receipts/CLI imports to actual locked/installed versions, never a rel
 
 ## Explicit installation
 
-Ordinary clone, install, build and load use Node **26.7.0** and npm **11.19.0** on `PATH`. See the README quick start: `git clone https://github.com/tefx/pi-nunc.git`, `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, then `node node_modules/@earendil-works/pi-coding-agent/dist/cli.js`. Those commands do not require a Homebrew-only Node or npm path.
+Ordinary clone, install, build and load use Node **^26.7.0** and npm **^11.19.0** on `PATH`. See the README quick start: `git clone https://github.com/tefx/pi-nunc.git`, `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, then `node node_modules/@earendil-works/pi-coding-agent/dist/cli.js`. Those commands do not require a Homebrew-only Node or npm path.
 
-`scripts/check.mjs` is stricter. It checks `process.versions.node` against `.node-version` and runs this exact npm CLI for `npm --version`:
+`scripts/check.mjs` validates `process.versions.node` and `npm --version` against `package.json` engines. It records actual observed versions in the check summary. Live preflight records the observed Node version in `Receipt.node` and its SHA-256 binding, so compatible upgrades invalidate earlier receipts. Installation remains an explicit separate command:
 
 ```sh
 /usr/bin/env -u NODE_OPTIONS \
   npm_config_cache="$PWD/.npm-cache" npm_config_ignore_scripts=true \
-  /opt/homebrew/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js \
-  ci --include=dev --no-audit --no-fund
+  npm ci --include=dev --no-audit --no-fund
 ```
 
 Installation requires the corresponding effect authorization and runs separately from checks. Dependency lifecycle scripts remain disabled. No check installs, downloads, updates packages, refreshes a live model catalog, or changes daily Pi settings. `node_modules/`, `dist/`, `.npm-cache/` and `.scratch/` are ignored local working state. Offline fixtures use dummy task-owned authentication only; do not copy daily credentials into fixtures or reports.
 
-`scripts/check.mjs` hardcodes `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js` and does not search `PATH` for npm. That path is the selected macOS Homebrew npm 11.19.0 CLI. Other platforms cannot run the tracked inventory as written without an equivalent npm at that location. Product load with `node` on `PATH` does not use that hardcoded path.
+`scripts/check.mjs` searches for `npm-cli.js` relative to the active Node executable directory and its realpath first, then `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js`, then `npm` on `PATH`. It performs no automatic installation.
 
 ## Required checks
 
 ```sh
 /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 \
-  /opt/homebrew/bin/node scripts/check.mjs all
+  node scripts/check.mjs all
 ```
 
 Use `engine` instead of `all` for the narrower engine inventory. Missing, multiple, unknown and empty selections fail. `all` discovers every tracked `tests/**/*.test.ts`, requires nonempty engine/Pi/live suites, compiles their full source closure and executes every emitted test. It includes the actual CLI's bounded-stdin/default-resolution/override negatives and stock RPC/TUI observation selection. Internal normalized fixture jobs exercise quota and worker contracts; public stdin does not accept approval text, model catalog reconstruction or a returned preflight receipt. Compilation errors, missing emitted files, process signals and test failures exit nonzero.
@@ -68,14 +67,14 @@ The portable `tests/live/fixtures/behavior-batch-01-calls.jsonl` retains the two
 
 ### Scoped-task pre-change fixture
 
-`tests/live/task-retention-native.test.ts` also loads `.scratch/prechange` for its `current` arm, distinct from the 0.85.1 comparison baseline. Prepare it at `refs/nunc/task-retention-pre-change` (`1d4fc4a210b64f71871ab3f5c10093215a25990c`), whose lock pins Pi 0.86.1:
+`tests/live/task-retention-native.test.ts` also loads `.scratch/prechange` for its `current` arm, distinct from the 0.85.1 comparison baseline. Prepare it at the immutable main-history commit `1d4fc4a210b64f71871ab3f5c10093215a25990c`, whose lock pins Pi 0.86.1:
 
 ```sh
-git worktree add --detach .scratch/prechange refs/nunc/task-retention-pre-change
+git worktree add --detach .scratch/prechange 1d4fc4a210b64f71871ab3f5c10093215a25990c
 (cd .scratch/prechange && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
 ```
 
-Reuse a clean, built checkout at that ref when present. Keep both historical dependency trees isolated from the candidate and each other; neither baseline is a deployable runtime.
+Reuse a clean, built checkout at that commit when present. Keep both historical dependency trees isolated from the candidate and each other; neither baseline is a deployable runtime.
 
 ## Default inheritance and test isolation
 
