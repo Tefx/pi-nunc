@@ -8667,7 +8667,7 @@ phases:
       - git diff --check -> exit 0; managed plan.yaml untouched by candidate.'
   - id: nunc-admission-retention-hardening.gate
     name: 主准入输出上限收紧、按比例保留与 Larva 分类诊断加固阶段整合验收
-    status: pending
+    status: claimed
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"scripts/observe-grok-budget.mjs\"\
       , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
@@ -8734,6 +8734,8 @@ phases:
     depends_on:
     - nunc-admission-retention-hardening.implement-hardening
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-13T20:10:11.676895Z'
 - id: nunc-toolchain-portability
   name: 工具链 SemVer 版本范围与对比基线跨机可移植性加固
   status: done
