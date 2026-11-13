@@ -8695,7 +8695,7 @@ phases:
   steps:
   - id: nunc-toolchain-portability.implement-portability
     name: 实现工具链 SemVer 版本范围策略、实测版本收据与可克隆基线 OID
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"package.json\", \"package-lock.json\", \".node-version\"\
       , \"scripts/check.mjs\", \"src/live/**\", \"tests/engine/**\", \"tests/live/**\"\
@@ -8782,6 +8782,48 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-13T19:38:24.914271Z'
+    done_at: '2026-11-13T19:55:13.960204+00:00'
+    evidence: 'Integrated unchanged fast-forward commit 62f6cf901f2a85eca5f25158d089eba6d75d216f
+      (retained ref: refs/retained/nunc-toolchain-portability.implement-portability)
+      from isolated worktree .vectl/worktrees/nunc-toolchain-portability.implement-portability.
+
+
+      Delivered (13 files, within allowed_paths):
+
+      - SemVer range policy: package.json engines (^26.7.0 / ^11.19.0; version 0.2.3
+      and devDependencies unchanged; packageManager pin removed), package-lock.json
+      (only root packages[""].engines aligned; zero dependency resolution changes),
+      .node-version set to 26.
+
+      - Check runner & preflight: src/live/toolchain.ts (satisfiesStableCaret strict
+      stable SemVer triple validator), scripts/check.mjs (SemVer validation, active-Node
+      npm-cli.js path resolution before Homebrew/PATH fallback, logged observed versions),
+      src/live/contract.ts (preflight ^26.7.0 floor + Receipt.node and SHA-256 binding).
+
+      - Clone-portable baseline OID: replaced refs/nunc/task-retention-pre-change
+      with 1d4fc4a210b64f71871ab3f5c10093215a25990c in tests/live/{task-retention-native,task-retention-comparison,same-task-history}.test.ts
+      and docs/DEVELOPMENT.md.
+
+      - Docs & tests: updated docs/DEVELOPMENT.md and README.md; added SemVer range
+      and preflight Receipt.node invalidation unit tests in tests/engine/runner.test.ts
+      and tests/live/contract.test.ts.
+
+
+      Verification on exact commit 62f6cf901f2a85eca5f25158d089eba6d75d216f (Node
+      26.13.0, npm 11.20.0):
+
+      - npm run build -> exit 0
+
+      - /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      node scripts/check.mjs all -> exit 0 (949 passed, 0 failed, 2 skipped optional
+      external Dasein across 108 test files; log: /tmp/nunc-portability-check-all.log)
+
+      - /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test dist/tests/pi/larva.integration.js -> exit 0 (9 passed, 0 failed;
+      log: /tmp/nunc-portability-larva.log)
+
+      - git diff --check -> exit 0; managed plan.yaml untouched by candidate.'
   - id: nunc-toolchain-portability.gate
     name: 工具链 SemVer 版本范围与对比基线跨机可移植性阶段整合验收
     status: pending
