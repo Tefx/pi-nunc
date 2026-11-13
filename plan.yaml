@@ -8443,7 +8443,7 @@ phases:
   steps:
   - id: nunc-admission-retention-hardening.implement-hardening
     name: 实现主准入输出上限收紧、按比例保留与压缩机械清理及 Larva 分类诊断加固
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/pi/**\", \"src/engine/**\", \"src/ui/**\", \"src/index.ts\"\
       , \"docs/**\", \"tests/pi/**\", \"tests/engine/**\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -8604,6 +8604,67 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-13T19:02:18.354275Z'
+    done_at: '2026-11-13T20:09:57.791820+00:00'
+    evidence: 'Integrated rebased fast-forward candidate commit 87c044ae0fa3be07e4c639ca2da93de22ef44afb
+      onto main (original pre-rebase commit aa35c722c59a12a93ebf1ff05d483978efaa3b06
+      retained at refs/retained/nunc-admission-retention-hardening.implement-hardening).
+
+
+      Delivered (22 files, all within allowed_paths):
+
+      - Shared route/floor primitives & model diagnostics: omitsRouteOutputCap(model,
+      registry) in src/engine/pi-model.ts and outputFloor(model) in src/engine/accounting.ts
+      reused across src/index.ts, src/pi/admission.ts, src/pi/config.ts, and src/pi/payload.ts;
+      unified session_start/model_select diagnostic helper deduplicated per provider/id
+      and preserved across thinking_level_select; Pi extension loader virtual-module
+      allowlist invariant verified.
+
+      - Issue A (post-authorization main output-cap mitigation): one-time model diagnostic
+      when !omitsRouteOutputCap && maxTokens >= 0.8 * contextWindow; post-authorizePayload
+      best-effort clamp on cloned payload containers across outputCapPaths() when
+      no strictly positive coupled thinking budget is present (thinkingBudget: 0 allowed),
+      using receipt observedU + trailing worst-case <= 1 token/char without prefix
+      double-counting, preserving safeFloor and leaving below-floor headroom for native
+      compaction without fabricating local CAPACITY; updating AdmissionObservation.outputCapTokens
+      and preserving MainSnapshot.payloadBound.
+
+      - Issue B (proportional retention, unchanged-M compaction cleanup & runway diagnostics):
+      keepRecentTargetTokens = Math.min(100000, Math.max(1, settings.keepRecentTokens,
+      Math.floor(triggerTokens * 0.25))) when both rolling options omitted; decideToolResultCleanup
+      mechanicalWhenMemoryUnchanged opt-in enabled only in native maintain() over
+      candidateScope ∩ retainedEntries with disabled->not_in_candidate_scope and !mChanged->m_unchanged
+      precedence before scope filtering; separate post-compaction runway diagnostic
+      in /nunc details and one-time runwayWarned warning without advising reserveTokens
+      increase.
+
+      - Issue C (categorical Larva unavailability diagnostics): fail-closed CONFIG
+      refusal and 4-value resolution union preserved; safe allowlist-mapped resolutionDetail
+      on EngineError prefix, AdmissionObservation, LastMainContext, /nunc details,
+      F7 Context tree, and ui.noteDiagnostic.
+
+      - Synchronized docs & tests: docs/{PI,ENGINE,CAPACITY,TOOL-RESULT-CLEANUP,LARVA-PROMPT}.md
+      updated; tests/pi/config.test.ts updated (keepTarget=6000 for triggerTokens=24000)
+      plus regressions in tests/engine/cleanup-hardening.test.ts and tests/pi/{admission-hardening,cleanup-integration,hardening-diagnostics,larva-prompt}.test.ts.
+
+
+      Verification on exact integrated commit 87c044ae0fa3be07e4c639ca2da93de22ef44afb
+      (Node 26.13.0, npm 11.20.0):
+
+      - npm run build -> exit 0 (/tmp/nunc-hardening-rebased-build.log)
+
+      - /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      node scripts/check.mjs all -> exit 0 (981 passed, 0 failed, 2 skipped optional
+      external Dasein across 111 test files; /tmp/nunc-hardening-rebased-check-all.log)
+
+      - /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test dist/tests/pi/larva.integration.js -> exit 0 (9 passed, 0 failed;
+      /tmp/nunc-hardening-rebased-larva.log)
+
+      - node scripts/observe-grok-budget.mjs -> exit 0 (PROVEN_CONTROLLED, firstSerializedOutputCap=418621,
+      oversizedZeroSend=true; /tmp/nunc-hardening-rebased-grok.log)
+
+      - git diff --check -> exit 0; managed plan.yaml untouched by candidate.'
   - id: nunc-admission-retention-hardening.gate
     name: 主准入输出上限收紧、按比例保留与 Larva 分类诊断加固阶段整合验收
     status: pending
