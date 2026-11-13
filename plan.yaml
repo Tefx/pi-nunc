@@ -8673,3 +8673,161 @@ phases:
     depends_on:
     - nunc-admission-retention-hardening.implement-hardening
     agent: gate-reviewer
+- id: nunc-toolchain-portability
+  name: 工具链 SemVer 版本范围与对比基线跨机可移植性加固
+  status: pending
+  gate: nunc-toolchain-portability.gate 由 gate-reviewer 对 nunc-toolchain-portability.implement-portability
+    的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all、dist/tests/pi/larva.integration.js
+    及 package-lock.json 依赖解析零改动校验）作唯一阶段验收判断，确认 Node/npm SemVer 范围策略（^26.7.0 / ^11.19.0）、check.mjs
+    与 preflight 实测版本记录、可克隆基线提交 OID（1d4fc4a210b64f71871ab3f5c10093215a25990c）及文档与范围回归测试
+    100% 满足 docs/TOOLCHAIN-PORTABILITY.md 绑定合同且无阻断回归。
+  context: 依据已验收的设计规范 docs/TOOLCHAIN-PORTABILITY.md，在单一可回退事务（nunc-toolchain-portability.implement-portability）中消除阻碍跨机（如
+    Node 26.13.0 / npm 11.20.0 环境）执行验证的脆弱补丁等值锁死与机器本地 Git 引用依赖：（1）将 package.json 与
+    package-lock.json 根包的 engines 声明切换为 ^26.7.0 / ^11.19.0、将 .node-version 设为主版本 26，同时保持
+    devDependencies、版本号与 package-lock.json 全部锁定依赖解析严格不变；（2）在 scripts/check.mjs 与 src/live/contract.ts（preflight）中实施严格稳定
+    SemVer 三元组范围校验，支持从当前运行 Node 安装目录解析 npm-cli.js，并在检查摘要、preflight SHA-256 摘要及 Receipt.node
+    中记录实际观测到的运行版本；（3）将 tests/live/{task-retention-native,task-retention-comparison,same-task-history}.test.ts
+    与 docs/DEVELOPMENT.md 中的机器本地引用 refs/nunc/task-retention-pre-change 替换为 main 历史不可变提交
+    OID 1d4fc4a210b64f71871ab3f5c10093215a25990c；（4）同步更新 docs/DEVELOPMENT.md 与 README.md
+    并补充 SemVer 范围正反例单元测试，由 nunc-toolchain-portability.gate 执行唯一阶段整合验收。
+  depends_on:
+  - nunc-npm-loader-compat
+  steps:
+  - id: nunc-toolchain-portability.implement-portability
+    name: 实现工具链 SemVer 版本范围策略、实测版本收据与可克隆基线 OID
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"package.json\", \"package-lock.json\", \".node-version\"\
+      , \"scripts/check.mjs\", \"src/live/**\", \"tests/engine/**\", \"tests/live/**\"\
+      , \"docs/DEVELOPMENT.md\", \"README.md\"]\n  blocked_paths: [\"plan.yaml\",\
+      \ \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\", \"src/index.ts\", \"src/engine/**\"\
+      , \"src/pi/**\", \"src/ui/**\"]\n\nDeliver: 依据已验收的设计规范 `docs/TOOLCHAIN-PORTABILITY.md`，在单一源码、配置、测试与文档事务中完整交付全部\
+      \ 4 项绑定合同：\n1. Node 与 npm 的 SemVer 范围策略（`package.json`, `package-lock.json`,\
+      \ `.node-version`）：\n   - `package.json`（`engines`）：声明兼容的 caret 主版本有界范围（`\"\
+      node\": \"^26.7.0\"`, `\"npm\": \"^11.19.0\"`）替代精确补丁字符串；严禁修改 `package.json`\
+      \ 的 `version` 或 `devDependencies`，保持 `package-lock.json` 中所有依赖包版本解析严格精确且零改动，仅将\
+      \ `package-lock.json` 根项 `packages[\"\"].engines` 与 `package.json` 对齐。\n   -\
+      \ `.node-version`：声明目标主版本线 `26`，替代锁死单一补丁二进制版本。\n   - 兼容性谓词：将 Node 与 npm 版本校验为声明\
+      \ caret 底线内的严格稳定 SemVer 三元组（Node 要求 `major === 26`、`>= 26.7.0` 且无预发布或非数字段；npm\
+      \ 要求 `major === 11`、`>= 11.19.0` 且无预发布段），显式拒绝更低补丁（`26.6.x`、`11.18.x`）、跨主版本（`25.x`、`27.x`）、畸形版本字符串及预发布标签（如\
+      \ `-rc.1`、`-nightly`）。\n2. 检查运行器与 Preflight 收据行为（`scripts/check.mjs`, `src/live/contract.ts`）：\n\
+      \   - `scripts/check.mjs`：使用上述 SemVer 范围谓词校验 `process.versions.node` 与 `npm\
+      \ --version` 是否满足 `package.json` 的 `engines.node` 与 `engines.npm`（不再与 `.node-version`\
+      \ 或硬编码补丁字符串做精确等值比较）；解析 `npm-cli.js` 时优先检查当前运行 Node 二进制所在安装目录（`dirname(process.execPath)`\
+      \ 与 `dirname(realpathSync(process.execPath))` 下的相对路径），再回退至 `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js`\
+      \ 或 `PATH` 中的 `npm`；在检查摘要旁记录实际观测到的 `node` 与 `npm` 版本。\n   - `src/live/contract.ts`（`preflight`）：对\
+      \ `process.versions.node`（且 `NODE_OPTIONS` 未设置）强制执行相同的稳定 SemVer 底线（`^26.7.0`）；在\
+      \ preflight SHA-256 摘要与返回的 `Receipt.node` 中绑定并记录实际运行时 `process.versions.node`，确保切换\
+      \ Node 版本时收据确定性失效而兼容补丁升级不报错。\n3. 可克隆对比基线引用（`tests/live/task-retention-native.test.ts`,\
+      \ `tests/live/task-retention-comparison.test.ts`, `tests/live/same-task-history.test.ts`,\
+      \ `docs/DEVELOPMENT.md`）：\n   - 将上述文件对机器本地引用 `refs/nunc/task-retention-pre-change`\
+      \ 的引用统一替换为 `main` 历史中的不可变提交 OID `1d4fc4a210b64f71871ab3f5c10093215a25990c`（保留\
+      \ `src/live/contract.ts` 中用于 `.scratch/baseline-70dacad` 及 `0.86.1` 依赖校验的 `70dacad1f065a70b29f565b5bfcf02d31cec2bdc`）。\n\
+      4. 同步文档与回归测试（`docs/DEVELOPMENT.md`, `README.md`, `tests/engine/runner.test.ts`,\
+      \ `tests/live/`）：\n   - 更新 `docs/DEVELOPMENT.md` 与 `README.md`，说明 `^26.7.0`\
+      \ / `^11.19.0` 范围策略、观测版本记录行为，以及使用 `1d4fc4a210b64f71871ab3f5c10093215a25990c`\
+      \ 准备 `.scratch/prechange` 的命令。\n   - 在 `tests/engine/runner.test.ts` 与 `tests/live/contract.test.ts`（或\
+      \ `tests/live/` 下的共享范围检查测试）中补充聚焦单元测试，验证接受 `26.7.0` / `26.13.0` 与 `11.19.0` /\
+      \ `11.20.0`，并显式拒绝更低补丁版本、跨主版本与预发布标签。\n\nImplementation Notes (Non-Binding):\n\
+      - `package.json`（`packageManager`）：`packageManager: \"npm@11.19.0\"` 在运行 `npm\
+      \ 11.20.0` 的机器上可能触发 Corepack 严格版本报错；建议移除 `packageManager` 字段或避免在 `scripts/check.mjs`\
+      \ 中强制等值校验该字段，以免阻塞 Homebrew 滚动升级后的 `npm`。\n- 独立基线工作树（`70dacad` 与 `1d4fc4a`）：`src/live/comparison.ts`\
+      \ 仅对候选仓库（`repository`）调用 `preflight()`，而对 `.scratch/baseline-70dacad` 与 `.scratch/prechange`\
+      \ 仅校验 HEAD、干净工作树、构建产物（`dist/src/index.js`）及 Pi 版本，因此在 Node `26.13.0` 上准备历史基线工作树不会重新触发旧版精确\
+      \ `.node-version` 检查。\n\nBoundary: owner 为 `node-typescript-engineer`；属于本仓库可\
+      \ Git 回退的配置、检查脚本、测试与文档变更事务。严禁修改 Pi core 或 `@earendil-works/pi-ai`，严禁升级或修改 `package.json`\
+      \ 版本号，严禁改变 `package-lock.json` 中已锁定的依赖版本解析，严禁触碰 `src/index.ts`、`src/engine/**`、`src/pi/**`\
+      \ 或 `src/ui/**`，不运行任何外部付费 live-LLM 调用。\n\nAdmit: 依赖 `nunc-npm-loader-compat`\
+      \ 已完成的基线与已验收规范 `docs/TOOLCHAIN-PORTABILITY.md`；完成后通过 `npm run build`、`node scripts/check.mjs\
+      \ all` 与 `dist/tests/pi/larva.integration.js`（携带 `NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts`）验证，并交由\
+      \ `nunc-toolchain-portability.gate` 验收。\n\nRecovery: 若构建或测试失败，在同一步骤隔离工作树内定位并修复；未合并改动可通过\
+      \ Git worktree 安全回退，不污染主分支历史或受保护路径。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n    inventory: [\"tests/engine/*.test.ts\", \"tests/pi/*.test.ts\"\
+      , \"tests/live/*.test.ts\"]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\"\
+      , \"package.json\", \"package-lock.json\"]\n  - id: actual-larva-integration\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\n    inventory:\
+      \ [\"tests/pi/larva.integration.ts\"]\n```\n验证要求：\n1. 验证 `package.json` 与 `package-lock.json`\
+      \ 根项 `packages[\"\"].engines` 声明 `\"node\": \"^26.7.0\"` 与 `\"npm\": \"^11.19.0\"\
+      `，`.node-version` 为 `26`，且 `package.json` 版本号、`devDependencies` 及 `package-lock.json`\
+      \ 全部依赖锁定解析零变化。\n2. 验证 `scripts/check.mjs` 与 `src/live/contract.ts`（`preflight`）强制执行稳定\
+      \ SemVer 范围校验、优先从当前运行 Node 安装目录解析 `npm-cli.js`、在检查摘要中记录实测 `node`/`npm` 版本，并将运行时\
+      \ `process.versions.node` 绑定到 preflight SHA-256 摘要与 `Receipt.node`。\n3. 验证 `tests/live/{task-retention-native,task-retention-comparison,same-task-history}.test.ts`\
+      \ 与 `docs/DEVELOPMENT.md` 中不再存在 `refs/nunc/task-retention-pre-change`，统一替换为不可变提交\
+      \ OID `1d4fc4a210b64f71871ab3f5c10093215a25990c`。\n4. 验证 `tests/engine/runner.test.ts`\
+      \ 与 `tests/live/` 中的范围单元测试覆盖接受 `26.7.0`/`26.13.0`、`11.19.0`/`11.20.0` 及拒绝旧补丁、跨主版本、预发布标签，且\
+      \ `npm run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`\
+      \ 全部通过（exit 0）。"
+    refs:
+    - docs/TOOLCHAIN-PORTABILITY.md
+    - docs/DEVELOPMENT.md
+    - README.md
+    - package.json
+    - package-lock.json
+    - .node-version
+    - scripts/check.mjs
+    - src/live/contract.ts
+    - tests/engine/runner.test.ts
+    - tests/live/contract.test.ts
+    - tests/live/task-retention-native.test.ts
+    - tests/live/task-retention-comparison.test.ts
+    - tests/live/same-task-history.test.ts
+    - tests/pi/larva.integration.ts
+    agent: node-typescript-engineer
+  - id: nunc-toolchain-portability.gate
+    name: 工具链 SemVer 版本范围与对比基线跨机可移植性阶段整合验收
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"package.json\", \"package-lock.json\", \".node-version\", \"scripts/check.mjs\"\
+      , \"src/live/**\", \"tests/engine/**\", \"tests/live/**\", \"docs/DEVELOPMENT.md\"\
+      , \"docs/TOOLCHAIN-PORTABILITY.md\", \"README.md\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\", \"src/index.ts\", \"src/engine/**\"\
+      , \"src/pi/**\", \"src/ui/**\"]\n\nDeliver: 对 `nunc-toolchain-portability` 阶段的唯一实现步骤\
+      \ `nunc-toolchain-portability.implement-portability` 的整合提交与确定性离线测试证据作唯一阶段验收判断（`PHASE_GATE`），确认\
+      \ `docs/TOOLCHAIN-PORTABILITY.md` 规定的全部 4 项绑定合同（Node `^26.7.0` / npm `^11.19.0`\
+      \ SemVer 范围策略与 `.node-version` 主版本 `26`、`scripts/check.mjs` 与 `src/live/contract.ts`\
+      \ 范围校验及实测版本收据绑定、不可变基线提交 OID `1d4fc4a210b64f71871ab3f5c10093215a25990c` 替换、文档与范围单元测试同步更新）全部满足，`package-lock.json`\
+      \ 依赖版本解析与 `package.json` 版本号保持未改动，且全量离线验证通过无阻断回归。\n\nBoundary: exact owner 为\
+      \ `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或 `plan.yaml`，不运行任何外部付费\
+      \ live-LLM 调用。\n\nAdmit: 包含 `nunc-toolchain-portability` 阶段的终端实现成果 `nunc-toolchain-portability.implement-portability`；消费绑定于最终整合不可变提交（immutable\
+      \ git commit）的代码差异与确定性离线验证证据（`npm run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`\
+      \ 及 `package-lock.json` 依赖解析一致性检查），验证在 `nunc-npm-loader-compat` 基线之上的可移植性与完整性；排除非本阶段范围改动与外部付费模型调用。\n\
+      \nRecovery: 若发现任何未满足的合同项、锁定依赖意外改动、测试缺口或回归缺陷，返回明确的问题列表；由 Orchestrator 按规则通过同阶段修复闭环后以\
+      \ Delta 模式复核，任一阻断项未解决前不予通过。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\nreview:\n\
+      \  kind: PHASE_GATE\n  mode: FULL\n  phases: [nunc-toolchain-portability]\n\
+      ```\n核验绑定于最终整合不可变提交的 `docs/TOOLCHAIN-PORTABILITY.md` 全部 4 项绑定合同、`package-lock.json`\
+      \ 依赖解析未改动（仅更新根 `packages[\"\"].engines`）、`package.json` 版本号未改动，以及确定性构建/离线全量回归测试（`npm\
+      \ run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`）100%\
+      \ 通过且无回归缺陷。"
+    refs:
+    - docs/TOOLCHAIN-PORTABILITY.md
+    - docs/DEVELOPMENT.md
+    - README.md
+    - package.json
+    - package-lock.json
+    - .node-version
+    - scripts/check.mjs
+    - src/live/contract.ts
+    - tests/engine/runner.test.ts
+    - tests/live/contract.test.ts
+    - tests/live/task-retention-native.test.ts
+    - tests/live/task-retention-comparison.test.ts
+    - tests/live/same-task-history.test.ts
+    - tests/pi/larva.integration.ts
+    depends_on:
+    - nunc-toolchain-portability.implement-portability
+    agent: gate-reviewer
