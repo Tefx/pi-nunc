@@ -5,7 +5,36 @@ import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earend
 import { LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, type AdmissionObservation, type ResolveSystemPromptRequest, type ResolveSystemPromptResult } from "../../src/pi/admission.js";
 import { contextSurface } from "pi-nunc/pi";
 import { detailsLines } from "../../src/ui/status.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fixture, memoryPatch, preparedSurface } from "./fixtures.js";
+import { buildContextNodes } from "../../src/ui/context-tree.js";
+
+for (const reason of ["not ready", "damaged managed boundaries", "ambiguous managed boundaries", "damaged legacy boundaries", "invalid request", "private-value-".repeat(100), "not ready\nsecret"]) {
+  test(`unavailable safe category reaches error, admission, Last main, details and F7: ${reason.length < 40 ? JSON.stringify(reason) : "unknown reason"}`, async t => {
+    const reports: string[] = [];
+    const h = await preparedSurface(t, { bus: bus => bus.on("nunc:diagnostic", value => reports.push((value as { message: string }).message)), extras: [{ name: "unavailable-category", factory(pi) {
+      pi.events.on(LARVA_RESOLVE_SYSTEM_PROMPT_EVENT, data => (data as ResolveSystemPromptRequest).reply({ status: "unavailable", reason }));
+    } }] });
+    await h.f.runtime.session.prompt("Unavailable category check");
+    const detail = ["not ready", "damaged managed boundaries", "ambiguous managed boundaries", "damaged legacy boundaries", "invalid request"].includes(reason) ? reason : "unavailable";
+    const observation = h.admissions.at(-1)!;
+    assert.equal(observation.resolution, "unavailable");
+    assert.equal(observation.resolutionDetail, detail);
+    assert.equal(h.f.faux.state.callCount, 0);
+    const message = h.f.runtime.session.messages.at(-1);
+    assert(message?.role === "assistant");
+    assert(message.errorMessage?.includes(`Larva system prompt is currently unavailable (${detail})`));
+    const view = h.context().read(h.ctx());
+    assert.equal(view.lastMain?.resolutionDetail, detail);
+    assert(detailsLines({ view, diagnostics: [] }).includes(`Resolution: unavailable (${detail})`));
+    assert(buildContextNodes(view).get("scope:last-main")?.preview.includes(`resolution unavailable (${detail})`));
+    await h.f.runtime.session.prompt("/nunc details");
+    assert(reports.at(-1)?.includes(`Admission CONFIG (unavailable: ${detail})`));
+    if (detail === "unavailable") {
+      assert(!JSON.stringify(observation).includes(reason));
+      assert(!message.errorMessage?.includes(reason));
+    }
+  });
+}
 
 const RESOLVED_PROMPT_A = "You are Larva Persona Alpha. Obey all specialized instructions.";
 const RESOLVED_PROMPT_B = "You are Larva Persona Beta. Obey all specialized instructions.";
@@ -153,6 +182,7 @@ test("duplicate synchronous replies cause protocol-error and local CONFIG refusa
   assert.equal(lastMain.outcome, "reject");
   assert.equal(lastMain.code, "CONFIG");
   assert.equal(lastMain.resolution, "protocol-error");
+  assert.equal(lastMain.resolutionDetail, "duplicate-reply");
 });
 
 test("invalid reply shapes trigger protocol-error and local CONFIG refusal", async t => {
@@ -189,6 +219,7 @@ test("invalid reply shapes trigger protocol-error and local CONFIG refusal", asy
     assert.equal(lastMain.outcome, "reject");
     assert.equal(lastMain.code, "CONFIG");
     assert.equal(lastMain.resolution, "protocol-error");
+    assert.equal(lastMain.resolutionDetail, "invalid-payload");
 
     await f.close();
   }
@@ -224,6 +255,7 @@ test("dispatch exception inside emit causes protocol-error and local CONFIG refu
   assert.equal(lastMain.outcome, "reject");
   assert.equal(lastMain.code, "CONFIG");
   assert.equal(lastMain.resolution, "protocol-error");
+  assert.equal(lastMain.resolutionDetail, "dispatch-error");
 });
 
 test("late replies arriving after emit returns are ignored and cannot affect decisions", async t => {

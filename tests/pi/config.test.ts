@@ -67,9 +67,20 @@ test("retention budget formula computes keepTarget = floor(q * (available - memo
   assert.equal(planDefault.memoryLimit, planExplicit.memoryLimit);
 
   // Formula check
-  assert.equal(planDefault.keepTarget, Math.floor(0.5 * (planDefault.available - planDefault.memoryLimit)));
+  assert.equal(planDefault.keepTarget, 6000);
   assert.equal(planExplicit.keepTarget, Math.floor(0.67 * (planExplicit.available - planExplicit.memoryLimit)));
   assert(planDefault.keepTarget < planExplicit.keepTarget);
+});
+
+test("proportional default target follows H, honors host minimum, and caps large windows", () => {
+  for (const [window, reserve, recent, expected] of [[272000, 16384, 20000, 63904], [1000000, 16384, 20000, 100000], [60000, 36000, 7000, 7000], [400000, 16384, 20000, 95904]]) {
+    const m = { ...model, contextWindow: window! };
+    const settings = { reserveTokens: reserve!, keepRecentTokens: recent! };
+    assert.equal(engineConfig({}, m, settings).keepRecentTargetTokens, expected);
+    assert.equal(engineConfig({ rolling: { targetTokens: 1234 } }, m, settings).keepRecentTargetTokens, 1234);
+    assert.equal(engineConfig({ rolling: { keepRecentFraction: 0.67 } }, m, settings).keepRecentTargetTokens, undefined);
+    assert.equal(engineConfig({ rolling: { targetTokens: 1234, keepRecentFraction: 0.67 } }, m, settings).keepRecentTargetTokens, 1234);
+  }
 });
 
 test("default retention honors host recent tokens within feasible space; explicit fraction opts out", () => {

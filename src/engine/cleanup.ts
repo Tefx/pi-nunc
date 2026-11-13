@@ -228,6 +228,8 @@ export interface CleanupDecisionOptions {
   semanticEdits?: unknown;
   omissions?: Omission[] | undefined;
   disabled?: boolean | undefined;
+  /** Native compaction only: lossless rules may run without a memory change. */
+  mechanicalWhenMemoryUnchanged?: boolean;
 }
 
 export function messageTextContent(message: ActiveEntry["messages"][number]): string | null {
@@ -294,18 +296,17 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   if (!mChanged || disabled) {
     if (Array.isArray(semanticEdits)) {
       for (const edit of semanticEdits) {
-        if (record(edit) && typeof edit.entryId === "string" && integer(edit.messageIndex)) {
-          skipped.push({
-            entryId: edit.entryId,
-            messageIndex: edit.messageIndex,
-            ...(typeof edit.action === "string" ? { action: edit.action } : {}),
-            reason: disabled ? "not_in_candidate_scope" : "m_unchanged",
-            details: disabled ? "Tool result cleanup feature disabled" : "Memory M did not change in this transaction",
-          });
-        }
+        const item = record(edit) ? edit : {};
+        skipped.push({
+          entryId: typeof item.entryId === "string" ? item.entryId : "",
+          messageIndex: integer(item.messageIndex) ? item.messageIndex : 0,
+          ...(typeof item.action === "string" ? { action: item.action } : {}),
+          reason: disabled ? "not_in_candidate_scope" : "m_unchanged",
+          details: disabled ? "Tool result cleanup feature disabled" : "Memory M did not change in this transaction",
+        });
       }
     }
-    return { applied: [], skipped };
+    if (disabled || !options.mechanicalWhenMemoryUnchanged) return { applied: [], skipped };
   }
 
   // Candidate scope must be explicitly supplied by caller; pure engine never manufactures scope
@@ -348,7 +349,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   const candidateSemanticEdits: ToolResultEdit[] = [];
   const rejectedConflictKeys = new Set<string>();
 
-  if (semanticEdits !== undefined) {
+  if (mChanged && semanticEdits !== undefined) {
     if (!Array.isArray(semanticEdits)) {
       skipped.push({
         entryId: "",

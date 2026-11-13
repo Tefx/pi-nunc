@@ -4,7 +4,7 @@
 
 **状态：当前源码已实现规则、维护/模型 patch/UI 保存接线、原生旁置持久化、有效投影、开关、活动原文读取与观察。** 默认开启，可配置关闭。确定性实现及历史记录不证明真实续做质量、费用收益或未集成候选已验收；本次修订不执行全局安装、真实模型测试或部署。依赖范围依据 [CONSTITUTION.md §4](CONSTITUTION.md#4-清理依赖与原文读取)。
 
-目标：M 实际变化时，利用已经需要重建的请求后缀，清理已失去续做价值的工具正文，减少后续输入成本，同时保留任务要求、证据和适用的原文读取入口。完整交付包括机械清理、语义省略、局部摘要、逐项依赖验证、所有 M 修改入口、持久化、恢复、开关和观察。
+Cleanup uses a suffix already rebuilt by an actual M change or native compaction, preserving task requirements, evidence and applicable original-result access. Native compaction also allows deterministic lossless mechanical cleanup when M is unchanged; semantic edits still require an M change.完整交付包括机械清理、语义省略、局部摘要、逐项依赖验证、所有 M 修改入口、持久化、恢复、开关和观察。
 
 不接 Jev；不增加普通轮次扫描、无变化 patch 清理或原生 compact 的新触发/替代流程。既有 Nunc 维护调用可携带清理决定，不改变 Pi 的压缩触发、队列或 transport 所有权。不新建调度器、数据库、清理服务、任务实体或通用依赖图。
 
@@ -52,7 +52,7 @@
 - 固定工具 schema/说明仅随功能配置和版本发生必要变化，不每轮动态重写 system、tools 或历史。当前 extraction 已使用独立 transcript，不承诺它与普通请求共享缓存；不为本功能重做传输层。
 - 保存后的投影稳定复用，直到有效的新决定或显式开关改变；不反复恢复、再摘要同一段旧正文。已清理的结果不作为例行再次压缩候选。
 
-`session_before_compact` 单独按压缩边界生成候选：压缩本身会退休 B 并重建 `K | M新`，因此不要求内存态的旧 M 前缀；首次维护 M 为空或 `SessionManager.open` 重开后尚未发主请求，也可清理保留 K 中的已完成业务工具结果。候选仍排除最新完成业务组、未完成调用组和已保存决定，并由请求与清理引擎和最终 K 求交；B 不会作为清理对象或已保留依赖。M 未改变、配置禁用及其他验证规则保持不变。
+`session_before_compact` 单独按压缩边界生成候选：压缩本身会退休 B 并重建 `K | M新`，因此不要求内存态的旧 M 前缀；首次维护 M 为空或 `SessionManager.open` 重开后尚未发主请求，也可清理保留 K 中的已完成业务工具结果。候选仍排除最新完成业务组、未完成调用组和已保存决定，并由请求与清理引擎和最终 K 求交；B 不会作为清理对象或已保留依赖。Native compaction opts into lossless mechanical rules when M is unchanged. Semantic edits receive `m_unchanged` before scope filtering; disabled cleanup instead takes precedence with `not_in_candidate_scope`. Other validation rules remain unchanged.
 
 布局和来源关联仍由 `src/pi/projection.ts` 拥有。清理后的正文不能导致现有锚点因文本不等而每轮漂移；实际请求、来源身份和清理投影必须能可靠对应，不能猜测其他扩展变换后的来源。前缀比较是本功能的可验证约束，provider 命中/费用仍以实际 usage 为准。
 
@@ -60,7 +60,7 @@
 
 | 入口 | 合同 |
 |---|---|
-| 既有 Nunc M 维护请求 | 复用当前模型、已有冻结来源和单次请求，同时生成 M 更新及清理决定；若最终 M 没变则不应用新清理。 |
+| Native Nunc maintenance | Reuse the current model, frozen sources and existing extraction. Unchanged M permits lossless mechanical rules only; semantic edits are skipped with `m_unchanged`. |
 | 模型 `nunc_memory_patch` | 复用已开启的记忆工具；`nunc_memory_read` 在新返回结果中提供候选引用和必要定位，不重复整份正文；主模型在同一次 patch 中给出清理决定。 |
 | 用户 UI 修改 M | 确认修改后、提交前，在有语义候选时用当前模型作至多一次清理判断，冻结拟保存 M 和来源。界面显示“保存中”；用户取消整个保存时不提交。无候选则不调用。 |
 
@@ -73,6 +73,8 @@ UI 清理超时、模型/凭据不可用或清理响应失败时，仍保存合�
 ## 5. 内容处理标准
 
 未列出的结果默认保留。保留调用参数、调用/结果关联、工具名、成功/失败状态和消息顺序，只改变获准的正文。
+
+Ordinary context projection never starts new cleanup or rewrites active R between compactions. A manual `nunc_memory_patch` with unchanged M returns no-op and creates no cleanup-only commit. Compaction rules operate only on explicit candidate scope intersected with final retained entries; retired B remains excluded. The opt-in covers `strip_boilerplate`, `deduplicate`, `compact_toc`, `compact_json`, and `clean_terminal` without relaxing keeper, source, association or losslessness checks.
 
 ### 5.1 机械处理
 

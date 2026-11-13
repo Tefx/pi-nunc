@@ -10,6 +10,44 @@ import { parseNuncSettings, resolveMemoryTools, resolveToolResultCleanup } from 
 import { compactionCleanupScope, eligibleCleanupScope, project, originalResults, effectiveActive } from "../../src/pi/projection.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 
+for (const enabled of [true, false]) test(`native unchanged-M compaction persists only scoped mechanical cleanup (enabled=${enabled})`, async t => {
+  const f = await fixture({ diskSettings: true, globalSettings: { nunc: { toolResultCleanup: enabled } } });
+  t.after(() => f.close());
+  f.seed();
+  const raw = '{\n  "value": [1, 2, 3],\n  "precise": 9007199254740993\n}';
+  const newest = "Latest completed result must remain exact.";
+  const manager = f.runtime.session.sessionManager;
+  const refs = [raw, newest].map((body, index) => {
+    const id = `mechanical-${index}`;
+    manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path: id } }] });
+    return manager.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", isError: false,
+      content: [{ type: "text", text: body }], timestamp: 2 });
+  });
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  f.respond(() => fauxAssistantMessage(JSON.stringify({ add: [], remove: [], priority: [], required: [],
+    toolResultEdits: [{ entryId: refs[0], messageIndex: 0, action: "omit" }] })));
+  await f.runtime.session.compact();
+  const result = f.events.at(-1)!.result;
+  assert(result.ok, JSON.stringify(result));
+  assert.deepEqual(result.candidate.memory.slots, []);
+  const after = project(manager.buildContextEntries());
+  assert.equal(after.cleanup.length, enabled ? 1 : 0);
+  if (enabled) {
+    assert.equal(after.cleanup[0]?.action, "compact_json");
+    assert.equal(after.cleanup[0]?.entryId, refs[0]);
+    assert.equal(result.candidate.toolResultCleanup?.skipped[0]?.reason, "m_unchanged");
+  }
+  assert.deepEqual(project(SessionManager.open(f.runtime.session.sessionFile!, f.sessionDir).buildContextEntries()).cleanup, after.cleanup);
+  assert.equal(originalResults(after, [{ entryId: refs[0]!, messageIndex: 0 }])[0]?.text, raw);
+  f.respond(() => fauxAssistantMessage("Continue"));
+  await f.runtime.session.prompt("Continue after mechanical cleanup");
+  const older = f.calls.at(-1)!.messages.find(m => m.role === "toolResult" && m.toolCallId === "mechanical-0");
+  const latest = f.calls.at(-1)!.messages.find(m => m.role === "toolResult" && m.toolCallId === "mechanical-1");
+  assert.deepEqual(older?.content, [{ type: "text", text: enabled ? '{"value":[1,2,3],"precise":9007199254740993}' : raw }]);
+  assert.deepEqual(latest?.content, [{ type: "text", text: newest }]);
+});
+
 test("trusted settings resolve cleanup independently of memory tools and reject invalid types", () => {
   assert.equal(resolveToolResultCleanup({}), true);
   assert.equal(resolveMemoryTools({}), false);

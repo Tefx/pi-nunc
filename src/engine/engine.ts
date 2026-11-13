@@ -236,6 +236,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       semanticEdits: applied.patch.toolResultEdits,
       omissions: observations.omissions,
       disabled: config.toolResultCleanup === false,
+      mechanicalWhenMemoryUnchanged: true,
     });
     observations.toolResultCleanup = cleanupResult;
 

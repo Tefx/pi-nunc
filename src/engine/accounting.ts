@@ -223,6 +223,11 @@ export function memoryTokens(slots: Slot[], imageTokens?: number): number {
   if (slots.length === 0) return 0;
   return messageTokens(memoryMessage(slots), imageTokens);
 }
+/** Minimum positive output accepted by the native serializer. */
+export function outputFloor(model: Pick<Model<Api>, "api">): number {
+  return ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
+}
+
 /** Native serializers that omit an output cap; a smaller configured ceiling is not enforceable. */
 export function omitsSerializedOutputCap(model: Model<Api>): boolean {
   return model.api === "openai-codex-responses" || (model.api === "openai-responses" && record(model.compat) && model.compat.supportsMaxOutputTokens === false);
@@ -277,7 +282,7 @@ export function inputLimit(model: Model<Api>, budget: RequestBudget): number {
 export function mainAdmissionLimit(model: Model<Api>, budget: RequestBudget): number {
   const planned = inputLimit(model, budget); // Validate the shared budget contract.
   if (budget.nativeOutputReserve === undefined) return planned;
-  const floor = !omitsSerializedOutputCap(model) && ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
+  const floor = outputFloor(model);
   const limit = Math.min(model.contextWindow - floor, budget.inputLimit ?? model.contextWindow);
   requireThat(limit > 0, "CAPACITY", "Model output floor leaves no main input capacity");
   return limit;

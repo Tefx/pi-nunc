@@ -4,14 +4,14 @@ import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earen
 import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceInput, MaintenanceResult, Memory } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch } from "./engine/index.js";
-import { subscriptionBilling } from "./engine/pi-model.js";
+import { subscriptionBilling, omitsRouteOutputCap } from "./engine/pi-model.js";
 import { messageTextContent } from "./engine/cleanup.js";
 import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
 import { maintenanceCalibrationRecord } from "./engine/calibration.js";
 import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration } from "./pi/calibration.js";
 import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
-import { mainAdmissionLimit, mainContext, requestTokens, omitsSerializedOutputCap } from "./engine/accounting.js";
+import { mainAdmissionLimit, mainContext, requestTokens } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
 import { deriveSlotProvenance, carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, eligibleUsageEntryIds, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
@@ -42,12 +42,14 @@ export default function nunc(pi: ExtensionAPI): void {
   let uiRunning: AbortController | undefined;
   let hostSettings: HostSettingsSource | undefined;
   let headroomWarned = false;
+  let runwayWarned = false;
+  const diagnosedModels = new Set<string>();
   let completionRegistry: ExtensionContext["modelRegistry"] | undefined;
   type CompactForIntent = { marker: string; sessionId: string; leafId: string | null; generation: number;
     target: NonNullable<MaintenanceInput["target"]>; claimed: boolean;
     outcome?: NonNullable<MaintenanceResult["observations"]["target"]> };
   let compactFor: CompactForIntent | undefined;
-  const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; };
+  const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; runwayWarned = false; };
   const dropAnchors = () => { clearMemoryAnchors(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
@@ -109,7 +111,7 @@ export default function nunc(pi: ExtensionAPI): void {
   const admission = new Admission(pi, (ctx, model) => {
     supported(ctx);
     project(ctx.sessionManager.buildContextEntries());
-    return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsSerializedOutputCap(model) || subscriptionBilling(model, ctx.modelRegistry));
+    return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
   }, event => observeLayout(event));
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
@@ -249,7 +251,7 @@ export default function nunc(pi: ExtensionAPI): void {
   }
   const contextView = createContextSurface({
     pi, memory, fixed,
-    config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsSerializedOutputCap(model) || subscriptionBilling(model, ctx.modelRegistry)),
+    config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry)),
   });
   const prepareUiCleanup = async (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal): Promise<{ edits?: unknown; warning?: string; stale?: boolean }> => {
     if (signal.aborted) return { stale: true };
@@ -280,7 +282,7 @@ export default function nunc(pi: ExtensionAPI): void {
     let callStartedAt: number | undefined;
     let observedResponse = false;
     try {
-      const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction, omitsSerializedOutputCap(frozen.model) || subscriptionBilling(frozen.model, ctx.modelRegistry));
+      const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction, omitsRouteOutputCap(frozen.model, ctx.modelRegistry));
       config.toolResultCleanup = true;
       const policy = await loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) });
       if (stale()) return { stale: true };
@@ -339,7 +341,7 @@ export default function nunc(pi: ExtensionAPI): void {
     contextView.observeAdmission(event);
     if (event.observation.kind === "main" && event.observation.outcome === "reject") {
       const detail = event.observation.resolution && (event.observation.resolution === "unavailable" || event.observation.resolution === "protocol-error")
-        ? ` (${event.observation.resolution})`
+        ? ` (${event.observation.resolution}${event.observation.resolutionDetail ? `: ${event.observation.resolutionDetail}` : ""})`
         : "";
       ui.noteDiagnostic("warning", `Admission ${event.observation.code ?? "reject"}${detail}`);
     } else if (event.observation.kind === "main" && event.observation.outcome === "delegate") {
@@ -349,8 +351,31 @@ export default function nunc(pi: ExtensionAPI): void {
   };
   pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
+  const modelDiagnostics = (ctx: ExtensionContext) => {
+    const model = ctx.model;
+    if (!model) return;
+    const key = `${model.provider}/${model.id}`;
+    if (diagnosedModels.has(key)) return;
+    const selected = readConfig(pi.getFlag("nunc-config"), ctx.cwd).config;
+    const config = engineConfig(selected, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
+    diagnosedModels.add(key);
+    if (selected.memory?.hardMaxTokens !== undefined) {
+      notify(ctx, `Explicit memory.hardMaxTokens=${selected.memory.hardMaxTokens} may block required-memory maintenance. For an elastic organizing target, use memory.targetTokens and remove hardMaxTokens. Settings were not changed.`);
+    }
+    if (omitsRouteOutputCap(model, ctx.modelRegistry) && selected.extraction?.outputTokens === model.maxTokens) {
+      notify(ctx, `Explicit extraction.outputTokens=${model.maxTokens} still reserves the full output capability. This API has no output cap; remove the legacy override to use the 8192 planning default. Settings were not changed.`);
+    }
+    if (!omitsRouteOutputCap(model, ctx.modelRegistry) && model.maxTokens >= 0.8 * model.contextWindow) {
+      notify(ctx, "Oversized catalog output caps may trigger early provider rejections on dense inputs. Nunc applies a best-effort output-only clamp when safe headroom exists; native compaction still handles full-context limits.");
+    }
+    const projected = project(ctx.sessionManager.buildContextEntries());
+    const estimate = requestTokens(mainContext(fixed(ctx), projected.memory.slots, effectiveActive(projected, cleanupEnabled(ctx))), config.imageTokens) + config.main.extraInputTokens;
+    const limit = mainAdmissionLimit(model, config.main);
+    if (estimate > limit) notify(ctx, `Selected model context estimate ${estimate} exceeds input limit ${limit}. Native automatic recovery may require compaction; success is not guaranteed. With automatic compaction disabled, compact explicitly or choose a larger model. This is a projection, not the next provider payload.`);
+  };
   pi.on("session_start", (_event, ctx) => {
     completionRegistry = ctx.modelRegistry;
+    diagnosedModels.clear();
     invalidate(); dropAnchors(); contextView.resetPath();
     try {
       supported(ctx);
@@ -363,16 +388,9 @@ export default function nunc(pi: ExtensionAPI): void {
       });
       if (memoryToolsEnabled) registerMemoryTools();
       admission.ensure(ctx);
-      const selected = ctx.model ? readConfig(pi.getFlag("nunc-config"), ctx.cwd).config : undefined;
-      if (ctx.model && selected) engineConfig(selected, ctx.model, settings(ctx).compaction);
       project(ctx.sessionManager.buildContextEntries());
       ui.attach(ctx);
-      if (selected?.memory?.hardMaxTokens !== undefined) {
-        notify(ctx, `Explicit memory.hardMaxTokens=${selected.memory.hardMaxTokens} may block required-memory maintenance. For an elastic organizing target, use memory.targetTokens and remove hardMaxTokens. Settings were not changed.`);
-      }
-      if (ctx.model && selected && omitsSerializedOutputCap(ctx.model) && selected.extraction?.outputTokens === ctx.model.maxTokens) {
-        notify(ctx, `Explicit extraction.outputTokens=${ctx.model.maxTokens} still reserves the full output capability. This API has no output cap; remove the legacy override to use the 8192 planning default. Settings were not changed.`);
-      }
+      modelDiagnostics(ctx);
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid startup configuration"); }
   });
   pi.on("session_before_switch", () => { invalidate(); contextView.resetPath(); });
@@ -384,12 +402,7 @@ export default function nunc(pi: ExtensionAPI): void {
     invalidate(); admission.ensure(ctx); ui.refresh(ctx);
     if (!ctx.model) return;
     try {
-      const config = engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, ctx.model, settings(ctx).compaction);
-      const projected = project(ctx.sessionManager.buildContextEntries());
-      const estimate = requestTokens(mainContext(fixed(ctx), projected.memory.slots, effectiveActive(projected, cleanupEnabled(ctx))), config.imageTokens)
-        + config.main.extraInputTokens;
-      const limit = mainAdmissionLimit(ctx.model, config.main);
-      if (estimate > limit) notify(ctx, `Selected model context estimate ${estimate} exceeds input limit ${limit}. Native automatic recovery may require compaction; success is not guaranteed. With automatic compaction disabled, compact explicitly or choose a larger model. This is a projection, not the next provider payload.`);
+      modelDiagnostics(ctx);
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Cannot estimate selected model capacity"); }
   });
   pi.on("thinking_level_select", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
@@ -454,7 +467,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd), host = settings(ctx);
       if (!isDeepStrictEqual(host.compaction, event.preparation.settings)) throw new EngineError("CONFIG", "Host settings differ from preparation; reload settings before maintenance");
       const model = structuredClone(ctx.model), thinking = ctx.thinkingLevel, f = structuredClone(fixed(ctx));
-      const config = engineConfig(selection.config, model, event.preparation.settings, omitsSerializedOutputCap(model) || subscriptionBilling(model, ctx.modelRegistry));
+      const config = engineConfig(selection.config, model, event.preparation.settings, omitsRouteOutputCap(model, ctx.modelRegistry));
       const intent = compactFor;
       const target = intent?.target;
       if (intent) {
@@ -498,6 +511,10 @@ export default function nunc(pi: ExtensionAPI): void {
       if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
         headroomWarned = true;
         notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds the extraction input limit planned with the minimum maintenance output reserve; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
+      }
+      if (accounting?.mainAfterTokens != null && accounting.growthTokens != null && accounting.growthTokens < 0.35 * accounting.effectiveTrigger && !runwayWarned) {
+        runwayWarned = true;
+        notify(ctx, `Candidate post-compaction growth runway ${accounting.growthTokens} is narrow after projected input ${accounting.mainAfterTokens} against trigger ${accounting.effectiveTrigger}. Reduce retained history or fixed/memory input, or choose a larger context window. Settings were not changed; candidate success is not a native save.`);
       }
       const currentEntries = manager.buildContextEntries();
       const current = project(currentEntries);

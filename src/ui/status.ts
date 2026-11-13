@@ -144,6 +144,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
       `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
     );
+    if (a.mainAfterTokens != null && a.growthTokens != null) lines.push(`Candidate post-compaction runway: input ${thousands(a.mainAfterTokens)} / trigger ${thousands(a.effectiveTrigger)} · growth ${thousands(a.growthTokens)}${a.growthTokens < 0.35 * a.effectiveTrigger ? " · narrow" : ""} (forecast, not a native save)`);
     if (a.memoryReserveTokens !== undefined) {
       lines.push(`Memory: target ${thousands(a.memoryLimit)} · reserved ${thousands(a.memoryReserveTokens)} · saved ${a.memoryTokens === null ? "pending" : thousands(a.memoryTokens)}${a.memoryTargetExceeded ? " · over target; required retained" : ""}`,
         `Memory hard limit: ${a.memoryHardLimit == null ? "none (elastic maintenance)" : `${thousands(a.memoryHardLimit)} (explicit; may block maintenance)`}`);
@@ -164,7 +165,7 @@ export function lastMainLines(last: LastMainContext | undefined): string[] {
     `Observed: ${new Date(last.observedAt).toISOString()}`,
     `Scope: last-main · ${last.outcome}${last.code ? ` ${last.code}` : ""}`,
   ];
-  if (last.resolution) lines.push(`Resolution: ${last.resolution}`);
+  if (last.resolution) lines.push(`Resolution: ${last.resolution}${last.resolutionDetail ? ` (${last.resolutionDetail})` : ""}`);
   if (last.estimator) lines.push(`Estimator: ${last.estimator}`);
   if (last.layout.memoryIndex !== undefined) lines.push(`Memory request index: ${last.layout.memoryIndex}`);
   else if ((last.layout.memory?.slots.length ?? 0) > 0) lines.push("Memory request index: unknown");

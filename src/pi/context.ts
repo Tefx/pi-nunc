@@ -128,6 +128,7 @@ export interface LastMainContext {
   outcome: "delegate" | "reject";
   code?: string;
   resolution?: AdmissionObservation["resolution"];
+  resolutionDetail?: AdmissionObservation["resolutionDetail"];
   estimator?: AdmissionObservation["estimator"];
   estimateReason?: AdmissionObservation["estimateReason"];
   hostPromptMatchesRequest?: boolean;
@@ -258,6 +259,7 @@ export function createContextSurface(options: {
           layout: unavailableLayout(),
           ...(observation.code ? { code: observation.code } : {}),
           ...(observation.resolution ? { resolution: observation.resolution } : {}),
+          ...(observation.resolutionDetail ? { resolutionDetail: observation.resolutionDetail } : {}),
           ...(observation.estimator ? { estimator: observation.estimator } : {}),
           ...(observation.estimateReason ? { estimateReason: observation.estimateReason } : {}),
           ...(observation.hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest: observation.hostPromptMatchesRequest }),

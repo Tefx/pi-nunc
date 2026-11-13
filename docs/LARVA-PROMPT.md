@@ -95,6 +95,11 @@ Pi 0.99.0 的字段迁移见 [system state 合同](PI.md#pi-0-99-0-system-state)
 
 ## 6. 可观察性与隐私
 
+`resolutionDetail` supplies a safe category alongside the unchanged four-value `resolution` union. Exact unavailable reasons `not ready`, `damaged managed boundaries`, `ambiguous managed boundaries`, `damaged legacy boundaries`, and `invalid request` map to those fixed tokens. Every other nonempty valid reason maps to `unavailable`; unknown text remains a valid unavailable response and is never echoed or truncated. Protocol failures map to `duplicate-reply`, `invalid-payload`, or `dispatch-error`.
+
+Unavailable still refuses with CONFIG before transport, with message prefix `Larva system prompt is currently unavailable` followed by ` (${detail})`. Admission events, Last main, details, F7 Context tree and UI Diagnostics carry the same safe category. No unprojected prompt fallback is added.
+
+
 在现有 `AdmissionObservation` 中增加有界解析状态，并通过现有 Last main / details / Diagnostics 数据流提供：`resolved`、`legacy-no-reply`、`unavailable`、`protocol-error`。这是主请求解析事实，不是可缓存的能力发现或会话级状态。maintenance/unknown 不伪报已解析。
 
 保留 estimator、estimateReason、实际 inputLimit 和 payload 分类，使 operator 能区分身份已解析、旧路径、receipt 不匹配与真实容量拒绝。错误文案使用有界安全诊断；不原样回显不可信 reason、完整系统指令、payload、persona 正文、凭据、路径或异常栈。现有本地 Context 浏览能力不扩展为新的持久化日志或网络报告。

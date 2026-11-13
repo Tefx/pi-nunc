@@ -306,7 +306,7 @@ function lastMainSummary(last: LastMainContext): string {
     `Scope: last-main · ${last.outcome}${last.code ? ` ${last.code}` : ""}`,
     `${last.model.provider}/${last.model.id} (${last.model.api})`,
     when,
-    last.resolution ? `resolution ${last.resolution}` : "",
+    last.resolution ? `resolution ${last.resolution}${last.resolutionDetail ? ` (${last.resolutionDetail})` : ""}` : "",
     last.estimator ? `estimator ${last.estimator}` : "",
     last.layout.memoryIndex !== undefined ? `memory request index ${last.layout.memoryIndex}` : (last.layout.memory?.slots.length ? "memory request index unknown" : ""),
     last.inputTokens !== undefined ? `input ${last.inputTokens}${last.inputLimit !== undefined ? ` / enforced ${last.inputLimit}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${last.plannedInputLimit}` : ""}` : "",

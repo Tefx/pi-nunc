@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { EngineConfig } from "../engine/index.js";
-import { omitsSerializedOutputCap } from "../engine/accounting.js";
+import { omitsSerializedOutputCap, outputFloor } from "../engine/accounting.js";
 import { EngineError, validateConfig } from "../engine/validation.js";
 
 export interface NuncConfig {
@@ -65,8 +65,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
     ["openai-completions", "openai-responses", "azure-openai-responses", "anthropic-messages",
       "google-generative-ai", "google-vertex"].includes(model.api);
   const mainOutput = model.maxTokens;
-  const outputFloor = ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
-  const mainReserve = Math.min(mainOutput, Math.max(outputFloor, settings.reserveTokens));
+  const mainReserve = Math.min(mainOutput, Math.max(outputFloor(model), settings.reserveTokens));
   // Existing explicit values remain effective; /nunc explains legacy full-ceiling reserves.
   const outputAuto = config.extraction?.outputTokens === undefined || config.extraction.outputTokens === "auto";
   const outputTokens = outputAuto ? Math.min(8192, model.maxTokens) : config.extraction!.outputTokens as number;
@@ -78,7 +77,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
       ...(config.memory?.maxTokens === undefined ? {} : { maxTokens: config.memory.maxTokens }) },
     keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.5,
     ...(config.rolling?.targetTokens !== undefined ? { keepRecentTargetTokens: config.rolling.targetTokens }
-      : config.rolling?.keepRecentFraction === undefined ? { keepRecentTargetTokens: 100000 } : {}),
+      : config.rolling?.keepRecentFraction === undefined ? { keepRecentTargetTokens: Math.min(100000, Math.max(1, settings.keepRecentTokens, Math.floor(triggerTokens * 0.25))) } : {}),
     ...(config.rolling?.keepRecentFraction === undefined ? { keepRecentTokens: settings.keepRecentTokens } : {}),
     growthTokens: config.budget?.growthTokens ?? 1024,
     main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },

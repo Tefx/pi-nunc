@@ -1,5 +1,5 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
-import { estimateContextTokens, estimateTextTokens, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { estimateContextTokens, estimateTextTokens, omitsSerializedOutputCap, outputFloor, textTokens } from "../engine/accounting.js";
 import { canonical, EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
@@ -284,10 +284,6 @@ export function codexSystemInstructionRewrite(model: Pick<Model<Api>, "api">, be
     sum + Math.max(0, textTokens(canonical(after[key])) - textTokens(canonical(before[key]))), 0);
   const textGrowth = Math.max(0, textTokens(after.instructions) - textTokens(before.instructions)) + (append.ok ? append.addedTokens : 0);
   return { ok: true, addedTokens: Math.max(fieldGrowth, textGrowth), append };
-}
-
-function outputFloor(model: Model<Api>): number {
-  return ["openai-responses", "azure-openai-responses"].includes(model.api) ? 16 : 1;
 }
 
 export function authorizePayload(args: {

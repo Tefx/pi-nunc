@@ -5,6 +5,7 @@ import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { clampThinkingLevel } from "@earendil-works/pi-ai/compat";
 import { EngineError, record } from "./validation.js";
 import type { Complete } from "./types.js";
+import { omitsSerializedOutputCap } from "./accounting.js";
 
 /** Read only public native auth metadata, never the credential or an API-key prefix.
  * Legacy Codex's API is subscription-only; other OAuth providers declare their
@@ -12,6 +13,10 @@ import type { Complete } from "./types.js";
 export function subscriptionBilling(model: Model<Api>, registry: Pick<ModelRegistry, "isUsingOAuth" | "getProvider">): boolean {
   return model.api === "openai-codex-responses" ||
     (registry.isUsingOAuth(model) && registry.getProvider(model.provider)?.auth?.oauth?.isSubscription === true);
+}
+
+export function omitsRouteOutputCap(model: Model<Api>, registry: Pick<ModelRegistry, "isUsingOAuth" | "getProvider">): boolean {
+  return omitsSerializedOutputCap(model) || (model.api === "openai-responses" && subscriptionBilling(model, registry));
 }
 
 /** Public Pi complete: native authentication/transport remain host-owned.

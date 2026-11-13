@@ -4,12 +4,12 @@ import { isDeepStrictEqual } from "node:util";
 import { createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools, getInitialSystemMessage, normalizeContext, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions, type SystemMessage, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Complete, EngineConfig, Memory, ActiveEntry } from "../engine/index.js";
-import { admissionEstimate, inputLimit, isSystemMessage, mainAdmissionLimit, memoryTokens, messageTokens, omitsSerializedOutputCap, requestTokens, textTokens } from "../engine/accounting.js";
+import { admissionEstimate, inputLimit, isSystemMessage, mainAdmissionLimit, memoryTokens, messageTokens, outputFloor, requestTokens, textTokens } from "../engine/accounting.js";
 import { renderMemory } from "../engine/memory.js";
 import { isNuncCarrier, peekMemoryAnchor } from "./projection.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
-import { subscriptionBilling } from "../engine/pi-model.js";
-import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
+import { omitsRouteOutputCap } from "../engine/pi-model.js";
+import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapPaths, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
 
 type Installation = { wrapper: Provider; original?: Provider; legacy?: NonNullable<ReturnType<ModelRegistry["getRegisteredProviderConfig"]>> };
 type CallRecord = {
@@ -50,6 +50,7 @@ interface MainSnapshot {
 const MAIN_RECEIPT_LIMIT = 8;
 export const LARVA_RESOLVE_SYSTEM_PROMPT_EVENT = "larva:resolve-system-prompt:v1";
 export type SystemPromptResolutionStatus = "resolved" | "legacy-no-reply" | "unavailable" | "protocol-error";
+export type SystemPromptResolutionDetail = "not ready" | "damaged managed boundaries" | "ambiguous managed boundaries" | "damaged legacy boundaries" | "invalid request" | "unavailable" | "duplicate-reply" | "invalid-payload" | "dispatch-error";
 export type ResolveSystemPromptResult =
   | { status: "ok"; systemPrompt: string }
   | { status: "unavailable"; reason: string };
@@ -98,6 +99,7 @@ export interface AdmissionObservation {
   kind: "main" | "maintenance" | "unknown";
   outcome: "delegate" | "reject";
   resolution?: SystemPromptResolutionStatus;
+  resolutionDetail?: SystemPromptResolutionDetail;
   inputTokens?: number;
   inputLimit?: number;
   plannedInputLimit?: number;
@@ -133,6 +135,32 @@ export interface AdmissionLayoutEvent {
     addedTokens?: number;
     addedText?: string;
   };
+}
+
+function hasCoupledThinkingBudget(body: unknown): boolean {
+  if (!record(body)) return false;
+  const positive = (v: unknown) => typeof v === "number" && v > 0;
+  const thinking = record(body.thinking) ? body.thinking : {};
+  if (positive(thinking.budget_tokens)) return true;
+  for (const container of [body, thinking]) {
+    if (["thinking_budget", "thinking_token_budget", "thinking_budget_tokens"].some(key => positive(container[key]))) return true;
+  }
+  for (const container of [body, body.config, body.generationConfig]) {
+    if (record(container) && record(container.thinkingConfig) && positive(container.thinkingConfig.thinkingBudget)) return true;
+  }
+  return false;
+}
+
+function cloneWithOutputCap(body: unknown, cap: number): unknown {
+  // Clone the root and nested cap containers; preserve caller-owned payloads.
+  if (!record(body)) return body;
+  const next = { ...body };
+  for (const path of outputCapPaths(body)) {
+    const [root, key] = path.split(".");
+    if (key && root && record(body[root])) next[root] = { ...body[root], [key]: cap };
+    else if (root) next[root] = cap;
+  }
+  return next;
 }
 
 /** Admission owns no session or queue mutations. Captured native transport owns I/O. */
@@ -458,7 +486,7 @@ export class Admission {
     next.seen.add(wrapper);
     return this.call.run(next, () => this.enter(ctx, wrapper, delegate, model, context, options, simple, legacyStream, binding));
   }
-  private resolveSystemPrompt(rawPrompt: string): { status: "resolved"; systemPrompt: string } | { status: "legacy-no-reply" } | { status: "unavailable"; error: EngineError } | { status: "protocol-error"; error: EngineError } {
+  private resolveSystemPrompt(rawPrompt: string): { status: "resolved"; systemPrompt: string } | { status: "legacy-no-reply" } | { status: "unavailable"; detail: SystemPromptResolutionDetail; error: EngineError } | { status: "protocol-error"; detail: SystemPromptResolutionDetail; error: EngineError } {
     let windowClosed = false;
     type CapturedReply =
       | { kind: "ok"; systemPrompt: string }
@@ -504,6 +532,7 @@ export class Admission {
       windowClosed = true;
       return {
         status: "protocol-error",
+        detail: "dispatch-error",
         error: new EngineError("CONFIG", "Larva system prompt resolution event dispatch threw an exception"),
       };
     }
@@ -515,6 +544,7 @@ export class Admission {
     if (replies.length > 1) {
       return {
         status: "protocol-error",
+        detail: "duplicate-reply",
         error: new EngineError("CONFIG", "Larva system prompt resolution received duplicate replies"),
       };
     }
@@ -523,13 +553,16 @@ export class Admission {
       return { status: "resolved", systemPrompt: candidate.systemPrompt };
     }
     if (candidate.kind === "unavailable") {
+      const safeReasons = ["not ready", "damaged managed boundaries", "ambiguous managed boundaries", "damaged legacy boundaries", "invalid request"] as const;
+      const detail = safeReasons.find(reason => reason === candidate.reason) ?? "unavailable";
       return {
-        status: "unavailable",
-        error: new EngineError("CONFIG", "Larva system prompt is currently unavailable"),
+        status: "unavailable", detail,
+        error: new EngineError("CONFIG", `Larva system prompt is currently unavailable (${detail})`),
       };
     }
     return {
       status: "protocol-error",
+      detail: "invalid-payload",
       error: new EngineError("CONFIG", "Larva system prompt resolution returned invalid payload"),
     };
   }
@@ -554,8 +587,10 @@ export class Admission {
     let inputTokens: number | undefined, limit: number | undefined, outputTokens: number | undefined;
     let initialMetadataTokens = 0;
     let enforceInputLimit = true;
-    let budgetObservation: Pick<AdmissionObservation, "resolution" | "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages" | "receiptBreakdown" | "memoryIndex" | "memoryContent"> = {};
+    let budgetObservation: Pick<AdmissionObservation, "resolution" | "resolutionDetail" | "estimator" | "outputReserveTokens" | "outputCapTokens" | "plannedInputLimit" | "inputExceededPlan" | "estimateReason" | "hostPromptMatchesRequest" | "anchorTrailingMessages" | "receiptBreakdown" | "memoryIndex" | "memoryContent"> = {};
     let snapshot: MainSnapshot | undefined;
+    let clampInput: ((payload: unknown, growth: number) => number) | undefined;
+    let clampConfig: EngineConfig | undefined;
     let projection: AdmissionLayoutEvent["projection"];
     let effectiveContext = normalizeContext(context);
     try {
@@ -610,11 +645,30 @@ export class Admission {
           const currentRecord = this.call.getStore();
           if (currentRecord) currentRecord.effectiveContext = effectiveContext;
         } else if (resolved.status === "unavailable" || resolved.status === "protocol-error") {
-          budgetObservation = { resolution: resolved.status };
+          budgetObservation = { resolution: resolved.status, resolutionDetail: resolved.detail };
           throw resolved.error;
         }
 
         const selected = this.selectReceipt(effectiveContext, model, config.imageTokens, binding, ctx);
+        clampConfig = config;
+        const worstMessage = (message: Context["messages"][number]) => Math.max(messageTokens(message, config.imageTokens), JSON.stringify(message).length);
+        clampInput = (payload, growth) => {
+          if (selected.receipt && selected.receiptBreakdown) {
+            const trailing = selected.rMessages.slice(selected.receipt.rCount + 1);
+            const additionalM = selected.receiptBreakdown.additionalMTokens > 0
+              ? Math.max(selected.receiptBreakdown.additionalMTokens, Math.max(0, (selected.hasM ? renderMemory(binding!.memory.slots).length : 0) - selected.receipt.mContent.length)) : 0;
+            return selected.receiptBreakdown.observedU + trailing.reduce((n, m) => n + worstMessage(m), 0)
+              + additionalM + config.main.extraInputTokens + Math.max(initialMetadataTokens, JSON.stringify(options?.metadata ?? {}).length) + growth;
+          }
+          const body = record(payload) ? payload : {};
+          const size = (value: unknown) => value === undefined ? 0 : JSON.stringify(value).length;
+          const googleConfig = record(body.config) ? body.config : {};
+          const chars = ["messages", "input", "contents", "system", "instructions", "systemInstruction", "tools", "functions"]
+            .reduce((n, key) => n + size(body[key]), 0)
+            + ["systemInstruction", "tools", "functions"].reduce((n, key) => n + size(googleConfig[key]), 0);
+          return Math.max(estimateTokens, chars) + config.main.extraInputTokens
+            + Math.max(initialMetadataTokens, JSON.stringify(options?.metadata ?? {}).length) + growth;
+        };
         const deliveredMemoryIndex = selected.validAssociation && selected.hasM
           ? effectiveContext.messages.findIndex(isNuncCarrier) : undefined;
         let estimateTokens: number;
@@ -638,7 +692,7 @@ export class Admission {
           estimateReason: selected.reason,
           ...(selected.receipt ? { anchorTrailingMessages: selected.anchorTrailingMessages } : {}),
           ...(hostPromptMatchesRequest === undefined ? {} : { hostPromptMatchesRequest }),
-          ...((omitsSerializedOutputCap(model) || (model.api === "openai-responses" && subscriptionBilling(model, ctx.modelRegistry))) ? { outputCapTokens: null } : {}),
+          ...(omitsRouteOutputCap(model, ctx.modelRegistry) ? { outputCapTokens: null } : {}),
           ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
           ...(deliveredMemoryIndex !== undefined ? { memoryIndex: deliveredMemoryIndex } : {}),
           ...(binding ? { memoryPresent: binding.memory.slots.length > 0, memoryCarrierCount: context.messages.filter(isNuncCarrier).length,
@@ -677,7 +731,7 @@ export class Admission {
         // Native Sign in with ChatGPT omits max_output_tokens even when the
         // static openai model also supports API keys. Keep the planning reserve,
         // but authorize/observe the full native output capability on this route.
-        const uncapped = omitsSerializedOutputCap(model) || (model.api === "openai-responses" && subscriptionBilling(model, ctx.modelRegistry));
+        const uncapped = omitsRouteOutputCap(model, ctx.modelRegistry);
         outputTokens = uncapped ? model.maxTokens : scope!.request.outputTokens;
         budgetObservation = { estimator: "pi-heuristic", outputReserveTokens: scope!.request.outputTokens, outputCapTokens: uncapped ? null : scope!.request.outputTokens };
         const calibration = scope!.request.calibratedUndercountTokens ?? 0;
@@ -721,8 +775,24 @@ export class Admission {
         const layout = { ctx, model, context: effectiveContext, payloadGrowth, initialMetadataTokens, ...(projection ? { projection } : {}) };
         try {
           authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, enforceInputLimit, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main" });
+          // Authorization must see hook mutations before any output-only mitigation.
+          let sent = final;
+          if (kind === "main" && clampConfig && clampInput && !omitsRouteOutputCap(model, ctx.modelRegistry) && cap.kind === "value" && !hasCoupledThinkingBudget(after)) {
+            const prior = record(before) ? before : {};
+            const next = record(after) ? after : {};
+            const growthChars = Object.keys(next).reduce((sum, key) => sum + Math.max(0,
+              (JSON.stringify(next[key]) ?? "").length - (JSON.stringify(prior[key]) ?? "").length), 0);
+            const conservativeInput = clampInput(before, Math.max(chargedTokens, growthChars));
+            const reserve = model.contextWindow - clampConfig.triggerTokens;
+            const safeFloor = Math.min(cap.value, Math.max(outputFloor(model), reserve, Math.min(32768, Math.floor(model.contextWindow * 0.25))));
+            const remaining = Math.floor(model.contextWindow - conservativeInput - clampConfig.main.safetyTokens);
+            if (conservativeInput + cap.value > model.contextWindow && remaining >= safeFloor) {
+              sent = cloneWithOutputCap(after, Math.max(safeFloor, remaining));
+              budgetObservation.outputCapTokens = Math.max(safeFloor, remaining);
+            }
+          }
           this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
-          return replacement;
+          return sent === final ? replacement : sent;
         } catch (error) {
           const code = error instanceof EngineError ? error.code : "CONFIG";
           const aborted = options?.signal?.aborted === true || code === "CANCELLED";
