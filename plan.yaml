@@ -8999,7 +8999,7 @@ phases:
       2 optional external Dasein skips).'
 - id: nunc-maintenance-schema-and-fallback
   name: Google 维护结构化 Schema 解码、机械窗口滚动逃生舱与校准去重加固
-  status: pending
+  status: in_progress
   gate: nunc-maintenance-schema-and-fallback.gate 由 gate-reviewer 对 nunc-maintenance-schema-and-fallback.implement-schema-and-fallback
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认
     Google 维护约束 JSON Schema 解码、LLM 响应失败时的确定性机械窗口滚动（Mechanical Window Roll）逃生舱、强用户/模型降级可见性（compaction.summary、Nunc
@@ -9026,7 +9026,7 @@ phases:
   steps:
   - id: nunc-maintenance-schema-and-fallback.implement-schema-and-fallback
     name: 实现 Google 维护 Schema 约束解码、机械窗口滚动逃生舱与校准去重
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"package.json\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
@@ -9215,6 +9215,8 @@ phases:
     - package.json
     - tsconfig.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-16T13:58:33.784282Z'
   - id: nunc-maintenance-schema-and-fallback.gate
     name: Google 维护 Schema 约束解码、机械窗口滚动逃生舱与校准去重阶段整合验收
     status: pending
