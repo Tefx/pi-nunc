@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { setImmediate as flush } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { maintain } from "../../src/engine/engine.js";
-import { activeUsageObservation, activeUsageUndercount, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
+import { hasEquivalentCalibrationRecord, activeUsageObservation, activeUsageUndercount, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
 import { extractionContext, reduceToolBodies, resolveExtractionRequest } from "../../src/engine/request.js";
 import { inputLimit, mainPlanningEstimate, messagePlanningEstimate, requestTokens } from "../../src/engine/accounting.js";
 import { answer, assistant, input, noChange, responder, sourceRecords, tool, user } from "./fixtures.js";
@@ -455,4 +455,17 @@ test("malformed saved calibration is ignored and successful calibration rebinds 
   assert.deepEqual(selectMaintenanceCalibration(value, [{ ...saved, sourceDigest: "invalid" }, { ...saved, measurement: { ...saved.measurement, undercountTokens: -1 } }]), []);
   value.active[0]!.messages = [{ role: "user", content: "same ID, different content", timestamp: 0 }];
   assert.equal(maintenanceFeedback(value).calibratedUndercountTokens, 0);
+});
+
+test("calibration equivalence compares every binding and evidence field, independent of object key order", async () => {
+  const source = await input();
+  const failed = await maintain(source, async () => ({ ...answer(), stopReason: "error" }));
+  const candidate = maintenanceCalibrationRecord(source, failed); assert(candidate);
+  assert.equal(hasEquivalentCalibrationRecord([null, {}, structuredClone(candidate)], candidate), true);
+  const reordered = Object.fromEntries(Object.entries(candidate).reverse());
+  assert.equal(hasEquivalentCalibrationRecord([reordered], candidate), true);
+  for (const key of ["provider", "api", "modelId", "sourceDigest", "limitsDigest", "contextDigest", "headTailChars", "providerOverflow", "measurement"] as const) {
+    const changed: Record<string, unknown> = { ...candidate, [key]: key === "headTailChars" ? 99 : key === "measurement" ? undefined : "different" };
+    assert.equal(hasEquivalentCalibrationRecord([changed], candidate), false, key);
+  }
 });

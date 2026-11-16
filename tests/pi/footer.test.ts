@@ -25,3 +25,11 @@ test("/nunc completions offer read-only details and explicit targeted compaction
   assert.equal(commandCompletions("details "), null);
   assert.equal(COMMAND_USAGE, "Usage: /nunc [details | compact-for <provider/model-id>]");
 });
+
+test("mechanical roll warning takes precedence over every normal dim state including empty M", () => {
+  for (const slotCount of [0, 8]) for (const limit of [null, 0, 2000]) {
+    const input = { unavailable: false, occupied: false, unconfirmed: false, warning: false, slotCount, budget: { tokens: 0, limit, unknown: limit === null }, fallback: true };
+    assert.deepEqual(compactFooter(input), { text: `🧠 !${slotCount}·roll`, tone: "warning" });
+    assert.equal(compactFooter({ ...input, fallback: false }).tone, "dim");
+  }
+});

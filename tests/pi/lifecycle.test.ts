@@ -3,24 +3,62 @@ import assert from "node:assert/strict";
 import { writeFile, rename, mkdir, rm } from "node:fs/promises";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { sourceRecords, answer } from "../engine/fixtures.js";
-import { assertOnlyCalibrationAppend, fixture, memoryPatch } from "./fixtures.js";
-import { project } from "../../src/pi/projection.js";
+import { assertOnlyCalibrationAppend, fixture, memoryPatch, surfacePort } from "./fixtures.js";
+import { createNuncUi } from "../../src/ui/index.js";
+import { buildContextNodes } from "../../src/ui/context-tree.js";
+import { project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
 
-for (const reason of ["length", "error", "aborted", "toolUse"] as const) test(`nonterminal ${reason} response cancels real hook with no saved candidate/default fallback`, async t => {
-  const f = await fixture(); t.after(() => f.close()); f.seed();
-  f.respond(() => fauxAssistantMessage('{"add":[],"remove":[],"priority":[],"required":[]}', { stopReason: reason }));
-  const before = f.runtime.session.sessionManager.getEntries();
-  await assert.rejects(f.runtime.session.compact(), /cancel/i);
-  assert.equal(f.faux.state.callCount, 1);
-  if (reason === "aborted") assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
-  else assertOnlyCalibrationAppend(before, f.runtime.session.sessionManager.getEntries(), f.events[0]!.result);
-  assert.equal(f.events[0]?.result.ok, false);
-});
-for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"required":[]}', '{"add":[],"remove":[],"priority":[]}', '{"add":[],"remove":[],"priority":[],"required":["unknown"]}', '{"add":[{"key":"k","text":"note"}],"remove":[],"priority":[],"required":[]}']) test(`invalid patch cancels once: ${bad}`, async t => {
+for (const reason of ["stop", "length", "error", "aborted", "toolUse"] as const) {
+  for (const nonempty of [false, true]) test(`maintenance ${reason} with ${nonempty ? "saved" : "empty"} M preserves failure semantics and rolls only completed responses`, async t => {
+    const port = surfacePort();
+    const f = await fixture({ extras: port.extras }); t.after(() => f.close()); f.seed();
+    const manager = f.runtime.session.sessionManager;
+    if (nonempty) manager.appendCustomEntry(MANUAL_MEMORY_TYPE, { nunc: { version: 1, nextId: 8, slots: [{ id: "s7", text: "Keep the full task constraint." }] } });
+    const before = project(manager.buildContextEntries());
+    f.respond(() => fauxAssistantMessage("broken", { stopReason: reason }));
+    if (reason === "error" || reason === "aborted") {
+      const entries = manager.getEntries();
+      await assert.rejects(f.runtime.session.compact(), /cancel/i);
+      if (reason === "aborted") assert.deepEqual(manager.getEntries(), entries);
+      else assertOnlyCalibrationAppend(entries, manager.getEntries(), f.events[0]!.result);
+      assert.equal(project(manager.buildContextEntries()).mechanicalFallback, undefined);
+    } else {
+      const saved = await f.runtime.session.compact();
+      const after = project(manager.buildContextEntries());
+      assert.deepEqual(after.memory, before.memory);
+      assert.deepEqual(after.active, before.active.slice(before.active.findIndex(e => e.entryId === saved.firstKeptEntryId)));
+      assert.equal(after.mechanicalFallback?.code, "RESPONSE");
+      assert.match(saved.summary, /Nunc Mechanical Roll Fallback/);
+      const view = port.context().read(port.ctx());
+      assert.equal(view.lastMaintenance?.engine, "fail");
+      assert.equal(view.lastMaintenance?.native, "saved");
+      assert.deepEqual(view.lastMaintenance?.after?.memory, before.memory);
+      f.respond(() => fauxAssistantMessage("Continued."));
+      await f.runtime.session.prompt("Continue");
+      await f.runtime.session.prompt("Continue again");
+      assert(f.calls.at(-1)!.messages.some(m => JSON.stringify(m).includes("Nunc Mechanical Roll Fallback")));
+      assert.equal(port.admissions.at(-1)?.estimator, "pi-usage-backed", "fallback carrier retains receipt identity");
+      assert(project(manager.buildContextEntries()).mechanicalFallback, "main delegation does not clear fallback");
+      await f.reopenWithoutConfig();
+      assert(project(f.runtime.session.sessionManager.buildContextEntries()).mechanicalFallback, "checkpoint survives reload");
+      const memory = port.memory().read(port.ctx());
+      const patch = port.memory().patch(port.ctx(), { expectedRevision: memory.revision, add: [{ key: "reconciled", text: "Explicitly reconciled retired history." }] });
+      assert(patch.ok);
+      assert.equal(project(f.runtime.session.sessionManager.buildContextEntries()).mechanicalFallback, undefined);
+    }
+    const result = f.events[0]!.result;
+    assert(!result.ok); assert.equal(result.code, "RESPONSE");
+  });
+}
+for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"required":[]}', '{"add":[],"remove":[],"priority":[]}', '{"add":[],"remove":[],"priority":[],"required":["unknown"]}', '{"add":[{"key":"k","text":"note"}],"remove":[],"priority":[],"required":[]}']) test(`invalid patch rolls once: ${bad}`, async t => {
   const f = await fixture(); t.after(() => f.close()); f.seed(); f.respond(() => fauxAssistantMessage(bad));
-  const before = f.runtime.session.sessionManager.getEntries();
-  await assert.rejects(f.runtime.session.compact(), /cancel/i);
-  assertOnlyCalibrationAppend(before, f.runtime.session.sessionManager.getEntries(), f.events[0]!.result);
+  const before = project(f.runtime.session.sessionManager.buildContextEntries());
+  const saved = await f.runtime.session.compact();
+  const after = project(f.runtime.session.sessionManager.buildContextEntries());
+  assert.deepEqual(after.memory, before.memory);
+  assert(after.mechanicalFallback);
+  assert.match(saved.summary, /without updating M/);
+  assert.equal(f.events[0]?.result.ok, false);
   assert.equal(f.faux.state.callCount, 1);
 });
 
@@ -160,4 +198,46 @@ test("ephemeral session and impossible host reserve/keep preparation never call 
   const f = await fixture({ ephemeral: true }); t.after(() => f.close()); f.seed();
   await assert.rejects(f.runtime.session.compact(), /cancel/i);
   assert.equal(f.faux.state.callCount, 0);
+});
+
+test("mechanical checkpoint warning survives recovery and clears on a normal compaction", async t => {
+  const port = surfacePort();
+  const f = await fixture({ extras: port.extras }); t.after(() => f.close()); f.seed();
+  f.respond(() => fauxAssistantMessage("broken"));
+  const saved = await f.runtime.session.compact();
+  let status: string | undefined;
+  const ctx = port.ctx();
+  const paintCtx = { ...ctx, hasUI: true, ui: { ...ctx.ui,
+    theme: { ...ctx.ui.theme, fg: (_tone: string, value: string) => value },
+    setStatus: (_key: string, value: string | undefined) => { status = value; },
+  } } as typeof ctx;
+  const ui = createNuncUi({ memory: { ...port.memory(), beginFreeze: () => true, endFreeze() {}, noteForeignFailure: () => false },
+    context: port.context(), supported() {} });
+  ui.attach(paintCtx);
+  assert.equal(status, "🧠 !0·roll");
+  ui.recover(); ui.refresh(paintCtx);
+  assert.equal(status, "🧠 !0·roll");
+  assert.match(buildContextNodes(port.context().read(ctx)).get("scope:current")!.preview, /Mechanical fallback: active/);
+  f.respond(() => fauxAssistantMessage("Continued."));
+  await f.runtime.session.prompt("Continue");
+  ui.recover(); ui.refresh(paintCtx);
+  assert.equal(status, "🧠 !0·roll");
+  const manager = f.runtime.session.sessionManager;
+  const checkpoint = manager.getEntries().find(e => e.type === "compaction")!;
+  for (const bad of [null, {}, { code: "CAPACITY" }, { ...(checkpoint.details as { mechanicalFallback: object }).mechanicalFallback, retiredEntryCount: -1 },
+      { ...(checkpoint.details as { mechanicalFallback: object }).mechanicalFallback, firstKeptEntryId: "wrong" }]) {
+    const entries = structuredClone(manager.buildContextEntries());
+    const c = entries.find(e => e.id === checkpoint.id);
+    assert(c?.type === "compaction");
+    c.details = { ...c.details as object, mechanicalFallback: bad };
+    assert.throws(() => project(entries), /fallback|snapshot/i);
+  }
+  f.seed("normal");
+  f.respond(memoryPatch);
+  const normal = await f.runtime.session.compact();
+  assert(!normal.summary.includes("Nunc Mechanical Roll Fallback"));
+  assert.equal(project(manager.buildContextEntries()).mechanicalFallback, undefined);
+  ui.recover(); ui.refresh(paintCtx);
+  assert(!status?.includes("·roll"));
+  assert(saved.summary.includes("Nunc Mechanical Roll Fallback"));
 });

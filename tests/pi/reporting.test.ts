@@ -225,14 +225,17 @@ test("failed maintenance keeps the received terminal in the existing context rep
   const captured = port();
   const f = await fixture({ extras: captured.extras }); t.after(() => f.close());
   f.seed(); f.respond(() => fauxAssistantMessage("{\"add\":[]}", { stopReason: "length" }));
-  await assert.rejects(f.runtime.session.compact(), /Compaction cancelled/);
+  await f.runtime.session.compact();
   const result = f.events.at(-1)!.result;
   assert(!result.ok); assert.equal(result.code, "RESPONSE");
   assert.equal(result.observations.stopReason, "length");
   const view = captured.context().read(captured.ctx());
   assert.equal(view.lastMaintenance?.stopReason, "length");
   assert.match(detailsLines({ view, diagnostics: [] }), /Response stop reason: length/);
-  assert.equal(f.runtime.session.sessionManager.getEntries().filter(entry => entry.type === "compaction").length, 0);
+  assert.match(detailsLines({ view, diagnostics: [] }), /Mechanical fallback: active \(RESPONSE:/);
+  assert.equal(view.lastMaintenance?.native, "saved");
+  assert.equal(view.lastMaintenance?.engine, "fail");
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(entry => entry.type === "compaction").length, 1);
 });
 
 test("last-maintenance input plan stays on frozen accounting after current model/budget change", async t => {

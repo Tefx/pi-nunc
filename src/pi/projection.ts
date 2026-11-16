@@ -1,8 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { ActiveEntry, Memory, Slot, SlotProvenance, ToolResultDecision, ToolResultRef } from "../engine/index.js";
-import { applyToolResultCleanup, emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
+import type { ActiveEntry, Memory, MechanicalFallbackInfo, Slot, SlotProvenance, ToolResultDecision, ToolResultRef } from "../engine/index.js";
+import { applyToolResultCleanup, renderMemoryWithFallback, emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
 import { messageTextContent } from "../engine/cleanup.js";
 import { isSystemMessage } from "../engine/accounting.js";
 import { canonical, EngineError, integer, record, requireThat, validateMemory } from "../engine/validation.js";
@@ -72,13 +72,23 @@ function requireManual(condition: unknown, message: string): asserts condition {
   if (!condition) throw new EngineError("INPUT", message);
 }
 
+function checkpointFallback(details: unknown): MechanicalFallbackInfo | undefined {
+  if (!record(details) || details.mechanicalFallback === undefined) return;
+  const f = details.mechanicalFallback;
+  requireManual(record(f) && f.code === "RESPONSE" && typeof f.message === "string" &&
+    integer(f.retiredEntryCount, 1) &&
+    typeof f.firstKeptEntryId === "string" && f.firstKeptEntryId.length > 0, "Invalid mechanical fallback record");
+  return { code: f.code, message: f.message, retiredEntryCount: f.retiredEntryCount, firstKeptEntryId: f.firstKeptEntryId };
+}
 function checkpointMemory(latest: Extract<SessionEntry, { type: "compaction" }>): Memory {
   const details: unknown = latest.details;
   if (record(details) && "nunc" in details) {
     validateMemory(details.nunc);
-    const expectedCurrent = renderMemory(details.nunc.slots);
+    const fallback = checkpointFallback(details);
+    requireManual(!fallback || fallback.firstKeptEntryId === latest.firstKeptEntryId, "Mechanical fallback and checkpoint boundary disagree");
+    const expectedCurrent = renderMemoryWithFallback(details.nunc.slots, fallback);
     const expectedLegacy = legacyRenderMemory(details.nunc.slots);
-    if (latest.summary !== expectedCurrent && latest.summary !== expectedLegacy) {
+    if (latest.summary !== expectedCurrent && (details.mechanicalFallback !== undefined || latest.summary !== expectedLegacy)) {
       throw new EngineError("INPUT", "Nunc snapshot and summary disagree");
     }
     return structuredClone(details.nunc);
@@ -188,17 +198,20 @@ export function revisionApplies(revision: string, sessionId: string, leafId: str
 }
 
 /** Input MUST be buildContextEntries() for the selected leaf, never getEntries(). */
-export function project(entries: readonly SessionEntry[]): { memory: Memory; active: ActiveEntry[]; cleanup: ToolResultDecision[]; unavailable: string[]; latestId?: string } {
+export function project(entries: readonly SessionEntry[]): { memory: Memory; active: ActiveEntry[]; cleanup: ToolResultDecision[]; unavailable: string[]; latestId?: string; mechanicalFallback?: MechanicalFallbackInfo } {
   const latest = entries.find(e => e.type === "compaction");
   let memory = emptyMemory();
+  let mechanicalFallback: MechanicalFallbackInfo | undefined;
   let saved = readDecisions(undefined);
   if (latest?.type === "compaction") {
     memory = checkpointMemory(latest);
+    mechanicalFallback = checkpointFallback(latest.details);
     saved = readDecisions(latest.details);
   }
   for (const entry of entriesAfterLatestCheckpoint(entries, latest?.id)) {
     if (isManualMemoryEntry(entry)) {
       memory = decodeManualMemory(entry.data);
+      mechanicalFallback = undefined;
       saved = readDecisions(entry.data);
     }
   }
@@ -238,7 +251,7 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
       (d.sourceRefDigests !== undefined && digest !== d.sourceRefDigests[index]);
   }));
   for (const d of valid) if (!cleanup.includes(d)) unavailable.push(`${d.entryId}:${d.messageIndex}`);
-  return { memory, active, cleanup, unavailable, ...(latest ? { latestId: latest.id } : {}) };
+  return { memory, active, cleanup, unavailable, ...(mechanicalFallback ? { mechanicalFallback } : {}), ...(latest ? { latestId: latest.id } : {}) };
 }
 
 export function effectiveActive(projected: ReturnType<typeof project>, enabled: boolean): ActiveEntry[] {
@@ -498,6 +511,7 @@ type LayoutMessage = {
   toolName?: string;
 };
 export type MemorySession = {
+  mechanicalFallback?: MechanicalFallbackInfo;
   sessionId: string;
   latestId?: string | undefined;
   entries?: readonly SessionEntry[];
@@ -521,9 +535,9 @@ export function peekMemoryAnchor(sessionId: string): { content: string; prefixLe
   return anchor ? { content: anchor.content, prefixLength: anchor.prefixLength, prefixEntryIds: [...anchor.prefixEntryIds] } : undefined;
 }
 /** Current UI index only when the stored prefix still corresponds to visible selected-path entries. */
-export function currentMemoryIndex(sessionId: string, memory: Memory, active: readonly { entryId: string; messages: readonly unknown[] }[]): number | undefined {
+export function currentMemoryIndex(sessionId: string, memory: Memory, active: readonly { entryId: string; messages: readonly unknown[] }[], mechanicalFallback?: MechanicalFallbackInfo): number | undefined {
   const anchor = anchors.get(sessionId);
-  if (!anchor || memory.slots.length === 0 || anchor.content !== renderMemory(memory.slots)) return;
+  if (!anchor || (!memory.slots.length && !mechanicalFallback) || anchor.content !== renderMemoryWithFallback(memory.slots, mechanicalFallback)) return;
   if (!anchor.boundary) return;
   const index = active.findIndex(entry => entry.entryId === anchor.boundary!.entryId);
   if (index < 0) return;
@@ -650,7 +664,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
     if (carriers.has(message)) continue;
     stripped.push(message);
   }
-  const content = renderMemory(memory.slots);
+  const content = renderMemoryWithFallback(memory.slots, session?.mechanicalFallback);
   const key = messageKeys();
   const units = session?.entries ? sourceUnits(session.entries) : [];
   const decisions = new Map((session?.decisions ?? []).map(d => [`${d.entryId}:${d.messageIndex}`, d]));
@@ -690,7 +704,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
       return replaced;
     }) };
   });
-  if (memory.slots.length === 0) {
+  if (memory.slots.length === 0 && !session?.mechanicalFallback) {
     if (session) anchors.delete(session.sessionId);
     return patched;
   }

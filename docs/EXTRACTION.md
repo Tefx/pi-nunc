@@ -163,6 +163,8 @@ B 在当前维护请求中仍可读，只有候选通过验证并提交后才从
 
 ## 5. 必要项预算保护
 
+Google maintenance uses the canonical frozen `PATCH_RESPONSE_JSON_SCHEMA` via `responseMimeType: "application/json"` and `responseJsonSchema`; native thinking remains unchanged. Main requests cannot opt into this maintenance-only authorization. Parsing and reference checks still reject invalid output; schema decoding does not establish semantic coverage. Cancelled attempts append calibration only when the selected branch lacks equivalent binding and measurement/refusal evidence.
+
 ### 5.1 可提交候选的不变量
 
 模型标识本次活动焦点及必要续做项。代码必须保证每一个被标识的候选都存在于最终可提交 M 中，保留完整条目，遵守真实请求容量和显式保存硬限制；整理目标与历史 F 的增长预测不能单独否决完整候选。普通优先级不得使必要项被跳过后仍报告维护成功。
@@ -191,7 +193,7 @@ B 在当前维护请求中仍可读，只有候选通过验证并提交后才从
 
 - 非法协议或引用产生明确 `RESPONSE` 失败；有界信息定位字段/引用并区分未知、重复、已删除、遗漏及非法 update，不输出完整回复。可见 `stopReason` 与 usage 一同记录；后续解析失败不会抹去它们，未观测响应保持 unknown。
 - 必要集合超过显式保存硬限制时，产生明确 `CAPACITY` 失败。默认目标超限时保存完整必要项，报告超目标，不截断正文或取消必要性标记。真实提取输入和输出限制仍生效；历史 F 的预测不产生新的失败。
-- 失败仍是一份失败事务：交付前不改变保存的 M/K，不以空返回落入默认摘要，不自动追加模型修复/重试。已确认错误的内容不能被重新放进一个“成功”候选来凑容量。
+- Extraction failures retain their failure result and observations. Ordinary completed `RESPONSE` failures can separately save a Mechanical Window Roll preserving current M and original K, with lossless mechanical cleanup only. The summary/carrier and persistent `🧠 !N·roll` indicator disclose that retired history was not extracted. Provider errors/aborts, capacity failures and explicit `compact-for` still cancel. No default summarizer, JSON repair, extra model call or model switch is used.
 - 结果/诊断应区分超整理目标成功、显式硬限制失败、真实请求容量失败与普通可选项淘汰；观察者需要实际引用或等价可核对信息，不需要原文、header、凭据或完整日志。
 - `required` 只约束本次维护，不是永久 pin，也不增加手工删除禁令。保存的 `Memory.version: 1`、`Slot {id,text}` 与人工 M 投影所有权保持兼容。
 - 请求合同和解析器必须协调更新，不能让新提示词发送旧解析器不接受的字段，也不能在新合同下默默把缺失的必要项声明当作“已完成保护”。当前 `update` 为可选兼容扩展，新 parser 接受旧响应；旧 parser 不接受带 update 的新响应，因此 prompt/parser/消费者须同版本交付。保存的 Memory v1 不迁移。

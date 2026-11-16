@@ -1,12 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { normalizeContext, type Model, type Provider } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, normalizeContext, type Model, type Provider } from "@earendil-works/pi-ai";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { googleVertexProvider } from "@earendil-works/pi-ai/providers/google-vertex";
 import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { PATCH_RESPONSE_JSON_SCHEMA } from "../../src/engine/memory.js";
+import { piComplete } from "../../src/engine/pi-model.js";
 import { messageTokens, textTokens } from "../../src/engine/accounting.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { authorizePayload, classifyPayloadChange, jsonView, payloadMode } from "../../src/pi/payload.js";
@@ -215,3 +217,104 @@ for (const providerFactory of [googleProvider, googleVertexProvider]) {
     });
   }
 }
+
+for (const providerFactory of [googleProvider, googleVertexProvider]) test(`${providerFactory().id} maintenance schema reaches loopback HTTP; other controls remain zero-send`, { timeout: 30000 }, async t => {
+  const google: Provider = providerFactory();
+  const catalog = google.getModels().find(m => m.id === "gemini-2.5-flash"); assert(catalog);
+  const bodies: Record<string, unknown>[] = [];
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    bodies.push(JSON.parse(Buffer.concat(chunks).toString()));
+    res.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
+    res.end(googleSSE('{"priority":[],"required":[]}'));
+  });
+  t.after(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address(); assert(address && typeof address === "object");
+  const boundModel = { ...catalog, contextWindow: 60000, maxTokens: 8192, baseUrl: `http://127.0.0.1:${address.port}/v1beta` };
+  const wrapped: Provider = {
+    ...google,
+    stream: (_model, context, options) => google.stream(boundModel, context, { ...options, apiKey: "offline-fixture-key", maxRetries: 0 }),
+    streamSimple: (_model, context, options) => google.streamSimple(boundModel, context, { ...options, apiKey: "offline-fixture-key", maxRetries: 0 }),
+  };
+  let mutation: Record<string, unknown> | undefined;
+  const observations: AdmissionObservation[] = [];
+  const f = await fixture({ extras: [{ name: "maintenance-schema-controls", factory(pi) {
+    pi.events.on("nunc:admission", value => observations.push(value as AdmissionObservation));
+    pi.on("before_provider_request", event => {
+      if (!mutation) return;
+      const payload = event.payload as { config: Record<string, unknown> };
+      return { ...payload, config: { ...payload.config, ...mutation } };
+    });
+  } }] });
+  t.after(() => f.close());
+  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
+  await f.modelRuntime.setRuntimeApiKey(google.id, "offline-fixture-key");
+  await f.runtime.session.setModel(boundModel);
+  f.seed();
+  for (const control of [
+    { responseMimeType: "text/plain" }, { responseJsonSchema: { type: "string" } },
+    { candidateCount: 2 }, { cachedContent: "cachedContents/synthetic" }, { responseModalities: ["AUDIO"] },
+    { systemInstruction: "changed" }, { tools: [{ name: "changed" }] },
+    { thinkingConfig: { thinkingBudget: 256 } }, { maxOutputTokens: 999999 },
+  ]) {
+    // Raw maintenance calls do not run Agent's before_provider_request hooks.
+    // Exercise authorization at the native serializer's public onPayload seam.
+    const response = await google.stream(boundModel, normalizeContext({ messages: [{ role: "user", content: "Synthetic maintenance", timestamp: 0 }] }), {
+      apiKey: "offline-fixture-key", maxTokens: 128, maxRetries: 0,
+      onPayload: payload => {
+        const before = jsonView(payload) as { config: Record<string, unknown> };
+        const after = { ...before, config: { ...before.config, responseMimeType: "application/json", responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA, ...control } };
+        authorizePayload({ model: boundModel, before, after, delta: classifyPayloadChange(before, after, "replacement", true),
+          inputTokens: 100, inputLimit: 50000, authorizedOutput: 128, context: { messages: [] }, allowGoogleMaintenanceJsonSchema: true });
+        return after;
+      },
+    }).result();
+    assert.equal(response.stopReason, "error", JSON.stringify(control));
+    assert.match(response.errorMessage ?? "", /not sent/);
+    assert.equal(bodies.length, 0, JSON.stringify(control));
+  }
+  mutation = undefined;
+  await f.runtime.session.compact();
+  assert.equal(bodies.length, 1);
+  const generation = bodies[0]!.generationConfig as Record<string, unknown>;
+  assert.equal(generation.responseMimeType, "application/json");
+  assert.deepEqual(generation.responseJsonSchema, PATCH_RESPONSE_JSON_SCHEMA);
+  const result = f.events.at(-1)!.result;
+  assert(result.ok, result.ok ? "" : result.message);
+  mutation = { responseMimeType: "application/json", responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA };
+  await f.runtime.session.prompt("Main requests cannot opt into the maintenance schema");
+  assert.equal(bodies.length, 1);
+  assert.equal(observations.at(-1)?.outcome, "reject");
+});
+
+test("canonical Google schema adds no external growth at the input boundary", async () => {
+  const catalog = googleProvider().getModels().find(m => m.id === "gemini-2.5-flash"); assert(catalog);
+  const before = await googleBody(catalog);
+  const rec = before as { config: Record<string, unknown> };
+  const after = { ...rec, config: { ...rec.config, responseMimeType: "application/json", responseJsonSchema: structuredClone(PATCH_RESPONSE_JSON_SCHEMA) } };
+  const delta = classifyPayloadChange(before, after, "replacement", true);
+  assert.equal(delta.grewTokens, 0); assert.deepEqual(delta.categories, []);
+  const args = { model: catalog, before, after, context: { messages: [] }, inputTokens: 500, inputLimit: 500, authorizedOutput: 128 };
+  authorizePayload({ ...args, delta, allowGoogleMaintenanceJsonSchema: true });
+  assert.throws(() => authorizePayload({ ...args, delta: classifyPayloadChange(before, after, "replacement") }), /unrecognized payload/);
+});
+
+test("piComplete clones Google payloads and preserves native thinking", async () => {
+  const catalog = googleProvider().getModels().find(m => m.id === "gemini-2.5-flash"); assert(catalog);
+  let seen = false;
+  await piComplete({ complete: async (_model, _context, options) => {
+    const payload = { config: { thinkingConfig: { thinkingBudget: 1234 }, maxOutputTokens: 128 }, contents: [] };
+    const original = structuredClone(payload);
+    const after = await options?.onPayload?.(payload, catalog) as typeof payload & { config: { responseMimeType: string; responseJsonSchema: unknown } };
+    assert.deepEqual(payload, original); assert.notEqual(after, payload);
+    assert.equal(after.config.responseMimeType, "application/json");
+    assert.deepEqual(after.config.responseJsonSchema, PATCH_RESPONSE_JSON_SCHEMA);
+    assert.deepEqual(after.config.thinkingConfig, original.config.thinkingConfig);
+    assert.equal(Object.hasOwn(options!, "reasoningEffort"), false);
+    seen = true;
+    return fauxAssistantMessage("");
+  } }, "high")({ model: catalog, context: { messages: [] }, outputTokens: 128, signal: new AbortController().signal });
+  assert(seen);
+});

@@ -10,6 +10,10 @@ function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value, (_key, item: unknown) => record(item)
     ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)).digest("hex");
 }
+export function hasEquivalentCalibrationRecord(existing: readonly unknown[], candidate: MaintenanceCalibrationRecord): boolean {
+  const fields = ["provider", "api", "modelId", "sourceDigest", "limitsDigest", "contextDigest", "headTailChars", "providerOverflow", "measurement"] as const;
+  return existing.some(value => valid(value) && fields.every(key => digest(value[key] ?? null) === digest(candidate[key] ?? null)));
+}
 function limitsDigest(input: Snapshot): string {
   const { toolResults: _mode, headTailChars: _chars, ...extraction } = input.config.extraction;
   return digest({ contextWindow: input.model.contextWindow, maxTokens: input.model.maxTokens, extraction, imageTokens: input.config.imageTokens });

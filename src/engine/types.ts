@@ -261,6 +261,13 @@ export interface ToolResultCleanupResult {
   skipped: CleanupSkipped[];
 }
 
+export interface MechanicalFallbackInfo {
+  code: FailureCode;
+  message: string;
+  retiredEntryCount: number;
+  firstKeptEntryId: string;
+}
+export type MaintenanceCandidate = Extract<MaintenanceResult, { ok: true }>["candidate"];
 export type MaintenanceResult = {
   ok: true;
   binding: Binding;
@@ -280,6 +287,7 @@ export type MaintenanceResult = {
   message: string;
   observations: Observations;
   cause?: unknown;
+  fallbackCandidate?: MaintenanceCandidate;
 };
 export interface ModelRequest {
   model: Model<Api>;

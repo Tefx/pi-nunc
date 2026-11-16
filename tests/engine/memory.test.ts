@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyPatch, emptyMemory, maintain, memoryTokens, renderMemory } from "../../src/engine/index.js";
+import { formatMechanicalFallbackNotice, renderMemoryWithFallback, applyPatch, emptyMemory, maintain, memoryTokens, renderMemory } from "../../src/engine/index.js";
 import type { Memory } from "../../src/engine/index.js";
 import { input, responder } from "./fixtures.js";
 
@@ -244,4 +244,14 @@ test("deterministic multi-slot operations: split mixed slot, merge slots, additi
   assert.equal(mergeSlots[1]!.text, "Consolidated config: east timeout 650ms, no cross-tenant sharing");
   assert.deepEqual(mergeResult.observations.required?.declared, ["merged"]);
   assert.deepEqual(mergeResult.observations.required?.retainedSlotIds, ["s7"]);
+});
+
+test("mechanical fallback renderer preserves empty and nonempty memory and gives exact recovery guidance", () => {
+  const fallback = { code: "RESPONSE" as const, message: "Malformed JSON", retiredEntryCount: 4, firstKeptEntryId: "recent" };
+  const notice = "[Nunc Mechanical Roll Fallback: LLM extraction failed (RESPONSE: Malformed JSON); retired 4 entries before recent without updating M. Use nunc_memory_read / nunc_memory_patch if retired history needs to be recorded.]";
+  assert.equal(formatMechanicalFallbackNotice(fallback), notice);
+  assert.equal(renderMemoryWithFallback([]), "");
+  assert.equal(renderMemoryWithFallback([], fallback), notice);
+  assert.equal(renderMemoryWithFallback(initial.slots), renderMemory(initial.slots));
+  assert.equal(renderMemoryWithFallback(initial.slots, fallback), renderMemory(initial.slots) + "\n\n" + notice);
 });

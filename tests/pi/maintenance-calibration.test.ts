@@ -316,3 +316,32 @@ test("measured maintenance undercount survives successful checkpoint/restart, re
   assert.notEqual(persisted.measurement?.actualInputTokens, 41300);
   t.diagnostic(`successful checkpoint/restart: maintenance raw sends=${raw}, main sends=${main}, measured/additive correction=${delta}`);
 });
+
+test("equivalent cancelled calibration preserves the selected leaf across retries and restart", async t => {
+  const f = await fixture(); t.after(() => f.close()); f.seed();
+  let measured = 18000;
+  // The faux transport recalculates usage; this controlled provider reports the measurement explicitly.
+  new ModelRegistry(f.modelRuntime).registerProvider({ ...f.faux.provider, stream(model) {
+    const message = { ...fauxAssistantMessage("", { stopReason: "error", errorMessage: "Deterministic fixture refusal" }),
+      api: model.api, provider: model.provider, model: model.id,
+      usage: { ...answer().usage, input: measured, cacheRead: 0, cacheWrite: 0, totalTokens: measured + 40 } };
+    const events = createAssistantMessageEventStream();
+    events.push({ type: "error", reason: "error", error: message }); events.end(message); return events;
+  } });
+  await assert.rejects(f.runtime.session.compact(), /cancel/i);
+  assert.equal(calibrationEntries(f).length, 1);
+  let leaf = f.runtime.session.sessionManager.getLeafId();
+  await assert.rejects(f.runtime.session.compact(), /cancel/i);
+  assert.equal(calibrationEntries(f).length, 1);
+  assert.equal(f.runtime.session.sessionManager.getLeafId(), leaf);
+  await f.reopenWithoutConfig();
+  leaf = f.runtime.session.sessionManager.getLeafId();
+  await assert.rejects(f.runtime.session.compact(), /cancel/i);
+  assert.equal(calibrationEntries(f).length, 1);
+  assert.equal(f.runtime.session.sessionManager.getLeafId(), leaf);
+  measured++;
+  await assert.rejects(f.runtime.session.compact(), /cancel/i);
+  assert.equal(calibrationEntries(f).length, 2, "distinct measurement remains useful evidence");
+  assert.notEqual(f.runtime.session.sessionManager.getLeafId(), leaf);
+  assert.equal(checkpoints(f).length, 0);
+});

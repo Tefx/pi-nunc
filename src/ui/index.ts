@@ -86,6 +86,7 @@ export class NuncUi {
       occupied: view?.status.occupied ?? false,
       unconfirmed: view?.status.unconfirmed ?? false,
       warning: Boolean(this.warning),
+      fallback: view?.mechanicalFallback !== undefined,
       slotCount: view?.memory.slots.length ?? 0,
       budget: view?.budget ?? { tokens: 0, limit: null, unknown: true },
     });

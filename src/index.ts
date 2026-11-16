@@ -2,12 +2,12 @@ import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earendil-works/pi-ai";
 import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, MaintenanceInput, MaintenanceResult, Memory } from "./engine/index.js";
-import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch } from "./engine/index.js";
+import type { FixedContext, MaintenanceInput, MaintenanceResult, MechanicalFallbackInfo, Memory } from "./engine/index.js";
+import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch, renderMemoryWithFallback } from "./engine/index.js";
 import { subscriptionBilling, omitsRouteOutputCap } from "./engine/pi-model.js";
 import { messageTextContent } from "./engine/cleanup.js";
 import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
-import { maintenanceCalibrationRecord } from "./engine/calibration.js";
+import { maintenanceCalibrationRecord, hasEquivalentCalibrationRecord } from "./engine/calibration.js";
 import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration } from "./pi/calibration.js";
 import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
@@ -424,6 +424,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const projected = project(entries);
       const messages = withEffectiveMemory(event.messages, projected.memory, { sessionId, entries,
         decisions: projected.cleanup, enabled: cleanupEnabled(ctx),
+        ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
         ...(projected.latestId !== undefined ? { latestId: projected.latestId } : {}) });
       // Inspect Pi's public native mapping without changing real AgentMessages
       // that later context hooks still consume. Native user/assistant/toolResult
@@ -435,6 +436,7 @@ export default function nunc(pi: ExtensionAPI): void {
         admission.bindProjection({
           sessionId, signal: ctx.signal, model: ctx.model, messages: converted,
           identityMessages: converted.filter(message => originals.has(message)),
+          ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
           memory: projected.memory,
           ...(memoryIndex !== undefined ? { memoryIndex } : {}),
         });
@@ -540,18 +542,34 @@ export default function nunc(pi: ExtensionAPI): void {
         throw new EngineError("CANCELLED", "Target model or target settings changed during maintenance");
       }
       const savedCalibration = maintenanceCalibrationRecord(maintenanceInput, result);
+      let mechanicalFallback: MechanicalFallbackInfo | undefined;
+      const candidate = result.ok ? result.candidate : !intent ? result.fallbackCandidate : undefined;
+      if (!candidate || !eligibleStarts(branch, current.active, current.latestId).includes(candidate.firstKeptEntryId)) {
+        if (!result.ok) {
+          if (savedCalibration && !hasEquivalentCalibrationRecord(branch.flatMap(entry => {
+            if (entry.type === "custom" && entry.customType === MAINTENANCE_CALIBRATION_TYPE) return [entry.data];
+            if (entry.type === "compaction" && record(entry.details)) return [entry.details.maintenanceCalibration];
+            return [];
+          }), savedCalibration))
+            pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE, savedCalibration);
+          notify(ctx, `${result.code}: ${result.message}`);
+          return { cancel: true };
+        }
+        throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
+      }
       if (!result.ok) {
-        if (savedCalibration) pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE, savedCalibration);
-        notify(ctx, `${result.code}: ${result.message}`);
-        return { cancel: true };
+        mechanicalFallback = { code: result.code, message: result.message,
+          retiredEntryCount: candidate.retiredEntryIds.length, firstKeptEntryId: candidate.firstKeptEntryId };
+        contextView.noteFallback(mechanicalFallback, candidate);
+        notify(ctx, `${result.code}: ${result.message}; rolled window mechanically preserving current M (${candidate.memory.slots.length} slots) and recent K (@ ${candidate.firstKeptEntryId}) so session can continue`, "warning");
       }
       if (intent && result.observations.target) intent.outcome = result.observations.target;
-      if (!eligibleStarts(branch, current.active, current.latestId).includes(result.candidate.firstKeptEntryId)) throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
-      const retained = new Set(result.candidate.kept.map(e => e.entryId));
-      const nextDecisions = [...projected.cleanup, ...(result.candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
+      const retained = new Set(candidate.kept.map(e => e.entryId));
+      const nextDecisions = [...projected.cleanup, ...(candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
         !d.sourceRefs?.some(ref => !retained.has(ref.entryId)));
-      return { compaction: { summary: result.candidate.summary, firstKeptEntryId: result.candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
-        details: { nunc: result.candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions),
+      return { compaction: { summary: renderMemoryWithFallback(candidate.memory.slots, mechanicalFallback), firstKeptEntryId: candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
+        details: { nunc: candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions),
+          ...(mechanicalFallback ? { mechanicalFallback } : {}),
           ...(savedCalibration ? { maintenanceCalibration: savedCalibration } : {}) } } };
     } catch (error) {
       contextView.noteInvalidated();

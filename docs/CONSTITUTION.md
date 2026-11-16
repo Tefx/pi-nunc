@@ -49,6 +49,14 @@ Nunc 是 Pi 的会话内滚动上下文与工作记忆扩展。它使一个持�
 
 失败保持明确，不追加 JSON 修补、模型切换、自动加倍额度或补救请求循环。当单次维护的模型响应无效或截断（`RESPONSE`）时，允许在不改写存量 `M`、不发起额外模型调用的前提下执行确定性机械窗口滚动（保留既有 `M`、合法 `K` 切点与无损机械清理，并在摘要、载体与状态栏显式标明降级），防止活动会话卡死；其他容量或传输失败沿用既有边界处理，不扩大为普遍成功保证。
 
+### Maintenance decoding and mechanical fallback boundary
+
+Google maintenance requests (`google-vertex` and `google-generative-ai`) use the canonical patch JSON Schema with `responseMimeType: "application/json"`. This maintenance-only declaration preserves native thinking and does not authorize main-request schema changes or other payload control changes. Parsing, reference validation and explicit capacity limits still apply.
+
+After a legal ordinary-maintenance cut, a completed `RESPONSE` failure may hand off a deterministic Mechanical Window Roll: unchanged M (including IDs and `nextId`), original retained K and lossless mechanical cleanup only. The engine and maintenance event remain failures with their original observations. Aborts, provider `error`/`aborted` responses, capacity failures and explicit `compact-for` never take this path. Pi still owns checkpoint persistence. No repair request, model switch or extra command is added.
+
+The saved summary and model carrier explicitly warn that retired history was not extracted into M, including when M is empty. The warning footer persists until a normal compaction or manual memory reconciliation. Details and F7 distinguish failed extraction from a saved mechanical checkpoint. Equivalent cancelled-compaction calibration evidence is not appended twice on the selected branch, so repeated failure does not advance the leaf merely to record identical evidence.
+
 ## 6. 非目标
 
 当前不提供跨会话记忆库、主动历史检索、外部文档写入服务、通用知识图谱、事实真值数据库、永久语义依赖追踪或自动记忆纠错系统。

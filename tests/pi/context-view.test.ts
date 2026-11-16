@@ -224,11 +224,12 @@ test("rejected requests are not sent; candidate is not saved; fail/cancel have n
   assert.equal(cancelled.lastMaintenance?.after, undefined);
   g.seed("invalid");
   g.respond(() => fauxAssistantMessage("broken"));
-  await assert.rejects(g.runtime.session.compact(), /cancel/i);
+  await g.runtime.session.compact();
   const failed = context2().read(ctx2());
   assert.equal(failed.lastMaintenance?.engine, "fail");
-  assert.equal(failed.lastMaintenance?.native, "failed");
-  assert.equal(failed.lastMaintenance?.after, undefined);
+  assert.equal(failed.lastMaintenance?.native, "saved");
+  assert(failed.lastMaintenance?.after);
+  assert.equal(failed.lastMaintenance?.fallback?.code, "RESPONSE");
   assert(failed.lastMaintenance?.cut?.firstKeptEntryId);
 });
 

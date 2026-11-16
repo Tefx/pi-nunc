@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools, getInitialSystemMessage, normalizeContext, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions, type SystemMessage, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import type { Complete, EngineConfig, Memory, ActiveEntry } from "../engine/index.js";
+import type { MechanicalFallbackInfo, Complete, EngineConfig, Memory, ActiveEntry } from "../engine/index.js";
 import { admissionEstimate, inputLimit, isSystemMessage, mainAdmissionLimit, memoryTokens, messageTokens, outputFloor, requestTokens, textTokens } from "../engine/accounting.js";
-import { renderMemory } from "../engine/memory.js";
+import { renderMemoryWithFallback } from "../engine/memory.js";
 import { isNuncCarrier, peekMemoryAnchor } from "./projection.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { omitsRouteOutputCap } from "../engine/pi-model.js";
@@ -76,6 +76,7 @@ export interface RequestProjectionBinding {
   /** Messages whose object identity survives Pi's public conversion. */
   identityMessages?: readonly object[];
   memory: Memory;
+  mechanicalFallback?: MechanicalFallbackInfo;
   memoryIndex?: number;
 }
 type BoundProjection = RequestProjectionBinding & { key: object; identities: ReadonlySet<object>; convertedSnapshots: unknown[]; carrierSnapshot: unknown; memoryIndex?: number };
@@ -88,7 +89,7 @@ function systemHistory(context: Context): unknown {
   }));
 }
 function carrierMatches(messages: (Context | TranscriptContext)["messages"], binding: BoundProjection): boolean {
-  if (!binding.memory.slots.length) return true;
+  if (!binding.memory.slots.length && !binding.mechanicalFallback) return true;
   const index = binding.memoryIndex;
   if (index !== undefined && index >= 0 && index < messages.length && isDeepStrictEqual(jsonView(messages[index]), binding.carrierSnapshot)) {
     return true;
@@ -189,7 +190,7 @@ export class Admission {
       messages: [...binding.messages],
       memory: structuredClone(binding.memory),
       ...(binding.memoryIndex !== undefined ? { memoryIndex: binding.memoryIndex } : {}),
-      carrierSnapshot: binding.memory.slots.length && binding.memoryIndex !== undefined ? jsonView(binding.messages[binding.memoryIndex]) : undefined,
+      carrierSnapshot: (binding.memory.slots.length || binding.mechanicalFallback) && binding.memoryIndex !== undefined ? jsonView(binding.messages[binding.memoryIndex]) : undefined,
     };
     for (const message of binding.messages) {
       if (!isSystemMessage(message) && identities.has(message)) {
@@ -343,7 +344,7 @@ export class Admission {
         this.matchesProjection(effectiveContext, binding) &&
         carrierMatches(effectiveContext.messages, binding)) {
       validAssociation = true;
-      hasM = binding.memory.slots.length > 0;
+      hasM = binding.memory.slots.length > 0 || binding.mechanicalFallback !== undefined;
       const conversationMessages = effectiveContext.messages.filter(m => !isSystemMessage(m));
       const candidate = binding.memoryIndex !== undefined ? effectiveContext.messages[binding.memoryIndex] : undefined;
       const carrier = (hasM && binding.memoryIndex !== undefined)
@@ -352,8 +353,8 @@ export class Admission {
             : effectiveContext.messages.find(isNuncCarrier))
         : undefined;
       rMessages = carrier ? conversationMessages.filter(m => m !== carrier) : conversationMessages;
-      currentMContent = hasM ? renderMemory(binding.memory.slots) : "";
-      currentMTokens = hasM ? memoryTokens(binding.memory.slots, imageTokens) : 0;
+      currentMContent = hasM ? renderMemoryWithFallback(binding.memory.slots, binding.mechanicalFallback) : "";
+      currentMTokens = hasM ? (binding.mechanicalFallback ? messageTokens({ role: "user", content: currentMContent, timestamp: 0 }, imageTokens) : memoryTokens(binding.memory.slots, imageTokens)) : 0;
     }
 
     if (!validAssociation) {
@@ -656,7 +657,7 @@ export class Admission {
           if (selected.receipt && selected.receiptBreakdown) {
             const trailing = selected.rMessages.slice(selected.receipt.rCount + 1);
             const additionalM = selected.receiptBreakdown.additionalMTokens > 0
-              ? Math.max(selected.receiptBreakdown.additionalMTokens, Math.max(0, (selected.hasM ? renderMemory(binding!.memory.slots).length : 0) - selected.receipt.mContent.length)) : 0;
+              ? Math.max(selected.receiptBreakdown.additionalMTokens, Math.max(0, (selected.hasM ? renderMemoryWithFallback(binding!.memory.slots, binding!.mechanicalFallback).length : 0) - selected.receipt.mContent.length)) : 0;
             return selected.receiptBreakdown.observedU + trailing.reduce((n, m) => n + worstMessage(m), 0)
               + additionalM + config.main.extraInputTokens + Math.max(initialMetadataTokens, JSON.stringify(options?.metadata ?? {}).length) + growth;
           }
@@ -695,8 +696,8 @@ export class Admission {
           ...(omitsRouteOutputCap(model, ctx.modelRegistry) ? { outputCapTokens: null } : {}),
           ...(selected.receiptBreakdown ? { receiptBreakdown: selected.receiptBreakdown } : {}),
           ...(deliveredMemoryIndex !== undefined ? { memoryIndex: deliveredMemoryIndex } : {}),
-          ...(binding ? { memoryPresent: binding.memory.slots.length > 0, memoryCarrierCount: context.messages.filter(isNuncCarrier).length,
-            memoryContent: binding.memory.slots.length ? renderMemory(binding.memory.slots) : "" } : {}),
+          ...(binding ? { memoryPresent: binding.memory.slots.length > 0 || binding.mechanicalFallback !== undefined, memoryCarrierCount: context.messages.filter(isNuncCarrier).length,
+            memoryContent: (binding.memory.slots.length || binding.mechanicalFallback) ? renderMemoryWithFallback(binding.memory.slots, binding.mechanicalFallback) : "" } : {}),
         };
         limit = mainAdmissionLimit(model, config.main);
         enforceInputLimit = config.main.inputLimit !== undefined;
@@ -713,13 +714,13 @@ export class Admission {
             rMessages: jsonView(selected.rMessages),
             rCount: selected.rMessages.length,
             mTokens: selected.currentMTokens,
-            mContent: selected.hasM ? renderMemory(binding!.memory.slots) : "",
+            mContent: selected.hasM ? renderMemoryWithFallback(binding!.memory.slots, binding!.mechanicalFallback) : "",
             hasM: selected.hasM,
             generation: this.generation,
             payloadBound: true,
-            ...(binding && deliveredMemoryIndex !== undefined && binding.memory.slots.length > 0 ? (() => {
+            ...(binding && deliveredMemoryIndex !== undefined && selected.hasM ? (() => {
               const anchor = peekMemoryAnchor(ctx.sessionManager.getSessionId());
-              return anchor?.content === renderMemory(binding.memory.slots) && anchor.prefixEntryIds.length
+              return anchor?.content === renderMemoryWithFallback(binding.memory.slots, binding.mechanicalFallback) && anchor.prefixEntryIds.length
                 ? { cleanupAnchor: { sessionId: ctx.sessionManager.getSessionId(), memory: structuredClone(binding.memory), prefixEntryIds: anchor.prefixEntryIds } }
                 : {};
             })() : {}),
@@ -754,7 +755,7 @@ export class Admission {
         const after = jsonView(final);
         const cap = outputCapState(after);
         budgetObservation.outputCapTokens = cap.kind === "value" ? cap.value : null;
-        const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload));
+        const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload), kind === "maintenance" && ["google-vertex", "google-generative-ai"].includes(selected.api));
         if (snapshot && delta.categories.some(c => c !== "output")) snapshot.payloadBound = false;
         const rewrite = kind === "main" ? codexSystemInstructionRewrite(selected, before, after) : { ok: false } as const;
         const append = rewrite.ok ? rewrite.append : lastUserTextAppend(before, after);
@@ -774,7 +775,7 @@ export class Admission {
         if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
         const layout = { ctx, model, context: effectiveContext, payloadGrowth, initialMetadataTokens, ...(projection ? { projection } : {}) };
         try {
-          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, enforceInputLimit, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main" });
+          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, enforceInputLimit, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main", allowGoogleMaintenanceJsonSchema: kind === "maintenance" });
           // Authorization must see hook mutations before any output-only mitigation.
           let sent = final;
           if (kind === "main" && clampConfig && clampInput && !omitsRouteOutputCap(model, ctx.modelRegistry) && cap.kind === "value" && !hasCoupledThinkingBudget(after)) {

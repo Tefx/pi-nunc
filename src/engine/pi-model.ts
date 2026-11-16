@@ -5,6 +5,7 @@ import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { clampThinkingLevel } from "@earendil-works/pi-ai/compat";
 import { EngineError, record } from "./validation.js";
 import type { Complete } from "./types.js";
+import { PATCH_RESPONSE_JSON_SCHEMA } from "./memory.js";
 import { omitsSerializedOutputCap } from "./accounting.js";
 
 /** Read only public native auth metadata, never the credential or an API-key prefix.
@@ -31,6 +32,13 @@ export function piComplete(registry: Pick<ModelRegistry, "complete">, thinking?:
     transport: "sse",
     sessionId: randomUUID(),
     ...rawThinking(model, thinking),
+    ...(["google-vertex", "google-generative-ai"].includes(model.api) ? {
+      onPayload: (payload: unknown) => {
+        if (!record(payload)) throw new EngineError("CONFIG", "Expected a Google payload object");
+        return { ...structuredClone(payload), config: { ...(record(payload.config) ? payload.config : {}),
+          responseMimeType: "application/json", responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA } };
+      },
+    } : {}),
   });
 }
 /** Retrying must wrap Admission.complete, never run inside its single-use ALS ticket.

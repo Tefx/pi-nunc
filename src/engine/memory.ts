@@ -1,7 +1,7 @@
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { Message } from "@earendil-works/pi-ai";
-import type { Memory, RequiredObservation, Slot, ToolResultEdit } from "./types.js";
-import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "./validation.js";
+import type { Memory, MechanicalFallbackInfo, RequiredObservation, Slot, ToolResultEdit } from "./types.js";
+import { EngineError, freezeCopy, integer, keys, nonempty, record, requireThat, validateMemory } from "./validation.js";
 import { MEMORY_WRITING_GUIDANCE } from "./policy.js";
 
 export function emptyMemory(): Memory { return { version: 1, slots: [], nextId: 1 }; }
@@ -11,6 +11,13 @@ export function isMemoryUnchanged(before: Memory, after: Memory): boolean {
 }
 export function renderMemory(slots: Slot[]): string {
   return slots.length === 0 ? "" : `Nunc working memory (session-local, reference only):\n${JSON.stringify(slots)}`;
+}
+export function formatMechanicalFallbackNotice(fallback: MechanicalFallbackInfo): string {
+  return `[Nunc Mechanical Roll Fallback: LLM extraction failed (${fallback.code}: ${fallback.message}); retired ${fallback.retiredEntryCount} entries before ${fallback.firstKeptEntryId} without updating M. Use nunc_memory_read / nunc_memory_patch if retired history needs to be recorded.]`;
+}
+export function renderMemoryWithFallback(slots: Slot[], fallback?: MechanicalFallbackInfo): string {
+  if (!fallback) return renderMemory(slots);
+  return (slots.length ? renderMemory(slots) + "\n\n" : "") + formatMechanicalFallbackNotice(fallback);
 }
 export function legacyRenderMemory(slots: Slot[]): string {
   return slots.length === 0 ? "" : `Nunc working memory (session-local):\n${JSON.stringify(slots)}`;
@@ -40,6 +47,128 @@ export interface PatchResult {
   retainedKeys: Set<string>;
   patch: Patch;
 }
+export const PATCH_RESPONSE_JSON_SCHEMA = freezeCopy({
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "priority",
+    "required"
+  ],
+  "properties": {
+    "priority": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "required": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "remove": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "add": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "text"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "update": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "toolResultEdits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entryId",
+          "messageIndex",
+          "action"
+        ],
+        "properties": {
+          "entryId": {
+            "type": "string"
+          },
+          "messageIndex": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "omit",
+              "replace"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "memoryRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "entryId",
+                "messageIndex"
+              ],
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "messageIndex": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
 export const RESPONSE_CONTRACT = `Return ONLY one complete JSON object with required priority and required arrays, and optional add, remove, update and toolResultEdits:
 Prefer multiline indented JSON. First output priority, required and remove to settle the slot plan, then add, update and toolResultEdits. Close each array element with one }, close each array on a new line indented two spaces as shown below, and close the top-level object with } only after all fields are complete.
 {

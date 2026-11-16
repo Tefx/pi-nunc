@@ -135,7 +135,7 @@ test("E4 invalid current response remains unqualified and cannot claim required-
     assert.match(first.rolloverQuality!.reason!, /No observed required CAPACITY failure/);
     assert(first.setupChecks?.some(c => c.status === "UNPROVEN"));
     assert(!first.commands?.some(c => c.type === "prompt" && c.message === "Continue the pending routing configuration now, using the agreed shipment conditions."));
-    assert.equal(first.rollovers?.filter(r => r.snapshot).length, 0);
+    assert.equal(first.rollovers?.filter(r => r.snapshot).length, 1, "mechanical retirement does not qualify required-capacity recovery");
     assert.equal(f.requests.length, 4);
     assert.deepEqual(ledgerSummary(ledger).unreconciledCallIds, []);
   } finally { await f.close(); }

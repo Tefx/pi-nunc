@@ -118,11 +118,17 @@ try {
   const disabled = count('compact'), beforeReject = f.requests.length;
   await p.prompt('Large delivered ' + 'b'.repeat(68000));
   assert.equal(f.requests.length, beforeReject + 1); assert.equal(count('compact'), disabled);
-  // Extraction failure returns cancel:true; native default summary is never run.
+  // Completed extraction failure saves a mechanical roll; native default summary is never run.
   f.response = row => row.kind === 'maintenance' ? { text: '{"add":[],"remove":[],"priority":[],"required":[]}', finish: 'length' } : undefined;
+  const beforeRoll = (await p.command('get_entries')).entries.filter(e => e.type === 'compaction');
+  await p.command('compact');
   const old = (await p.command('get_entries')).entries.filter(e => e.type === 'compaction');
-  await assert.rejects(p.command('compact')); assert.deepEqual((await p.command('get_entries')).entries.filter(e => e.type === 'compaction'), old);
+  assert.equal(old.length, beforeRoll.length + 1);
+  assert.match(old.at(-1).summary, /Nunc Mechanical Roll Fallback/);
+  assert.equal(old.at(-1).details.mechanicalFallback.code, 'RESPONSE');
   f.response = undefined;
+  // Deliver new work after the saved roll so Pi admits another compaction.
+  await p.prompt('Continue after the mechanical roll');
   // Genuine cancellation while the real maintenance HTTP request is pending.
   f.hold('maintenance'); const beforeMaintenance = f.requests.length;
   const compact = p.command('compact'); const rejectedCompact = assert.rejects(compact);

@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import { retryMaintenanceComplete } from "./pi-model.js";
 import { isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
 import { maintenanceFeedback, sameRejectedRequest } from "./calibration.js";
-import type { Complete, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
+import type { Complete, MaintenanceCandidate, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
 import { decideToolResultCleanup, applyToolResultCleanup } from "./cleanup.js";
 import { mainAdmissionLimit, chooseCut, extractionOutputPlan, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, requestTokens, unknownUsage } from "./accounting.js";
@@ -28,6 +28,7 @@ async function withCancellation<T>(work: () => Promise<T>, signal: AbortSignal):
 export async function maintain(input: MaintenanceInput, complete: Complete): Promise<MaintenanceResult> {
   const start = performance.now();
   const signal = input.signal;
+  let fallbackCandidate: MaintenanceCandidate | undefined;
   const observations: Observations = { requests: 0, elapsedMs: 0, usage: unknownUsage(), accounting: null, omissions: [], droppedSlotIds: [] };
   try {
     cancelled(signal);
@@ -95,6 +96,19 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     }
     const { cut } = chooseCut(frozen.active, cuts, retentionPlan.fixedTokens, memoryReserveTokens, keepTarget,
       retentionPlan.effectiveTrigger, planningConfig, planningModel);
+    if (!target) {
+      const kept = structuredClone(frozen.active.slice(cut));
+      fallbackCandidate = {
+        memory: structuredClone(frozen.memory), summary: renderMemory(frozen.memory.slots),
+        firstKeptEntryId: kept[0]!.entryId, kept,
+        retiredEntryIds: frozen.active.slice(0, cut).map(e => e.entryId),
+        toolResultCleanup: decideToolResultCleanup({
+          active: frozen.active, initialMemory: frozen.memory, finalMemory: frozen.memory,
+          candidateScope: frozen.cleanupCandidateScope, retainedEntries: kept, omissions: [],
+          disabled: config.toolResultCleanup === false, mechanicalWhenMemoryUnchanged: true,
+        }),
+      };
+    }
     const keptTokens = historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens).tokens;
     const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;
@@ -277,6 +291,8 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       observations.required.retainedSlotIds = [];
     }
     const error = cause instanceof EngineError ? cause : new EngineError("MODEL", `Maintenance failed before candidate handoff${cause instanceof Error ? `: ${cause.message}` : ""}`, { cause });
-    return { ok: false, code: signal.aborted ? "CANCELLED" : error.code, message: error.message, observations, cause };
+    return { ok: false, code: signal.aborted ? "CANCELLED" : error.code, message: error.message, observations, cause,
+      ...(!signal.aborted && error.code === "RESPONSE" && !["error", "aborted"].includes(observations.stopReason ?? "") && fallbackCandidate
+        ? { fallbackCandidate } : {}) };
   }
 }

@@ -4,6 +4,7 @@ import type { ContextView, CurrentContext, LastMainContext, LastMaintenanceConte
 
 export type FooterTone = "dim" | "accent" | "warning" | "error";
 export interface CompactFooterInput {
+  fallback?: boolean;
   unavailable: boolean;
   occupied: boolean;
   unconfirmed: boolean;
@@ -42,6 +43,7 @@ export function compactFooter(input: CompactFooterInput): { text: string; tone: 
   if (input.unavailable) return { text: "🧠 ×", tone: "error" };
   const n = String(input.slotCount);
   if (input.occupied) return { text: `🧠 ↻${n}`, tone: "accent" };
+  if (input.fallback) return { text: `🧠 !${n}·roll`, tone: "warning" };
   if (input.unconfirmed || input.warning) return { text: `🧠 !${n}`, tone: "warning" };
   if (input.slotCount === 0) return { text: "🧠 0", tone: "dim" };
   if (input.budget.unknown || input.budget.limit === null) return { text: `🧠 ${n}·?`, tone: "dim" };
@@ -129,6 +131,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
       ? `Native save: saved · after ${last.after.memory.slots.length} slots`
       : `Native save: ${last.native}${last.native === "saved" ? "" : " (candidate success is not a native save)"}`,
   ];
+  if (last.fallback && last.native === "saved") lines.push(`Mechanical fallback: active (${last.fallback.code}: ${last.fallback.message})`);
   if (last.target) {
     const t = last.target;
     lines.push(`Target: ${t.provider}/${t.modelId} · projected input ${t.estimatedInputTokens === null ? "unknown" : thousands(t.estimatedInputTokens)} · planning limit ${thousands(t.plannedInputLimit)} · growth ${thousands(t.growthReserve)} · ${t.fits ? "fits projection" : "not established"}`,
@@ -194,6 +197,7 @@ export function detailsLines(input: {
   const current = input.view.current;
   const summary = [
     `Memory: ${current.layout.memory?.slots.length ?? current.contextLayout.slotCount} slots`,
+    ...(current.mechanicalFallback ? [`Mechanical fallback: active (${current.mechanicalFallback.code}: ${current.mechanicalFallback.message})`] : []),
     ...(current.cleanup ? [`Tool-result cleanup: ${current.cleanup.enabled ? "on" : "off"} · ${current.cleanup.saved} saved / ${current.cleanup.applied} applied · ${current.cleanup.unavailable.length} unavailable`] : []),
     `Occupied: ${current.occupied ? "yes" : "no"}`,
     `Unconfirmed: ${current.unconfirmed ? "yes" : "no"}`,

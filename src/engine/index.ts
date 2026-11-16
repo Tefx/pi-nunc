@@ -2,7 +2,7 @@ export type * from "./types.js";
 export { maintain } from "./engine.js";
 export { piComplete } from "./pi-model.js";
 export { loadPolicy, builtinPolicyPath } from "./policy.js";
-export { emptyMemory, renderMemory, legacyRenderMemory, memoryMessage, applyPatch, parsePatch, isMemoryUnchanged, RESPONSE_CONTRACT, type Patch, type PatchResult, type MemorySelectionBudget } from "./memory.js";
+export { emptyMemory, renderMemoryWithFallback, formatMechanicalFallbackNotice, PATCH_RESPONSE_JSON_SCHEMA, renderMemory, legacyRenderMemory, memoryMessage, applyPatch, parsePatch, isMemoryUnchanged, RESPONSE_CONTRACT, type Patch, type PatchResult, type MemorySelectionBudget } from "./memory.js";
 export {
   decideToolResultCleanup,
   applyToolResultCleanup,

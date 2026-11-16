@@ -9,6 +9,13 @@ for (const stopReason of ["length", "pending", "error", "aborted", "toolUse", "d
   const result = await maintain(source, async request => ({ ...answer(undefined, request.model), stopReason }));
   assert(!result.ok); assert.equal(result.code, "RESPONSE"); assert.equal(result.observations.requests, 1); assert(!("candidate" in result));
   assert.equal(result.observations.stopReason, stopReason);
+  assert.equal(result.fallbackCandidate !== undefined, !["error", "aborted"].includes(stopReason));
+  if (result.fallbackCandidate) {
+    assert.deepEqual(result.fallbackCandidate.memory, source.memory);
+    assert.deepEqual(result.fallbackCandidate.kept, source.active.slice(source.active.findIndex(e => e.entryId === result.fallbackCandidate!.firstKeptEntryId)));
+    assert.notEqual(result.fallbackCandidate.memory, source.memory);
+    assert.notEqual(result.fallbackCandidate.kept[0], source.active.find(e => e.entryId === result.fallbackCandidate!.firstKeptEntryId));
+  }
   assert.equal(result.observations.usage.output, usage.output);
 });
 
@@ -112,4 +119,16 @@ test("model rejection preserves cause and original memory; listener removed on s
   assert.equal(getEventListeners(source.signal, "abort").length, 0);
   const success = await maintain(source, responder()); assert(success.ok);
   assert.equal(getEventListeners(source.signal, "abort").length, 0);
+});
+
+test("explicit compact-for and capacity failures never offer a mechanical roll", async () => {
+  const source = await input();
+  source.target = { model: structuredClone(source.model), config: structuredClone(source.config) };
+  source.config.extraction.toolResults = "full";
+  const targeted = await maintain(source, async () => ({ ...answer(), stopReason: "length" }));
+  assert(!targeted.ok); assert.equal(targeted.code, "RESPONSE"); assert.equal(targeted.fallbackCandidate, undefined);
+  delete source.target;
+  source.config.extraction.inputLimit = 1;
+  const capacity = await maintain(source, async () => assert.fail("capacity must refuse before model"));
+  assert(!capacity.ok); assert.equal(capacity.code, "CAPACITY"); assert.equal(capacity.fallbackCandidate, undefined);
 });

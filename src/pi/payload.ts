@@ -1,5 +1,6 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { estimateContextTokens, estimateTextTokens, omitsSerializedOutputCap, outputFloor, textTokens } from "../engine/accounting.js";
+import { PATCH_RESPONSE_JSON_SCHEMA } from "../engine/memory.js";
 import { canonical, EngineError, record } from "../engine/validation.js";
 
 export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
@@ -135,7 +136,20 @@ export function payloadMode(beforeView: unknown, afterView: unknown, replacement
   return sameRef ? "in-place" : "replacement";
 }
 
-export function classifyPayloadChange(beforeView: unknown, afterView: unknown, mode: PayloadMode): PayloadDelta {
+function withoutMaintenanceSchema(value: unknown): unknown {
+  if (!record(value) || !record(value.config)) return value;
+  const { responseMimeType: _mime, responseJsonSchema: _schema, ...config } = value.config;
+  return Object.keys(config).length ? { ...value, config } : Object.fromEntries(Object.entries(value).filter(([key]) => key !== "config"));
+}
+function canonicalMaintenanceSchema(value: unknown): boolean {
+  return record(value) && record(value.config) && value.config.responseMimeType === "application/json" &&
+    canonical(value.config.responseJsonSchema) === canonical(PATCH_RESPONSE_JSON_SCHEMA);
+}
+export function classifyPayloadChange(beforeView: unknown, afterView: unknown, mode: PayloadMode, allowGoogleMaintenanceJsonSchema = false): PayloadDelta {
+  if (allowGoogleMaintenanceJsonSchema && canonicalMaintenanceSchema(afterView)) {
+    beforeView = withoutMaintenanceSchema(beforeView);
+    afterView = withoutMaintenanceSchema(afterView);
+  }
   const categories = new Set<PayloadCategory>();
   const beforeRec = record(beforeView) ? beforeView : {};
   const afterRec = record(afterView) ? afterView : {};
@@ -299,7 +313,11 @@ export function authorizePayload(args: {
   context: Context;
   /** Explicit main-session authorization; maintenance keeps its fixed instructions. */
   allowSystemInstructionRewrite?: boolean;
+  allowGoogleMaintenanceJsonSchema?: boolean;
 }): void {
+  if (args.allowGoogleMaintenanceJsonSchema === true && ["google-vertex", "google-generative-ai"].includes(args.model.api)) {
+    args = { ...args, delta: classifyPayloadChange(args.before, args.after, args.delta.mode, true) };
+  }
   const prior = jsonView(args.before);
   const body = jsonView(args.after);
   if (!record(body)) throw new EngineError("CONFIG", "Nunc: native payload is not a JSON object; request was not sent");

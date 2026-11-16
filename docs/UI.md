@@ -31,11 +31,16 @@
 | `🧠 0` | 空记忆，当前无已保存 slots |
 | `🧠 ↻8` | 维护进行中，包含等待 Pi 提交的阶段 |
 | `🧠 !8` | 当前有需要查看的诊断或未确认保存 |
+| `🧠 !8·roll` | Mechanical Window Roll saved unchanged M after extraction failed; retired history may need explicit reconciliation |
 | `🧠 ×` | 当前配置或状态无法使用 |
 
 通常占 4–8 列，重要信息在前。正常状态使用低对比度文字，维护使用 `accent`，诊断使用 `warning`，不可用使用 `error`，同时用符号区分状态。数值无法计算时显示 `🧠 8·?`，不用零或旧模型的比例代替；空记忆显示 `🧠 0`，零预算显示 `🧠 8` 不作除法。超额比例不截成 100% 来掩盖实际状态（如 `🧠 8·142%`）。
 
 百分比表示 M 预算占用，不重复 Pi 的整体 context 使用率。H、模型、详细预算与完整诊断进入面板或完整文字报告。状态由 session、模型、维护、保存及观察事件更新，无轮询、额外模型请求或持续动画。保存前草稿不改变 footer 的已保存条数。恢复成功后清除当前警告，最近诊断仍可在 Context Diagnostics 与文字报告查看。面板状态摘要显示 slots、M 占用、occupied/unconfirmed 与当前 warning 摘要。
+
+The mechanical-roll indicator comes from the selected checkpoint projection, including `🧠 !0·roll` for empty M. It takes precedence over normal dim states and survives `ui.recover()`, native `session_compact` and subsequent main delegation. A normal compaction or manual memory reconciliation clears it. The saved summary and model-visible carrier include the same explicit notice, so headless sessions receive it too.
+
+`/nunc details` and the F7 maintenance observation show `Mechanical fallback: active (RESPONSE: ...)`. Extraction remains `engine: fail` with the original stop reason; a successful native mechanical save shows `native: saved` and preserved M/K in the after layout. A warning notification describes the failed extraction and mechanical roll; it does not claim that retired history was recorded into M. Use `nunc_memory_read` / `nunc_memory_patch` to reconcile relevant retired history explicitly. Google maintenance uses constrained JSON-schema decoding without changing native thinking; capacity/provider errors still cancel, and repeated identical calibration evidence is not appended again.
 
 Pi 默认 footer 会拼接并截断多个扩展状态。自定义 footer 只有消费 `getExtensionStatuses()` 才能显示它们；Nunc 不为强制可见而接管 footer。
 ## 3. Overlay 与 Slots
@@ -106,7 +111,7 @@ Context 与 Slots 使用一致的带版本 view。默认显示当前投影的 F/
 
 1. **当前投影**：当前选定路径上已交付的状态和有效 F/R/M。它不声称包含之后才运行的 context/payload hooks。
 2. **最近一次主请求观察**：Nunc 观察点取得的请求组成，标明模型、观察时点和范围。它与当前投影分别标识；被本地拒绝的请求不得标成已经发送或完成。已有观察能证明的生命周期状态才显示。
-3. **最近一次维护**：实际冻结的 B/K 划分、前后布局与结果。候选成功不等于 Pi 已保存；保存状态依据原生提交/失败事件。失败或取消时不显示不存在的已提交新布局。
+3. **最近一次维护**：实际冻结的 B/K 划分、前后布局与结果。候选成功不等于 Pi 已保存；保存状态依据原生提交/失败事件。Cancelled or unsaved failures show no committed after layout. A saved mechanical fallback reports preserved M/K separately from failed extraction.
 
 B/K 在维护时确定，当前 R 不预测为已经确定的下一次切分。排队或尚未交付的 D 不计入布局。其他扩展增加、过滤自己的 context 消息或追加多个 payload 文本块时，只显示实际观察到的差异；不能映射到消息块的追加单列，不把临时注入回填成维护来源或持久 M。未覆盖部分明确为未知，不为 inspector 增加通用 provider mapper。
 

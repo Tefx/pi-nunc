@@ -39,6 +39,7 @@ function scopeCurrent(current: CurrentContext, add: (node: CtxNode) => string): 
       bars(current),
       current.occupied ? "Maintenance occupied" : "",
       current.unconfirmed ? "Save unconfirmed" : "",
+      current.mechanicalFallback ? `Mechanical fallback: active (${current.mechanicalFallback.code}: ${current.mechanicalFallback.message})` : "",
     ].filter(Boolean).join("\n"),
     children,
   };

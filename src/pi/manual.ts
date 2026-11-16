@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, Memory, Slot, SlotProvenance, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
+import type { FixedContext, MechanicalFallbackInfo, Memory, Slot, SlotProvenance, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { decideToolResultCleanup, hardMemoryLimit, memoryTarget, memoryTokens } from "../engine/index.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
 import { readConfig, type HostCompactionSettings } from "./config.js";
@@ -19,6 +19,7 @@ export interface MemoryBudgetView {
   overLimit: boolean;
 }
 export interface MemoryView {
+  mechanicalFallback?: MechanicalFallbackInfo;
   slotProvenance?: Record<string, SlotProvenance>;
   cleanup?: { enabled: boolean; saved: number; applied: number; unavailable: string[] };
   revision: string;
@@ -79,6 +80,7 @@ export function createMemorySurface(options: {
       cleanup: { enabled, saved: projected.cleanup.length, applied: enabled ? projected.cleanup.length : 0, unavailable: projected.unavailable },
       revision: memoryRevision(ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), entries),
       memory: projected.memory,
+      ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
       slotProvenance,
       status: { occupied: state.occupied, unconfirmed: sessionUnconfirmed(ctx.sessionManager) },
       budget,

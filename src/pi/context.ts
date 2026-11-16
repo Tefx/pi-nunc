@@ -1,6 +1,6 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceResult, Memory, PlanningEstimate, Slot, SlotProvenance } from "../engine/index.js";
+import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceCandidate, MaintenanceResult, MechanicalFallbackInfo, Memory, PlanningEstimate, Slot, SlotProvenance } from "../engine/index.js";
 import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
@@ -99,6 +99,7 @@ export interface ContextBudget {
   safetyTokens: number | null;
 }
 export interface CurrentContext {
+  mechanicalFallback?: MechanicalFallbackInfo;
   scope: "current";
   sessionId: string;
   leafId: string | null;
@@ -146,6 +147,7 @@ export interface LastMainContext {
   payload?: LastMainPayload;
 }
 export interface LastMaintenanceContext {
+  fallback?: MechanicalFallbackInfo;
   target?: MaintenanceResult["observations"]["target"];
   scope: "last-maintenance";
   observedAt: number;
@@ -184,6 +186,7 @@ export interface ContextObserver extends ContextSurface {
   observeAdmission(event: AdmissionLayoutEvent): void;
   beginMaintenance(input: { ctx: ExtensionContext; model: Model<Api>; fixed: FixedContext; memory: Memory; active: ActiveEntry[]; reason: string; config?: EngineConfig; slotProvenance?: Record<string, SlotProvenance> }): void;
   noteEngine(result: MaintenanceResult): void;
+  noteFallback(fallback: MechanicalFallbackInfo, candidate: MaintenanceCandidate): void;
   noteNative(status: "saved" | "failed"): void;
   noteInvalidated(): void;
   resetPath(): void;
@@ -219,10 +222,11 @@ export function createContextSurface(options: {
         }
       }
       const active = effectiveActive(projected, memory.cleanup?.enabled ?? false);
-      const memoryIndex = currentMemoryIndex(sessionId, memory.memory, active);
+      const memoryIndex = currentMemoryIndex(sessionId, memory.memory, active, projected.mechanicalFallback);
       const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model, memory.slotProvenance);
       const current: CurrentContext = {
         scope: "current",
+        ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
         sessionId,
         leafId,
         ...(file ? { sessionFile: file } : {}),
@@ -346,11 +350,19 @@ export function createContextSurface(options: {
         }
       } catch { /* Keep the freeze already recorded. */ }
     },
+    noteFallback(fallback, candidate) {
+      const current = state.lastMaintenance;
+      if (!current || current.native !== "pending") return;
+      current.fallback = structuredClone(fallback);
+      current.candidate = { memory: structuredClone(candidate.memory), firstKeptEntryId: candidate.firstKeptEntryId };
+      current.cut = { firstKeptEntryId: candidate.firstKeptEntryId, retiredEntryIds: [...candidate.retiredEntryIds],
+        keptEntryIds: candidate.kept.map(e => e.entryId) };
+    },
     noteNative(status) {
       const current = state.lastMaintenance;
       if (!current || current.native !== "pending") return;
       current.native = status;
-      if (status === "saved" && current.engine === "ok" && !current.invalidated && current.candidate && current.cut) {
+      if (status === "saved" && (current.engine === "ok" || current.fallback) && !current.invalidated && current.candidate && current.cut) {
         current.after = { memory: structuredClone(current.candidate.memory), keptEntryIds: [...current.cut.keptEntryIds] };
       }
     },
