@@ -8999,7 +8999,7 @@ phases:
       2 optional external Dasein skips).'
 - id: nunc-maintenance-schema-and-fallback
   name: Google 维护结构化 Schema 解码、机械窗口滚动逃生舱与校准去重加固
-  status: in_progress
+  status: done
   gate: nunc-maintenance-schema-and-fallback.gate 由 gate-reviewer 对 nunc-maintenance-schema-and-fallback.implement-schema-and-fallback
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认
     Google 维护约束 JSON Schema 解码、LLM 响应失败时的确定性机械窗口滚动（Mechanical Window Roll）逃生舱、强用户/模型降级可见性（compaction.summary、Nunc
@@ -9241,7 +9241,7 @@ phases:
       - docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md (items 1-5) and docs/CONSTITUTION.md'
   - id: nunc-maintenance-schema-and-fallback.gate
     name: Google 维护 Schema 约束解码、机械窗口滚动逃生舱与校准去重阶段整合验收
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\"\
       , \"package-lock.json\", \".node-version\", \"tsconfig.json\"]\n  blocked_paths:\
@@ -9313,3 +9313,18 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-16T14:47:40.484049Z'
+    done_at: '2026-11-16T14:53:25.936456+00:00'
+    evidence: 'Gate: FULL PHASE_GATE PASS (validated POSITIVE_GATE_EVIDENCE)
+
+      Target: git:aa7f5952534ce5ecd04dc586f0e52864d1717dcd (integrated product commit
+      87318bd4ca380ecdf9c4d8f709e821226a385080)
+
+      Report: /Users/tefx/.pi/larva/subagent-output-artifacts/2026-11-16T14-53-05-639Z-2026-11-16T14-48-24-200Z_01a1e4d4-a786-73fe-9b30-f3e0686cb387.js-bb10edeee9905424.txt
+
+      Validator: python3 ~/.pi/agent/scripts/review_report_validator.py --kind gate
+      --binding /tmp/nunc-gate-binding.rZaaS7/binding.json -> valid:true, binding_checked:true,
+      evidence_disposition:POSITIVE_GATE_EVIDENCE, findings:[]
+
+      All 5 requirements (REQ-1..REQ-5) PROVEN. Verification logs: /tmp/nunc-schema-fallback-evidence-87318bd/
+      (targeted 215/215, check.mjs all 997/999 with 2 optional Dasein skips, larva.integration.js
+      9/9).'
