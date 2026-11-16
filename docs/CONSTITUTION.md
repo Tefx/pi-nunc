@@ -47,7 +47,7 @@ Nunc 是 Pi 的会话内滚动上下文与工作记忆扩展。它使一个持�
 
 规划目标、显式硬限制、实际 API cap 和真实费用分别表达。启发式估算不冒充 tokenizer 证明；未知费用不按零处理。显式限制和实际准入继续生效，不能为发出请求而暗中丢弃用户输入或绕过容量检查。
 
-失败保持明确，不追加 JSON 修补、模型切换、自动加倍额度或补救请求循环。宿主原生恢复按其现有边界处理，不扩大为普遍成功保证。
+失败保持明确，不追加 JSON 修补、模型切换、自动加倍额度或补救请求循环。当单次维护的模型响应无效或截断（`RESPONSE`）时，允许在不改写存量 `M`、不发起额外模型调用的前提下执行确定性机械窗口滚动（保留既有 `M`、合法 `K` 切点与无损机械清理，并在摘要、载体与状态栏显式标明降级），防止活动会话卡死；其他容量或传输失败沿用既有边界处理，不扩大为普遍成功保证。
 
 ## 6. 非目标
 
@@ -69,6 +69,6 @@ Nunc 是 Pi 的会话内滚动上下文与工作记忆扩展。它使一个持�
 
 ## 8. 与具体合同的关系
 
-核心边界见 [DESIGN.md](DESIGN.md)，稳定布局见 [STABLE-MEMORY.md](STABLE-MEMORY.md)，清理接口见 [TOOL-RESULT-CLEANUP.md](TOOL-RESULT-CLEANUP.md)，容量所有权见 [CAPACITY.md](CAPACITY.md)。这些文档中的历史状态和本宪法澄清的清理依赖语义需要相应更新，不能据旧表述增加自动恢复要求。
+核心边界见 [DESIGN.md](DESIGN.md)，稳定布局见 [STABLE-MEMORY.md](STABLE-MEMORY.md)，清理接口见 [TOOL-RESULT-CLEANUP.md](TOOL-RESULT-CLEANUP.md)，容量所有权见 [CAPACITY.md](CAPACITY.md)，Google 维护结构化解码与机械滚动逃生舱见 [MAINTENANCE-SCHEMA-AND-FALLBACK.md](MAINTENANCE-SCHEMA-AND-FALLBACK.md)。这些文档中的历史状态和本宪法澄清的清理依赖语义需要相应更新，不能据旧表述增加自动恢复要求。
 
 本文件不自动迁移记录、修改现有部署或改变已完成证据。具体实现仍需如实标明当前行为、候选变化和未验证范围；产品范围原则也不扩大宿主权限或用户的执行、费用和外部效果授权。
