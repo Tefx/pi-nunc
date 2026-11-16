@@ -9241,7 +9241,7 @@ phases:
       - docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md (items 1-5) and docs/CONSTITUTION.md'
   - id: nunc-maintenance-schema-and-fallback.gate
     name: Google 维护 Schema 约束解码、机械窗口滚动逃生舱与校准去重阶段整合验收
-    status: pending
+    status: claimed
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\"\
       , \"package-lock.json\", \".node-version\", \"tsconfig.json\"]\n  blocked_paths:\
@@ -9311,3 +9311,5 @@ phases:
     depends_on:
     - nunc-maintenance-schema-and-fallback.implement-schema-and-fallback
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-16T14:47:40.484049Z'
