@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { extractionContext, readSourceRecords } from "../../src/engine/request.js";
 import { memoryPlan, memoryTokens } from "../../src/engine/accounting.js";
 import { RESPONSE_CONTRACT } from "../../src/engine/memory.js";
+import { MEMORY_WRITING_GUIDANCE } from "../../src/engine/policy.js";
 import { maintain } from "../../src/engine/engine.js";
 import { input, answer } from "./fixtures.js";
 
@@ -25,12 +26,16 @@ test("maintenance F projects shallow tool metadata without mutating the full val
   const fm = readSourceRecords(textBlocks(extractionContext(s, 1, 8192, s.active, [])).join("\n")).find(row => row.source === "F/M")!;
   assert.deepEqual((fm.F as { tools: unknown[] }).tools, []);
 });
-test("response contract supplies a parseable multiline operation example", () => {
+test("response contract supplies a parseable multiline operation example", async () => {
   const example = RESPONSE_CONTRACT.slice(RESPONSE_CONTRACT.indexOf("\n{") + 1, RESPONSE_CONTRACT.indexOf("\nadd:"));
   assert(example.includes("\n  \"priority\":"));
   const patch = JSON.parse(example);
   assert.deepEqual(Object.keys(patch), ["priority", "required", "remove", "add", "update", "toolResultEdits"]);
   assert.deepEqual(patch.update, [{ id: "surviving-old-id", text: "complete revised note" }]);
+  assert.deepEqual(patch.toolResultEdits, [{ entryId: "e1", messageIndex: 0, action: "replace", text: "short continuation note", memoryRefs: ["new1"], sourceRefs: [{ entryId: "e2", messageIndex: 0 }] }]);
+  const s = await input();
+  const prompt = extractionContext(s, 1, 8192, s.active, []).systemPrompt ?? "";
+  assert.equal(prompt.split(MEMORY_WRITING_GUIDANCE).length - 1, 1);
 });
 test("normal headroom uses the minimum output reserve when capability exceeds window", async () => {
   const s = await input();

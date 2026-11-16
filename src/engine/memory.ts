@@ -2,7 +2,6 @@ import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { Message } from "@earendil-works/pi-ai";
 import type { Memory, MechanicalFallbackInfo, RequiredObservation, Slot, ToolResultEdit } from "./types.js";
 import { EngineError, freezeCopy, integer, keys, nonempty, record, requireThat, validateMemory } from "./validation.js";
-import { MEMORY_WRITING_GUIDANCE } from "./policy.js";
 
 export function emptyMemory(): Memory { return { version: 1, slots: [], nextId: 1 }; }
 export function isMemoryUnchanged(before: Memory, after: Memory): boolean {
@@ -182,7 +181,7 @@ Prefer multiline indented JSON. First output priority, required and remove to se
     {"id": "surviving-old-id", "text": "complete revised note"}
   ],
   "toolResultEdits": [
-    {"entryId": "e1", "messageIndex": 0, "action": "replace", "text": "short continuation note", "memoryRefs": ["new1"]}
+    {"entryId": "e1", "messageIndex": 0, "action": "replace", "text": "short continuation note", "memoryRefs": ["new1"], "sourceRefs": [{"entryId": "e2", "messageIndex": 0}]}
   ]
 }
 add: optional; omission means no additions. If supplied it must be an array (null is invalid). Zero or more new candidates. Keys must be unique nonempty strings, distinct from ALL existing slot IDs. Text must be nonempty. Markdown is encouraged inside text (lists, paragraphs, inline code, and necessary short code blocks).
@@ -190,8 +189,7 @@ update: optional complete body replacements for existing slots, preserving ID an
 remove: optional; omission means no deletions, never implicit retirement. If supplied it must be an array (null is invalid). Each existing slot explicitly invalidated/retired, exactly once.
 priority: ALL surviving old IDs (including updated IDs) and ALL added keys, each exactly once, most valuable first. Omission is invalid, never silent deletion.
 required: subset of priority identifying all candidates necessary for the whole continuing task, including its actual materials and later-step dependencies (surviving old IDs or added keys). Retain all declared required jointly, even over the organizing target; then omit optional items. Only an explicit hard limit can fail capacity. Empty array is valid when no necessary continuing-task items exist.
-toolResultEdits: optional array of semantic cleanups for completed tool results in candidate scope. Each item specifies entryId, zero-based messageIndex, action ("omit" or "replace"), non-empty text for replace (omit must not include text), and optional memoryRefs (support in this transaction's final M) and sourceRefs (full retained sources). Later M changes do not automatically reverse committed edits. Omit this field if no semantic cleanup is requested.
-${MEMORY_WRITING_GUIDANCE}
+toolResultEdits: optional array of semantic cleanups for completed tool results in candidate scope. Each item specifies entryId, zero-based messageIndex, action ("omit" or "replace"), non-empty text for replace (omit must not include text), and optional memoryRefs (string[] of slot IDs or added keys in this transaction's final M) and sourceRefs (array of {"entryId": string, "messageIndex": integer} objects for full retained sources). Later M changes do not automatically reverse committed edits. Omit this field if no semantic cleanup is requested.
 Compliant unchanged slots reuse their bodies; do not regenerate them. Priority controls whole-slot capacity selection for optional items, not memory order. Old survivors keep relative order; additions append.
 A removed or unselected updated slot never reverts to its old body. Empty arrays and empty memory are valid. No tools, outer code fences around the JSON, commentary, or rewriting retained history.`;
 

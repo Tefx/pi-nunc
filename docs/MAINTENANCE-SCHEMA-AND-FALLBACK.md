@@ -14,7 +14,7 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
 
 ### 1. Google Maintenance Constrained JSON-Schema Decoding (`MUST`)
 
-- **Canonical maintenance response JSON schema (`src/engine/memory.ts`)**:
+- **Canonical maintenance response JSON schema & `RESPONSE_CONTRACT` alignment (`src/engine/memory.ts`)**:
   - Export `PATCH_RESPONSE_JSON_SCHEMA` as a frozen plain JSON Schema object matching `Patch` validation in `parsePatch()`:
     - Top-level `type: "object"`, `additionalProperties: false`, `required: ["priority", "required"]`.
     - `priority` and `required`: arrays of strings (`{ type: "array", items: { type: "string" } }`).
@@ -22,6 +22,8 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
     - Optional `add`: array of objects with `additionalProperties: false`, `required: ["key", "text"]`, string `key` and `text`.
     - Optional `update`: array of objects with `additionalProperties: false`, `required: ["id", "text"]`, string `id` and `text`.
     - Optional `toolResultEdits`: array of objects with `additionalProperties: false`, `required: ["entryId", "messageIndex", "action"]`, string `entryId`, integer `messageIndex`, `action` enum `["omit", "replace"]`, optional string `text`, optional string-array `memoryRefs`, and optional `sourceRefs` array of `{ entryId: string, messageIndex: integer }` objects.
+  - In `RESPONSE_CONTRACT`, include `"sourceRefs": [{"entryId": "e2", "messageIndex": 0}]` in the `toolResultEdits` JSON example and explicitly specify that `memoryRefs` is an array of string slot IDs/keys while `sourceRefs` is an array of `{"entryId", "messageIndex"}` objects.
+  - Omit the duplicate `${MEMORY_WRITING_GUIDANCE}` interpolation inside `RESPONSE_CONTRACT` (since `extractionContext()` in `src/engine/request.ts` already embeds `input.policy.builtin`, which contains the full `## Shared writing and applicability policy` section, and `nunc_memory_patch` in `src/index.ts` embeds `MEMORY_WRITING_GUIDANCE` in the tool description).
 - **Google maintenance `onPayload` injection (`src/engine/pi-model.ts`)**:
   - In `piComplete()`, when `model.api === "google-vertex" || model.api === "google-generative-ai"`, attach an `onPayload` callback that returns a cloned payload with `config: { ...(record(payload.config) ? payload.config : {}), responseMimeType: "application/json", responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA }`.
   - Preserve existing `rawThinking()` behavior unchanged (do **not** lower or override `thinking` on Google or other APIs).
