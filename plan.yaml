@@ -8997,3 +8997,293 @@ phases:
       build exit 0, 54/54 targeted runner+contract tests, 9/9 larva.integration.js
       at bound HEAD, and applicable 949/949 full check.mjs all across 108 files with
       2 optional external Dasein skips).'
+- id: nunc-maintenance-schema-and-fallback
+  name: Google 维护结构化 Schema 解码、机械窗口滚动逃生舱与校准去重加固
+  status: pending
+  gate: nunc-maintenance-schema-and-fallback.gate 由 gate-reviewer 对 nunc-maintenance-schema-and-fallback.implement-schema-and-fallback
+    的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断，确认
+    Google 维护约束 JSON Schema 解码、LLM 响应失败时的确定性机械窗口滚动（Mechanical Window Roll）逃生舱、强用户/模型降级可见性（compaction.summary、Nunc
+    载体与持久状态栏告警）、校准记录追加去重、Pi 扩展加载器虚拟模块白名单不变量、package.json 版本号与 package-lock.json 零改动及
+    5 份契约文档与回归测试 100% 满足 docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md 与 docs/CONSTITUTION.md
+    绑定合同且无阻断回归。
+  context: '依据已验收的设计规范 docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md 与 docs/CONSTITUTION.md，在单一可回退源码、测试与文档事务（nunc-maintenance-schema-and-fallback.implement-schema-and-fallback）中解决
+    v0.3.0 生产会话（google-vertex/gemini-4-argon）暴露的维护提取 JSON 解析失败与会话卡死问题：（1）在 src/engine/memory.ts
+    导出冻结的 PATCH_RESPONSE_JSON_SCHEMA，在 src/engine/pi-model.ts 对 google-vertex / google-generative-ai
+    维护调用注入 responseMimeType 与 responseJsonSchema（保持 thinking 原样不变），并在 src/pi/payload.ts
+    与 src/pi/admission.ts 中提供仅限维护路由的 allowGoogleMaintenanceJsonSchema 授权（不计入外部钩子 grewTokens，严禁在
+    main 路由放行）；（2）不新增 /nunc 斜杠命令且不切换模型，在 src/engine/engine.ts（maintain）中预先确定性构造保留存量
+    M、合法 K 切点与无损机械清理的 fallbackCandidate，当普通维护因非中止/非错误的 RESPONSE 失败时挂载该候选并在 src/index.ts（session_before_compact）中自动完成降级窗口滚动提交，防止交互式、后台
+    Orchestrator 与无头 larva_subagent 会话卡死；（3）在 compaction.details、compaction.summary
+    与 withEffectiveMemory 载体（即使 slots.length === 0）中注入显式降级通告 [Nunc Mechanical Roll
+    Fallback: ...]，与 checkpointMemory 和 Admission 载体匹配及收据核算一致对齐，并在状态栏（🧠 !N·roll）、/nunc
+    details 与 F7 浮层提供跨 ui.recover() 持久化的降级可见性（直至下一次正常压缩或手动 nunc.memory 修订清除）；（4）在
+    src/engine/calibration.ts 与 src/index.ts 中实现 hasEquivalentCalibrationRecord 去重，防止取消的压缩重复追加
+    nunc.maintenance-calibration 推进 leafId 触发自动压缩死循环；（5）同步更新 5 份契约文档与引擎/Pi 回归测试，由
+    nunc-maintenance-schema-and-fallback.gate 执行唯一阶段整合验收。'
+  depends_on:
+  - nunc-admission-retention-hardening
+  - nunc-toolchain-portability
+  steps:
+  - id: nunc-maintenance-schema-and-fallback.implement-schema-and-fallback
+    name: 实现 Google 维护 Schema 约束解码、机械窗口滚动逃生舱与校准去重
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
+      , \"package.json\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"\
+      plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\", \"package-lock.json\", \".node-version\"\
+      ]\n\nDeliver: 依据已验收的设计规范 `docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md` 与 `docs/CONSTITUTION.md`，在单一源码、测试与文档事务中完整交付全部\
+      \ 5 项绑定合同，同时严格保持 Pi 扩展加载器虚拟模块白名单及 `package.json` 版本号与 `package-lock.json` 不变：\n\
+      1. Google 维护约束 JSON-Schema 解码（`src/engine/memory.ts`, `src/engine/pi-model.ts`,\
+      \ `src/pi/payload.ts`, `src/pi/admission.ts`）：\n   - 规范化维护响应 JSON Schema（`src/engine/memory.ts`）：导出冻结的纯\
+      \ JSON Schema 对象 `PATCH_RESPONSE_JSON_SCHEMA`，与 `parsePatch()` 中的 `Patch` 校验严格对齐（顶层\
+      \ `type: \"object\"`, `additionalProperties: false`, `required: [\"priority\"\
+      , \"required\"]`；字符串数组 `priority`、`required` 与可选 `remove`；可选 `add` 对象数组含 `required:\
+      \ [\"key\", \"text\"]`；可选 `update` 对象数组含 `required: [\"id\", \"text\"]`；可选 `toolResultEdits`\
+      \ 对象数组含 `required: [\"entryId\", \"messageIndex\", \"action\"]`、`action` 枚举\
+      \ `[\"omit\", \"replace\"]`、可选 `text`、`memoryRefs` 与 `sourceRefs`）。\n   - Google\
+      \ 维护 `onPayload` 注入（`src/engine/pi-model.ts`）：在 `piComplete()` 中，当 `model.api\
+      \ === \"google-vertex\" || model.api === \"google-generative-ai\"` 时挂载 `onPayload`\
+      \ 回调，返回克隆的 payload 并注入 `config: { ...(record(payload.config) ? payload.config\
+      \ : {}), responseMimeType: \"application/json\", responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA\
+      \ }`；严格保持既有 `rawThinking()` 行为不变（不得降低或覆盖 Google 或其他 API 的 `thinking` 配置）。\n\
+      \   - 仅限维护路由的 payload 授权（`src/pi/payload.ts`, `src/pi/admission.ts`）：在 `authorizePayload()`\
+      \ / payload 分类中扩展显式维护专用授权 `allowGoogleMaintenanceJsonSchema?: boolean`（当且仅当\
+      \ `kind === \"maintenance\"` 时为 `true`）。当 `allowGoogleMaintenanceJsonSchema`\
+      \ 为 `true` 且 `model.api === \"google-vertex\" || model.api === \"google-generative-ai\"\
+      ` 时，允许 `config.responseMimeType === \"application/json\"` 且 `config.responseJsonSchema`\
+      \ 匹配 `PATCH_RESPONSE_JSON_SCHEMA`，不将其归类为 `\"unsupported\"`，也不将该静态 schema 声明计作外部钩子\
+      \ `grewTokens` 扣减窗口夹紧的维护输入上限；在 `main` 请求（`allowGoogleMaintenanceJsonSchema !==\
+      \ true`）、schema 不匹配或任何其他 `config` 控制字段（`candidateCount`、`cachedContent`、`responseModalities`、`systemInstruction`、`tools`、`thinkingConfig`、扩大的\
+      \ `maxOutputTokens`）变更时，维持 HTTP 发送前的零发送 `CONFIG` / `CAPACITY` 拒绝。\n2. 单一自动逃生舱——LLM\
+      \ 响应失败时的确定性机械窗口滚动 `Mechanical Window Roll`（`src/engine/types.ts`, `src/engine/engine.ts`,\
+      \ `src/index.ts`）：\n   - 严禁新增额外斜杠命令或跨模型切换：不添加 `/nunc roll` 或 `/nunc compact-with`，失败时不切换模型。\n\
+      \   - 预计算确定性降级候选（`src/engine/types.ts`, `src/engine/engine.ts`）：在 `maintain()`\
+      \ 中，一旦输入校验与 `chooseCut()` 成功且 `!target`（普通维护，非 `/nunc compact-for`），在提取容量检查与模型调用前确定性构造保留存量\
+      \ `M` 的 `fallbackCandidate`（`memory: structuredClone(frozen.memory)` 完整保留全部既有槽位、ID\
+      \ 与 `nextId`；`summary: renderMemory(frozen.memory.slots)`；`firstKeptEntryId:\
+      \ kept[0]!.entryId`；`kept` 保留后缀 `K`；`retiredEntryIds: frozen.active.slice(0,\
+      \ cut).map(e => e.entryId)`；`toolResultCleanup` 通过 `decideToolResultCleanup`\
+      \ 以 `initialMemory: frozen.memory`、`finalMemory: frozen.memory`、`candidateScope:\
+      \ frozen.cleanupCandidateScope`、`retainedEntries: kept`、`omissions: []`、`disabled:\
+      \ config.toolResultCleanup === false`、`mechanicalWhenMemoryUnchanged: true`\
+      \ 计算确定性无损机械清理）。保持 `maintain()` 在失败时仍返回 `ok: false`（保留精确 `code` 与 `observations`），当且仅当\
+      \ `!target && !signal.aborted && result.code === \"RESPONSE\" && observations.stopReason\
+      \ !== \"error\" && observations.stopReason !== \"aborted\"` 时在 `ok: false` 的\
+      \ `MaintenanceResult` 上挂载 `fallbackCandidate`（覆盖 `\"stop\"` 非法 JSON/补丁结构/引用错误、`\"\
+      length\"` 截断及 `\"toolUse\"` 等异常完成输出，同时保持 HTTP `\"error\"` / `providerOverflow`\
+      \ 校准及 `CAPACITY` / `hardMaxTokens` 拒绝按原样取消）。\n   - `session_before_compact`\
+      \ 自动接管提交（`src/index.ts`）：当 `session_before_compact` 中 `!result.ok` 时，若 `!intent`\
+      \ 且存在 `result.fallbackCandidate` 且 `eligibleStarts(branch, current.active, current.latestId).includes(result.fallbackCandidate.firstKeptEntryId)`，构造\
+      \ `mechanicalFallback: MechanicalFallbackInfo = { code: result.code, message:\
+      \ result.message, retiredEntryCount: result.fallbackCandidate.retiredEntryIds.length,\
+      \ firstKeptEntryId: result.fallbackCandidate.firstKeptEntryId }`，并使用 `summary:\
+      \ renderMemoryWithFallback(result.fallbackCandidate.memory.slots, mechanicalFallback)`\
+      \ 与 `details: { nunc: result.fallbackCandidate.memory, toolResultCleanup: sealDecisions(projected.active,\
+      \ nextDecisions), mechanicalFallback, ...(savedCalibration ? { maintenanceCalibration:\
+      \ savedCalibration } : {}) }` 提交压缩检查点。\n3. 机械降级时的强用户与模型可见性（`src/engine/memory.ts`,\
+      \ `src/pi/projection.ts`, `src/pi/admission.ts`, `src/pi/context.ts`, `src/ui/status.ts`,\
+      \ `src/ui/index.ts`, `src/index.ts`）：\n   - 持久化 `compaction.summary` 与 LLM 可见\
+      \ Nunc 载体中的显式标记：在 `src/engine/memory.ts` 定义确定性横幅辅助函数 `formatMechanicalFallbackNotice(fallback:\
+      \ MechanicalFallbackInfo): string`（生成 `[Nunc Mechanical Roll Fallback: LLM extraction\
+      \ failed (${fallback.code}: ${fallback.message}); retired ${fallback.retiredEntryCount}\
+      \ entries before ${fallback.firstKeptEntryId} without updating M. Use nunc_memory_read\
+      \ / nunc_memory_patch if retired history needs to be recorded.]`）与 `renderMemoryWithFallback(slots:\
+      \ Slot[], fallback?: MechanicalFallbackInfo): string`（无 `fallback` 时返回 `renderMemory(slots)`，`slots.length\
+      \ > 0` 时返回 `${renderMemory(slots)}\\n\\n${formatMechanicalFallbackNotice(fallback)}`，`slots.length\
+      \ === 0` 时返回 `formatMechanicalFallbackNotice(fallback)`）。在 `checkpointMemory()`（`src/pi/projection.ts`）中校验\
+      \ `details.mechanicalFallback` 并接受 `latest.summary === renderMemoryWithFallback(details.nunc.slots,\
+      \ mechanicalFallback)`；在 `project(entries)` 中从活动路径最新 `compaction` 条目暴露未被后续手动\
+      \ `nunc.memory` 提交或后续正常 `compaction` 条目取代的 `mechanicalFallback?: MechanicalFallbackInfo`；在\
+      \ `withEffectiveMemory()` 与 `Admission` 载体匹配（`src/pi/admission.ts`, `src/index.ts`）中，当\
+      \ `mechanicalFallback` 激活时即使 `memory.slots.length === 0` 也注入包含 `renderMemoryWithFallback(memory.slots,\
+      \ mechanicalFallback)` 的 Nunc 载体。\n   - 持久 UI 状态栏指示器与诊断报告：在 `session_before_compact`（`src/index.ts`）通过\
+      \ `notify(ctx, ..., \"warning\")` 发出降级滚动告警；在 `CompactFooterInput` 与 `compactFooter()`（`src/ui/status.ts`）中新增\
+      \ `fallback?: boolean`，当 `input.fallback` 为 `true`（由 `project(entries).mechanicalFallback`\
+      \ 驱动）时渲染 `{ text: \\`\U0001F9E0 !\\${n}·roll\\`, tone: \"warning\" }`（优先于普通\
+      \ `dim` 状态并在 `ui.recover()` 跨 `session_compact` 与后续 `main` `delegate` 事件后持续保留，直至被后续正常压缩或手动记忆修订清除）；在\
+      \ `LastMaintenanceContext`（`src/pi/context.ts`）与 `maintenanceLines()` / `detailsLines()`（`src/ui/status.ts`）中记录\
+      \ `fallback?: MechanicalFallbackInfo` 并在 `/nunc details` 与 F7 浮层展示 `Mechanical\
+      \ fallback: active (${code}: ${message})`。\n4. 校准记录追加去重（`src/engine/calibration.ts`,\
+      \ `src/index.ts`）：\n   - 在 `src/engine/calibration.ts` 定义 `hasEquivalentCalibrationRecord(existing:\
+      \ readonly unknown[], candidate: MaintenanceCalibrationRecord): boolean`；在 `src/index.ts`\
+      \ 取消压缩追加 `pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE, savedCalibration)` 前检查当前分支既有校准记录是否已包含相同\
+      \ `provider`、`api`、`modelId`、`sourceDigest`、`limitsDigest`、`contextDigest`、`headTailChars`、`providerOverflow`\
+      \ 与 `measurement` 的等价记录，若已存在则跳过 `pi.appendEntry()`，防止失败压缩推进 `SessionManager.getLeafId()`\
+      \ 导致每 60s 重复触发自动压缩死循环。\n5. 同步文档与回归测试（`docs/CONSTITUTION.md`, `docs/ENGINE.md`,\
+      \ `docs/EXTRACTION.md`, `docs/PI.md`, `docs/UI.md`, `tests/engine/{memory,lifecycle,pi-model,calibration}.test.ts`,\
+      \ `tests/pi/{payload-google,payload,lifecycle,reporting,maintenance-calibration,context-view,footer,compat}.test.ts`）：\n\
+      \   - 同步更新 `docs/CONSTITUTION.md`、`docs/ENGINE.md`、`docs/EXTRACTION.md`、`docs/PI.md`\
+      \ 与 `docs/UI.md`。\n   - 更新并补充覆盖上述全部 5 项绑定合同的引擎与 Pi 回归测试（包括将 `tests/pi/lifecycle.test.ts`\
+      \ 与 `tests/pi/reporting.test.ts` 中 `stopReason: \"stop\" | \"length\" | \"toolUse\"\
+      ` 的 `RESPONSE` 失败断言更新为提交机械降级检查点并保留 `result.ok === false`、`result.code === \"\
+      RESPONSE\"`、未变 `M`、保留 `K`、载体通告与 `\U0001F9E0 !N·roll` 状态栏，同时补充 Google 维护 `responseMimeType`\
+      \ + `responseJsonSchema` 序列化/授权与校准追加去重测试）。\n\nImplementation Notes (Non-Binding):\n\
+      - `src/pi/admission.ts` 与 `src/pi/projection.ts` 载体身份一致性：当 `memory.slots.length\
+      \ === 0` 且 `mechanicalFallback` 激活时，`withEffectiveMemory` 会注入包含 `formatMechanicalFallbackNotice(mechanicalFallback)`\
+      \ 的载体。请确保 `Admission.bindProjection`、`carrierMatches`、`selectReceipt` 与 `currentMemoryIndex`\
+      \ 使用相同的渲染字符串 `renderMemoryWithFallback(memory.slots, mechanicalFallback)`，并将\
+      \ `hasM` 视为 `memory.slots.length > 0 || mechanicalFallback !== undefined`，以保持收据核算与载体来源一致。\n\
+      - `src/pi/context.ts`（`noteEngine` / `noteNative`）：当 `!result.ok` 且 `result.fallbackCandidate`\
+      \ 在 `session_before_compact` 中提交时，`current.engine` 保持 `\"fail\"` 而 `current.native`\
+      \ 变为 `\"saved\"`，`current.fallback` / `current.after` 记录保留的 `M` 与 `K`；确保 `tests/pi/reporting.test.ts:224-236`\
+      \ 仍能观测到 `view.lastMaintenance?.stopReason === \"length\"` 及 `detailsLines` 中的\
+      \ `Response stop reason: length`。\n- 验证梯度（由窄到宽）：在开发迭代期间优先运行 `npm run build`\
+      \ 与针对受影响测试文件（`dist/tests/engine/{memory,lifecycle,pi-model,calibration}.test.js`、`dist/tests/pi/{payload-google,payload,lifecycle,reporting,maintenance-calibration,context-view,footer,compat}.test.js`）的聚焦\
+      \ `node --test`；聚焦测试全部收敛后再执行一次全量 `node scripts/check.mjs all` 与 `dist/tests/pi/larva.integration.js`。\n\
+      \nBoundary: owner 为 `node-typescript-engineer`；属于本仓库可 Git 回退的源码、测试与文档变更事务。严禁修改\
+      \ Pi core 或 `@earendil-works/pi-ai`，严禁修改 `package.json` 版本号、`package-lock.json`\
+      \ 或 `.node-version`，严禁违反 `tests/pi/compat.test.ts` 验证的 Pi 扩展加载器虚拟模块白名单，不运行任何外部付费\
+      \ live-LLM 调用。\n\nAdmit: 依赖 `nunc-admission-retention-hardening` 与 `nunc-toolchain-portability`\
+      \ 已完成的基线与已验收规范 `docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md`、`docs/CONSTITUTION.md`；完成后通过\
+      \ `npm run build`、`node scripts/check.mjs all` 与 `dist/tests/pi/larva.integration.js`\
+      \ 验证，并交由 `nunc-maintenance-schema-and-fallback.gate` 验收。\n\nRecovery: 若构建或测试失败，在同一步骤隔离工作树内定位并修复；未合并改动可通过\
+      \ Git worktree 安全回退，不污染主分支历史或受保护路径。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-engine-pi\n    argv: [/usr/bin/env, -u,\
+      \ NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node,\
+      \ --test, dist/tests/engine/memory.test.js, dist/tests/engine/lifecycle.test.js,\
+      \ dist/tests/engine/pi-model.test.js, dist/tests/engine/calibration.test.js,\
+      \ dist/tests/pi/payload-google.test.js, dist/tests/pi/payload.test.js, dist/tests/pi/lifecycle.test.js,\
+      \ dist/tests/pi/reporting.test.js, dist/tests/pi/maintenance-calibration.test.js,\
+      \ dist/tests/pi/context-view.test.js, dist/tests/pi/footer.test.js, dist/tests/pi/compat.test.js]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n    inventory: [\"tests/engine/*.test.ts\", \"tests/pi/*.test.ts\"\
+      , \"tests/live/*.test.ts\"]\n    setup_refs: [\"docs/DEVELOPMENT.md\", \".node-version\"\
+      , \"package.json\", \"package-lock.json\"]\n  - id: actual-larva-integration\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, HOME=.scratch/offline-home, PI_CODING_AGENT_DIR=.scratch/offline-agent,\
+      \ NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\n    inventory:\
+      \ [\"tests/pi/larva.integration.ts\"]\n```\n验证要求（遵循由窄到宽验证梯度：迭代期先运行 `npm run\
+      \ build` 与 `targeted-engine-pi`，收敛后运行一次 `check-all` 与 `actual-larva-integration`）：\n\
+      1. 验证 Google 维护约束 JSON-Schema 解码：`src/engine/memory.ts` 导出冻结的 `PATCH_RESPONSE_JSON_SCHEMA`；`piComplete()`\
+      \ 对 `google-vertex` 与 `google-generative-ai` 注入 `responseMimeType: \"application/json\"\
+      ` 与 `responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA` 且不改变 `thinking`；`authorizePayload()`\
+      \ / `Admission` 仅在 `allowGoogleMaintenanceJsonSchema === true`（`kind === \"\
+      maintenance\"`）时放行该精确 schema 且不计入 `grewTokens`，`main` 路由或非标/其他控制字段改动仍零发送拒绝。\n\
+      2. 验证确定性机械窗口滚动逃生舱（`Mechanical Window Roll`）：不新增斜杠命令且不切换模型；`maintain()` 在 `!target`\
+      \ 时预构造保留存量 `frozen.memory`、合法 `K` 切点与 `mechanicalWhenMemoryUnchanged: true`\
+      \ 无损机械清理的 `fallbackCandidate`，在 `!target && !signal.aborted && result.code ===\
+      \ \"RESPONSE\" && observations.stopReason !== \"error\" && observations.stopReason\
+      \ !== \"aborted\"` 时挂载至 `ok: false` 结果，并由 `session_before_compact` 在 `!intent`\
+      \ 时自动提交降级检查点（HTTP `\"error\"` / `providerOverflow` 与 `CAPACITY` 仍按原样取消）。\n3.\
+      \ 验证强用户与模型可见性：`compaction.details.mechanicalFallback`、`compaction.summary` 与\
+      \ `withEffectiveMemory` 载体（含 `slots.length === 0` 情形）一致包含 `[Nunc Mechanical\
+      \ Roll Fallback: ...]` 并通过 `checkpointMemory` 与 `Admission` 载体匹配校验，在后续正常压缩或手动\
+      \ `nunc.memory` 修订后自动清除；状态栏持续显示 `\U0001F9E0 !${n}·roll`（warning 级别，跨 `ui.recover()`\
+      \ 保留），`/nunc details` 与 F7 浮层显示 `Mechanical fallback: active (${code}: ${message})`。\n\
+      4. 验证校准追加去重：`hasEquivalentCalibrationRecord` 在分支已存在等价 `nunc.maintenance-calibration`\
+      \ 记录时跳过重复 `pi.appendEntry`，取消的压缩不再推进 `leafId`。\n5. 验证 5 份契约文档（`docs/CONSTITUTION.md`,\
+      \ `docs/ENGINE.md`, `docs/EXTRACTION.md`, `docs/PI.md`, `docs/UI.md`）与回归测试同步更新，`tests/pi/compat.test.ts`\
+      \ 虚拟模块白名单、`package.json` 版本号与 `package-lock.json` 零改动，且 `npm run build`、`node\
+      \ scripts/check.mjs all`、`dist/tests/pi/larva.integration.js` 全部通过（exit 0）。"
+    refs:
+    - docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md
+    - docs/CONSTITUTION.md
+    - docs/ENGINE.md
+    - docs/EXTRACTION.md
+    - docs/PI.md
+    - docs/UI.md
+    - src/index.ts
+    - src/engine/memory.ts
+    - src/engine/pi-model.ts
+    - src/engine/engine.ts
+    - src/engine/types.ts
+    - src/engine/calibration.ts
+    - src/pi/payload.ts
+    - src/pi/admission.ts
+    - src/pi/projection.ts
+    - src/pi/context.ts
+    - src/ui/status.ts
+    - src/ui/index.ts
+    - tests/engine/memory.test.ts
+    - tests/engine/lifecycle.test.ts
+    - tests/engine/pi-model.test.ts
+    - tests/engine/calibration.test.ts
+    - tests/pi/payload-google.test.ts
+    - tests/pi/payload.test.ts
+    - tests/pi/lifecycle.test.ts
+    - tests/pi/reporting.test.ts
+    - tests/pi/maintenance-calibration.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/footer.test.ts
+    - tests/pi/compat.test.ts
+    - tests/pi/larva.integration.ts
+    - scripts/check.mjs
+    - package.json
+    - tsconfig.json
+    agent: node-typescript-engineer
+  - id: nunc-maintenance-schema-and-fallback.gate
+    name: Google 维护 Schema 约束解码、机械窗口滚动逃生舱与校准去重阶段整合验收
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\"\
+      , \"package-lock.json\", \".node-version\", \"tsconfig.json\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"]\n\nDeliver: 对 `nunc-maintenance-schema-and-fallback`\
+      \ 阶段的唯一实现步骤 `nunc-maintenance-schema-and-fallback.implement-schema-and-fallback`\
+      \ 的整合提交与确定性离线测试证据作唯一阶段验收判断（`PHASE_GATE`），确认 `docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md`\
+      \ 与 `docs/CONSTITUTION.md` 规定的全部 5 项绑定合同（Google 维护约束 JSON-Schema 解码与维护专用 payload\
+      \ 授权、LLM 响应失败时的确定性 `Mechanical Window Roll` 自动逃生舱、持久化摘要/载体/状态栏/详情面板的强降级可见性、校准记录追加去重、5\
+      \ 份契约文档与回归测试同步更新）、Pi 扩展加载器虚拟模块白名单不变量（`tests/pi/compat.test.ts`）以及 `package.json`\
+      \ 版本号与 `package-lock.json` 未改动全部满足且无阻断缺陷。\n\nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
+      \ `plan.yaml`，不运行任何外部付费 live-LLM 调用。\n\nAdmit: 包含 `nunc-maintenance-schema-and-fallback`\
+      \ 阶段的终端实现成果 `nunc-maintenance-schema-and-fallback.implement-schema-and-fallback`；消费绑定于最终整合不可变提交（immutable\
+      \ git commit）的代码差异与确定性离线验证证据（`npm run build`、`node scripts/check.mjs all`、`dist/tests/pi/larva.integration.js`），验证在\
+      \ `nunc-admission-retention-hardening` 与 `nunc-toolchain-portability` 基线之上的跨模块一致性；排除非本阶段范围改动与外部付费模型调用。\n\
+      \nRecovery: 若发现任何未满足的合同项、白名单导入违规、受保护文件意外改动、测试缺口或回归缺陷，返回明确的问题列表；由 Orchestrator\
+      \ 按规则通过同阶段修复闭环后以 Delta 模式复核，任一阻断项未解决前不予通过。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\nreview:\n\
+      \  kind: PHASE_GATE\n  mode: FULL\n  phases: [nunc-maintenance-schema-and-fallback]\n\
+      ```\n核验绑定于最终整合不可变提交的 `docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md` 与 `docs/CONSTITUTION.md`\
+      \ 全部 5 项绑定合同、Pi 扩展加载器虚拟模块白名单不变量（`tests/pi/compat.test.ts`）、`package.json` 版本号与\
+      \ `package-lock.json` 未改动、5 份契约文档同步更新与确定性构建/离线全量回归测试（`npm run build`、`node scripts/check.mjs\
+      \ all`、`dist/tests/pi/larva.integration.js`）100% 通过且无回归缺陷。"
+    refs:
+    - docs/MAINTENANCE-SCHEMA-AND-FALLBACK.md
+    - docs/CONSTITUTION.md
+    - docs/ENGINE.md
+    - docs/EXTRACTION.md
+    - docs/PI.md
+    - docs/UI.md
+    - src/index.ts
+    - src/engine/memory.ts
+    - src/engine/pi-model.ts
+    - src/engine/engine.ts
+    - src/engine/types.ts
+    - src/engine/calibration.ts
+    - src/pi/payload.ts
+    - src/pi/admission.ts
+    - src/pi/projection.ts
+    - src/pi/context.ts
+    - src/ui/status.ts
+    - src/ui/index.ts
+    - tests/engine/memory.test.ts
+    - tests/engine/lifecycle.test.ts
+    - tests/engine/pi-model.test.ts
+    - tests/engine/calibration.test.ts
+    - tests/pi/payload-google.test.ts
+    - tests/pi/payload.test.ts
+    - tests/pi/lifecycle.test.ts
+    - tests/pi/reporting.test.ts
+    - tests/pi/maintenance-calibration.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/footer.test.ts
+    - tests/pi/compat.test.ts
+    - tests/pi/larva.integration.ts
+    - scripts/check.mjs
+    - package.json
+    - package-lock.json
+    - .node-version
+    - tsconfig.json
+    depends_on:
+    - nunc-maintenance-schema-and-fallback.implement-schema-and-fallback
+    agent: gate-reviewer
