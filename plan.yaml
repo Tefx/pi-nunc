@@ -10020,7 +10020,7 @@ phases:
       - /tmp/nunc-gate-report-84501.json (F1, F2, F3) & nunc-contract-simplicity-remediation.repair-gate-findings'
 - id: nunc-post-remediation-closure
   name: 第二轮全量契约与精简审查闭环及实时压缩循环根因修复（Src-1..Src-3, A1–A4, B1–B3, C1–C2, D1, T1–T3）
-  status: pending
+  status: in_progress
   gate: nunc-post-remediation-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-compaction-and-retention、ui-overlay-and-context-inspector、live-verification-and-supervisor-closure）的最终整合提交与确定性离线测试证据（npm
     run build、npm test、node scripts/check.mjs all、node --test dist/tests/pi/larva.integration.js）作唯一阶段验收判断（PHASE_GATE），确认基于提交
     6e64c09b2fcbd0a0529a5427482128f2553b88f0 收敛的第二轮全量 contract-and-simplicity Admitted
@@ -10033,7 +10033,7 @@ phases:
   - id: nunc-post-remediation-closure.engine-compaction-and-retention
     name: 核心引擎与 Pi 适配层压缩保留、清理重绑、准入及策略文档闭环（Src-1..Src-3, A1–A4, B2-context, T2-core,
       D1）
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/engine/**\", \"src/pi/**\", \"policies/default.md\"\
       , \"docs/ADMISSION-RETENTION-HARDENING.md\", \"docs/CAPACITY.md\", \"docs/DESIGN.md\"\
@@ -10180,9 +10180,11 @@ phases:
     - tests/pi/compat.test.ts
     - tests/pi/larva.integration.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-19T17:54:29.498407Z'
   - id: nunc-post-remediation-closure.ui-overlay-and-context-inspector
     name: TUI 浮层异常安全、复合 SGR 背景恢复、矮终端错误预算与上下文检视器闭环（B1, B2-ui, B3, T1, T2-ui）
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/ui/overlay.ts\", \"src/ui/index.ts\", \"src/ui/context-tree.ts\"\
       , \"src/ui/status.ts\", \"tests/pi/overlay.test.ts\"]\n  blocked_paths: [\"\
@@ -10241,9 +10243,11 @@ phases:
     - src/ui/status.ts
     - tests/pi/overlay.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-19T17:54:29.498512Z'
   - id: nunc-post-remediation-closure.live-verification-and-supervisor-closure
     name: Live 验证监督器配额对称、延迟边界放置、引导与账本孤立终态闭环（C1, C2, T3）
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/live/**\"]\n  blocked_paths: [\"\
       plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -10312,6 +10316,8 @@ phases:
     - tests/live/scenarios.test.ts
     - tests/live/task-retention-branches.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-19T17:54:29.498570Z'
   - id: nunc-post-remediation-closure.gate
     name: 第二轮全量契约与精简审查及实时压缩循环修复阶段整合验收（PHASE_GATE）
     status: pending
