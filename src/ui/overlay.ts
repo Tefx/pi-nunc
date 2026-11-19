@@ -480,16 +480,21 @@ export class NuncOverlay implements Focusable {
     this.memoryView = { ...this.memoryView, revision: result.revision, memory: result.memory };
     try {
       this.memoryView = this.host.memory.read(this.host.ctx);
-    } catch { /* Retain acknowledged view from result */ }
+    } catch (error) {
+      warning = [warning, error instanceof Error && error.message ? error.message : "Memory inspector read failed"].filter(Boolean).join("; ");
+      // Retain the acknowledged view from result.
+    }
     try {
       this.contextView = this.host.context.read(this.host.ctx);
     } catch (error) {
-      this.error = error instanceof Error ? error.message : "Inspector read failed";
+      warning = [warning, error instanceof Error && error.message ? error.message : "Inspector read failed"].filter(Boolean).join("; ");
     }
     try {
       if (warning) this.host.onWarning?.(warning);
       else this.host.onSuccess?.();
     } catch { /* Callback only. */ }
+    // onWarning may synchronously refresh/sync; retain every commit diagnostic locally too.
+    this.error = warning;
     this.rebuildList();
     try {
       this.host.tui.requestRender();

@@ -21,9 +21,9 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const selection: Selection = { id: scoped ? "g3" : "g4", variant: variant!, config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
     nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40, ...(sourceLoss ? { toolResults: "auto" as const } : {}) }, ...(sourceLoss ? { budget: {
-      // Expanded memory tool descriptions put full extraction at about 10526 tokens and reduced at 9709.
-      // Subtracting the 1024 safety reserve gives 9976: reduced fits, full does not.
-      inputLimit: 11000 } } : {}) },
+      // Full extraction is about 9972 tokens and reduced about 9195 on short paths.
+      // After the 1024 safety reserve, 9576 leaves margin on both sides of the boundary.
+      inputLimit: 10600 } } : {}) },
     retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } };
   const scenario = (await loadScenario(repository, selection)).input;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
@@ -95,6 +95,8 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
       for (const rollover of report.rollovers!) {
         const accounting = rollover.result!.observations.accounting;
         assert(accounting, "committed rollover reports actual extraction accounting");
+        console.log(variant, "extraction accounting", JSON.stringify({ fullExtractionTokens: accounting.fullExtractionTokens,
+          extractionTokens: accounting.extractionTokens, extractionInputLimit: accounting.extractionInputLimit }));
         assert(accounting.fullExtractionTokens > accounting.extractionInputLimit, "full source exceeds the actual extraction budget");
         assert(accounting.extractionTokens <= accounting.extractionInputLimit, "reduced source fits the actual extraction budget");
       }

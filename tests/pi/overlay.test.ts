@@ -6,6 +6,8 @@ import { initTheme, Theme } from "@earendil-works/pi-coding-agent";
 initTheme();
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { NuncOverlay } from "../../src/ui/overlay.js";
+import { NuncUi } from "../../src/ui/index.js";
+import type { MemoryFreeze } from "../../src/pi/manual.js";
 import { UNLOAD_LIMIT } from "../../src/ui/status.js";
 import { fixture, memoryPatch, surfacePort as port } from "./fixtures.js";
 
@@ -220,50 +222,77 @@ test("inspector setStatus failure does not cancel native compact or save", async
   }
 });
 
-test("successful save and delete acknowledge mutation even when context.read throws after commit", async t => {
-  const { memory, context, ctx } = await prepared(t);
-  const realMem = memory();
-  const realCtx = context();
-  let boom = false;
-  const overlay = new NuncOverlay({
-    ctx: ctx(),
+for (const action of ["save", "delete"] as const)
+for (const mode of ["sync", "prepared", "cleanup-warning"] as const)
+for (const inspector of ["context", "memory", "both"] as const)
+test(`NuncUi ${action}/${mode} persists post-commit ${inspector} warning after close`, async t => {
+  const { memory, context, ctx, overlay: unused, f } = await prepared(t);
+  unused.dispose();
+  // The event port exposes MemorySurface; the bound implementation also owns freeze.
+  const realMem = memory() as MemoryFreeze, realCtx = context();
+  for (const key of ["beginFreeze", "endFreeze", "noteForeignFailure"] as const) assert.equal(typeof realMem[key], "function");
+  const initial = realMem.read(ctx());
+  const slotId = initial.memory.slots[0]!.id;
+  let committed = false;
+  const ui = new NuncUi({
     memory: {
       ...realMem,
-      replace(...args) {
-        const result = realMem.replace(...args);
-        if (result.ok) boom = true;
-        return result;
+      read(...args) {
+        if (committed && inspector !== "context") throw new Error("memory-inspector-fault-after-commit");
+        return realMem.read(...args);
       },
-      delete(...args) {
-        const result = realMem.delete(...args);
-        if (result.ok) boom = true;
-        return result;
-      },
+      replace(...args) { const result = realMem.replace(...args); committed = result.ok; return result; },
+      delete(...args) { const result = realMem.delete(...args); committed = result.ok; return result; },
+      patch(...args) { const result = realMem.patch(...args); committed = result.ok; return result; },
     },
-    context: {
-      read(c) {
-        if (boom) throw new Error("inspector-fault-after-commit");
-        return realCtx.read(c);
-      },
-    },
-    tui: mockTui(),
-    theme: ctx().ui.theme,
-    keybindings: new KeybindingsManager(TUI_KEYBINDINGS),
-    done() { overlay.dispose(); },
+    context: { read(c) {
+      if (committed && inspector !== "memory") throw new Error("context-inspector-fault-after-commit");
+      return realCtx.read(c);
+    } },
+    supported() {},
+    ...(mode === "sync" ? {} : { prepareSave: async () => mode === "cleanup-warning" ? { warning: "Cleanup failed after proposed mutation" } : {} }),
   });
-
-  overlay.handleInput("\r");
-  overlay.handleInput(" SAVED_POST_COMMIT");
-  assert.doesNotThrow(() => overlay.handleInput("\r"));
-  assert.equal(overlay.layerName, "browse");
-  assert.match(realMem.read(ctx()).memory.slots[0]?.text ?? "", /SAVED_POST_COMMIT/);
-
-  boom = false;
-  overlay.handleInput("\x04");
-  assert.equal(overlay.layerName, "confirm-delete");
-  assert.doesNotThrow(() => overlay.handleInput("\r"));
-  assert.equal(overlay.layerName, "browse");
-  overlay.dispose();
+  let overlay: NuncOverlay | undefined;
+  const closed = Promise.withResolvers<null>();
+  // Implement only the headless host's public custom-component lifecycle.
+  const host: ReturnType<typeof ctx> = { ...ctx(), mode: "tui", hasUI: true, ui: { ...ctx().ui, custom: async factory => {
+    // The overlay consumes TUI bindings only, without host keybinding-file persistence.
+    const bindings = new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<typeof factory>[2];
+    const component = await factory(mockTui(), ctx().ui.theme, bindings, () => closed.resolve(null));
+    assert(component instanceof NuncOverlay);
+    overlay = component;
+    return await closed.promise as never;
+  } } };
+  const opening = ui.openOverlay(host);
+  await new Promise(resolve => setImmediate(resolve));
+  assert(overlay);
+  try {
+    if (action === "save") { overlay.handleInput("\r"); overlay.handleInput(" SAVED_POST_COMMIT"); }
+    else overlay.handleInput("\x04");
+    overlay.handleInput("\r");
+    await new Promise(resolve => setImmediate(resolve));
+    assert(committed);
+    assert.equal(overlay.layerName, "browse");
+    const persisted = realMem.read(ctx()).memory;
+    if (action === "save") assert.match(persisted.slots.find(s => s.id === slotId)!.text, /SAVED_POST_COMMIT/);
+    else assert(!persisted.slots.some(s => s.id === slotId));
+    assert.equal(overlay.selectedSlotId(), persisted.slots[0]?.id, "acknowledged view remains usable if refresh fails");
+    const warning = ui.currentWarning();
+    assert(warning);
+    if (inspector !== "memory") assert.match(warning, /context-inspector-fault-after-commit/);
+    if (inspector !== "context") assert.match(warning, /memory-inspector-fault-after-commit/);
+    if (mode === "cleanup-warning") {
+      assert.match(warning, /Cleanup failed after proposed mutation/);
+      assert.equal([...visible(overlay.render(180)).matchAll(/Cleanup failed after proposed mutation/g)].length, 2,
+        "reentrant UI refresh retains cleanup in both the status line and local error");
+    }
+    assert(ui.recentDiagnostics().some(note => note.level === "warning" && note.message === warning));
+    assert.match(await readFile(f.runtime.session.sessionFile!, "utf8"), /nunc\.memory/);
+    overlay.handleInput("\x1b");
+    await opening;
+    assert.equal(ui.currentWarning(), warning);
+    assert(ui.recentDiagnostics().some(note => note.message === warning));
+  } finally { closed.resolve(null); await opening; }
 });
 
 for (const mode of ["cancel", "stale", "warning"] as const) test(`async delete ${mode} restores browse selection and focus`, async t => {

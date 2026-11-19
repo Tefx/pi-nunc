@@ -1,4 +1,7 @@
 import { test } from "node:test";
+import { createServer } from "node:http";
+import { googleProvider } from "@earendil-works/pi-ai/providers/google";
+import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import assert from "node:assert/strict";
 import { setImmediate as flush } from "node:timers/promises";
 import { fauxAssistantMessage, fauxProvider, getCurrentTools, InMemoryCredentialStore, type OpenAICompletionsOptions } from "@earendil-works/pi-ai";
@@ -8,7 +11,7 @@ import { semanticEvidence } from "../../src/live/scenarios.js";
 import { answer, input, noChange, sourceRecords } from "./fixtures.js";
 import { retryMaintenanceComplete } from "../../src/engine/pi-model.js";
 
-for (const failure of ["stream ended before a terminal response event", "terminated", "Connection error", "ECONNRESET: connection closed", "HTTP 429", "HTTP 503"]) {
+for (const failure of ["stream ended before a terminal response event", "terminated", "Connection error", "ECONNREFUSED example.com:443", "ECONNREFUSED 127.0.0.1:443", "ECONNREFUSED [::1]:443", "Connection error :443", "ECONNRESET: connection closed", "HTTP 429", "HTTP 503"]) {
   test(`bounded extraction retry recovers ${failure} with unchanged request`, async () => {
     const s = await input();
     const request = { model: s.model, context: { messages: [] }, outputTokens: 4096, signal: s.signal };
@@ -30,6 +33,9 @@ for (const failure of [
   { stopReason: "stop", content: [{ type: "text", text: "invalid JSON" }] },
   { stopReason: "error", errorMessage: "400 context_length_exceeded: Connection error" },
   { stopReason: "error", errorMessage: "400 server error: input overflow" },
+  ...['{"error":{"code":400,"message":"Connection error","status":"INVALID_ARGUMENT"}}',
+    "HTTP:400 Connection error", "status:403 Connection error", "code:401 Connection error",
+    "Nunc local Connection error", "billing Connection error"].map(errorMessage => ({ stopReason: "error", errorMessage })),
   { stopReason: "error", errorMessage: "429 insufficient_quota" },
   { stopReason: "aborted", errorMessage: "Connection error" },
 ]) test(`deterministic or cancelled extraction never retries: ${JSON.stringify(failure)}`, async () => {
@@ -39,6 +45,53 @@ for (const failure of [
     model: s.model, context: { messages: [] }, outputTokens: 4096, signal: s.signal,
   }), response);
   assert.equal(calls, 1);
+  if (failure.stopReason === "error") {
+    calls = 0;
+    await assert.rejects(retryMaintenanceComplete(async () => { calls++; throw new Error(failure.errorMessage); }, 0)({
+      model: s.model, context: { messages: [] }, outputTokens: 4096, signal: s.signal,
+    }));
+    assert.equal(calls, 1, "thrown deterministic errors also remain terminal");
+  }
+});
+
+test("native Google HTTP errors preserve physical-request retry boundaries", async () => {
+  const provider = googleProvider();
+  const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
+  const catalog = new ModelRegistry(runtime).getAll().find(model => model.provider === "google");
+  assert(catalog);
+  let requests = 0;
+  let status = 400;
+  let interrupted = false;
+  let quota = false;
+  const server = createServer((req, res) => {
+    requests++;
+    req.resume();
+    if (interrupted) { req.socket.destroy(); return; }
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { code: status, message: quota ? "insufficient_quota Connection error" : "Connection error", status: "INVALID_ARGUMENT" } }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert(address && typeof address !== "string");
+    const { compat: _compat, ...googleModel } = catalog;
+    const model = { ...googleModel, baseUrl: `http://127.0.0.1:${address.port}` };
+    for (const failure of ["400", "429", "503", "interruption", "quota"] as const) {
+      interrupted = failure === "interruption";
+      quota = failure === "quota";
+      status = quota ? 429 : interrupted ? 200 : Number(failure);
+      requests = 0;
+      const response = await retryMaintenanceComplete(request => provider.stream({ ...model, api: "google-generative-ai" }, normalizeContext(request.context), {
+        apiKey: "offline-fixture-key", maxRetries: 0, signal: request.signal, maxTokens: request.outputTokens,
+      }).result(), 0)({ model, context: { messages: [{ role: "user", content: "Offline test", timestamp: 1 }] }, outputTokens: 128, signal: new AbortController().signal });
+      assert(response && typeof response === "object" && "stopReason" in response);
+      assert.equal(response.stopReason, "error");
+      assert.equal(requests, failure === "400" || quota ? 1 : 3, `${failure}: physical requests with native provider retries disabled`);
+    }
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
 });
 
 test("cancellation during retry backoff terminates without another transport", async t => {
