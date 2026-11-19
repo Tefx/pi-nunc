@@ -10021,8 +10021,9 @@ phases:
 - id: nunc-post-remediation-closure
   name: 第二轮全量契约与精简审查闭环及实时压缩循环根因修复（Src-1..Src-3, A1–A4, B1–B3, C1–C2, D1, T1–T3）
   status: in_progress
-  gate: nunc-post-remediation-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-compaction-and-retention、ui-overlay-and-context-inspector、live-verification-and-supervisor-closure）的最终整合提交与确定性离线测试证据（npm
-    run build、npm test、node scripts/check.mjs all、node --test dist/tests/pi/larva.integration.js）作唯一阶段验收判断（PHASE_GATE），确认基于提交
+  gate: nunc-post-remediation-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-compaction-and-retention、ui-overlay-and-context-inspector、live-verification-and-supervisor-closure）及跨轨预算校准修复步骤（repair-source-branch-budget）的最终整合提交与确定性离线测试证据（npm
+    run build、文档化完整离线套件运行器 node scripts/check.mjs all、node --test dist/tests/pi/larva.integration.js；受保护
+    package.json 保持未改动）按 DELTA 模式复核 F1（Src-1 / INV-OFFLINE-REGRESSION-GREEN）并作唯一阶段验收判断（PHASE_GATE），确认基于提交
     6e64c09b2fcbd0a0529a5427482128f2553b88f0 收敛的第二轮全量 contract-and-simplicity Admitted
     Finding Ledger（A1–A4、B1–B3、C1–C2、D1、T1–T3）及用户确认的 Src-1..Src-3 实时压缩循环修复共 16 项准入义务
     100% 闭环，Pi 扩展加载器虚拟模块白名单（tests/pi/compat.test.ts）、SUPPORTED_PI_RANGE = "^1.0.3"、package.json
@@ -10478,61 +10479,53 @@ phases:
       , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
       ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\",\
       \ \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
-      ]\n\nDeliver: 对 `nunc-post-remediation-closure` 阶段 3 个并行不相交子系统实现步骤（`engine-compaction-and-retention`、`ui-overlay-and-context-inspector`、`live-verification-and-supervisor-closure`）合并后的最终整合提交做唯一阶段验收判断（`PHASE_GATE`），执行\
-      \ `npm test`（`node scripts/check.mjs all`）与 `node --test dist/tests/pi/larva.integration.js`，并逐项核验全部\
-      \ 16 项准入义务（`Src-1`..`Src-3`, `A1`..`A4`, `B1`..`B3`, `C1`..`C2`, `D1`, `T1`..`T3`）100%\
-      \ 闭环：\n\n1. **核心引擎与 Pi 适配层（`Src-1`..`Src-3`, `A1`..`A4`, `B2-context`, `T2-core`,\
-      \ `D1`）**：\n   - `Src-1`：`reduceToolBodies` 省略标记保留 `[Nunc omitted ` 前缀并说明主 Agent\
-      \ 在实时轮次已收到完整输出，同时 `request.ts` 与 `policies/default.md` 区分已完成幂等 `read` 记录与 `g4/source-loss`、`g4/source-unavailable`\
-      \ 未提取细节的参考路径恢复；\n   - `Src-3`：保留 `K` 的 `has_omissions` 守卫，同时指示维护模型对已完成幂等 `read`\
-      \ 直接记录结论、对高价值/非幂等退役 `B` 输出保留 `(entryId: <id>)` 句柄以衔接 `nunc_memory_read`；\n \
-      \  - `Src-2`：`settings.json: nunc` 支持 `rolling`、`memory`、`extraction`、`budget`、`policyFile`（遵守\
+      ]\n\nDeliver: 对 `nunc-post-remediation-closure` 阶段 3 个并行不相交子系统实现步骤（`engine-compaction-and-retention`、`ui-overlay-and-context-inspector`、`live-verification-and-supervisor-closure`）及跨轨预算校准修复步骤（`repair-source-branch-budget`）合并后的最终整合提交做唯一阶段验收判断（`PHASE_GATE`）。注意受保护清单\
+      \ `package.json` 保持未改动且不含 `test` 脚本，仓库文档化的完整离线测试运行器为 `node scripts/check.mjs\
+      \ all`（配合 `npm run build` 与 `node --test dist/tests/pi/larva.integration.js`）。`gate-reviewer`\
+      \ 以首轮门禁报告 `/tmp/nunc-post-remediation-gate-report-4815.json`（基线 `git:b5613f98f656c913c5959e8b312d42dbed8c259e`）为锚点按\
+      \ `DELTA` 模式复核阻断发现 `F1`（`Src-1` / `INV-OFFLINE-REGRESSION-GREEN`）及自基线以来的变更范围，并确认全部\
+      \ 16 项准入义务（`Src-1`..`Src-3`, `A1`..`A4`, `B1`..`B3`, `C1`..`C2`, `D1`, `T1`..`T3`）与全局不变量\
+      \ 100% 闭环：\n\n1. **核心引擎与 Pi 适配层（`Src-1`..`Src-3`, `A1`..`A4`, `B2-context`,\
+      \ `T2-core`, `D1`）及 `F1` 闭环复核**：\n   - `Src-1` 与 `F1`：`reduceToolBodies` 省略标记保留\
+      \ `[Nunc omitted ` 前缀并说明主 Agent 在实时轮次已收到完整输出，`request.ts` 与 `policies/default.md`\
+      \ 区分已完成幂等 `read` 记录与 `g4/source-loss`、`g4/source-unavailable` 未提取细节的参考路径恢复，且经\
+      \ `repair-source-branch-budget` 校准后 `tests/live/task-retention-branches.test.ts`\
+      \ 的 `source-loss` 与 `source-unavailable` 完整执行省略、持久化 rollover、预算核算与恢复断言（`report.status\
+      \ === \"OBSERVED\"`），`node scripts/check.mjs all` 零失败通过（`INV-OFFLINE-REGRESSION-GREEN`）；\n\
+      \   - `Src-3`（首轮已 `PROVEN`，验证无退化）：保留 `K` 的 `has_omissions` 守卫，同时指示维护模型对已完成幂等\
+      \ `read` 直接记录结论、对高价值/非幂等退役 `B` 输出保留 `(entryId: <id>)` 句柄以衔接 `nunc_memory_read`；\n\
+      \   - `Src-2`（首轮已 `PROVEN`，验证无退化）：`settings.json: nunc` 支持 `rolling`、`memory`、`extraction`、`budget`、`policyFile`（遵守\
       \ `projectTrusted` 且 `--nunc-config` 优先），默认 `keepRecentTargetTokens` 校准为尊重真实宿主\
       \ `settings.keepRecentTokens`（`> 1` 时直接采用，`<= 1` 时 `min(32768, max(1, floor(triggerTokens\
       \ * 0.15)))`），且 `chooseCut` 在未完成轮次 `suffix[lastUserIndex]! > keepTarget` 时回退至全部\
-      \ `feasible` 合法工具边界切点；\n   - `A1`：`session_compact` 从活动分支最新检查点（`findLast` /\
-      \ `buildContextEntries()[0]`）核验 Nunc 候选归属，消除第 2+ 次压缩 `M` 未变时命中旧检查点导致的 `native:\
-      \ \"failed\"` 误判；\n   - `A2`：跨 `chooseCut`、`candidate.kept` / `mainAfterTokens`\
-      \ / `target.fits` 与 `maintenanceCalibrationRecord` 仅保留全部 `sourceRefs` 均位于 `K`\
-      \ 内的既有清理决策；\n   - `A3`：`memoryMessage` / `memoryTokens` 将 `renderMemoryWithFallback`\
-      \ 包装为块数组 `[{ type: \"text\", text }]`，使 `admission.ts` 与 `context.ts` 的 `mechanicalFallback`\
-      \ 估算包含 `+16` 块封装 token；\n   - `A4`：`authorizePayload` 支持 `uncapped` 并由 `admission.ts`\
-      \ 传入 `omitsRouteOutputCap(selected, ctx.modelRegistry)`，拒绝 OAuth `openai-responses`\
-      \ 路由上伪造的输出上限；\n   - `B2-context`、`T2-core`、`D1`：`base.transform ??= \"last-user-text-append\"\
-      `、状态码标签正则拓宽、仅在 `!result.ok` 计算 `savedCalibration`、文档同步 `desired = min(32768,\
-      \ C)` 与 Pi `1.4.0` 基线。\n2. **TUI 浮层与上下文检视器（`B1`, `B2-ui`, `B3`, `T1`, `T2-ui`）**：\n\
-      \   - `B1`：`save()`、`deleteSelected()`、`commitPrepared()` 中 `memory.read` 与同步写操作包裹\
-      \ `try/catch` 并经 `this.fail(...)` 路由，保留未提交草稿且不逃逸异常；\n   - `B2-ui`：`payloadPreview()`\
-      \ 展示 `payload.transform`；\n   - `B3`：`ANSI_RESET_RE` / `surface()` 覆盖简单与复合 SGR\
-      \ 重置（含 `\\x1b[39;49m`、`\\x1b[0;39m`），`borderRow` 独立保护左右边框颜色，剥离独立 `\\r`，矮终端优先预留\
-      \ `this.error` 行预算，且 `tests/pi/overlay.test.ts` 直接断言原始 ANSI 输出；\n   - `T1`、`T2-ui`：`enterEdit`\
-      \ 使用 `getExpandedText()` 作为 `Esc` 干净基线、空搜索不清空 `preferredSlot`、移除 `renderBrowse`\
-      \ 冗余 `rebuildList()`、`openOverlay` `finally` 守卫 `this.lastCtx === ctx`、对齐 `context-tree.ts`\
-      \ 与 `status.ts` 描述。\n3. **Live 验证与监督器闭环（`C1`, `C2`, `T3`）**：\n   - `C1`：`scoreArtifacts`\
-      \ 排除非门禁语义审查前提、参数化 `activeEditChecks` 恢复 `g4/commit-unconfirmed` 的 `a`–`c` 轮机械检查、`PreparedBoundary.deferred`\
-      \ 与 `logicalPlacement` 对齐、`guidance.ts` 基于已完成 `guidanceExchanges` 含 `test_solution.py`、`same-task-history`\
-      \ 覆盖除 `solution.py` 外全部初始场景文件、`observer.ts` 仅在 `!activeBoundary()` 后豁免 `autonomousTask`\
-      \ 且 `worker.ts:183` 使用 `idx`；\n   - `C2` 与 `T3`：`runner.ts` 与 `comparison.ts`\
-      \ 共享分段派发与配额/终止守卫、`native-no-work.ts` 使用 `projectedNativeCut`、`contract.ts` 校验\
-      \ `pi-coding-agent/package.json` 版本一致、`budget.ts` 检测孤立 `terminal` 记录并按 `ledgerPath`\
-      \ 限定 `unreconciledCallIds`、完成 `src/live/*` 共享工具收敛。\n\nBoundary: exact owner\
-      \ 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或 `plan.yaml`，不运行外部付费\
-      \ live-LLM 调用。\n\nAdmit: 依赖 3 个并行实现步骤全部完成并合并至不可变候选提交；消费整合提交的代码差异与确定性离线测试证据（`npm\
-      \ run build`、`npm test` / `node scripts/check.mjs all`、`node --test dist/tests/pi/larva.integration.js`）。\n\
+      \ `feasible` 合法工具边界切点；\n   - `A1`–`A4`、`B2-context`、`T2-core`、`D1`（首轮已 `PROVEN`，验证无退化）：活动分支最新检查点核验、跨\
+      \ `chooseCut`/`candidate.kept`/`maintenanceCalibrationRecord` 的 `sourceRefs`\
+      \ 绑定守卫、`memoryMessage` 块数组 `+16` token 对齐、OAuth `openai-responses` `uncapped`\
+      \ 路由准入及文档基线同步保持完好。\n2. **TUI 浮层与上下文检视器（`B1`, `B2-ui`, `B3`, `T1`, `T2-ui`；首轮已\
+      \ `PROVEN`，验证无退化）**：\n   - `save()`/`deleteSelected()`/`commitPrepared()` 异常路由、`payloadPreview()`\
+      \ 展示 `payload.transform`、复合 SGR 重置与 `10–12` 行矮终端错误预算、`enterEdit`/`preferredSlot`/`renderBrowse`/`openOverlay`\
+      \ 修复保持完好。\n3. **Live 验证与监督器闭环（`C1`, `C2`, `T3`；首轮已 `PROVEN`，验证无退化）**：\n   -\
+      \ `scoreArtifacts`、`activeEditChecks`、`PreparedBoundary.deferred`、`guidanceExchanges`、`same-task-history`、`observer.ts`、`runner.ts`/`comparison.ts`\
+      \ 配额与终止守卫、`projectedNativeCut`、版本校验与 `unreconciledCallIds` 保持完好。\n\nBoundary:\
+      \ exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或 `plan.yaml`，不运行外部付费\
+      \ live-LLM 调用。\n\nAdmit: 依赖 3 个并行实现步骤及 `repair-source-branch-budget` 全部完成并合并至不可变候选提交；消费整合提交的代码差异、首轮门禁报告\
+      \ `/tmp/nunc-post-remediation-gate-report-4815.json` 与确定性离线测试证据（`npm run build`、文档化完整离线测试套件\
+      \ `node scripts/check.mjs all`、`node --test dist/tests/pi/larva.integration.js`）。\n\
       \nRecovery: 若发现任何未闭环的准入项、跨模块回归或测试失败，返回明确阻断发现列表；全部解决前不予通过。"
     verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
-      \    exit_code: 0\n  - id: npm-test\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
-      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, npm, test]\n    exit_code:\
-      \ 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
-      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \    exit_code: 0\n  - id: offline-check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
       \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
       \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\nreview:\n\
-      \  kind: PHASE_GATE\n  mode: FULL\n  phases: [nunc-post-remediation-closure]\n\
-      ```\n核验最终整合不可变提交上的全部 16 项准入义务（`Src-1`..`Src-3`, `A1`..`A4`, `B1`..`B3`, `C1`..`C2`,\
-      \ `D1`, `T1`..`T3`）、Pi 扩展加载器虚拟模块白名单（`tests/pi/compat.test.ts`）、`SUPPORTED_PI_RANGE\
-      \ = \"^1.0.3\"`、`package.json`（`0.3.1`）与 `package-lock.json` 未改动，以及 `npm test`（`node\
-      \ scripts/check.mjs all`）与 `node --test dist/tests/pi/larva.integration.js`\
-      \ 100% 通过。"
+      \  kind: PHASE_GATE\n  mode: DELTA\n  phases: [nunc-post-remediation-closure]\n\
+      ```\n以 `/tmp/nunc-post-remediation-gate-report-4815.json`（`git:b5613f98f656c913c5959e8b312d42dbed8c259e`）为基线按\
+      \ `DELTA` 模式重点复核 `F1`（`Src-1` / `INV-OFFLINE-REGRESSION-GREEN`）及变更集无退化，确认全部\
+      \ 16 项准入义务（`Src-1`..`Src-3`, `A1`..`A4`, `B1`..`B3`, `C1`..`C2`, `D1`, `T1`..`T3`）、Pi\
+      \ 扩展加载器虚拟模块白名单（`tests/pi/compat.test.ts`）、`SUPPORTED_PI_RANGE = \"^1.0.3\"`、`package.json`（`0.3.1`，保持无改动的受保护清单，不添加\
+      \ `test` 脚本）与 `package-lock.json` 未改动，以及文档化完整离线测试套件 `node scripts/check.mjs\
+      \ all` 与 `node --test dist/tests/pi/larva.integration.js` 100% 通过。"
     refs:
     - src/index.ts
     - src/engine/request.ts
@@ -10574,8 +10567,73 @@ phases:
     - package-lock.json
     - .node-version
     - tsconfig.json
+    - tests/live/task-retention-branches.test.ts
     depends_on:
     - nunc-post-remediation-closure.engine-compaction-and-retention
     - nunc-post-remediation-closure.ui-overlay-and-context-inspector
     - nunc-post-remediation-closure.live-verification-and-supervisor-closure
+    - nunc-post-remediation-closure.repair-source-branch-budget
     agent: gate-reviewer
+  - id: nunc-post-remediation-closure.repair-source-branch-budget
+    name: 校准整合后 Src-1 提取提示词增长下的受控 source-loss / source-unavailable 测试输入预算边界（F1 / Src-1
+      / INV-OFFLINE-REGRESSION-GREEN）
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"tests/live/task-retention-branches.test.ts\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"package.json\",\
+      \ \"package-lock.json\", \".node-version\", \"src/**\", \"policies/**\", \"\
+      docs/**\"]\n\nDeliver: 修复 `nunc-post-remediation-closure.gate` 阻断项 `F1`（`INV-OFFLINE-REGRESSION-GREEN`\
+      \ / `Src-1`）：在 `engine-compaction-and-retention`（`Src-1` 扩展 `src/engine/request.ts`\
+      \ 提取系统提示词、省略标记与 `policies/default.md` 策略说明）与 `live-verification-and-supervisor-closure`\
+      \ 合并后的真实代码基线上，测量 `tests/live/task-retention-branches.test.ts` 中 `source-loss`\
+      \ 与 `source-unavailable` 两个受控长任务分支的实际完整提取预算 `fullExtractionTokens` 与裁剪后提取预算\
+      \ `extractionTokens`（`toolResults: \"auto\"`），并重新校准 `tests/live/task-retention-branches.test.ts`\
+      \ 中 `sourceLoss` 分支配置的 `nunc.budget.inputLimit`（及对应注释），使得扣除 `1024` 安全预留后的 `extractionInputLimit`\
+      \ 在两条分支及不同工作目录路径长度下均稳定满足 `extractionTokens <= extractionInputLimit < fullExtractionTokens`\
+      \ 且两侧留有充足余量；确保 `source-loss` 与 `source-unavailable` 完整跑通既有省略触发（`omission.length\
+      \ > 0`）、持久化 rollover、提取预算核算断言（`fullExtractionTokens > extractionInputLimit`\
+      \ 且 `extractionTokens <= extractionInputLimit`）及文件缺失/恢复路径断言（`report.status ===\
+      \ \"OBSERVED\"`），在不削弱任何测试断言、不绕过产品容量守卫（`src/**`、`policies/**` 零修改）且不触碰受保护清单（`package.json`、`package-lock.json`、`.node-version`）的前提下，使\
+      \ `npm run build`、`node scripts/check.mjs all` 与 `node --test dist/tests/pi/larva.integration.js`\
+      \ 全绿通过。\n\nImplementation Notes (Non-Binding):\n- `tests/live/task-retention-branches.test.ts:24-28`\
+      \ 原 `inputLimit: 10600`（`extractionInputLimit = 9576`）系在合并 `Src-1` 前校准（旧值 `reduced\
+      \ ~9195..9205`、`full ~9972..10014`）；合并 `Src-1` 后提取提示词与 `policies/default.md`\
+      \ 同步增长使 `reduced` 与 `full` 同幅上移，导致 `resolveExtractionRequest` 在准备阶段命中 `Complete\
+      \ extraction cannot fit its minimum output reserve, safety and maintenance calibration`。\n\
+      - 可先通过单测打印或直接观测合并后 `fullExtractionTokens` 与 `extractionTokens` 的精确值，将 `inputLimit`\
+      \ 设在 `reduced` 与 `full` 区间中点附近（加上 `1024` safety reserve），并验证全部 7 个受控子测试及完整 `node\
+      \ scripts/check.mjs all`。\n\nBoundary: exact owner 为 `node-typescript-engineer`；仅允许修改\
+      \ `tests/live/task-retention-branches.test.ts`，严禁修改 `src/**`、`policies/**`、`docs/**`、`package.json`、`package-lock.json`、`.node-version`\
+      \ 或 `plan.yaml`。\n\nAdmit: 依赖 `nunc-post-remediation-closure.engine-compaction-and-retention`\
+      \ 与 `nunc-post-remediation-closure.live-verification-and-supervisor-closure`\
+      \ 已完成整合，消费 `/tmp/nunc-post-remediation-gate-report-4815.json` 中的阻断发现 `F1`；产出的修复提交与离线回归全绿证据供下游\
+      \ `nunc-post-remediation-closure.gate` 在 `DELTA` 模式下复核消费。\n\nRecovery: 若单测或\
+      \ `node scripts/check.mjs all` 仍出现预算边界失败，仅在 `tests/live/task-retention-branches.test.ts`\
+      \ 内重测并收敛 `inputLimit`，不得放宽断言或修改生产代码。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: task-retention-branches\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node,\
+      \ --test, dist/tests/live/task-retention-branches.test.js]\n    exit_code: 0\n\
+      \  - id: offline-check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS, PI_OFFLINE=1,\
+      \ PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs, all]\n \
+      \   exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\n```\n\
+      验证 `tests/live/task-retention-branches.test.ts` 全部 7 个受控分支测试（含 `source-loss`\
+      \ 与 `source-unavailable`）、完整离线回归运行器 `node scripts/check.mjs all` 以及 `dist/tests/pi/larva.integration.js`（9/9）全部\
+      \ 0 失败通过，且 `git diff` 仅包含 `tests/live/task-retention-branches.test.ts`。"
+    evidence_template: commit=<sha>; changed_files=tests/live/task-retention-branches.test.ts;
+      accounting={source_loss:{full:<n>,reduced:<n>,limit:<n>},source_unavailable:{full:<n>,reduced:<n>,limit:<n>}};
+      checks=build:pass,task_retention_branches:7/7,check_all:pass,larva_integration:9/9
+    refs:
+    - tests/live/task-retention-branches.test.ts
+    - src/engine/request.ts
+    - src/live/calibration.ts
+    - policies/default.md
+    - scripts/check.mjs
+    depends_on:
+    - nunc-post-remediation-closure.engine-compaction-and-retention
+    - nunc-post-remediation-closure.live-verification-and-supervisor-closure
+    agent: node-typescript-engineer
