@@ -10033,7 +10033,7 @@ phases:
   - id: nunc-post-remediation-closure.engine-compaction-and-retention
     name: 核心引擎与 Pi 适配层压缩保留、清理重绑、准入及策略文档闭环（Src-1..Src-3, A1–A4, B2-context, T2-core,
       D1）
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/engine/**\", \"src/pi/**\", \"policies/default.md\"\
       , \"docs/ADMISSION-RETENTION-HARDENING.md\", \"docs/CAPACITY.md\", \"docs/DESIGN.md\"\
@@ -10182,6 +10182,64 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-19T17:54:29.498407Z'
+    done_at: '2026-11-19T18:19:22.593044+00:00'
+    evidence: 'Artifact:
+
+      - Integrated commit: 136cfb1edffa3cc4b924c29f06c98205c78fed68 (retained ref
+      refs/vectl/candidates/nunc-post-remediation-closure.engine-compaction-and-retention)
+
+      - Changed files (31 files strictly in allowed engine/pi/policies/docs/tests
+      paths): src/index.ts, src/engine/{accounting,calibration,cleanup,engine,memory,pi-model,request,types}.ts,
+      src/pi/{admission,config,context,manual,payload}.ts, policies/default.md, docs/{ADMISSION-RETENTION-HARDENING,CAPACITY,DESIGN,ENGINE,UI}.md,
+      tests/engine/{compact-for,pi-model,retention-closure,retention-target,source}.test.ts,
+      tests/pi/{admission-hardening,cleanup-source-binding,config-closure,config,lifecycle-closure,payload-instructions}.test.ts
+
+
+      Closure:
+
+      - Src-1: Updated reduceToolBodies omission marker and request.ts/policies/default.md
+      epistemic guidance distinguishing complete live main-agent receipt from maintenance
+      capacity excerpts while preserving TASK.md/source/TASK.md path recovery for
+      omitted unseen specs.
+
+      - Src-3: Preserved K semantic omission guards while instructing maintenance
+      to retain (entryId: <id>) handles on high-value/non-idempotent retired B outputs
+      for on-demand nunc_memory_read retrieval.
+
+      - Src-2: Extended settings.json: nunc (rolling, memory, extraction, budget,
+      policyFile) with projectTrusted === true gating and --nunc-config precedence;
+      calibrated default keepRecentTargetTokens (`settings.keepRecentTokens > 1 ?
+      ... : min(32768, floor(triggerTokens * 0.15))`); fixed chooseCut unfinished-turn
+      amplifier when `suffix[lastUserIndex] > keepTarget`.
+
+      - A1: Resolved newly appended compaction checkpoint from active branch (`findLast`
+      + `!priorBranchIds.has(entry.id)`) in `session_compact`.
+
+      - A2: Passed raw active entries + `priorCleanup` into `maintain()` and accounted
+      for source-dependent cleanup validity across `chooseCut`, `candidate.kept`,
+      `mainAfterTokens`, `target.fits`, and calibration.
+
+      - A3: Extended `memoryMessage(slots, fallback?)` and `memoryTokens(slots, imageTokens?,
+      fallback?)` with text-block framing across `admission.ts` and `context.ts`.
+
+      - A4: Added `uncapped` to `authorizePayload` fed from `omitsRouteOutputCap(selected,
+      ctx.modelRegistry)` in `admission.ts`.
+
+      - B2-context, T2-core, D1: `base.transform ??= "last-user-text-append"`, unused
+      import removal, widened HTTP status labels, failure-only `savedCalibration`,
+      and docs synced to Pi 1.4.0 / `^1.0.3` / 3.5 chars/token / 1372 image tokens
+      / `desired = min(32768, C)`.
+
+
+      Verification:
+
+      - Run (worktree on 136cfb1): `npm run build` -> exit 0; targeted engine/Pi suite
+      (incl. `compat.test.js`) -> 595/595 pass; `dist/tests/pi/larva.integration.js`
+      -> 9/9 pass (`/tmp/nunc-engine-targeted-final.log`, `/tmp/nunc-engine-larva.log`).
+
+      - Run (integrated main d78b5d2): `npm run build` -> exit 0.
+
+      - Worktree removed cleanly.'
   - id: nunc-post-remediation-closure.ui-overlay-and-context-inspector
     name: TUI 浮层异常安全、复合 SGR 背景恢复、矮终端错误预算与上下文检视器闭环（B1, B2-ui, B3, T1, T2-ui）
     status: claimed
