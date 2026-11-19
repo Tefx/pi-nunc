@@ -9811,7 +9811,7 @@ phases:
     agent: gate-reviewer
   - id: nunc-contract-simplicity-remediation.repair-gate-findings
     name: 闭环阶段验收阻断缺陷（F1 Google 4xx 重试栅栏、F2 提交后检视异常告警持久化、F3 source-loss 离线回归容量校准）
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -9915,3 +9915,5 @@ phases:
     depends_on:
     - nunc-contract-simplicity-remediation.implement-remediation
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-19T14:30:27.249358Z'
