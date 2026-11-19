@@ -207,7 +207,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
     add({
       id: `${prefix}:M`,
       label: "M · Memory",
-      description: `${slots?.length ?? 0} slots`,
+      description: slots === undefined ? "not observed" : `${slots.length} slots`,
       preview: slots ? `M (Memory): current working memory (${slots.length} slots)\n${memoryPositionLine(layout, slots.length)}` : "M not in this observation",
       children: mIds,
     }),
@@ -304,6 +304,7 @@ function payloadPreview(last: LastMainContext): string {
   if (!payload) return "payload not observed";
   return [
     `payload ${payload.mode} [${payload.categories.join(",") || "none"}]`,
+    payload.transform !== undefined ? `transform ${payload.transform}` : "",
     payload.addedTokens !== undefined ? `addedTokens ${payload.addedTokens}` : "",
     payload.chargedGrowthTokens !== undefined ? `chargedGrowthTokens ${payload.chargedGrowthTokens}` : "",
     payload.unallocatedOverheadTokens !== undefined ? `unallocatedOverheadTokens ${payload.unallocatedOverheadTokens}` : "",
@@ -357,9 +358,9 @@ function countsPreview(layout: ContextLayout): string {
 }
 
 function memoryPositionLine(layout: ContextLayout, slotCount: number): string {
+  if (layout.memoryIndex !== undefined) return `request index ${layout.memoryIndex}`;
   if (slotCount === 0 && !layout.memory?.tokens) return "no carrier";
-  if (layout.memoryIndex === undefined) return "position unknown";
-  return `request index ${layout.memoryIndex}`;
+  return "position unknown";
 }
 
 function scopeLegend(add: (node: CtxNode) => string): CtxNode {

@@ -117,7 +117,7 @@ export class NuncUi {
       this.overlay?.dispose();
       this.opening = false;
       this.overlay = undefined;
-      this.refresh(ctx);
+      if (this.lastCtx === ctx) this.refresh(ctx);
     }
   }
 }

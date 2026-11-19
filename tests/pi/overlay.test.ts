@@ -8,7 +8,9 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { NuncOverlay } from "../../src/ui/overlay.js";
 import { NuncUi } from "../../src/ui/index.js";
 import type { MemoryFreeze } from "../../src/pi/manual.js";
-import { UNLOAD_LIMIT } from "../../src/ui/status.js";
+import { UNLOAD_LIMIT, lastMainLines } from "../../src/ui/status.js";
+import { buildContextNodes } from "../../src/ui/context-tree.js";
+import type { ContextLayout, LastMainContext } from "../../src/pi/context.js";
 import { fixture, memoryPatch, surfacePort as port } from "./fixtures.js";
 
 
@@ -358,15 +360,168 @@ test("real Theme surface keeps ANSI complete and every row within terminal width
     keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {} });
   t.after(() => overlay.dispose());
   const original = memory().read(ctx());
-  assert(memory().replace(ctx(), original.revision, original.memory.slots[0]!.id, "ANSI reset \x1b[m and bg \x1b[49m with 中文 and **markdown**.").ok);
+  assert(memory().replace(ctx(), original.revision, original.memory.slots[0]!.id, "ANSI reset \x1b[0m bg \x1b[49m compound \x1b[39;49m zero \x1b[0;39m padded \x1b[00m empty \x1b[m color \x1b[48;2;0;49;0mGREEN\x1b[49m with 中文 and **markdown**.").ok);
   overlay.sync();
+  const rawPreview = overlay.render(120).join("\n");
+  for (const reset of ["\x1b[0m", "\x1b[49m", "\x1b[39;49m", "\x1b[0;39m", "\x1b[00m", "\x1b[m"]) {
+    assert(rawPreview.includes(`${reset}${theme.getBgAnsi("customMessageBg")}`), `missing restored reset stimulus ${JSON.stringify(reset)}`);
+  }
+  assert(rawPreview.includes("\x1b[48;2;0;49;0mGREEN"), "extended background color channels must not be interpreted as reset commands");
   for (const key of ["", "\x04", "\x1b", "\r", " extra", "\x1b"]) {
     if (key) overlay.handleInput(key);
     for (const width of [8, 10, 24, 40, 90, 120]) for (const line of overlay.render(width)) {
       assert(visibleWidth(line) <= width, `${visibleWidth(line)} > ${width}: ${JSON.stringify(line)}`);
+      const bg = theme.getBgAnsi("customMessageBg");
+      const surface = line.slice(0, line.lastIndexOf("\x1b[0m"));
+      for (const reset of surface.matchAll(/\x1b\[(?:0|00|49|39;49|0;39)?m/g)) {
+        assert(surface.slice(reset.index! + reset[0].length).startsWith(bg), `background missing after ${JSON.stringify(reset[0])}: ${JSON.stringify(line)}`);
+      }
+      if (width === 8 && line.includes("╮")) {
+        assert(line.includes(`${theme.getFgAnsi("borderAccent")}╮`), `right border lost its accent: ${JSON.stringify(line)}`);
+      }
       const noControls = line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\x1b_[^\x07]*\x07/g, "");
       assert(!noControls.includes("\x1b["), `truncated CSI: ${JSON.stringify(line)}`);
     }
   }
+});
+
+for (const action of ["save", "delete"] as const)
+for (const fault of ["read", "write", "patch"] as const)
+test(`overlay contains ${action}/${fault} exceptions and retains recoverable state`, async t => {
+  const { memory, context, ctx } = await prepared(t);
+  const real = memory();
+  const before = real.read(ctx());
+  let armed = false;
+  const failure = `FAULT_${action}_${fault}`;
+  const overlay = new NuncOverlay({ ctx: ctx(), context: context(), tui: mockTui(), theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {},
+    memory: {
+      ...real,
+      read(c) { if (armed && fault === "read") throw new Error(failure); return real.read(c); },
+      replace(...args) { if (armed && fault === "write") throw new Error(failure); return real.replace(...args); },
+      delete(...args) { if (armed && fault === "write") throw new Error(failure); return real.delete(...args); },
+      patch(...args) { if (armed && fault === "patch") throw new Error(failure); return real.patch(...args); },
+    },
+    onFailure() { throw new Error("diagnostic observer failed"); },
+    ...(fault === "patch" ? { prepareSave: async () => ({}) } : {}),
+  });
+  t.after(() => overlay.dispose());
+  if (action === "save") { overlay.handleInput("\r"); overlay.handleInput("  LOCAL_DRAFT  "); }
+  else overlay.handleInput("\x04");
+  const draft = overlay.draftText();
+  armed = true;
+  assert.doesNotThrow(() => overlay.handleInput("\r"));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(overlay.layerName, action === "save" ? "edit" : "browse");
+  if (action === "save") assert.equal(overlay.draftText(), draft, "restore the untrimmed submitted draft");
+  assert.match(visible(overlay.render(120)), new RegExp(failure));
+  assert.deepEqual(real.read(ctx()).memory, before.memory);
+  armed = false;
+  if (action === "delete") overlay.handleInput("\x04");
+  overlay.handleInput("\r");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(overlay.layerName, "browse");
+  if (action === "save") assert.equal(real.read(ctx()).memory.slots[0]!.text, draft);
+  else assert.equal(real.read(ctx()).memory.slots.length, before.memory.slots.length - 1);
+});
+
+test("normalized clean editor exits directly and unmatched searches retain selection", async t => {
+  const { overlay, memory, ctx } = await prepared(t);
+  const initial = memory().read(ctx());
+  assert(memory().patch(ctx(), { expectedRevision: initial.revision, add: [{ key: "normalized", text: "One\tcolumn\r\nSecond line" }] }).ok);
+  overlay.sync();
+  overlay.handleInput("\x1b[B");
+  const selected = overlay.selectedSlotId();
+  assert.notEqual(selected, initial.memory.slots[0]!.id);
+  overlay.handleInput("\r");
+  assert.equal(overlay.draftText(), "One    column\nSecond line");
+  overlay.handleInput("\x1b");
+  assert.equal(overlay.layerName, "browse");
+  overlay.handleInput("zzzz-no-match");
+  assert.equal(overlay.selectedSlotId(), undefined);
+  overlay.handleInput("\x1b[B");
+  overlay.render(90);
+  overlay.handleInput("\x15");
+  assert.equal(overlay.selectedSlotId(), selected);
+  overlay.handleInput("\r");
+  overlay.handleInput(" changed");
+  overlay.handleInput("\x1b");
+  assert.equal(overlay.layerName, "confirm-discard");
+});
+
+test("preview and error carriage returns cannot overwrite borders; short terminals retain errors", async t => {
+  const { memory, context, ctx } = await prepared(t);
+  const initial = memory().read(ctx());
+  assert(memory().replace(ctx(), initial.revision, initial.memory.slots[0]!.id, "preview-before\rpreview-after " + "long summary ".repeat(60)).ok);
+  const tui = mockTui();
+  let fault = false;
+  const overlay = new NuncOverlay({ ctx: ctx(), memory: { ...memory(), read(c) {
+    if (fault) throw new Error("VISIBLE_ERROR\rSECOND_ERROR");
+    return memory().read(c);
+  } }, context: context(), tui, theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {} });
+  t.after(() => overlay.dispose());
+  assert(!overlay.render(90).join("\n").includes("\r"));
+  overlay.handleInput("\x04");
+  fault = true;
+  overlay.sync();
+  for (const rows of [10, 11, 12]) {
+    Object.assign(tui.terminal, { rows });
+    const output = overlay.render(90);
+    assert(!output.join("\n").includes("\r"));
+    assert.match(visible(output), /VISIBLE_ERROR/);
+    assert.match(visible(output), /SECOND_ERROR/);
+  }
+  overlay.handleInput("\x1b");
+  for (const rows of [10, 11, 12]) {
+    Object.assign(tui.terminal, { rows });
+    const output = overlay.render(90);
+    assert(!output.join("\n").includes("\r"));
+    assert.match(visible(output), /VISIBLE_ERROR/);
+    assert.match(visible(output), /SECOND_ERROR/);
+  }
+});
+
+test("context nodes distinguish unobserved memory and expose fallback carrier and payload transform", async t => {
+  const { context, ctx } = await prepared(t);
+  const observed = context().read(ctx());
+  const { memory: _memory, memoryIndex: _index, ...withoutMemory } = observed.current.layout;
+  const unobserved = buildContextNodes({ current: { ...observed.current, layout: withoutMemory } }).get("current:M")!;
+  assert.equal(unobserved.description, "not observed");
+  assert.equal(unobserved.preview, "M not in this observation");
+  const layout: ContextLayout = { ...withoutMemory, memory: { slots: [], tokens: 20, envelopeTokens: 20 }, memoryIndex: 0 };
+  const last: LastMainContext = { scope: "last-main", observedAt: 0, sessionId: "test", leafId: null,
+    model: { provider: "test", id: "test", api: "test" }, outcome: "delegate", layout,
+    payload: { mode: "identity", categories: [], transform: "codex-system-instructions" } };
+  const nodes = buildContextNodes({ current: { ...observed.current, layout }, lastMain: last });
+  assert.match(nodes.get("current:M")!.preview, /request index 0/);
+  assert.match(nodes.get("last-main:payload")!.preview, /transform codex-system-instructions/);
+  assert(lastMainLines(last).includes("Memory request index: 0"));
+  delete layout.memoryIndex;
+  assert(lastMainLines(last).includes("Memory request index: unknown"));
+  layout.memory!.tokens = 0;
+  assert(!lastMainLines(last).some(line => line.startsWith("Memory request index:")));
+});
+
+test("closing an overlay after shutdown leaves the footer cleared", async t => {
+  const { memory, context, ctx } = await prepared(t);
+  const statuses: (string | undefined)[] = [];
+  const closed = Promise.withResolvers<null>();
+  const host: ReturnType<typeof ctx> = { ...ctx(), mode: "tui", hasUI: true, ui: { ...ctx().ui,
+    setStatus(_key, text) { statuses.push(text); },
+    custom: async factory => {
+      await factory(mockTui(), ctx().ui.theme, new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<typeof factory>[2], () => closed.resolve(null));
+      return await closed.promise as never;
+    },
+  } };
+  const ui = new NuncUi({ memory: memory() as MemoryFreeze, context: context(), supported() {} });
+  ui.attach(host);
+  const opening = ui.openOverlay(host);
+  ui.shutdown(host);
+  assert.equal(statuses.at(-1), undefined);
+  const count = statuses.length;
+  closed.resolve(null);
+  await opening;
+  assert.equal(statuses.length, count, "finally must not repaint a shutdown context");
 });
 

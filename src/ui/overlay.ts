@@ -28,7 +28,7 @@ import { formatSlotProvenance, buildContextNodes, CONTEXT_ROOT_IDS, type CtxNode
 import { UNLOAD_LIMIT, firstLine, thousands, type DiagnosticNote } from "./status.js";
 
 export type OverlayTab = "slots" | "context";
-type EditSession = { editor: Editor; basis: { revision: string; slotId: string; original: string }; currentUntrimmed: string; previousUntrimmed: string };
+type EditSession = { editor: Editor; basis: { revision: string; slotId: string; original: string }; cleanText: string; currentUntrimmed: string; previousUntrimmed: string };
 type RestingModal = { kind: "browse" } | { kind: "edit"; edit: EditSession };
 type Modal = RestingModal
   | { kind: "confirm-delete"; revision: string; slotId: string }
@@ -52,7 +52,7 @@ export interface OverlayHost {
 }
 
 const ANSI_RESET = "\x1b[0m";
-const ANSI_RESET_RE = /\x1b\[(?:0|49)?m/g;
+const ANSI_SGR_RE = /\x1b\[([0-9;:]*)m/g;
 
 function windowEditorLines(lines: string[], budget: number): string[] {
   if (lines.length <= budget) return lines;
@@ -245,7 +245,13 @@ export class NuncOverlay implements Focusable {
     const contentWidth = Math.max(1, boxWidth - 4);
     const outerChrome = 2 + (withShadow ? 1 : 0);
     const innerBudget = Math.max(3, maxAllowed - outerChrome);
-    this.listHeight = Math.max(1, Math.min(8, Math.floor(innerBudget / 3)));
+    const errorHeight = this.error ? Math.min(2, wrapTextWithAnsi(this.error.replace(/\r\n?/g, "\n"), contentWidth).length) : 0;
+    const dividerHeight = innerBudget - errorHeight >= 5 ? 1 : 0;
+    const listHeight = Math.max(0, Math.min(8, Math.floor(innerBudget / 3), innerBudget - errorHeight - 4 - dividerHeight));
+    if (this.layer === "browse" && this.listHeight !== listHeight) {
+      this.listHeight = listHeight;
+      this.rebuildList();
+    }
     const title = this.host.theme.fg("accent", this.host.theme.bold("Nunc"));
     const topTitle = truncateToWidth(`─ ${title} `, boxWidth - 2);
     const topMiddle = `${topTitle}${"─".repeat(Math.max(0, boxWidth - 2 - visibleWidth(topTitle)))}`;
@@ -308,7 +314,7 @@ export class NuncOverlay implements Focusable {
       this.list.handleInput(data);
       this.previewOffset = 0;
       const selected = this.list.getSelectedItem()?.value;
-      if (this.tab === "slots") this.preferredSlot = selected;
+      if (this.tab === "slots" && selected !== undefined) this.preferredSlot = selected;
       this.host.tui.requestRender();
       return;
     }
@@ -330,7 +336,7 @@ export class NuncOverlay implements Focusable {
         this.host.tui.requestRender();
         return;
       }
-      if (editor.getText() !== (this.editBasis?.original ?? "")) {
+      if (editor.getExpandedText() !== this.edit?.cleanText) {
         this.transition({ kind: "confirm-discard", edit: this.edit! });
         this.host.tui.requestRender();
         return;
@@ -393,12 +399,13 @@ export class NuncOverlay implements Focusable {
       borderColor: text => this.host.theme.fg("border", text),
       selectList: this.selectTheme(),
     }, { paddingX: 0 });
-    const edit: EditSession = { editor, basis: { revision: this.memoryView.revision, slotId, original: slot.text }, currentUntrimmed: slot.text, previousUntrimmed: "" };
+    const edit: EditSession = { editor, basis: { revision: this.memoryView.revision, slotId, original: slot.text }, cleanText: "", currentUntrimmed: slot.text, previousUntrimmed: "" };
     editor.onChange = () => {
       edit.previousUntrimmed = edit.currentUntrimmed;
       edit.currentUntrimmed = editor.getExpandedText();
     };
     editor.setText(slot.text);
+    edit.cleanText = editor.getExpandedText();
     editor.focused = this._focused;
     editor.onSubmit = text => { void this.save(slotId, text); };
     this.transition({ kind: "edit", edit });
@@ -421,16 +428,20 @@ export class NuncOverlay implements Focusable {
       this.fail("Empty text is not a valid slot", untrimmed);
       return;
     }
-    this.memoryView = this.host.memory.read(this.host.ctx);
-    if (this.memoryView.status.occupied || this.memoryView.status.unconfirmed) {
-      this.fail("Maintenance has not finished native commit; draft was not saved.", untrimmed);
-      return;
+    try {
+      this.memoryView = this.host.memory.read(this.host.ctx);
+      if (this.memoryView.status.occupied || this.memoryView.status.unconfirmed) {
+        this.fail("Maintenance has not finished native commit; draft was not saved.", untrimmed);
+        return;
+      }
+      if (!this.host.prepareSave) {
+        this.finishCommit(this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed), slotId, untrimmed);
+        return;
+      }
+      void this.savePrepared(slotId, untrimmed, basis);
+    } catch (error) {
+      this.fail(error instanceof Error ? error.message : String(error), untrimmed);
     }
-    if (!this.host.prepareSave) {
-      this.finishCommit(this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed), slotId, untrimmed);
-      return;
-    }
-    void this.savePrepared(slotId, untrimmed, basis);
   }
 
   private async savePrepared(slotId: string, untrimmed: string, basis: { revision: string; slotId: string; original: string }): Promise<void> {
@@ -462,10 +473,14 @@ export class NuncOverlay implements Focusable {
       this.fail(`Session/model/configuration changed while saving; ${fromLayer === "edit" ? "draft" : "delete"} was not committed`, draftOnFail);
       return;
     }
-    const result = this.host.memory.patch(this.host.ctx, { ...patchParams(),
-      ...(prepared.edits === undefined ? {} : { toolResultEdits: prepared.edits }),
-      ...(prepared.warning ? { suppressCleanup: true } : {}) }, controller.signal);
-    this.finishCommit(result, nextSlotId, draftOnFail, prepared.warning);
+    try {
+      const result = this.host.memory.patch(this.host.ctx, { ...patchParams(),
+        ...(prepared.edits === undefined ? {} : { toolResultEdits: prepared.edits }),
+        ...(prepared.warning ? { suppressCleanup: true } : {}) }, controller.signal);
+      this.finishCommit(result, nextSlotId, draftOnFail, prepared.warning);
+    } catch (error) {
+      this.fail(error instanceof Error ? error.message : String(error), draftOnFail);
+    }
   }
 
   private finishCommit(result: ReturnType<MemorySurface["replace"]> | ReturnType<MemorySurface["patch"]>, nextSlotId: string | undefined, draftOnFail?: string, warning?: string): void {
@@ -506,7 +521,7 @@ export class NuncOverlay implements Focusable {
     if (draftToRestore !== undefined && this.editor) {
       this.editor.setText(draftToRestore);
     }
-    this.host.onFailure?.(message);
+    try { this.host.onFailure?.(message); } catch { /* Diagnostic only. */ }
     try {
       this.host.tui.requestRender();
     } catch { /* Paint only. */ }
@@ -515,7 +530,13 @@ export class NuncOverlay implements Focusable {
   private deleteSelected(): void {
     if (this.modal.kind !== "confirm-delete") return;
     const { slotId: id, revision } = this.modal;
-    this.memoryView = this.host.memory.read(this.host.ctx);
+    try {
+      this.memoryView = this.host.memory.read(this.host.ctx);
+    } catch (error) {
+      this.transition({ kind: "browse" });
+      this.fail(error instanceof Error ? error.message : String(error));
+      return;
+    }
     if (this.memoryView.revision !== revision) {
       this.fail("Saved memory changed before delete confirmation; cancel and review before deleting.");
       return;
@@ -528,7 +549,12 @@ export class NuncOverlay implements Focusable {
     const index = slots.findIndex(slot => slot.id === id);
     const neighbor = slots[index + 1]?.id ?? slots[index - 1]?.id;
     if (!this.host.prepareSave) {
-      this.finishCommit(this.host.memory.delete(this.host.ctx, revision, id), neighbor);
+      try {
+        this.finishCommit(this.host.memory.delete(this.host.ctx, revision, id), neighbor);
+      } catch (error) {
+        this.transition({ kind: "browse" });
+        this.fail(error instanceof Error ? error.message : String(error));
+      }
       return;
     }
     void this.deletePrepared(id, neighbor, revision);
@@ -560,7 +586,7 @@ export class NuncOverlay implements Focusable {
     this.list = this.makeList(items);
     const index = items.findIndex(item => item.value === selected);
     if (index >= 0) this.list.setSelectedIndex(index);
-    else if (this.tab === "slots") this.preferredSlot = items[0]?.value;
+    else if (this.tab === "slots" && items.length > 0) this.preferredSlot = items[0]!.value;
   }
 
   private slotItems(): SelectItem[] {
@@ -615,8 +641,8 @@ export class NuncOverlay implements Focusable {
   private renderBrowse(contentWidth: number, innerBudget: number): string[] {
     const theme = this.host.theme;
     const hint = theme.fg("dim", this.hintLine());
-    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error), contentWidth).slice(0, 2) : [];
-    this.rebuildList();
+    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error.replace(/\r\n?/g, "\n")), contentWidth).slice(0, 2) : [];
+    const dividerHeight = innerBudget - error.length >= 5 ? 1 : 0;
     const empty = this.emptyLine();
     const listLines = empty ? [theme.fg("warning", empty)] : this.list.render(contentWidth);
     const filterPrefix = "Search ";
@@ -626,12 +652,12 @@ export class NuncOverlay implements Focusable {
     const search = [`${filterPrefix}${this.search.render(inputWidth)[0] ?? ""}`];
     const list = listLines.slice(0, this.listHeight);
     while (list.length < this.listHeight) list.push("");
-    const reserved = tabs.length + ready.length + search.length + list.length + 1 + error.length + 1;
+    const reserved = tabs.length + ready.length + search.length + list.length + dividerHeight + error.length + 1;
     this.previewViewport = Math.max(1, innerBudget - reserved);
     const preview = this.previewLines(contentWidth, this.previewViewport);
     const position = this.previewTotal > this.previewViewport
       ? truncateToWidth(` ${this.previewOffset + 1}–${Math.min(this.previewTotal, this.previewOffset + this.previewViewport)} / ${this.previewTotal} ─`, contentWidth, "") : "";
-    const divider = [theme.fg("border", "─".repeat(Math.max(0, contentWidth - visibleWidth(position))) + position)];
+    const divider = dividerHeight ? [theme.fg("border", "─".repeat(Math.max(0, contentWidth - visibleWidth(position))) + position)] : [];
     return this.fit([...tabs, ...ready, ...search, ...list, ...divider, ...preview, ...error, hint], innerBudget);
   }
 
@@ -639,7 +665,7 @@ export class NuncOverlay implements Focusable {
     const theme = this.host.theme;
     const hint = theme.fg("dim", this.layer === "saving" ? `Saving… · ${this.keyLabel("tui.select.cancel")} cancel entire save` :
       `${this.keyLabel("tui.input.submit")} save · ${this.keyLabel("tui.select.cancel")} cancel · ${this.keyLabel("tui.input.newLine")} newline`);
-    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error), contentWidth).slice(0, 1) : [];
+    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error.replace(/\r\n?/g, "\n")), contentWidth).slice(0, 1) : [];
     const noticeAllowed = innerBudget - 1 - error.length >= 7;
     const notice = noticeAllowed ? wrapTextWithAnsi(theme.fg("muted", UNLOAD_LIMIT), contentWidth).slice(0, 1) : [];
     const reserved = notice.length + error.length + 1;
@@ -657,11 +683,12 @@ export class NuncOverlay implements Focusable {
     const title = this.layer === "confirm-delete" ? `Delete ${id}?` : "Discard unsaved edits?";
     const summary = this.layer === "confirm-delete" ? (slot?.text.replace(/\s+/g, " ").trim() ?? "") : "Edited text is kept until you confirm discard.";
     const hint = theme.fg("dim", `${this.keyLabel("tui.select.confirm")} confirm · ${this.keyLabel("tui.select.cancel")} back`);
+    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error.replace(/\r\n?/g, "\n")), contentWidth).slice(0, 2) : [];
     return this.fit([
       this.tabLine(),
       theme.fg("warning", title),
-      ...wrapTextWithAnsi(summary, contentWidth).slice(0, 4),
-      ...(this.error ? wrapTextWithAnsi(theme.fg("error", this.error), contentWidth).slice(0, 2) : []),
+      ...wrapTextWithAnsi(summary, contentWidth).slice(0, Math.max(0, Math.min(4, innerBudget - error.length - 3))),
+      ...error,
       hint,
     ], innerBudget);
   }
@@ -719,17 +746,17 @@ export class NuncOverlay implements Focusable {
       const slot = this.memoryView.memory.slots.find(item => item.id === id);
       if (!slot) return [theme.fg("muted", " ")];
       const header = this.slotHeader(slot.id, this.memoryView.slotProvenance, contentWidth);
-      const md = new Markdown(slot.text, 0, 0, this.mdTheme);
+      const md = new Markdown(slot.text.replace(/\r\n?/g, "\n"), 0, 0, this.mdTheme);
       return [header, ...md.render(contentWidth)];
     }
     const node = this.currentNode();
     if (!node || !node.preview) return [theme.fg("muted", " ")];
     if (node.jumpSlot) {
       const header = this.slotHeader(node.jumpSlot, this.contextView.current.layout.memory?.slotProvenance, contentWidth);
-      const md = new Markdown(node.preview, 0, 0, this.mdTheme);
+      const md = new Markdown(node.preview.replace(/\r\n?/g, "\n"), 0, 0, this.mdTheme);
       return [header, ...md.render(contentWidth)];
     }
-    return node.preview.split(/\r?\n/).flatMap(line => wrapTextWithAnsi(line, contentWidth));
+    return node.preview.split(/\r\n?|\n/).flatMap(line => wrapTextWithAnsi(line, contentWidth));
   }
 
   private slotHeader(id: string, provenance: MemoryView["slotProvenance"], width: number): string {
@@ -769,7 +796,7 @@ export class NuncOverlay implements Focusable {
   }
 
   private borderRow(left: string, middle: string, right: string, boxWidth: number, withShadow: boolean): string {
-    const row = this.border(`${left}${truncateToWidth(middle, Math.max(0, boxWidth - 2), "")}${right}`);
+    const row = `${this.border(left)}${truncateToWidth(this.border(middle), Math.max(0, boxWidth - 2), "")}${this.border(right)}`;
     return `${this.surface(row)}${withShadow ? this.shadow("█") : ""}`;
   }
 
@@ -782,7 +809,21 @@ export class NuncOverlay implements Focusable {
   private surface(line: string): string {
     const bg = this.host.theme.getBgAnsi?.("customMessageBg") ?? this.host.theme.bg("customMessageBg", " ").split(" ")[0]!;
     if (!bg.includes("\x1b[")) return line;
-    return `${bg}${line.replace(ANSI_RESET_RE, `${ANSI_RESET}${bg}`)}${ANSI_RESET}`;
+    return `${bg}${line.replace(ANSI_SGR_RE, (sgr, params: string) => {
+      const codes = params.split(";");
+      let resetsBackground = false;
+      for (let i = 0; i < codes.length; i++) {
+        const code = Number(codes[i]);
+        if (code === 0 || code === 49) resetsBackground = true;
+        // Extended-color components are data, not independent SGR commands.
+        if (code === 38 || code === 48 || code === 58) {
+          const mode = Number(codes[i + 1]);
+          if (mode === 2) i += 4;
+          else if (mode === 5) i += 2;
+        }
+      }
+      return resetsBackground ? `${sgr}${bg}` : sgr;
+    })}${ANSI_RESET}`;
   }
 }
 
