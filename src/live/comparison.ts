@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { canResumeScenario, parseInput, preflight, requireValue, RunnerError, type ComparisonGroup, type ComparisonMode, type RunInput } from "./contract.js";
 import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext, type LedgerRecord } from "./budget.js";
-import { finalizeRun, launchWorker, type ChildReceipt } from "./runner.js";
+import { finalizeRun, dispatchWorker, assertSegmentSettled, type ChildReceipt } from "./runner.js";
 import type { SegmentReport } from "./worker.js";
 import { matchedParity, rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
 import type { MatchReference } from "./preparation.js";
@@ -108,12 +108,6 @@ export async function executeComparison(value: unknown, repository: string, scri
         let resume = false;
         try {
         do {
-          if (input.limits.maxCalls !== null) requireValue(report.usage.calls < input.limits.maxCalls, "CALL_LIMIT", "Shared call ceiling exhausted; no further child/session effects");
-          if (input.limits.maxTotalTokens !== null) {
-            const smallestReservation = Math.min(...input.models.map(m => m.contextWindow + m.maxTokens));
-            requireValue(report.usage.chargedTokens + smallestReservation <= input.limits.maxTotalTokens, "TOKEN_LIMIT", "Shared token ceiling cannot reserve another task request");
-          }
-          if (input.limits.maxCostUsd !== null) requireValue(report.usage.chargedCostUsd !== null && report.usage.chargedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
           const currentLedger = join(root, "calls.jsonl");
           const beforeIds = new Set((existsSync(currentLedger) ? readLedger(currentLedger) : []).filter(r => r.kind === "reserve").map(r => r.id));
           const native = joinedObservations(completed.get(`native:${label}`) ?? []);
@@ -122,13 +116,9 @@ export async function executeComparison(value: unknown, repository: string, scri
             const f = rolloverFacts(row, native.requests, "native");
             return { snapshotId: f.snapshotId ?? "unobserved", mTokens: f.mTokens, outputCaps: f.outputCaps };
           });
-          const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences, priorLedgers: priorLedgerPaths }, signal);
-          report.children.push(child);
+          const { child, segment } = await dispatchWorker(script, { input, scenarioIndex, deadline, resume, group, mode, caseRoot, matchReferences, priorLedgers: priorLedgerPaths }, signal, report, readAll);
           if (child.timing) segmentIntervals.push(child.timing);
           const currentRecords = existsSync(currentLedger) ? readLedger(currentLedger) : [];
-          report.usage = ledgerSummary(readAll(), input.limits);
-          requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete");
-          const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
           segments.push(segment); report.rawSegments!.push(segment);
           const ids = new Set(currentRecords.filter(r => r.kind === "reserve" && r.caseKey === caseKey && !beforeIds.has(r.id)).map(r => r.id));
           const result: ComparisonScenarioResult = { mode, group, scenarioId: selection.id, variant: selection.variant, status: segment.status, reason: segment.reason,
@@ -136,7 +126,7 @@ export async function executeComparison(value: unknown, repository: string, scri
             ordinaryScore: segment.ordinaryScore, noWork: segment.noWork, rolloverQuality: segment.rolloverQuality,
             timing: child.timing, ...scopedUsage(currentRecords, ids, input.limits), rollovers: (segment.rollovers ?? []).map(row => rolloverFacts(row, segment.requests ?? [], group)) };
           modeReport.groups[group].scenarios.push(result); report.matrix.push(result);
-          requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+          assertSegmentSettled(segment, report.usage);
           const failed = segment.prerequisites.some(c => c.status !== "PROVEN");
           if (segment.status === "PAUSED") {
             requireValue(canResumeScenario(selection.id, resume), "RESTART", "Unexpected repeated pause");

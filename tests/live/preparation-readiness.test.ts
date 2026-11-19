@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { buildContextEntries, convertToLlm, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { prepareBoundary } from "../../src/live/preparation.js";
+import { logicalPlacement } from "../../src/live/placement-observation.js";
 import { metricsCommand } from "../../src/live/tool-path.js";
 import { toolBlockReason } from "../../src/live/observer.js";
 import { RunnerError } from "../../src/live/contract.js";
@@ -178,6 +179,20 @@ test("reproduces exact numerical gap: usage=2929, H=2928, F=1854, growth=1024, m
   assert(prepared.calibration.selectedFraction <= baseConfig.retentionCalibration.maxFraction);
   assert.equal(prepared.config.compaction.enabled, true);
   assert.equal(prepared.firstKeptEntryId, "entry-call");
+
+  const suffix: SessionEntry = { type: "message", id: "suffix", parentId: "entry-result", timestamp: new Date(4).toISOString(), message: fauxAssistantMessage("Task progress after deferred boundary.") };
+  const progressed = [...branch, suffix];
+  const continuedInput = { ...progressInput, branch: progressed, active: buildContextEntries(progressed) };
+  await assert.rejects(prepareBoundary(continuedInput), /suffix already ran/);
+  const deferred = await prepareBoundary({ ...continuedInput, deferred: true });
+  assert.equal(deferred.deferred, true);
+  const snapshot: Extract<SessionEntry, { type: "compaction" }> = { type: "compaction", id: "snapshot", parentId: "suffix", timestamp: new Date(5).toISOString(), summary: "Task state", firstKeptEntryId: deferred.firstKeptEntryId, tokensBefore: 6000 };
+  const row = { turn: "a", reason: "threshold", model, thinking: "low", branch: progressed, active: buildContextEntries(progressed),
+    config: deferred.config, prepared: deferred, snapshot, rebuilt: buildContextEntries([...progressed, snapshot]), callIds: [],
+    preparation: { firstKeptEntryId: deferred.firstKeptEntryId, settings: deferred.config.compaction, isSplitTurn: true, messagesToSummarize: [], turnPrefixMessages: [], tokensBefore: 6000 },
+    placement: { control, turns: [{ id: "a", text: requestText }], files: { "TASK.md": fixtureContent }, turnEntries: { a: progressed.map(e => e.id) }, requiredReads: [] } };
+  assert.deepEqual(logicalPlacement(row, "/task").issues, []);
+  assert(logicalPlacement({ ...row, prepared: { ...deferred, deferred: false } }, "/task").issues.includes("Suffix already ran before the requested tool boundary"));
 });
 
 test("contract errors never defer: invalid config, corrupted turn mapping, placement conflict, or extraction overflow hard fail", async () => {

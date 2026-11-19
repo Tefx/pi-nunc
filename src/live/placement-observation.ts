@@ -2,13 +2,12 @@ import { isDeepStrictEqual } from "node:util";
 import { resolveScenarioPath } from "./tool-path.js";
 import { resolve, relative } from "node:path";
 import { buildContextEntries, convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { userText, textOf } from "./guidance.js";
 import { projectedNativeCut } from "./preparation.js";
 import type { Control, Turn } from "./scenarios.js";
 import type { RolloverObservation } from "./comparison-observation.js";
 
 export interface PlacementContract { control: Control; turns: Turn[]; files: Record<string, string>; turnEntries: Record<string, string[]>; requiredReads: Array<{ turn: string; path: string }> }
-const userText = (entry: SessionEntry) => entry.type === "message" && entry.message.role === "user"
-  ? typeof entry.message.content === "string" ? entry.message.content : entry.message.content.filter(b => b.type === "text").map(b => b.text).join("") : undefined;
 function turnMap(branch: SessionEntry[], contract: PlacementContract) {
   // Use worker-observed IDs, including the currently held partial turn. Identical
   // user text in two named turns must not alias them to the first occurrence.
@@ -85,7 +84,7 @@ export function logicalPlacement(row: RolloverObservation, cwd: string) {
       const calls = row.active.filter(e => ids.includes(e.id)).flatMap(e => e.type === "message" && e.message.role === "assistant" ? e.message.content.flatMap(c => c.type === "toolCall" && unit && (c.name === unit.toolName || c.name === contract.control.trigger?.alternateToolName) && typeof c.arguments.path === "string" && resolveScenarioPath(cwd, c.arguments.path) === resolve(cwd, unit.pathArgument) ? [{ entry: e, call: c }] : []) : []);
       const selected = row.prepared?.triggerCallId ? calls.find(c => c.call.id === row.prepared!.triggerCallId) : calls[(unit?.occurrence ?? 0) - 1];
       if (!selected || k[0]?.id !== selected.entry.id) issues.push("Requested tool batch does not start K");
-      if (k.slice(1).some(e => e.type !== "message" || e.message.role !== "toolResult")) issues.push("Suffix already ran before the requested tool boundary");
+      if (!row.prepared?.deferred && k.slice(1).some(e => e.type !== "message" || e.message.role !== "toolResult")) issues.push("Suffix already ran before the requested tool boundary");
     }
   }
   return { status: issues.length ? "UNPROVEN" as const : "PROVEN" as const, issues, turnEntries,
@@ -102,7 +101,7 @@ export function fixtureExposure(row: RolloverObservation, cwd: string) {
     if (!Object.hasOwn(files, path)) continue;
     const result = row.active.find(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === c.id && e.message.toolName === c.name);
     reads.push({ turn: Object.keys(turns).find(t => turns[t]!.includes(entry.id)) ?? "unmapped", path,
-      complete: result?.type === "message" && result.message.role === "toolResult" && !result.message.isError && result.message.content.filter(b => b.type === "text").map(b => b.text).join("").trim() === files[path]!.trim() });
+      complete: result?.type === "message" && result.message.role === "toolResult" && !result.message.isError && textOf(result.message.content).trim() === files[path]!.trim() });
   }
   return reads;
 }

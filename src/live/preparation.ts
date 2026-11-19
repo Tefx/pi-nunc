@@ -5,11 +5,13 @@ import { buildSessionProjection, estimateTokens, sessionEntryToContextMessages, 
 import type { Api, Model, Context } from "@earendil-works/pi-ai";
 import { requireValue, RunnerError, type RunConfig } from "./contract.js";
 import type { Control } from "./scenarios.js";
+import { userText, textOf } from "./guidance.js";
 import { calibrateRetention, type RetentionCalibration } from "./calibration.js";
 
 export interface PreparedBoundary {
   firstKeptEntryId: string;
   triggerCallId?: string;
+  deferred?: boolean;
   config: RunConfig;
   native: { keepRecentTokens: number; cut: NonNullable<ReturnType<typeof projectedNativeCut>>; contextTokens: number | null; trigger: number; contextTokensSource: "public turn_end getContextUsage().tokens" | "not a threshold observation" };
   calibration?: ReturnType<typeof calibrateRetention>;
@@ -67,7 +69,7 @@ export async function prepareBoundary(input: {
   let toolIndex: number | undefined;
   if (input.trigger) {
     const t = input.trigger;
-    const req = branch.findLast(e => e.type === "message" && e.message.role === "user" && (typeof e.message.content === "string" ? e.message.content : e.message.content.filter(b => b.type === "text").map(b => b.text).join("")) === t.requestText);
+    const req = branch.findLast(e => userText(e) === t.requestText);
     toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === t.callId && (b.name === control.trigger?.toolName || b.name === control.trigger?.alternateToolName) && typeof b.arguments.path === "string" && resolveScenarioPath(t.cwd, b.arguments.path) === resolve(t.cwd, t.path)));
     requireValue(req && toolIndex > branch.indexOf(req), "PREPARATION", "Matching request/calling assistant not present");
     retired.add(req.id);
@@ -81,7 +83,7 @@ export async function prepareBoundary(input: {
     requireValue(siblings.length > 0 && new Set(siblings.map(c => c.id)).size === siblings.length && siblingResults.length === siblings.length && siblings.every(c => siblingResults.filter(e => e.type === "message" && e.message.role === "toolResult" && (e.message as any).toolCallId === c.id && (e.message as any).toolName === c.name).length === 1), "PREPARATION", "Incomplete persisted sibling tool batch");
     const result = siblingResults.find(e => e.type === "message" && e.message.role === "toolResult" && (e.message as any).toolCallId === t.callId);
     requireValue(result?.type === "message" && result.message.role === "toolResult" && !result.message.isError, "PREPARATION", "Required tool operation was unsuccessful");
-    if (result.message.toolName === "read") requireValue(result.message.content.filter(b => b.type === "text").map(b => b.text).join("").trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was incomplete");
+    if (result.message.toolName === "read") requireValue(textOf(result.message.content).trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was incomplete");
     [call, ...siblingResults].forEach(e => retained.add(e.id));
     requireValue(t.contextTokens !== null && Number.isFinite(t.contextTokens), "PREPARATION", "Native threshold usage is unknown");
     const h = Math.min(model.contextWindow - config.compaction.reserveTokens, Math.ceil(t.contextTokens) - 1);
@@ -122,7 +124,7 @@ export async function prepareBoundary(input: {
   requireValue(chosen, "CALIBRATION", "No native legal cut retains the complete requested suffix and retires its source");
   config.compaction.keepRecentTokens = chosen.keep;
   const firstKeptEntryId = branch[chosen.cut.firstKeptEntryIndex]!.id;
-  const prepared: PreparedBoundary = { firstKeptEntryId, ...(input.trigger ? { triggerCallId: input.trigger.callId } : {}), config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens, contextTokensSource: input.trigger ? "public turn_end getContextUsage().tokens" : "not a threshold observation" } };
+  const prepared: PreparedBoundary = { firstKeptEntryId, ...((input.deferred || input.trigger?.deferred) ? { deferred: true } : {}), ...(input.trigger ? { triggerCallId: input.trigger.callId } : {}), config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens, contextTokensSource: input.trigger ? "public turn_end getContextUsage().tokens" : "not a threshold observation" } };
   if (input.repository) {
     // Arithmetic comes from the actually loaded product target, including its policy and wire contract.
     const load = (file: string) => import(pathToFileURL(join(input.repository!, `dist/src/${file}.js`)).href);

@@ -353,7 +353,7 @@ test("diagnosePreparationFeasibility delegates to actual prepareBoundary and cor
 });
 
 // Full native controlled multi-turn flow with real StockFixture
-async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, lowUsage = false) {
+async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, lowUsage = false, tamper?: string) {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 160000 });
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
@@ -439,6 +439,7 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
     { text: "Controlled same-task completed.", input: lowUsage ? 100 : 18000 }
   ];
 
+  if (tamper) turnTask.splice(turnTask.length - 1, 0, tool("write", { path: tamper, content: "changed after preliminary validation" }));
   const fullSequence = [...turnSetup, ...turnPreflight, ...turnTask];
   let step = 0, maintenance = 0;
   f.response = (row: any, source: any) => {
@@ -469,6 +470,14 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
       return;
     }
 
+    if (tamper) {
+      assert.equal(report.status, "UNPROVEN");
+      const artifact = report.score!.actionReview.find(c => c.check === "metrics-artifact")!;
+      assert.equal(artifact.status, "DISPROVEN");
+      assert.match(artifact.reason!, /frozen fixture|Frozen task fixture/);
+      assert(artifact.reason!.includes(tamper));
+      return;
+    }
     assert.equal(report.status, "OBSERVED", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic }));
     assert.equal(report.nextTurn, 3, "All 3 turns executed");
     assert.equal(step, fullSequence.length);
@@ -496,4 +505,8 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
 test("same-task-history candidate tools=true: entire multi-turn flow with preliminary ingestion, 3 rollovers, restored configs and final oracle", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", true));
 test("same-task-history candidate tools=false: entire multi-turn flow without nunc memory tools", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", false));
 test("same-task-history native tools=false: entire multi-turn flow under native Pi", { timeout: 180000 }, () => sameTaskHistoryHost("native", false));
+test("same-task-history frozen schema, validator and regional input tampering reaches the worker scorer", { timeout: 180000 }, async () => {
+  for (const path of ["schema/records.schema.json", "scripts/validate_records.py", "inputs/north.json"]) await sameTaskHistoryHost("candidate", true, false, path);
+});
+
 test("same-task-history low usage: stops honestly before infeasible maintenance without synthetic padding", { timeout: 45000 }, () => sameTaskHistoryHost("candidate", true, true));

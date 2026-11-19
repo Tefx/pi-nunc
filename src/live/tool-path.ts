@@ -2,6 +2,7 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { object, requireValue, within, RunnerError } from "./contract.js";
 export function resolveScenarioPath(cwd: string, path: string): string { return resolve(cwd, path.replace(/^@/, "")); }
+export const pathIs = (cwd: string, actual: unknown, wanted: string): boolean => typeof actual === "string" && resolveScenarioPath(cwd, actual) === resolve(cwd, wanted);
 export const VERIFY_COMMANDS = ["python3 verify.py", "/usr/bin/python3 verify.py", "python verify.py"];
 
 /** Resolve existing prefixes to catch accidental aliases; tools see scenario files only. */

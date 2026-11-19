@@ -89,6 +89,8 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
     if (scoped) {
       assert.equal(report.rollovers!.length, 2);
       assert.equal(report.setupChecks![1]!.status, "PROVEN", JSON.stringify(report.setupChecks));
+      assert(report.score!.checks.length > 0);
+      assert(report.score!.checks.every(c => c.status === "PROVEN"), JSON.stringify(report.score!.checks));
     } else if (sourceLoss) {
       const omission = report.rollovers!.flatMap(r => r.result!.observations.omissions);
       assert(omission.length > 0, "configured capacity actually omits source detail");
@@ -115,6 +117,15 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
       const name = variant === "commit-conflict" ? "conflict-order" : "unconfirmed-no-replay";
       assert.equal(report.score!.actionReview.find(c => c.check === name)!.status, "PROVEN");
       assert.equal((await stat(report.sessionFile!)).mode & 0o200, 0o200);
+      if (variant === "commit-unconfirmed") {
+        for (const check of ["Task read and build failure/repair observed before continuation", "Two unique committed rollovers supplied generated M/K to subsequent requests"]) {
+          // The injected unconfirmed save leaves a new persisted branch without the old
+          // source/snapshots. Shared setup checks must expose that lost evidence.
+          assert.equal(report.setupChecks!.find(c => c.check === check)?.status, "UNPROVEN", JSON.stringify(report.setupChecks));
+        }
+        assert(!report.setupChecks!.some(c => c.check === "Confirmed turn-d memory edit precedes successful task work"));
+        assert.equal(report.score!.actionReview.filter(c => c.check === "unconfirmed-no-replay").length, 1);
+      }
     }
     assert.deepEqual(ledgerSummary(readLedger(join(stateRoot, "calls.jsonl"))).unreconciledCallIds, []);
   } finally { await f.close(); }

@@ -7,12 +7,11 @@ import { memoryMessage } from "../engine/memory.js";
 import { readSourceRecords } from "../engine/request.js";
 import { semanticEvidence, type CheckResult, type ScenarioInput } from "./scenarios.js";
 import { guidanceExchanges, textOf, type GuidanceAction } from "./guidance.js";
-import { resolveScenarioPath, metricsCommand } from "./tool-path.js";
+import { pathIs, metricsCommand } from "./tool-path.js";
 import type { RequestObservation, RolloverObservation } from "./comparison-observation.js";
 
 export { textOf as contentText } from "./guidance.js";
 const contentText = textOf;
-const pathIs = (cwd: string, actual: unknown, wanted: string) => typeof actual === "string" && resolveScenarioPath(cwd, actual) === resolve(cwd, wanted);
 const messages = (entries: SessionEntry[]) => convertToLlm(entries.flatMap(e => sessionEntryToContextMessages(e))).map(semanticEvidence);
 const subsequence = (haystack: unknown[], needle: unknown[]) => needle.length > 0 && haystack.some((_v, i) => same(haystack.slice(i, i + needle.length), needle));
 
@@ -228,7 +227,7 @@ export function sameTaskHistoryChecks(...[scenario, turns, branch, active, rollo
   ];
 }
 
-export function activeEditChecks(...[scenario, turns, branch, active, rollovers, actions, cwd, requests = []]: SetupArgs): CheckResult[] {
+export function activeEditChecks(...[scenario, turns, branch, active, rollovers, actions, cwd, requests = [], { expectConfirmedTurnD = true } = {}]: [...SetupArgs, { expectConfirmedTurnD?: boolean }?]): CheckResult[] {
   const read = taskRead(scenario, branch, actions, cwd), build = buildSequence(actions, cwd), edits = confirmedEdits(actions);
   const facts = rollovers.map(r => retainedRollover(r, branch, requests, rollovers));
   const d = edits.filter(e => e.turn === "d" && e.confirmed);
@@ -238,7 +237,7 @@ export function activeEditChecks(...[scenario, turns, branch, active, rollovers,
     check("Task read and build failure/repair observed before continuation", read.complete && Boolean(build.failedCallId && build.successfulCallId), { read, build }),
     semantic("Model-authored saved note mixed resolved progress and unfinished obligations", { notes: edits.filter(e => e.turn === "b"), turnStates: actions.filter(a => a.turn === "b" && a.event?.type === "turn_complete") }),
     check("Two unique committed rollovers supplied generated M/K to subsequent requests", facts.length >= 2 && facts.every(f => f.continued), facts),
-    check("Confirmed turn-d memory edit precedes successful task work", d.length > 0 && workAfter, d),
+    ...(expectConfirmedTurnD ? [check("Confirmed turn-d memory edit precedes successful task work", d.length > 0 && workAfter, d)] : []),
     ...["replacement", "merge", "deletion"].map(op => semantic(`Mixed-note ${op} preserves all remaining obligations`, { edits: d, activeEntryIds: active.map(e => e.id) })),
     semantic("No gold notes or expected patches supplied; setup provenance and source retention assessed independently", { turns, suppliedTurns: scenario.turns }),
   ];

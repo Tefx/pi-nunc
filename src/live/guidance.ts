@@ -1,15 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { CheckResult } from "./scenarios.js";
 import { executeMetricsOracle } from "./metrics-oracle.js";
 
 export interface GuidanceAction { turn?: string; event?: any }
-import { resolveScenarioPath, VERIFY_COMMANDS } from "./tool-path.js";
+import { pathIs as scenarioPathIs, metricsCommand, VERIFY_COMMANDS } from "./tool-path.js";
 export { VERIFY_COMMANDS } from "./tool-path.js";
 export function textOf(content: unknown): string {
   return typeof content === "string" ? content : Array.isArray(content)
     ? content.filter(b => b?.type === "text" && typeof b.text === "string").map(b => b.text).join("") : "";
+}
+export function userText(entry: SessionEntry): string | undefined {
+  return entry.type === "message" && entry.message.role === "user" ? textOf(entry.message.content) : undefined;
 }
 export const TOOLS_CHECK = "memory tools exposed in session";
 export const SPLIT_CHECK = "actual tool batch followed by automatic native split compaction and same-loop continuation";
@@ -35,7 +39,7 @@ export function scoreGuidance(
     a.event?.type === "tool_intent" && !actions.some(b => b.turn === a.turn && ["tool_call", "tool_blocked"].includes(b.event?.type) && b.event.toolCallId === a.event.toolCallId));
   const exchanges = guidanceExchanges(actions);
   const completed = (turn: string) => actions.some(a => a.turn === turn && a.event?.type === "turn_complete" && a.event.stopReason === "stop");
-  const pathIs = (a: GuidanceAction, path: string) => typeof a.event?.input?.path === "string" && resolveScenarioPath(cwd, a.event.input.path) === resolve(cwd, path);
+  const pathIs = (a: GuidanceAction, path: string) => scenarioPathIs(cwd, a.event?.input?.path, path);
   const writes = (path: string) => calls.filter(a => ["write", "edit"].includes(a.event.toolName) && pathIs(a, path));
   const semantic = () => result("UNPROVEN", "Independent observation required: judge meaning against task requirements, actual saved M + delivered K/recovery reads, responses and artifacts; no keyword, language, length or slot-count oracle.", {
     completedTurns: actions.filter(a => a.event?.type === "turn_complete"),
@@ -84,18 +88,17 @@ export function scoreGuidance(
 
     // Command verification: build and unittest success against final artifact
     if (check.includes("actual commands show build and unittest success")) {
-      const buildCalls = calls.filter(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("build.py"));
-      const unittestCalls = calls.filter(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("unittest"));
-      if (buildCalls.length === 0 && unittestCalls.length === 0) {
-        return result("UNPROVEN", "No build or unittest command was executed in the task session", semantic().observed);
+      const successful = exchanges.filter(e => e.result?.isError === false);
+      const runs = successful.filter(e => e.call.event.toolName === "bash" && ["build", "tests"].includes(metricsCommand(e.call.event.input?.command ?? "") ?? ""));
+      const build = runs.findLast(e => metricsCommand(e.call.event.input?.command ?? "") === "build");
+      const tests = runs.findLast(e => metricsCommand(e.call.event.input?.command ?? "") === "tests");
+      if (!build || !tests) {
+        return result("UNPROVEN", "No completed successful build and unittest pair in the task session", semantic().observed);
       }
-      const lastTest = calls.findLast(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && (a.event.input.command.includes("build.py") || a.event.input.command.includes("unittest")));
-      if (lastTest) {
-        const lastTestIndex = actions.indexOf(lastTest);
-        const laterEdit = calls.find(a => actions.indexOf(a) > lastTestIndex && ["write", "edit"].includes(a.event?.toolName) && pathIs(a, "solution.py"));
-        if (laterEdit) {
-          return result("DISPROVEN", "solution.py was modified after the last test run without subsequent reverification");
-        }
+      const lastTest = runs.at(-1)!;
+      const laterEdit = successful.find(e => e.resultIndex > lastTest.callIndex && ["write", "edit"].includes(e.call.event.toolName) && ["solution.py", "test_solution.py"].some(path => pathIs(e.call, path)));
+      if (laterEdit) {
+        return result("DISPROVEN", "Solution or tests were modified after the last successful test run without subsequent reverification");
       }
       return semantic();
     }

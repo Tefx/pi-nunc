@@ -70,12 +70,13 @@ export interface Limits {
   priorLedgers?: string[];
   sharedLedger?: string;
 }
+export function batchTimestamp(value: number | string): number { return typeof value === "string" ? Date.parse(value) : value; }
 export function assertBatchConsistency(batch: BatchAuthority | undefined, limits: Limits): void {
   for (const key of ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"] as const) {
     const a = batch?.[key], b = limits[key];
     if (a === undefined || b === undefined) continue;
     const normalize = (value: unknown): unknown => key === "firstDispatchAt" || key === "deadline"
-      ? typeof value === "string" ? Date.parse(value) : value
+      ? batchTimestamp(value as number | string)
       : Array.isArray(value) ? [...new Set(value.map(p => resolve(p)))].sort() : resolve(String(value));
     requireValue(canonical(normalize(a)) === canonical(normalize(b)), "BATCH", `Conflicting batch and limits ${key}`);
   }
@@ -152,7 +153,7 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
 function validateBatchFields(target: Record<string, unknown>, code: string, prefix: string): void {
   for (const field of ["firstDispatchAt", "deadline"]) {
     const value = target[field];
-    if (value !== undefined) requireValue((typeof value === "number" && Number.isFinite(value) && value > 0) || (typeof value === "string" && !isNaN(Date.parse(value))), code, `${prefix}.${field} must be a positive timestamp or valid ISO date`);
+    if (value !== undefined) requireValue((typeof value === "number" || typeof value === "string") && Number.isFinite(batchTimestamp(value)) && batchTimestamp(value) > 0, code, `${prefix}.${field} must be a positive timestamp or valid ISO date`);
   }
   if (target.priorLedgers !== undefined) requireValue(Array.isArray(target.priorLedgers) && target.priorLedgers.every(p => typeof p === "string" && p.trim().length > 0), code, `${prefix}.priorLedgers must be an array of non-empty paths`);
   if (target.sharedLedger !== undefined) requireValue(typeof target.sharedLedger === "string" && target.sharedLedger.trim().length > 0, code, `${prefix}.sharedLedger must be a non-empty string path`);
@@ -376,6 +377,8 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
     const curPiVersion = curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
     requireValue(isSupportedPiVersion(curPiVersion) || curPiVersion === (expectedCommit === "70dacad1f065a70b29f565b5bfcf02d31cec2bdc" ? "0.85.1" : expectedCommit === "1d4fc4a210b64f71871ab3f5c10093215a25990c" ? "0.86.1" : undefined), "DEPENDENCY", "Current target uses an unsupported locked Pi version");
+    const curPiManifest = JSON.parse(await readFile(join(curRepo, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
+    requireValue(curPiManifest.version === curPiVersion, "DEPENDENCY", "Current target installed Pi differs from its lock");
     // Verify baseline build parity against its tracked source
     if (!existingOwnedWorker) {
       const { assertBuildParity } = await import("./build.js");

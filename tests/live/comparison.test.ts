@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { parseInput, preflight, type RunInput } from "../../src/live/contract.js";
 import { liveExtensionFlags } from "../../src/live/host.js";
 import { loadScenario, scoreArtifacts } from "../../src/live/scenarios.js";
@@ -38,7 +39,7 @@ test("comparison preflight validates modes, all prepared targets, baseline ident
   for (const repo of ["/path/does/not/exist", repository]) { const bad = structuredClone(input); bad.comparison!.targets.current.repository = repo; await assert.rejects(preflight(bad, repository)); }
   const mismatch = structuredClone(input); mismatch.comparison!.targets.candidate.repository = baseline; await assert.rejects(preflight(mismatch, repository), /Candidate target/);
   // Other stock CLI tests read the shared baseline concurrently. Corrupt only this test's target.
-  const isolated = await mkdtemp(join(repository, ".scratch/stale-build-"));
+  const isolated = await mkdtemp(join(tmpdir(), "nunc-stale-build-"));
   try {
     const clone = spawnSync("git", ["clone", "--shared", "--no-hardlinks", baseline, isolated], { env, encoding: "utf8" });
     assert.equal(clone.status, 0, clone.stderr);
@@ -47,6 +48,12 @@ test("comparison preflight validates modes, all prepared targets, baseline ident
     const badBuild = structuredClone(input); badBuild.comparison!.targets.current.repository = isolated;
     await writeFile(join(isolated, "dist/src/stale-extra-file.js"), "export const stale = true;");
     await assert.rejects(preflight(badBuild, repository), /Stale extra JS|BUILD/);
+    await rm(join(isolated, "dist/src/stale-extra-file.js"));
+    await rm(join(isolated, "node_modules"));
+    const installedPi = join(isolated, "node_modules/@earendil-works/pi-coding-agent");
+    await mkdir(installedPi, { recursive: true });
+    await writeFile(join(installedPi, "package.json"), JSON.stringify({ version: "0.0.0" }));
+    await assert.rejects(preflight(badBuild, repository), /Current target installed Pi differs from its lock/);
   } finally { await rm(isolated, { recursive: true, force: true }); }
   const receipt = await preflight(input, repository); assert.equal(receipt.pi, JSON.parse(await readFile(join(repository, "package-lock.json"), "utf8")).packages["node_modules/@earendil-works/pi-coding-agent"].version); assert.equal(receipt.callsMade, 0);
   assert.equal(receipt.version, 1); assert.equal(typeof receipt.binding, "string"); assert(receipt.binding.length > 0);
@@ -119,6 +126,27 @@ test("comparison wall-clock intervals include delayed workers and process restar
     assert(report.elapsedMs >= mode.timing!.elapsedMs);
     assert.equal(report.usage.calls, 0); assert.equal(report.usage.totalTokens, 0);
   } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+});
+
+test("comparison supervisor stops all modes and groups on STOPPED/CLEANUP but continues independent semantic failures", async () => {
+  for (const mode of ["stopped-cleanup", "unproven-main"] as const) {
+    const input = await comparisonFixture();
+    input.overrides = [{ requirement: `supervisor-loop:${mode}` }];
+    input.scenarios.push({ id: "c2", config: input.scenarios[0]!.config });
+    try {
+      const report = await executeComparison(input, repository, join(repository, "tests/live/supervisor-loop-worker.mjs"), new AbortController().signal);
+      assert.equal(report.status, "UNPROVEN");
+      if (mode === "stopped-cleanup") {
+        assert.equal(report.children.length, 1);
+        assert.equal(report.matrix.length, 1);
+        assert.equal(report.reason, "CLEANUP");
+        assert.equal(report.matrix[0]?.status, "STOPPED");
+      } else {
+        assert.equal(report.children.length, 12);
+        assert.equal(report.matrix.filter(s => s.status === "OBSERVED").length, 6);
+      }
+    } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+  }
 });
 
 test("call-ID totals do not count paused history twice and missing terminals stay unknown", () => {

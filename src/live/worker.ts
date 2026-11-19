@@ -1,4 +1,4 @@
-import { scoreGuidance, type GuidanceAction } from "./guidance.js";
+import { userText } from "./guidance.js";
 import { archiveCloseoutEffects } from "./archive-closeout.js";
 import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
 import { qualifyCapacity, checkCapacityRecovery, checkRequiredRetention } from "./capacity-observation.js";
@@ -60,12 +60,6 @@ export interface SegmentReport {
   ordinaryScore?: Awaited<ReturnType<typeof scoreArtifacts>>;
   observedFacts?: RolloverFacts;
 }
-function userText(entry: SessionEntry): string | undefined {
-  if (entry.type !== "message" || entry.message.role !== "user") return undefined;
-  const content = entry.message.content;
-  if (typeof content === "string") return content;
-  return Array.isArray(content) ? content.filter(b => b.type === "text").map(b => b.text).join("") : undefined;
-}
 function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
   return branch.filter(e => userText(e) === text).map(e => e.id);
 }
@@ -113,13 +107,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   const boundaryControls = observer.controls.filter(c => c.action === "rollover_at_tool_boundary");
   let currentBoundaryIndex = 0;
   const deferredBoundaries = new Set<number>();
-  const boundaryControl = boundaryControls[0];
   const boundaries = boundaryControls.map(c => ({
     control: c,
     requestText: scenario.turns.find(t => t.id === c.duringTurn)!.text,
     fixtureContent: c.trigger?.pathArgument ? (scenario.files[c.trigger.pathArgument] ?? "") : "",
   }));
-  const boundary = boundaries[0];
   const guidanceControls = observer.controls
     ?.filter(c => c.action === "revision_conflict" || c.action === "unconfirmed_save")
     .map(c => ({ action: c.action as "revision_conflict" | "unconfirmed_save", turn: c.duringTurn ?? c.afterTurn, trigger: c.trigger,
@@ -161,16 +153,15 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     runtime = await openHost({ repository: input.target.repository, input, selection: { ...selection, config: runConfig }, caseRoot, modelTargets: overrides.models ?? selectedModels(input), deadline: job.deadline, signal,
       group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
-      boundary,
       taskFiles: scenario.files,
-      boundaries, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
+      boundaries, boundaryCompleted: Boolean(checkpoint && boundaries.length), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
       ...(guidanceControls?.length ? { guidanceControls } : {}),
       priorLedgers: job.priorLedgers,
       onBoundary: async data => {
+        const idx = data.boundaryIndex ?? currentBoundaryIndex;
         try {
-          const idx = data.boundaryIndex ?? currentBoundaryIndex;
-          const ctrl = boundaryControls[idx] ?? boundaryControl!;
-          const bnd = boundaries[idx] ?? boundary!;
+          const ctrl = boundaryControls[idx]!;
+          const bnd = boundaries[idx]!;
           boundaryRestoreConfig = structuredClone(runConfig);
           const isDeferred = deferredBoundaries.has(idx);
           const result = await prepare(data.branch, data.active, ctrl, { callId: data.triggerId, requestText: bnd.requestText,
@@ -178,7 +169,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           await runtime!.releaseBoundary({ firstKeptEntryId: result.firstKeptEntryId });
         } catch (error) {
           if (error instanceof RunnerError && error.code === "INSUFFICIENT_CONTEXT") {
-            deferredBoundaries.add(currentBoundaryIndex);
+            deferredBoundaries.add(idx);
             report.preparations!.push({ deferred: true, turn, reason: error.message });
             await runtime!.releaseBoundary({ deferred: true });
             return;
@@ -208,7 +199,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       onObservation: (type, data) => {
         if (type === "diagnostic") report.actions.push({ turn, event: { type, ...data } });
         if (type === "stopped") boundaryFailure ??= data.message;
-        if (boundary && type === "lifecycle") {
+        if (boundaries.length && type === "lifecycle") {
           if (data.stopped) boundaryFailure ??= data.stopped;
           if (data.phase === "maintenance-failed") boundaryFailure ??= "Automatic boundary maintenance failed; suffix is unproven";
         }
@@ -640,10 +631,8 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         report.setupChecks.push(...evaluateTaskFileSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       } else if (selection.id === "g4" && selection.variant === "same-task-history") {
         report.setupChecks.push(...evaluateSameTaskHistorySetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
-      } else if (selection.id === "g4" && ["active-edit", "commit-conflict"].includes(String(selection.variant))) {
-        report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
-      } else if (selection.id === "g4" && selection.variant === "commit-unconfirmed") {
-        report.setupChecks.push(scoreGuidance("g4", "unconfirmed-no-replay", report.actions as GuidanceAction[], report.prerequisites, join(caseRoot, "task")));
+      } else if (selection.id === "g4" && ["active-edit", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant))) {
+        report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests, { expectConfirmedTurnD: selection.variant !== "commit-unconfirmed" }));
       } else if (selection.id === "g3" && selection.variant === "scoped-tasks") {
         report.setupChecks.push(...evaluateScopedTasksSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       }
@@ -717,13 +706,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const qualified = report.rolloverSeries.length >= 3 && report.rolloverSeries.every(row => row.reason === "threshold" && row.facts.snapshotId && row.facts.cutPoint !== null && row.beforeInput !== undefined && row.afterInput !== undefined) && report.rolloverSeries.slice(1).every(row => (row.mainRequestsSincePrevious ?? 0) > 0);
       report.prerequisites.push({ check: "at least two native threshold-driven compression intervals with actual retained input and release measurements", status: qualified ? "PROVEN" : "UNPROVEN", observed: report.rolloverSeries });
     }
-    const fixtures = taskRetentionSelection(selection) ? Object.fromEntries(Object.entries(scenario.files).filter(([name]) => ["TASK.md", "records.json", "build.py", "archive.json"].includes(name))) : undefined;
+    const fixtures = taskRetentionSelection(selection) ? Object.fromEntries(Object.entries(scenario.files).filter(([name]) => selection.variant === "same-task-history" ? name !== "solution.py" : ["TASK.md", "records.json", "build.py", "archive.json"].includes(name))) : undefined;
     if (fixtures && selection.id === "g4" && ["source-loss", "source-unavailable"].includes(String(selection.variant))) {
       if (selection.variant === "source-loss") fixtures["source/TASK.md"] = fixtures["TASK.md"]!;
       delete fixtures["TASK.md"];
     }
     const scoreContext = { actions: report.actions, ...(fixtures ? { fixtures } : {}), requireVerificationReceipt: true, ...(report.artifactSnapshots ? { artifactSnapshots: report.artifactSnapshots } : {}) };
-    const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? report.setupChecks ?? [] : [])];
+    const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? (report.setupChecks ?? []).filter(check => !check.reason?.startsWith("Independent semantic")) : [])];
     if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...scorePrerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);
     captureComparisonFacts(report, group);

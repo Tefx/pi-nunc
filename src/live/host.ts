@@ -47,7 +47,6 @@ export interface HostOptions {
   onMaintenanceResponse?: ((event: unknown) => void) | undefined;
   onContext?: ((model: Model<Api>, context: Context, kind: string) => void) | undefined;
   onAction?: ((event: unknown) => void) | undefined;
-  boundary?: { control: Control; requestText: string; fixtureContent: string } | undefined;
   boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }> | undefined;
   verification?: { script: string; artifact: string } | undefined;
   taskFiles?: Record<string, string> | undefined;
@@ -137,8 +136,8 @@ export class NativeHost {
     const caseKey = o.input.comparison
       ? `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`
       : `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
-    const boundaries = o.boundaries ?? (o.boundary ? [o.boundary] : []);
-    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, selection: o.selection, taskFiles: o.taskFiles, larvaCompaction, boundary: boundaries[0], boundaries, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable", priorLedgers: o.priorLedgers ?? [] }), { mode: 0o600 });
+    const boundaries = o.boundaries ?? [];
+    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, selection: o.selection, taskFiles: o.taskFiles, larvaCompaction, boundaries, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable", priorLedgers: o.priorLedgers ?? [] }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
     const hostRepo = o.group === "current" ? (o.targetRepos?.current ?? o.input.comparison?.targets?.current?.repository ?? o.repository) : (o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository);

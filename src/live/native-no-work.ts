@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
-import { findCutPoint, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { projectedNativeCut } from "./preparation.js";
 import { isSystemMessage } from "../engine/accounting.js";
 import { RunnerError, type RunConfig } from "./contract.js";
 
@@ -25,8 +26,8 @@ export function noRetirablePrefix(branch: SessionEntry[], settings: RunConfig["c
   const previous = branch.findLast(e => e.type === "compaction");
   const start = previous?.type === "compaction" ? branch.findIndex(e => e.id === previous.firstKeptEntryId) : 0;
   if (start < 0) return false;
-  const cut = findCutPoint(branch, start, branch.length, settings.keepRecentTokens);
-  return !branch.slice(start, cut.firstKeptEntryIndex).some(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message)) && sessionEntryToContextMessages(e).filter(m => m.role !== "system").length > 0);
+  const cut = projectedNativeCut(branch, settings.keepRecentTokens);
+  return !branch.slice(start, cut?.firstKeptEntryIndex ?? start).some(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message)) && sessionEntryToContextMessages(e).filter(m => m.role !== "system").length > 0);
 }
 /** A captured no-work response alone is insufficient: reconcile source, native cut and effects. */
 export function ordinaryNoWork(error: unknown, facts: {

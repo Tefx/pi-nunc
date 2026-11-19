@@ -1,3 +1,4 @@
+import { textOf } from "./guidance.js";
 import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, serializeConversation, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
@@ -45,7 +46,7 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
   const nativeSources = [row.preparation.messagesToSummarize, row.preparation.turnPrefixMessages].filter(m => m.length > 0);
   const nativeSourceObserved = native && calls.length > 0 && nativeSources.length > 0 && nativeSources.every(messages => {
     const serialized = serializeConversation(convertToLlm(messages as any));
-    return calls.some(c => c.context.messages.some(m => (typeof m.content === "string" ? m.content : m.content.filter(b => b.type === "text").map(b => b.text).join("")).includes(serialized)));
+    return calls.some(c => c.context.messages.some(m => textOf(m.content).includes(serialized)));
   });
   const nativeTruncatedTools = nativeSources.flat().filter((m: any) => m.role === "toolResult" && Array.isArray(m.content) && m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").length > 2000).length;
   return { snapshotId: snap?.id ?? null, h: model.contextWindow - row.preparation.settings.reserveTokens,

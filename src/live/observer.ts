@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { Control, ToolTrigger } from "./scenarios.js";
 import { memorySurface } from "../pi/manual.js";
 import { setObserverMemoryLayout } from "../pi/projection.js";
+import { userText, textOf } from "./guidance.js";
 import { subscriptionBilling } from "../engine/pi-model.js";
 
 
@@ -43,12 +44,12 @@ export default function observer(pi: ExtensionAPI): void {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; selection?: Selection; taskFiles?: Record<string, string>; larvaCompaction?: { owner: "nunc"; configFile: string }; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }>; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving"; priorLedgers?: string[] };
-  const boundaries = binding.boundaries ?? (binding.boundary ? [binding.boundary] : []);
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; selection?: Selection; taskFiles?: Record<string, string>; larvaCompaction?: { owner: "nunc"; configFile: string }; boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }>; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving"; priorLedgers?: string[] };
+  const boundaries = binding.boundaries ?? [];
   const activeBoundary = () => boundaries[state.boundary.boundaryIndex ?? 0];
   const controlFor = (action: "revision_conflict" | "unconfirmed_save", ctx: ExtensionContext) => {
     const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
-    const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
+    const text = user ? userText(user) : undefined;
     return binding.guidanceControls?.find(c => c.action === action && c.requestText === text);
   };
   const signal = AbortSignal.timeout(Math.max(1, binding.deadline - Date.now()));
@@ -104,7 +105,7 @@ export default function observer(pi: ExtensionAPI): void {
         onContext: (model, context, kind) => log("context", { model, context, kind }),
         onResponse: (model, message, kind) => {
           if (kind === "maintenance") {
-            const text = Array.isArray(message.content) ? message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("") : "";
+            const text = textOf(message.content);
             let patch: unknown;
             try { patch = JSON.parse(text); } catch {}
             log("maintenance_response", { model: `${model.provider}/${model.id}`, stopReason: message.stopReason, patch, text });
@@ -152,9 +153,9 @@ export default function observer(pi: ExtensionAPI): void {
       log("preparation", { reason: event.reason, model: ctx.model, thinking: ctx.thinkingLevel,
         preparation: { ...event.preparation, fileOps: Object.fromEntries(Object.entries(event.preparation.fileOps).map(([k, v]) => [k, [...v]])) },
         branch: event.branchEntries, active: ctx.sessionManager.buildContextEntries() });
-      const autonomousTask = binding.selection?.id === "g4" && ["task-file", "same-task-history"].includes(String(binding.selection.variant));
-      if (binding.boundary && !autonomousTask && (state.boundary.boundaryCommitted || !activeBoundary())) state.stop ??= "Requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
-      if (binding.boundary && (!autonomousTask || state.boundary.expectedFirst) && (!state.boundary.boundaryDone || !state.boundary.expectedFirst || state.boundary.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select an armed eligible tool boundary";
+      const autonomousTask = binding.selection?.id === "g4" && ["task-file", "same-task-history"].includes(String(binding.selection.variant)) && !activeBoundary();
+      if (boundaries.length && !autonomousTask && (state.boundary.boundaryCommitted || !activeBoundary())) state.stop ??= "Requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
+      if (boundaries.length && (!autonomousTask || state.boundary.expectedFirst) && (!state.boundary.boundaryDone || !state.boundary.expectedFirst || state.boundary.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select an armed eligible tool boundary";
       log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryDone: state.boundary.boundaryDone, expectedFirst: state.boundary.expectedFirst, stopped: state.stop });
       if (state.stop) {
         delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
@@ -193,7 +194,7 @@ export default function observer(pi: ExtensionAPI): void {
   pi.on("session_compact_failed", event => {
     state.compacting = false;
     delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
-    if (binding.boundary) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
+    if (boundaries.length) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
     log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry,
       errorMessage: event.errorMessage, fromExtension: event.fromExtension });
   });
@@ -222,7 +223,7 @@ export default function observer(pi: ExtensionAPI): void {
     if (currentBnd && !state.boundary.boundaryDone && (event.toolName === currentBnd.control.trigger?.toolName || event.toolName === currentBnd.control.trigger?.alternateToolName) &&
         typeof (event.input as any).path === "string" && currentBnd.control.trigger?.pathArgument && resolveScenarioPath(binding.cwd, (event.input as any).path) === resolveScenarioPath(binding.cwd, currentBnd.control.trigger.pathArgument)) {
       const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
-      const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
+      const text = user ? userText(user) : undefined;
       if (text === currentBnd.requestText && ++state.boundary.occurrence === currentBnd.control.trigger.occurrence) {
         state.boundary.triggerId = event.toolCallId;
         state.boundary.savedTriggerId = event.toolCallId;

@@ -11,7 +11,7 @@ declare module "@earendil-works/pi-ai/providers/compat-schema" {
 }
 import type { UsageObservation } from "../engine/types.js";
 import { outputCapState } from "../pi/payload.js";
-import { assertBatchConsistency, canonical, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
+import { batchTimestamp, assertBatchConsistency, canonical, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
 
 export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string; ledgerPath?: string }
 export interface CallDiagnostic { code: string; stage: string; transport: "started" | "not-started" | "not-observed"; httpStatus?: number; networkCode?: string }
@@ -177,7 +177,7 @@ export function resolveBatchContext(input: RunInput): {
   const explicitFirst = input.batch?.firstDispatchAt ?? lim?.firstDispatchAt;
   let firstDispatchAt: number | null = null;
   if (explicitFirst !== undefined) {
-    const parsed = typeof explicitFirst === "string" ? new Date(explicitFirst).getTime() : explicitFirst;
+    const parsed = batchTimestamp(explicitFirst);
     requireValue(Number.isFinite(parsed) && parsed > 0, "BATCH", "firstDispatchAt must be a positive timestamp or ISO date");
     if (earliestHistoricalDispatch !== null) {
       requireValue(parsed <= earliestHistoricalDispatch, "BATCH", `explicit firstDispatchAt cannot be later than earliest historical dispatch`);
@@ -192,7 +192,7 @@ export function resolveBatchContext(input: RunInput): {
   const explicitDeadline = input.batch?.deadline ?? lim?.deadline;
   let parsedExplicitDeadline: number | undefined;
   if (explicitDeadline !== undefined) {
-    const parsed = typeof explicitDeadline === "string" ? new Date(explicitDeadline).getTime() : explicitDeadline;
+    const parsed = batchTimestamp(explicitDeadline);
     requireValue(Number.isFinite(parsed) && parsed > 0, "BATCH", "deadline must be a positive timestamp or ISO date");
     parsedExplicitDeadline = parsed;
   }
@@ -298,6 +298,8 @@ export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
     const records = readLedger(p);
     const fileCalls = records.filter((r): r is CallRecord => r.kind === "reserve");
     const fileTerminals = records.filter((r): r is CallEnd => r.kind === "terminal");
+    const reserveIds = new Set(fileCalls.map(r => r.id));
+    requireValue(fileTerminals.every(t => reserveIds.has(t.id)), "RECONCILIATION", "Orphan terminal has no matching reservation");
     const fileTerminalsById = new Map<number, CallEnd[]>();
     for (const t of fileTerminals) {
       const list = fileTerminalsById.get(t.id) ?? [];
@@ -306,7 +308,7 @@ export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
     }
     for (const r of fileCalls) {
       calls.push({
-        ledgerPath: p,
+        ledgerPath: canonical,
         record: r,
         terminals: fileTerminalsById.get(r.id) ?? [],
       });
@@ -332,7 +334,11 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
   const qCalls: QualifiedCall[] = qualified ? records as QualifiedCall[] : rawCalls.map(record => ({
     ledgerPath: record.ledgerPath ?? "", record, terminals: terminalsById.get(callKey(record)) ?? [],
   }));
+  requireValue(qCalls.every(c => c.terminals.every(t => t.id === c.record.id && (t.ledgerPath === undefined || t.ledgerPath === c.ledgerPath))), "RECONCILIATION", "Orphan terminal has no matching qualified reservation");
+  const reserveKeys = new Set(rawCalls.map(callKey));
+  requireValue(qualified || terminal.every(t => reserveKeys.has(callKey(t))), "RECONCILIATION", "Orphan terminal has no matching reservation");
   const calls = qCalls.map(c => c.record);
+  const multipleLedgers = new Set(qCalls.map(c => c.ledgerPath)).size > 1;
   const activeCalls = qCalls.filter(c => c.terminals.length === 0);
   const sum = (key: keyof UsageObservation): number | null =>
     qCalls.some(c => c.terminals.length !== 1) || terminal.length !== calls.length || terminal.some(r => r.usage[key] === null)
@@ -376,7 +382,7 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
     remainingCalls,
     remainingTokens,
     remainingCostUsd,
-    unreconciledCallIds: activeCalls.map(c => c.record.id),
+    unreconciledCallIds: activeCalls.map(c => multipleLedgers ? `${c.ledgerPath}::${c.record.id}` : c.record.id),
   };
 }
 function errorMessage(model: Model<Api>, reason: string): AssistantMessage {

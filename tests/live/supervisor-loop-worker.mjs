@@ -11,7 +11,7 @@ for await (const chunk of process.stdin) chunks.push(chunk);
 const job = JSON.parse(Buffer.concat(chunks).toString());
 const { input, scenarioIndex, resume } = job;
 const selection = input.scenarios[scenarioIndex];
-const caseRoot = join(input.target.stateRoot, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
+const caseRoot = job.caseRoot ?? join(input.target.stateRoot, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
 await mkdir(caseRoot, { recursive: true });
 const mode = String((input.overrides ?? []).find(o => typeof o.requirement === "string" && o.requirement.startsWith("supervisor-loop:"))?.requirement ?? "");
 const base = { pid: process.pid, scenario: selection.id, prerequisites: [], nextTurn: 0, contexts: [], maintenance: [], actions: [], commands: [], calibrations: [] };

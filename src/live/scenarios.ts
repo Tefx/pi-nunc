@@ -1,4 +1,4 @@
-import { scoreGuidance, guidanceExchanges } from "./guidance.js";
+import { scoreGuidance, guidanceExchanges, textOf } from "./guidance.js";
 import { resolveScenarioPath, VERIFY_COMMANDS } from "./tool-path.js";
 import { project } from "../pi/projection.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -492,7 +492,7 @@ export function evaluateE2SetupChecks(
   const probeResult = probeCallId ? rawActions.find(a => a.turn === "c" && object(a.event) && a.event.type === "tool_result" && a.event.toolName === "read" && a.event.toolCallId === probeCallId && a.event.isError === false) : undefined;
   const kMessages = kRecords.flatMap(r => r.messages);
   const kHasCall = kMessages.some(m => m.role === "assistant" && Array.isArray(m.content) && m.content.some(b => b.type === "toolCall" && b.id === probeCallId && b.name === "read" && isDeepStrictEqual(b.arguments, probeCall?.event.input)));
-  const completeProbe = expectedProbe !== undefined && Array.isArray(probeResult?.event.content) && probeResult.event.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim() === expectedProbe.trim();
+  const completeProbe = expectedProbe !== undefined && Array.isArray(probeResult?.event.content) && textOf(probeResult.event.content).trim() === expectedProbe.trim();
   const kHasProbe = Boolean(completeProbe && probeResult && kHasCall && kMessages.some(m => m.role === "toolResult" && m.toolCallId === probeCallId && m.toolName === "read" && m.isError === false && isDeepStrictEqual(m.content, probeResult.event.content)));
 
   const turnBIds = turnEntries["b"] ?? [];

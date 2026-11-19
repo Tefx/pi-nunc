@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { object, canResumeScenario, canonical, parseInput, preflight, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
-import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext } from "./budget.js";
+import { ledgerSummary, readQualifiedLedgers, resolveBatchContext, type QualifiedCall } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
 import { childEnvironment, nativeEnvironment } from "./host.js";
 export { childEnvironment } from "./host.js";
@@ -38,6 +37,35 @@ export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal
     if (signal.aborted) stop();
   });
 }
+/** Both supervisors admit a fresh segment against the same cumulative ledger. */
+export function assertDispatchQuota(input: RunInput, usage: ReturnType<typeof ledgerSummary>): void {
+  requireValue(usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+  if (input.limits.maxCalls !== null) requireValue(usage.calls < input.limits.maxCalls, "CALL_LIMIT", "Shared call ceiling exhausted; no further child/session effects");
+  if (input.limits.maxTotalTokens !== null) {
+    const smallestReservation = Math.min(...input.models.map(m => m.contextWindow + m.maxTokens));
+    requireValue(usage.chargedTokens + smallestReservation <= input.limits.maxTotalTokens, "TOKEN_LIMIT", "Shared token ceiling cannot reserve another task request");
+  }
+  if (input.limits.maxCostUsd !== null) requireValue(usage.chargedCostUsd !== null && usage.chargedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
+}
+export async function dispatchWorker(script: string, job: WorkerJob, signal: AbortSignal,
+  report: { children: ChildReceipt[]; usage: ReturnType<typeof ledgerSummary> }, readAll: () => QualifiedCall[]) {
+  signal.throwIfAborted();
+  requireValue(Date.now() < job.deadline, "TIME_LIMIT", "Run deadline reached");
+  report.usage = ledgerSummary(readAll(), job.input.limits);
+  assertDispatchQuota(job.input, report.usage);
+  const child = await launchWorker(script, job, signal);
+  report.children.push(child);
+  report.usage = ledgerSummary(readAll(), job.input.limits);
+  requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete; inspect saved state before any new run");
+  const selection = job.input.scenarios[job.scenarioIndex]!;
+  const caseRoot = job.caseRoot ?? join(job.input.target.stateRoot, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
+  const segment = JSON.parse(await readFile(join(caseRoot, job.resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
+  return { child, segment };
+}
+export function assertSegmentSettled(segment: SegmentReport, usage: ReturnType<typeof ledgerSummary>): void {
+  requireValue(usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+  requireValue(segment.status !== "STOPPED" && segment.reason !== "CLEANUP", segment.reason === "CLEANUP" ? "CLEANUP" : segment.reason ?? "WORKER", segment.diagnostic ?? "Worker stopped; inspect saved state before any new run");
+}
 export interface RunReport {
   version: 1; status: "OBSERVED" | "UNPROVEN" | "STOPPED";
   selection: RunInput; segments: SegmentReport[]; children: ChildReceipt[];
@@ -71,18 +99,12 @@ export async function execute(value: unknown, repository: string, script: string
     let failed = false;
     for (let scenarioIndex = 0; scenarioIndex < (input.observations && !input.observations.includes("continuation") ? 0 : input.scenarios.length); scenarioIndex++) {
       const selection = input.scenarios[scenarioIndex]!;
-      const caseRoot = join(root, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
       let resume = false;
       do {
-        signal.throwIfAborted(); requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
-        const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, priorLedgers: priorLedgerPaths }, signal); report.children.push(child);
-        report.usage = ledgerSummary(readAll(), input.limits);
-        requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete; inspect saved state before any new run");
-        const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
+        const { segment } = await dispatchWorker(script, { input, scenarioIndex, deadline, resume, priorLedgers: priorLedgerPaths }, signal, report, readAll);
         report.segments.push(segment);
-        requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+        assertSegmentSettled(segment, report.usage);
         const failedPlacement = segment.prerequisites.some(c => c.status !== "PROVEN");
-        requireValue(segment.status !== "STOPPED" && segment.reason !== "CLEANUP", segment.reason === "CLEANUP" ? "CLEANUP" : segment.reason ?? "WORKER", segment.diagnostic ?? "Worker stopped; inspect saved state before any new run");
         if (segment.status === "PAUSED") {
           requireValue(canResumeScenario(selection.id, resume), "RESTART", "Unexpected repeated pause");
           if (failedPlacement) { failed = true; break; }
