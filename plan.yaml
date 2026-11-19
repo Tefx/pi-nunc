@@ -9811,7 +9811,7 @@ phases:
     agent: gate-reviewer
   - id: nunc-contract-simplicity-remediation.repair-gate-findings
     name: 闭环阶段验收阻断缺陷（F1 Google 4xx 重试栅栏、F2 提交后检视异常告警持久化、F3 source-loss 离线回归容量校准）
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -9917,3 +9917,65 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-19T14:30:27.249358Z'
+    done_at: '2026-11-19T15:21:11.875379+00:00'
+    evidence: 'Artifact:
+
+      - Integrated commit: b2655bddafda4a067c317e74acf2a7a78d7724e1 (retained ref
+      refs/vectl/candidates/nunc-contract-simplicity-remediation.repair-gate-findings)
+
+      - Changed files: src/engine/pi-model.ts, src/ui/overlay.ts, tests/engine/pi-model.test.ts,
+      tests/pi/overlay.test.ts, tests/live/task-retention-branches.test.ts
+
+
+      Closure:
+
+      - F1 (A4 retry regression): Updated `transientTransportError` in `src/engine/pi-model.ts`
+      to distinguish network `host:port` / `:443` addresses from JSON-encoded or labeled
+      HTTP `4xx` status codes (`"code":400`, `HTTP:400`, `status:403`, `code:401`)
+      across both thrown-error and `stopReason: "error"` branches. Added native `googleProvider`
+      loopback regression tests in `tests/engine/pi-model.test.ts` proving 1 physical
+      request for deterministic HTTP 400 (`"Connection error"`) and quota failures,
+      and 3 requests for 429/503/interruption.
+
+      - F2 (B2 post-commit inspector warning loss): Updated `NuncOverlay.finishCommit`
+      in `src/ui/overlay.ts` so post-commit `memory.read` and `context.read` exceptions
+      combine with any prepared-cleanup `warning`, route via `this.host.onWarning?.(...)`
+      instead of `onSuccess()` -> `recover()`, and retain `this.error = warning` after
+      reentrant refresh. Added 18-case `NuncUi` `save`/`delete` x `sync`/`prepared`/`cleanup-warning`
+      x `context`/`memory`/`both` tests in `tests/pi/overlay.test.ts`.
+
+      - F3 (INV-OFFLINE-REGRESSION-GREEN): Calibrated `source-loss` / `source-unavailable`
+      `inputLimit` to `10600` (`extractionInputLimit = 9576`) in `tests/live/task-retention-branches.test.ts`,
+      yielding ~360-396+ tokens margin on both sides (`reduced ~9205 <= 9576 < full
+      ~9972` on short path / `~10014` on worktree path).
+
+
+      Verification:
+
+      - Run (worktree on b2655bd): `npm run build` -> exit 0
+
+      - Run (worktree on b2655bd): targeted 4-file regression -> 120/120 pass
+
+      - Run (worktree on b2655bd): `/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1
+      PI_TELEMETRY=0 node scripts/check.mjs all` -> exit 0 (1,044 pass, 0 fail, 2
+      optional skips; `/tmp/nunc-repair-all-final.log`; `.scratch/baseline-70dacad`
+      & `.scratch/prechange` prepared and removed cleanly)
+
+      - Run (worktree on b2655bd): `/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1
+      PI_TELEMETRY=0 HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent
+      NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test --test-concurrency=1 dist/tests/pi/larva.integration.js` -> exit
+      0 (9/9 pass; `/tmp/nunc-repair-larva-final.log`)
+
+      - Run (integrated main on b2655bd): `npm run build` -> exit 0
+
+
+      Worktree cleanup:
+
+      - Removed `.vectl/worktrees/nunc-contract-simplicity-remediation.repair-gate-findings`
+      (+1,362,076 KiB disk space reclaimed).
+
+
+      Spec link:
+
+      - /tmp/nunc-gate-report-84501.json (F1, F2, F3) & nunc-contract-simplicity-remediation.repair-gate-findings'
