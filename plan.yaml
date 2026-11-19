@@ -10020,7 +10020,7 @@ phases:
       - /tmp/nunc-gate-report-84501.json (F1, F2, F3) & nunc-contract-simplicity-remediation.repair-gate-findings'
 - id: nunc-post-remediation-closure
   name: 第二轮全量契约与精简审查闭环及实时压缩循环根因修复（Src-1..Src-3, A1–A4, B1–B3, C1–C2, D1, T1–T3）
-  status: in_progress
+  status: done
   gate: nunc-post-remediation-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-compaction-and-retention、ui-overlay-and-context-inspector、live-verification-and-supervisor-closure）及跨轨预算校准修复步骤（repair-source-branch-budget）的最终整合提交与确定性离线测试证据（npm
     run build、文档化完整离线套件运行器 node scripts/check.mjs all、node --test dist/tests/pi/larva.integration.js；受保护
     package.json 保持未改动）按 DELTA 模式复核 F1（Src-1 / INV-OFFLINE-REGRESSION-GREEN）并作唯一阶段验收判断（PHASE_GATE），确认基于提交
@@ -10473,7 +10473,7 @@ phases:
       - Worktree removed cleanly (no nested worktrees remain).'
   - id: nunc-post-remediation-closure.gate
     name: 第二轮全量契约与精简审查及实时压缩循环修复阶段整合验收（PHASE_GATE）
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"policies/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
@@ -10576,6 +10576,53 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-19T19:35:30.949309Z'
+    done_at: '2026-11-19T19:50:16.741382+00:00'
+    evidence: 'Artifact:
+
+      - Integrated product commits: 136cfb1edffa3cc4b924c29f06c98205c78fed68 (engine-compaction-and-retention),
+      ef57fc46b347c4575f48a5721d803b12e51a75e4 (ui-overlay-and-context-inspector),
+      d78b5d2bebecf830a1d74f1172d8d43ec39a1e8c (live-verification-and-supervisor-closure),
+      1da4688343948b73f1f815d710174502238643c8 (repair-source-branch-budget)
+
+      - Gate target HEAD: 73eb7208299bed80de179dbdcc0b12f455a6caab
+
+      - Gate reports: /tmp/nunc-post-remediation-gate-report-4815.json (FULL, 17/19
+      PROVEN + F1) and /tmp/nunc-post-remediation-gate-delta-report-24033.json (DELTA,
+      status: "PASS", evidence_disposition: "POSITIVE_GATE_EVIDENCE", 19/19 PROVEN,
+      0 blocking findings)
+
+      - Binding file: /tmp/nunc-post-remediation-gate-delta-binding-24033.json (`review.report.binding.v1`)
+
+
+      Verification:
+
+      - Run: `python3 ~/.pi/agent/scripts/review_report_validator.py --kind gate --binding
+      /tmp/nunc-post-remediation-gate-delta-binding-24033.json /tmp/nunc-post-remediation-gate-delta-report-24033.json`
+      -> exit 0 (`valid: true`, `binding_checked: true`, `evidence_disposition: "POSITIVE_GATE_EVIDENCE"`)
+
+      - Run (gate-reviewer on integrated HEAD 73eb720): `npm run build` -> exit 0;
+      `/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      node scripts/check.mjs all` -> exit 0 (115 test files: 1,082 pass, 0 fail, 2
+      optional external Dasein skips; source-loss full=10646 > limit=10326 >= reduced=9937,
+      source-unavailable full=10659 > limit=10326 >= reduced=9948; temporary baseline
+      worktrees removed cleanly); `dist/tests/pi/larva.integration.js` -> exit 0 (9/9
+      pass)
+
+      - Run: `git diff --exit-code 6e64c09b2fcbd0a0529a5427482128f2553b88f0 HEAD --
+      package.json package-lock.json .node-version src/pi/compat.ts tests/pi/compat.test.ts`
+      -> exit 0
+
+      - Note: `package.json` (`0.3.1`) intentionally has no `test` script (`npm test`
+      -> `Missing script: test` per W1/W-RETAINED-SCOPE); documented offline regression
+      runner `node scripts/check.mjs all` passed completely. Out-of-scope `scripts/observe-independent-cases.mjs
+      --quota` retains legacy 2-child assertion (not invoked by `tests/live/host.test.ts`
+      or `scripts/check.mjs all`).
+
+
+      Spec link:
+
+      - plan.yaml#nunc-post-remediation-closure (16/16 ledger & Src-1..Src-3 obligations
+      + 3 global invariants)'
   - id: nunc-post-remediation-closure.repair-source-branch-budget
     name: 校准整合后 Src-1 提取提示词增长下的受控 source-loss / source-unavailable 测试输入预算边界（F1 / Src-1
       / INV-OFFLINE-REGRESSION-GREEN）
