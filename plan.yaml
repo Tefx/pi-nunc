@@ -9683,7 +9683,7 @@ phases:
       Ledger (A1–A4, B1–B3, C1–C2, D1–D2, T1–T7)'
   - id: nunc-contract-simplicity-remediation.gate
     name: 全仓 Contract & Simplicity 审查收敛账本修复阶段整合验收
-    status: claimed
+    status: pending
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\"\
       , \"package-lock.json\", \".node-version\", \"tsconfig.json\"]\n  blocked_paths:\
@@ -9798,5 +9798,3 @@ phases:
     depends_on:
     - nunc-contract-simplicity-remediation.implement-remediation
     agent: gate-reviewer
-    claimed_by: gate-reviewer
-    claimed_at: '2026-11-19T11:18:37.446963Z'
