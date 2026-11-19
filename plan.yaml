@@ -10242,7 +10242,7 @@ phases:
       - Worktree removed cleanly.'
   - id: nunc-post-remediation-closure.ui-overlay-and-context-inspector
     name: TUI 浮层异常安全、复合 SGR 背景恢复、矮终端错误预算与上下文检视器闭环（B1, B2-ui, B3, T1, T2-ui）
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/ui/overlay.ts\", \"src/ui/index.ts\", \"src/ui/context-tree.ts\"\
       , \"src/ui/status.ts\", \"tests/pi/overlay.test.ts\"]\n  blocked_paths: [\"\
@@ -10303,6 +10303,48 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-19T17:54:29.498512Z'
+    done_at: '2026-11-19T18:19:27.943237+00:00'
+    evidence: 'Artifact:
+
+      - Rebased integrated commit: ef57fc46b347c4575f48a5721d803b12e51a75e4 (retained
+      original candidate ref refs/vectl/candidates/nunc-post-remediation-closure.ui-overlay-and-context-inspector
+      -> 6cc5ff99c0f01bb4493d70a9beea3fc476485279)
+
+      - Changed files (5 files strictly in allowed UI/overlay test paths): src/ui/overlay.ts,
+      src/ui/index.ts, src/ui/context-tree.ts, src/ui/status.ts, tests/pi/overlay.test.ts
+
+
+      Closure:
+
+      - B1: Wrapped `memory.read` and sync `replace`/`delete`/`patch` calls inside
+      `save()`, `deleteSelected()`, and `commitPrepared()` in `try/catch`, routing
+      via `this.fail(...)`, preserving untrimmed drafts, and returning failed deletes
+      to `{ kind: "browse" }`.
+
+      - B2-ui: Displayed `payload.transform` in `payloadPreview()` (`src/ui/context-tree.ts`).
+
+      - B3: Updated `ANSI_SGR_RE`/`surface()` to restore `bg` after simple and compound
+      SGR resets while skipping extended-color parameter payloads (`38`/`48`/`58`);
+      applied `this.border` independently on `borderRow` left/right edges; normalized
+      standalone `\r`; reserved short-terminal `this.error` line budget before `listHeight`/summary
+      slicing; rewrote raw ANSI assertions in `tests/pi/overlay.test.ts`.
+
+      - T1, T2-ui: Captured `editor.getExpandedText()` clean baseline in `enterEdit`;
+      preserved `preferredSlot` on empty search results and removed redundant `rebuildList()`
+      inside `renderBrowse()`; guarded `openOverlay` `finally` `this.refresh(ctx)`
+      with `this.lastCtx === ctx`; aligned `slots === undefined` and 0-slot active
+      `mechanicalFallback` memory-index reporting in `context-tree.ts` and `status.ts`.
+
+
+      Verification:
+
+      - Run (worktree on 6cc5ff9): `npm run build` -> exit 0; targeted 4-file UI suite
+      (`overlay.test.js`, `context-view.test.js`, `ui-panel.test.js`, `footer.test.js`)
+      -> 60/60 pass.
+
+      - Run (integrated main d78b5d2): `npm run build` -> exit 0.
+
+      - Worktree removed cleanly.'
   - id: nunc-post-remediation-closure.live-verification-and-supervisor-closure
     name: Live 验证监督器配额对称、延迟边界放置、引导与账本孤立终态闭环（C1, C2, T3）
     status: claimed
