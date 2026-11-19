@@ -21,9 +21,10 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const selection: Selection = { id: scoped ? "g3" : "g4", variant: variant!, config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
     nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40, ...(sourceLoss ? { toolResults: "auto" as const } : {}) }, ...(sourceLoss ? { budget: {
-      // Full extraction is about 9972 tokens and reduced about 9195 on short paths.
-      // After the 1024 safety reserve, 9576 leaves margin on both sides of the boundary.
-      inputLimit: 10600 } } : {}) },
+      // Integrated full/reduced estimates are 10688/9958 (loss), 10701/9969 (unavailable).
+      // After the 1024 safety reserve, 10326 is near both midpoints, with >350 tokens
+      // on either side; a checkout path ~70 characters shorter shifts estimates by ~18.
+      inputLimit: 11350 } } : {}) },
     retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } };
   const scenario = (await loadScenario(repository, selection)).input;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
