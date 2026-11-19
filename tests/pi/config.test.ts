@@ -67,13 +67,13 @@ test("retention budget formula computes keepTarget = floor(q * (available - memo
   assert.equal(planDefault.memoryLimit, planExplicit.memoryLimit);
 
   // Formula check
-  assert.equal(planDefault.keepTarget, 6000);
+  assert.equal(planDefault.keepTarget, hostSettings.keepRecentTokens);
   assert.equal(planExplicit.keepTarget, Math.floor(0.67 * (planExplicit.available - planExplicit.memoryLimit)));
   assert(planDefault.keepTarget < planExplicit.keepTarget);
 });
 
 test("proportional default target follows H, honors host minimum, and caps large windows", () => {
-  for (const [window, reserve, recent, expected] of [[272000, 16384, 20000, 63904], [1000000, 16384, 20000, 100000], [60000, 36000, 7000, 7000], [400000, 16384, 20000, 95904]]) {
+  for (const [window, reserve, recent, expected] of [[272000, 16384, 20000, 20000], [1000000, 16384, 20000, 20000], [60000, 36000, 7000, 7000], [400000, 16384, 8000, 8000], [272000, 16384, 1, 32768], [60000, 36000, 1, 3600]]) {
     const m = { ...model, contextWindow: window! };
     const settings = { reserveTokens: reserve!, keepRecentTokens: recent! };
     assert.equal(engineConfig({}, m, settings).keepRecentTargetTokens, expected);
@@ -167,11 +167,11 @@ test("chooseCut with legal cuts preserves full tool/message units and chooses mi
   assert.equal(cutMidLow.cut, cutMidHigh.cut);
   assert.equal(cutMidLow.keptTokens, cutMidHigh.keptTokens);
 
-  // Case 3: An unfinished oversized turn keeps the preceding completed response
-  // when both fit, even though the current user alone would be closer to target.
+  // Case 3: An oversized unfinished turn releases turn alignment so the closest
+  // legal suffix can retire the preceding completed response.
   const tinyTarget = 100;
   const cutOver = chooseCut(active, cuts, fixedTokens, memoryLimit, tinyTarget, trigger, cfgDefault);
-  assert.equal(cutOver.cut, 4); // preceding completed response and current user
+  assert.equal(cutOver.cut, 5); // current user is the smallest indivisible suffix
   assert(cutOver.keptTokens > tinyTarget);
 });
 

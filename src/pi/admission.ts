@@ -360,7 +360,7 @@ export class Admission {
         : undefined;
       rMessages = carrier ? conversationMessages.filter(m => m !== carrier) : conversationMessages;
       currentMContent = hasM ? renderMemoryWithFallback(binding.memory.slots, binding.mechanicalFallback) : "";
-      currentMTokens = hasM ? (binding.mechanicalFallback ? messageTokens({ role: "user", content: currentMContent, timestamp: 0 }, imageTokens) : memoryTokens(binding.memory.slots, imageTokens)) : 0;
+      currentMTokens = memoryTokens(binding.memory.slots, imageTokens, binding.mechanicalFallback);
     }
 
     if (!validAssociation) {
@@ -781,7 +781,7 @@ export class Admission {
         if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
         const layout = { ctx, model, context: effectiveContext, payloadGrowth, initialMetadataTokens, ...(projection ? { projection } : {}) };
         try {
-          authorizePayload({ model: selected, delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, enforceInputLimit, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main", allowGoogleMaintenanceJsonSchema: kind === "maintenance" });
+          authorizePayload({ model: selected, uncapped: omitsRouteOutputCap(selected, ctx.modelRegistry), delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, enforceInputLimit, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main", allowGoogleMaintenanceJsonSchema: kind === "maintenance" });
           // Authorization must see hook mutations before any output-only mitigation.
           let sent = final;
           if (kind === "main" && clampConfig && clampInput && !omitsRouteOutputCap(model, ctx.modelRegistry) && cap.kind === "value" && !hasCoupledThinkingBudget(after)) {

@@ -834,6 +834,13 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   return { applied, skipped };
 }
 
+/** Keep only decisions whose target and full-source dependencies survive this suffix. */
+export function retainedToolResultCleanup(entries: readonly ActiveEntry[], decisions: readonly ToolResultDecision[]): ToolResultDecision[] {
+  const retained = new Set(entries.map(entry => entry.entryId));
+  return decisions.filter(decision => retained.has(decision.entryId) &&
+    !decision.sourceRefs?.some(ref => !retained.has(ref.entryId)));
+}
+
 /** Pure helper to project active entries with applied tool-result cleanups. Returns a new detached copy. */
 export function applyToolResultCleanup(entries: ActiveEntry[], decisions: ToolResultDecision[]): ActiveEntry[] {
   if (decisions.length === 0) return structuredClone(entries);

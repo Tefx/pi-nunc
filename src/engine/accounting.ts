@@ -1,5 +1,6 @@
 import { getSystemMessageText, normalizeContext, type Api, type Context, type ImageContent, type Message, type Model, type SystemMessage, type TextContent, type TranscriptContext, type Usage } from "@earendil-works/pi-ai";
-import type { ActiveEntry, EngineConfig, FixedContext, PlanningEstimate, RequestBudget, Slot, UsageObservation } from "./types.js";
+import type { ActiveEntry, EngineConfig, FixedContext, PlanningEstimate, RequestBudget, Slot, UsageObservation, MechanicalFallbackInfo, ToolResultDecision } from "./types.js";
+import { applyToolResultCleanup } from "./cleanup.js";
 import { memoryMessage } from "./memory.js";
 import { integer, record, requireThat } from "./validation.js";
 
@@ -219,9 +220,9 @@ export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEn
 }
 export function memoryTarget(config: { memory?: { targetTokens?: number } }): number { return config.memory?.targetTokens ?? 8192; }
 export function hardMemoryLimit(config: { memory?: { hardMaxTokens?: number } }): number | null { return config.memory?.hardMaxTokens ?? null; }
-export function memoryTokens(slots: Slot[], imageTokens?: number): number {
-  if (slots.length === 0) return 0;
-  return messageTokens(memoryMessage(slots), imageTokens);
+export function memoryTokens(slots: Slot[], imageTokens?: number, fallback?: MechanicalFallbackInfo): number {
+  if (slots.length === 0 && !fallback) return 0;
+  return messageTokens(memoryMessage(slots, fallback), imageTokens);
 }
 /** Minimum positive output accepted by the native serializer. */
 export function outputFloor(model: Pick<Model<Api>, "api">): number {
@@ -288,11 +289,24 @@ export function mainAdmissionLimit(model: Model<Api>, budget: RequestBudget): nu
   return limit;
 }
 export const retentionRounding = "nearest-feasible" as const;
-export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig, model?: Model<Api>): { cut: number; keptTokens: number } {
+export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig, model?: Model<Api>, priorCleanup: ToolResultDecision[] = []): { cut: number; keptTokens: number } {
   const sizes = active.map(e => model ? historyPlanningEstimate([e], model, config.imageTokens).tokens : e.messages.reduce((sum, m) => sum + messageTokens(m, config.imageTokens), 0));
   const suffix: number[] = new Array(sizes.length + 1).fill(0);
   for (let i = sizes.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + sizes[i]!;
-  const feasible = cuts.map(cut => ({ cut, keptTokens: suffix[cut]! })).filter(c => fixedTokens + memoryLimit + c.keptTokens + config.growthTokens <= trigger);
+  // Measure each saved replacement once. Do not clone every raw suffix per cut.
+  const indices = new Map(active.map((entry, index) => [entry.entryId, index]));
+  const savings = priorCleanup.flatMap(decision => {
+    const index = indices.get(decision.entryId);
+    if (index === undefined) return [];
+    const cleaned = applyToolResultCleanup([active[index]!], [decision]);
+    const tokens = model ? historyPlanningEstimate(cleaned, model, config.imageTokens).tokens
+      : cleaned[0]!.messages.reduce((n, message) => n + messageTokens(message, config.imageTokens), 0);
+    const through = Math.min(index, ...(decision.sourceRefs ?? []).map(ref => indices.get(ref.entryId) ?? -1));
+    return [{ through, tokens: sizes[index]! - tokens }];
+  });
+  const atCut = (cut: number) => ({ cut, keptTokens: suffix[cut]! - savings.reduce((sum, saved) =>
+    sum + (saved.through >= cut ? saved.tokens : 0), 0) });
+  const feasible = cuts.map(atCut).filter(c => fixedTokens + memoryLimit + c.keptTokens + config.growthTokens <= trigger);
   // A stale historical F cannot veto an otherwise valid maintenance extraction.
   // The complete extraction is measured separately before transport; main admission
   // measures the next real provider Context after Pi applies its tool loadout.
@@ -301,16 +315,20 @@ export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: nu
     message.role === "assistant" && message.stopReason === "stop" &&
       (!Array.isArray(message.content) || !message.content.some(block => block.type === "toolCall")));
   const turnUnfinished = lastUserIndex > 0 && !active.slice(lastUserIndex + 1).some(assistantStop);
-  const alignedFeasible = turnUnfinished ? feasible.filter(candidate => candidate.cut <= lastUserIndex) : [];
+  const alignedFeasible = turnUnfinished && atCut(lastUserIndex).keptTokens <= keepTarget ? feasible.filter(candidate => candidate.cut <= lastUserIndex) : [];
   const prevCompletedIndex = turnUnfinished ? active.slice(0, lastUserIndex).findLastIndex(assistantStop) : -1;
-  // Preserve a completed response as a structural example only within feasible
-  // headroom, when the current turn is already oversized or the increment is small.
+  // A small preceding completed response may accompany an in-target current turn.
   const completedFeasible = prevCompletedIndex > 0 &&
-    (suffix[lastUserIndex]! > keepTarget || suffix[prevCompletedIndex]! - suffix[lastUserIndex]! <= memoryLimit)
+    atCut(prevCompletedIndex).keptTokens - atCut(lastUserIndex).keptTokens <= memoryLimit
     ? alignedFeasible.filter(candidate => candidate.cut <= prevCompletedIndex) : [];
   const activeFeasible = completedFeasible.length ? completedFeasible : alignedFeasible.length ? alignedFeasible : feasible;
-  const candidates = activeFeasible.length ? activeFeasible : cuts.map(cut => ({ cut, keptTokens: suffix[cut]! }));
+  const candidates = activeFeasible.length ? activeFeasible : cuts.map(atCut);
   requireThat(candidates.length > 0, "CAPACITY", "No legal nonempty B/K boundary");
+  // Expiring source-dependent cleanup can make suffix costs non-monotone.
+  if (priorCleanup.length) return candidates.reduce((best, candidate) => {
+    const distance = Math.abs(candidate.keptTokens - keepTarget), previous = Math.abs(best.keptTokens - keepTarget);
+    return distance < previous || distance === previous && candidate.keptTokens > best.keptTokens ? candidate : best;
+  });
   const lowerIndex = candidates.findIndex(c => c.keptTokens <= keepTarget);
   if (lowerIndex < 0) return candidates[candidates.length - 1]!;
   const lower = candidates[lowerIndex]!;

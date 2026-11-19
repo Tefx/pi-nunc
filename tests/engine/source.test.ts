@@ -64,18 +64,18 @@ test("an unfinished later turn retains its user when a turn-aligned boundary is 
     user("current", "current requirements".repeat(100)),
     assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]), tool("result", "x", "observation")];
   const lastUserIndex = 2;
-  const keepTarget = active.slice(lastUserIndex + 1).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
+  const keepTarget = active.slice(lastUserIndex).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
   const trigger = active.flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0) + source.config.growthTokens;
-  assert(keepTarget < active.slice(lastUserIndex).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0));
-  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, lastUserIndex - 1);
-  const infeasibleTrigger = keepTarget + source.config.growthTokens;
-  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, infeasibleTrigger, source.config).cut, lastUserIndex + 1);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, lastUserIndex);
+  const smallerTarget = active.slice(lastUserIndex + 1).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
+  const infeasibleTrigger = smallerTarget + source.config.growthTokens;
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, smallerTarget, infeasibleTrigger, source.config).cut, lastUserIndex + 1);
   active.push(assistant("final", [{ type: "text", text: "completed" }]));
   const completedTarget = active.slice(lastUserIndex + 1).flatMap(e => e.messages).reduce((sum, message) => sum + messageTokens(message), 0);
   assert.equal(chooseCut(active, legalCuts(active), 0, 0, completedTarget, trigger + completedTarget, source.config).cut, lastUserIndex + 1);
 });
 
-test("an oversized unfinished turn retains its preceding completed response only within feasible headroom", async () => {
+test("an oversized unfinished turn releases alignment while an in-target turn may retain a small preceding response", async () => {
   const source = await input();
   const active = [user("previous", "previous request"), assistant("completed", [{ type: "text", text: "completed response" }]),
     user("current", "current requirements".repeat(100)),
@@ -84,8 +84,8 @@ test("an oversized unfinished turn retains its preceding completed response only
   const keepTarget = size(3);
   const trigger = size(1) + source.config.growthTokens;
   assert(size(2) > keepTarget);
-  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, 1);
-  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger - 1, source.config).cut, 2);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger, source.config).cut, 3);
+  assert.equal(chooseCut(active, legalCuts(active), 0, 0, keepTarget, trigger - 1, source.config).cut, 3);
   const smallIncrement = size(1) - size(2);
   const roomyTarget = size(2);
   assert.equal(chooseCut(active, legalCuts(active), 0, smallIncrement, roomyTarget, trigger + smallIncrement, source.config).cut, 1);
@@ -120,6 +120,7 @@ test("actual oversized extraction can reduce tool text once with exact omission 
     assert(message.role === "toolResult"); assert.equal(message.toolCallId, "x");
     const text = message.content[0]!; assert(text.type === "text");
     assert(text.text.startsWith("FIRST")); assert(text.text.endsWith("LAST")); assert(text.text.length < giant.length);
+    assert(text.text.includes(`\n[Nunc omitted ${giant.length - 400} middle code points from this maintenance request for capacity; the main agent received this tool output in the live turn, while the omitted middle was not shown to maintenance]\n`));
     assert.deepEqual(records.find(r => r.entryId === "call")!.messages, original[1]!.messages.map(semanticEvidence));
     assert.deepEqual(records.find(r => r.entryId === "latest")!.messages, original[3]!.messages.map(semanticEvidence));
     return answer(noChange, request.model);

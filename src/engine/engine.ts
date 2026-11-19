@@ -4,7 +4,7 @@ import { isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai"
 import { maintenanceFeedback, sameRejectedRequest } from "./calibration.js";
 import type { Complete, MaintenanceCandidate, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
-import { decideToolResultCleanup, applyToolResultCleanup } from "./cleanup.js";
+import { decideToolResultCleanup, applyToolResultCleanup, retainedToolResultCleanup } from "./cleanup.js";
 import { mainAdmissionLimit, chooseCut, extractionOutputPlan, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, requestTokens, unknownUsage } from "./accounting.js";
 import { extractionContext, reduceToolBodies, resolveExtractionRequest } from "./request.js";
 import { EngineError, freezeCopy, integer, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
@@ -62,11 +62,16 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       requireThat(Array.isArray(eligible) && eligible.every(id => typeof id === "string" && frozen.active.some(e => e.entryId === id)) && new Set(eligible).size === eligible.length, "INPUT", "Invalid host usage-anchor restriction");
     }
     const config = frozen.config;
+    const priorCleanup = config.toolResultCleanup === false ? [] : frozen.priorCleanup ?? [];
+    const effectiveSuffix = (cut: number) => {
+      const kept = frozen.active.slice(cut);
+      return applyToolResultCleanup(kept, retainedToolResultCleanup(kept, priorCleanup));
+    };
     for (const e of frozen.active) for (const m of e.messages) if (typeof m.content !== "string" && m.content.some(b => b.type === "image")) {
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
     }
     const executionPlan = memoryPlan(frozen.fixed, frozen.model, config, frozen.memory.slots,
-      historyPlanningEstimate(frozen.active, frozen.model, config.imageTokens).tokens);
+      historyPlanningEstimate(effectiveSuffix(0), frozen.model, config.imageTokens).tokens);
     const target = frozen.target;
     if (target) {
       requireThat(record(target) && record(target.model) && nonempty(target.model.id) && nonempty(target.model.provider) &&
@@ -77,7 +82,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     }
     const planningModel = target?.model ?? frozen.model, planningConfig = target?.config ?? config;
     const retentionPlan = target ? memoryPlan(frozen.fixed, planningModel, planningConfig, frozen.memory.slots,
-      historyPlanningEstimate(frozen.active, planningModel, planningConfig.imageTokens).tokens) : executionPlan;
+      historyPlanningEstimate(effectiveSuffix(0), planningModel, planningConfig.imageTokens).tokens) : executionPlan;
     const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens } = executionPlan;
     const { memoryLimit, memoryReserveTokens, organizingTarget, keepTarget } = retentionPlan;
     if (target) {
@@ -86,7 +91,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
         growthReserve: target.config.growthTokens, estimatedInputTokens: null, fits: false };
       // No post-response recut. Reject a structurally impossible suffix before paying for extraction.
       cuts = cuts.filter(cut => {
-        const suffix = frozen.active.slice(cut);
+        const suffix = effectiveSuffix(cut);
         const mediaFits = target.model.input.includes("image") || !suffix.some(e => e.messages.some(m =>
           Array.isArray(m.content) && m.content.some(b => b.type === "image")));
         return mediaFits && mainPlanningEstimate(frozen.fixed, [], suffix, target.model, target.config.imageTokens,
@@ -95,7 +100,13 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       requireThat(cuts.length > 0, "CAPACITY", "No legal retained suffix fits the target projection and growth reserve");
     }
     const { cut } = chooseCut(frozen.active, cuts, retentionPlan.fixedTokens, memoryReserveTokens, keepTarget,
-      retentionPlan.effectiveTrigger, planningConfig, planningModel);
+      retentionPlan.effectiveTrigger, planningConfig, planningModel, priorCleanup);
+    const survivingCleanup = retainedToolResultCleanup(frozen.active.slice(cut), priorCleanup);
+    // Existing cleaned targets cannot supply full-source support, and existing
+    // keepers must stay intact for all decisions carried into the next checkpoint.
+    const protectedRefs = new Set(survivingCleanup.flatMap(decision => [decision, ...(decision.sourceRefs ?? [])])
+      .map(ref => `${ref.entryId}:${ref.messageIndex}`));
+    const cleanupScope = frozen.cleanupCandidateScope?.filter(ref => !protectedRefs.has(`${ref.entryId}:${ref.messageIndex}`));
     if (!target) {
       const kept = structuredClone(frozen.active.slice(cut));
       fallbackCandidate = {
@@ -103,14 +114,15 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
         firstKeptEntryId: kept[0]!.entryId, kept,
         retiredEntryIds: frozen.active.slice(0, cut).map(e => e.entryId),
         toolResultCleanup: decideToolResultCleanup({
-          active: frozen.active, initialMemory: frozen.memory, finalMemory: frozen.memory,
-          candidateScope: frozen.cleanupCandidateScope, retainedEntries: kept, omissions: [],
+          active: applyToolResultCleanup(frozen.active, survivingCleanup), initialMemory: frozen.memory, finalMemory: frozen.memory,
+          candidateScope: cleanupScope, retainedEntries: kept, omissions: [],
           disabled: config.toolResultCleanup === false, mechanicalWhenMemoryUnchanged: true,
         }),
       };
     }
-    const keptTokens = historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens).tokens;
-    const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
+    if (fallbackCandidate?.toolResultCleanup) fallbackCandidate.toolResultCleanup.applied.unshift(...retainedToolResultCleanup(fallbackCandidate.kept, priorCleanup));
+    const keptTokens = historyPlanningEstimate(effectiveSuffix(cut), frozen.model, config.imageTokens).tokens;
+    const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, effectiveSuffix(0), frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;
     const mainBeforeVisibleTokens = beforePlan.visibleTokens;
     let selectedSource = frozen.active;
@@ -132,7 +144,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
       effectiveTrigger, memoryLimit, memoryReserveTokens, memoryHardLimit: hardMemoryLimit(config), memoryTargetExceeded: false, keepTarget, keptTokens,
-      planning: { before: beforePlan, kept: historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens), after: null },
+      planning: { before: beforePlan, kept: historyPlanningEstimate(effectiveSuffix(cut), frozen.model, config.imageTokens), after: null },
       fullExtractionTokens, extractionTokens: fullExtractionTokens,
       calibratedUndercountTokens, extractionPlanningTokens: fullExtractionTokens + calibratedUndercountTokens,
       extractionUncertainties: calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [],
@@ -240,8 +252,8 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     const kept = frozen.active.slice(cut);
 
     const cleanupResult = decideToolResultCleanup({
-      active: frozen.active,
-      candidateScope: includeCleanupCandidates ? frozen.cleanupCandidateScope : [],
+      active: applyToolResultCleanup(frozen.active, survivingCleanup),
+      candidateScope: includeCleanupCandidates ? cleanupScope : [],
       retainedEntries: kept,
       initialMemory: frozen.memory,
       finalMemory: applied.memory,
@@ -252,6 +264,14 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       disabled: config.toolResultCleanup === false,
       mechanicalWhenMemoryUnchanged: true,
     });
+    const cleanedSources = new Set(survivingCleanup.map(ref => `${ref.entryId}:${ref.messageIndex}`));
+    cleanupResult.applied = cleanupResult.applied.filter(decision => {
+      if (!decision.sourceRefs?.some(ref => cleanedSources.has(`${ref.entryId}:${ref.messageIndex}`))) return true;
+      cleanupResult.skipped.push({ entryId: decision.entryId, messageIndex: decision.messageIndex, action: decision.action,
+        reason: "missing_source_dependency", details: "Saved cleanup source is not a full original copy" });
+      return false;
+    });
+    cleanupResult.applied.unshift(...survivingCleanup);
     observations.toolResultCleanup = cleanupResult;
 
     const effectiveKept = applyToolResultCleanup(kept, cleanupResult.applied);

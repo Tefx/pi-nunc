@@ -105,7 +105,7 @@ Context 与 Slots 使用一致的带版本 view。默认显示当前投影的 F/
 
 消息数与内容块数分别统计，例如 `26 messages / 41 blocks`，不将 slot、消息、工具定义混成一个 block 数。工具调用和结果按实际关联展示，不移动、复制或隐藏真实请求中的关联单元。用户可查看长正文；不为浏览打开已退役历史或外部日志附件。
 
-图片块显示与请求预算一致的规划估算：显式 `budget.imageTokens` 优先，否则使用 Pi 图片启发值（Pi 0.99.0 当前为每张 1200 tokens），另计内容块开销。缺少配置不再显示未知；有数值仅代表可估算，不代表精确计费或 token 上界。未知内容类型仍保留未知标记。
+图片块显示与请求预算一致的规划估算：显式 `budget.imageTokens` 优先，否则使用 Pi 图片启发值（Pi 1.4.0 当前为每张 1372 tokens），另计内容块开销。缺少配置不再显示未知；有数值仅代表可估算，不代表精确计费或 token 上界。未知内容类型仍保留未知标记。
 
 ### 4.2 三种观察范围
 
@@ -123,7 +123,7 @@ Context 根级另有可浏览的 recent Diagnostics 节点，与文字报告共�
 
 遵守 [ENGINE.md](ENGINE.md) 的当前口径：
 
-- 分项使用 `pi-heuristic`：Pi `estimateTextTokens` 的 UTF-16 字符/4 估算，加现有 framing 与已配置的图片估算。它不是 tokenizer 或硬上界；不恢复 `utf8-upper-estimate-v1`。
+- 分项使用 `pi-heuristic`：Pi `estimateTextTokens` 的 UTF-16 字符/3.5 估算，加现有 framing 与已配置的图片估算。它不是 tokenizer 或硬上界；不恢复 `utf8-upper-estimate-v1`。
 - M 与维护/候选使用当前 carrier 计量。主请求总量在原有模型、有效 F、tools 和已交付 R 仍适用时标为 `pi-usage-backed`；M 的提交（人工或模型）不再全量清空 receipt，而是按保守公式保留旧 M 实际贡献并计入当前完整 M 估算。
 - 分项新估算的总和与 usage-backed 总量可能不同，分别标注，不按比例伪造逐块实测。请求/消息包装及不可归属的开销单列，避免重复计算 F/M envelope。
 - 图片无可用估算时显示 `unknown`，总量说明不完整；浏览未知数据不取消发送时的媒体/容量保护。
@@ -209,5 +209,5 @@ UI 的只读观察不应阻止合法调用，未知数据留空并标注。保�
 ## 8. 依据
 
 - 当前产品：`src/index.ts` 的命令与维护生命周期，`src/pi/projection.ts` 的 active-path/M 投影，`src/pi/admission.ts` / `payload.ts` 的原生组合观察，以及 `src/engine/{types,memory,accounting}.ts`。
-- 支持目标：锁定 Pi/pi-ai 0.99.0 的公开 Extension API、`appendEntry()`、`context`、原生 compaction 事件及 TUI 组件。已核对 `compact()` 的先 abort/准备失败边界。安装目录的文档若与锁定源码不同，以所选公开类型和实际源码为准。
+- 支持目标：锁定 Pi/pi-ai 1.4.0 (`^1.0.3`) 的公开 Extension API、`appendEntry()`、`context`、原生 compaction 事件及 TUI 组件。已核对 `compact()` 的先 abort/准备失败边界。安装目录的文档若与锁定源码不同，以所选公开类型和实际源码为准。
 - 只读风格参考：`/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts`，`/Users/tefx/dotfiles/agent/pi/extensions/conversation-md-export/index.ts`，`/Users/tefx/dotfiles/agent/pi/extensions/sticky-reader/index.ts`。这些路径记录设计来源，不是构建依赖、写入目标或新的兼容承诺。

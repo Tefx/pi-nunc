@@ -13,7 +13,7 @@ test("low-water maintenance rolls actual history rather than the unused large-mo
   const before = structuredClone(s.active);
   const result = await maintain(s, responder());
   assert(result.ok, result.ok ? "" : result.message);
-  assert(result.candidate.kept.length >= 18 && result.candidate.kept.length <= 22);
+  assert(result.candidate.kept.length >= 7 && result.candidate.kept.length <= 9);
   assert.deepEqual(result.candidate.kept, before.slice(result.candidate.retiredEntryIds.length));
   assert.deepEqual(s.active, before);
   assert.equal(result.observations.requests, 1);
@@ -24,7 +24,7 @@ test("default large-window K target is bounded while explicit fractional and tar
   const s = await input(); s.model.contextWindow = 1048576;
   const host = { reserveTokens: 16384, keepRecentTokens: 20000 };
   const defaults = memoryPlan(s.fixed, s.model, engineConfig({}, s.model, host), [], 800000);
-  assert.equal(defaults.keepTarget, 100000);
+  assert.equal(defaults.keepTarget, host.keepRecentTokens);
   const explicit = engineConfig(parseConfig({ rolling: { keepRecentFraction: 0.5 } }), s.model, host);
   assert.equal(memoryPlan(s.fixed, s.model, explicit, [], 800000).keepTarget, 400000);
   const custom = engineConfig(parseConfig({ rolling: { targetTokens: 64000 } }), s.model, host);

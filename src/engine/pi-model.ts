@@ -71,7 +71,7 @@ function transientTransportError(message: string): boolean {
     // Adjacent host:port (including IPv6 and bare :443) is a network address.
     // JSON keys end in a quote; explicit HTTP/status/code labels remain statuses.
     const address = /(?<!["'])([\w.[\]:-]*):$/.exec(message.slice(0, match.index));
-    return !address || /^(?:http|status|code)$/i.test(address[1]!);
+    return !address || /^(?:http|status|code|status_?code|error_?code)$/i.test(address[1]!);
   });
   if (terminalStatus || /Nunc local|context[_ ]length|context window|overflow|malformed|invalid json|quota|billing|usage.limit|out of budget|available balance|cancel|abort/i.test(message)) return false;
   return /\b(?:429|5\d{2})\b|rate.?limit|too many requests|stream ended before (?:a terminal response event|message_stop)|stream (?:was interrupted|disconnected before completion)|terminated|\bECONN(?:REFUSED|RESET)\b|connection.?(?:error|lost|refused|reset|closed)|network.?error|fetch failed|socket hang up|other side closed|upstream_stream_read_error/i.test(message);

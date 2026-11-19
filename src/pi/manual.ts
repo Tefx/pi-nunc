@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { FixedContext, MechanicalFallbackInfo, Memory, Slot, SlotProvenance, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { decideToolResultCleanup, hardMemoryLimit, memoryTarget, memoryTokens } from "../engine/index.js";
 import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
-import { readConfig, type HostCompactionSettings } from "./config.js";
+import { readConfig, type NuncConfig, type HostCompactionSettings } from "./config.js";
 import { MANUAL_MEMORY_TYPE, deriveSlotProvenance, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions } from "./projection.js";
 
 export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed" | "cancelled";
@@ -60,6 +60,7 @@ export interface MemoryFreeze extends MemorySurface {
 
 export function createMemorySurface(options: {
   pi: ExtensionAPI;
+  config?: (ctx: ExtensionContext) => NuncConfig;
   fixed?: (ctx: ExtensionContext) => FixedContext;
   settings?: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
   cleanup?: (ctx: ExtensionContext, memory: Memory, active: ReturnType<typeof project>["active"], saved: ToolResultDecision[]) => { enabled: boolean; scope: ToolResultRef[] };
@@ -353,7 +354,7 @@ function sessionUnconfirmed(manager: SessionHandle): boolean {
 function measureBudget(ctx: ExtensionContext, options: Parameters<typeof createMemorySurface>[0], slots: Slot[]): MemoryBudgetView {
   const tokens = memoryTokens(slots);
   try {
-    const config = readConfig(options.pi.getFlag("nunc-config"), ctx.cwd).config;
+    const config = options.config?.(ctx) ?? readConfig(options.pi.getFlag("nunc-config"), ctx.cwd).config;
     const target = memoryTarget(config), hardLimit = hardMemoryLimit(config);
     const limit = Math.min(target, hardLimit ?? Infinity);
     const used = memoryTokens(slots, config.budget?.imageTokens);

@@ -35,6 +35,7 @@ for (const failure of [
   { stopReason: "error", errorMessage: "400 server error: input overflow" },
   ...['{"error":{"code":400,"message":"Connection error","status":"INVALID_ARGUMENT"}}',
     "HTTP:400 Connection error", "status:403 Connection error", "code:401 Connection error",
+    ...["statusCode", "status_code", "errorCode", "error_code"].map(label => `${label}:400 Connection error`),
     "Nunc local Connection error", "billing Connection error"].map(errorMessage => ({ stopReason: "error", errorMessage })),
   { stopReason: "error", errorMessage: "429 insufficient_quota" },
   { stopReason: "aborted", errorMessage: "Connection error" },

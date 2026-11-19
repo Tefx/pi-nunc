@@ -1,8 +1,7 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceCandidate, MaintenanceResult, MechanicalFallbackInfo, Memory, PlanningEstimate, Slot, SlotProvenance } from "../engine/index.js";
-import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, messageTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
-import { renderMemoryWithFallback } from "../engine/memory.js";
+import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, messageTokens, mainPlanningEstimate, messagePlanningEstimate, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
@@ -464,7 +463,7 @@ function payloadView(observation: PayloadObservation | undefined, growth: Admiss
   if (!growth) return base;
   base.chargedGrowthTokens = growth.chargedTokens;
   if (growth.append) {
-    base.transform = "last-user-text-append";
+    base.transform ??= "last-user-text-append";
     if (growth.addedTokens !== undefined) base.addedTokens = growth.addedTokens;
     if (growth.addedText !== undefined) base.addedText = growth.addedText;
     const overhead = growth.chargedTokens - (growth.addedTokens ?? 0);
@@ -502,7 +501,7 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
 function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>, slotProvenance?: Record<string, SlotProvenance>, mechanicalFallback?: MechanicalFallbackInfo): ContextLayout {
   const inspected = inspectEntries(active, imageTokens, model);
   const tools = toolLayer(fixed.tools, fixed.toolState === "partial");
-  const mTokens = mechanicalFallback ? messageTokens({ role: "user", content: renderMemoryWithFallback(memory.slots, mechanicalFallback), timestamp: 0 }, imageTokens) : memoryTokens(memory.slots, imageTokens);
+  const mTokens = memoryTokens(memory.slots, imageTokens, mechanicalFallback);
   const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0,
     ...(slotProvenance ? { slotProvenance: structuredClone(slotProvenance) } : {}) };
   const packagingTokens = 64 + extraInputTokens;

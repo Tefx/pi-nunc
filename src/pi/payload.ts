@@ -318,6 +318,7 @@ export function authorizePayload(args: {
   inputLimit: number;
   /** False only for main requests without an explicitly configured input limit. */
   enforceInputLimit?: boolean;
+  uncapped?: boolean;
   authorizedOutput: number;
   context: Context;
   /** Explicit main-session authorization; maintenance keeps its fixed instructions. */
@@ -343,7 +344,7 @@ export function authorizePayload(args: {
   const caps = outputCapState(body);
   if (caps.kind === "invalid") throw new EngineError("CONFIG", "Nunc: payload output cap is not a positive integer; request was not sent");
   if (caps.kind === "conflict") throw new EngineError("CONFIG", "Nunc: payload output cap fields disagree; request was not sent");
-  const uncapped = omitsSerializedOutputCap(args.model);
+  const uncapped = args.uncapped ?? omitsSerializedOutputCap(args.model);
   const floor = outputFloor(args.model);
   if (uncapped) {
     if (caps.kind === "value") throw new EngineError("CONFIG", "Nunc: payload invented an output cap on an uncapped API; request was not sent");

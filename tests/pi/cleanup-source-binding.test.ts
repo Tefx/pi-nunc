@@ -1,4 +1,7 @@
 import { test } from "node:test";
+import { writeFile } from "node:fs/promises";
+import { historyPlanningEstimate, memoryTokens } from "../../src/engine/accounting.js";
+import { engineConfig } from "../../src/pi/config.js";
 import assert from "node:assert/strict";
 import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
@@ -7,7 +10,7 @@ import { memorySurface } from "../../src/pi/manual.js";
 import { effectiveActive, project } from "../../src/pi/projection.js";
 import { fixture } from "./fixtures.js";
 
-async function setup(t: { after(fn: () => unknown): unknown }) {
+async function setup(t: { after(fn: () => unknown): unknown }, substantialPrefix = false) {
   let ctx: ExtensionContext | undefined, api: ExtensionAPI | undefined;
   const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } },
     extras: [{ name: "source-binding", factory(pi) {
@@ -22,6 +25,7 @@ async function setup(t: { after(fn: () => unknown): unknown }) {
   f.respond(() => fauxAssistantMessage("Memory anchor established."));
   await f.runtime.session.prompt("Send current memory");
   const manager = f.runtime.session.sessionManager;
+  if (substantialPrefix) manager.appendMessage({ role: "user", content: "Earlier requirements. ".repeat(1000), timestamp: 1 });
   const bodies = ["Keeper full source. ".repeat(80), "Target full source. ".repeat(80), "Newest full source. ".repeat(80)];
   const ids = bodies.map((body, i) => {
     const callId = `binding-${i}`;
@@ -33,6 +37,33 @@ async function setup(t: { after(fn: () => unknown): unknown }) {
   f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
   return { f, ctx, api, surface, manager, bodies, ids };
 }
+
+test("native compaction expires saved source-dependent cleanup before measuring K", async t => {
+  const { f, ctx, surface, manager, ids, bodies } = await setup(t, true);
+  const read = surface.read(ctx);
+  const patch = surface.patch(ctx, { expectedRevision: read.revision,
+    update: [{ id: read.memory.slots[0]!.id, text: "Keep the consumed result and its source binding." }],
+    toolResultEdits: [{ entryId: ids[1], messageIndex: 0, action: "replace", text: "Consumed result.", sourceRefs: [{ entryId: ids[0], messageIndex: 0 }] }] });
+  assert(patch.ok && patch.cleanup?.applied.length === 1);
+  const before = project(manager.buildContextEntries());
+  const cut = before.active.findIndex(entry => entry.entryId === ids[1]) - 1;
+  const rawKept = before.active.slice(cut);
+  const targetTokens = historyPlanningEstimate(rawKept, ctx.model!).tokens;
+  await writeFile(f.configFile, JSON.stringify({ rolling: { targetTokens }, extraction: { toolResults: "full" } }));
+  f.respond(() => fauxAssistantMessage(JSON.stringify({ priority: patch.memory.slots.map(slot => slot.id), required: [] })));
+  await f.runtime.session.compact();
+  const result = f.events.at(-1)!.result;
+  assert(result.ok, result.ok ? "" : result.message);
+  assert(result.candidate.retiredEntryIds.includes(ids[0]!));
+  assert(result.candidate.kept.some(entry => entry.entryId === ids[1]));
+  const after = project(manager.buildContextEntries());
+  assert.equal(after.cleanup.length, 0);
+  assert(JSON.stringify(effectiveActive(after, true)).includes(bodies[1]!));
+  const config = engineConfig({ rolling: { targetTokens } }, ctx.model!, f.settings.getCompactionSettings());
+  assert.equal(result.observations.accounting!.mainAfterTokens,
+    result.observations.accounting!.fixedTokens + memoryTokens(after.memory.slots, config.imageTokens) +
+      historyPlanningEstimate(effectiveActive(after, true), ctx.model!, config.imageTokens).tokens);
+});
 
 for (const changed of ["target", "dependency", "unrelated"] as const) test(`manual cleanup binds current native sources: ${changed}`, async t => {
   const { f, ctx, surface, manager, ids } = await setup(t);

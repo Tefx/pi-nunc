@@ -77,5 +77,6 @@ test("ordinary maintenance remains independent of the explicit target gate", asy
   const result = await maintain(s, responder());
   assert(result.ok, result.ok ? "" : result.message);
   assert.equal(result.observations.target, undefined);
-  assert(result.candidate.kept.length >= 14);
+  assert.equal(result.observations.accounting!.keepTarget, Math.floor(s.config.triggerTokens * 0.15));
+  assert(result.candidate.kept.length >= 12 && result.candidate.kept.length <= 14);
 });

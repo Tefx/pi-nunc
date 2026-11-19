@@ -12,7 +12,7 @@ import { fixture, responsesSSE } from "./fixtures.js";
 
 // Controlled serialized payloads exercise Admission's real wrapper/callback and
 // completion receipt path. Native serializers have separate Google/OpenAI tests.
-async function harness(t: { after(fn: () => void): void }, api: Api = "openai-completions") {
+async function harness(t: { after(fn: () => void): void }, api: Api = "openai-completions", subscription = false) {
   const faux = fauxProvider({ api, provider: "cap-fixture", models: [{ id: "dense", contextWindow: 100000, maxTokens: 90000 }] });
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
   const registry = new ModelRegistry(runtime);
@@ -20,7 +20,9 @@ async function harness(t: { after(fn: () => void): void }, api: Api = "openai-co
   const sent: unknown[] = [];
   let payload: unknown;
   let usage = 12000;
-  registry.registerProvider({ ...faux.provider, streamSimple(model, _context, options) {
+  // Controlled public auth metadata isolates route selection without credentials or HTTP.
+  if (subscription) registry.isUsingOAuth = () => true;
+  registry.registerProvider({ ...faux.provider, ...(subscription ? { auth: openaiProvider().auth } : {}), streamSimple(model, _context, options) {
     const stream = createAssistantMessageEventStream();
     void (async () => {
       const message = { ...fauxAssistantMessage("anchor"), api: model.api, provider: model.provider, model: model.id };
@@ -189,6 +191,22 @@ test("uncapped routes and missing cap states leave payloads untouched", async t 
     assert.equal((await h.run(body)).stopReason, "stop");
     assert.equal(h.sent.at(-1), body);
     assert.equal(h.observations.at(-1)?.outputCapTokens, null);
+  }
+});
+
+test("OAuth Responses route rejects hook-invented caps through the real admission callback", async t => {
+  const body = { model: "dense", stream: true, input: [{ role: "user", content: "Task" }] };
+  for (const subscription of [false, true]) {
+    const h = await harness(t, "openai-responses", subscription);
+    const unchanged = await h.run(body);
+    assert.equal(unchanged.stopReason, "stop");
+    const changed = await h.run(body, undefined, payload => ({ ...payload as typeof body, max_output_tokens: 8192 }));
+    assert.equal(changed.stopReason, subscription ? "error" : "stop");
+    if (subscription) {
+      assert.match(changed.errorMessage ?? "", /invented an output cap/);
+      assert.equal(h.sent.length, 1, "rejected hook never reaches controlled transport");
+      assert.equal(h.observations.at(-1)?.outcome, "reject");
+    }
   }
 });
 
