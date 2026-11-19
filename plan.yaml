@@ -10472,7 +10472,7 @@ phases:
       - Worktree removed cleanly (no nested worktrees remain).'
   - id: nunc-post-remediation-closure.gate
     name: 第二轮全量契约与精简审查及实时压缩循环修复阶段整合验收（PHASE_GATE）
-    status: claimed
+    status: pending
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"policies/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"package.json\", \"package-lock.json\", \".node-version\", \"tsconfig.json\"\
@@ -10579,5 +10579,3 @@ phases:
     - nunc-post-remediation-closure.ui-overlay-and-context-inspector
     - nunc-post-remediation-closure.live-verification-and-supervisor-closure
     agent: gate-reviewer
-    claimed_by: gate-reviewer
-    claimed_at: '2026-11-19T18:19:57.486544Z'
