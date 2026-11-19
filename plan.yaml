@@ -10577,7 +10577,7 @@ phases:
   - id: nunc-post-remediation-closure.repair-source-branch-budget
     name: 校准整合后 Src-1 提取提示词增长下的受控 source-loss / source-unavailable 测试输入预算边界（F1 / Src-1
       / INV-OFFLINE-REGRESSION-GREEN）
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"tests/live/task-retention-branches.test.ts\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -10639,3 +10639,8 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-19T19:13:46.603696Z'
+    done_at: '2026-11-19T19:35:24.995506+00:00'
+    evidence: commit=1da4688343948b73f1f815d710174502238643c8; retained_ref=refs/vectl/candidates/nunc-post-remediation-closure.repair-source-branch-budget;
+      changed_files=tests/live/task-retention-branches.test.ts; accounting={source_loss:{full:10688,reduced:9958,limit:10326},source_unavailable:{full:10701,reduced:9969,limit:10326}};
+      checks=build:pass,task_retention_branches:7/7,check_all:1082/1084_pass_0_fail_2_skip(/tmp/nunc-repair-check-all-clean.log),larva_integration:9/9(/tmp/nunc-repair-larva.log);
+      worktree_removed_reclaimed_1.11GiB
