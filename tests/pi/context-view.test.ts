@@ -14,6 +14,7 @@ import { createContextSurface } from "../../src/pi/context.js";
 import { engineConfig } from "../../src/pi/config.js";
 import { applyLastUserTextAppend } from "../../src/pi/payload.js";
 import { project } from "../../src/pi/projection.js";
+import { buildContextNodes } from "../../src/ui/context-tree.js";
 import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
 import { SYNTHETIC_LAST_USER_APPEND_B } from "../../src/live/append-b.js";
 import { answer } from "../engine/fixtures.js";
@@ -125,6 +126,27 @@ test("context layout links each occurrence of repeated tool call IDs to its own 
   const res2 = view.current.layout.messages[secondAssoc.resultOrder]!;
   assert.equal((call2.blocks.find(b => b.type === "toolCall")?.arguments as any)?.path, "beta.txt");
   assert.equal(res2.blocks.find(b => b.type === "text")?.text, "beta body");
+});
+
+test("terminal Context tree retains known partial totals and every parallel tool association", async t => {
+  const { f, context, ctx } = await prepared(t);
+  const manager = f.runtime.session.sessionManager;
+  manager.appendMessage({ role: "user", content: "Known history ".repeat(100), timestamp: 1 });
+  manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse", content: [
+    { type: "thinking", thinking: "", thinkingSignature: "opaque" },
+    { type: "toolCall", id: "alpha", name: "read", arguments: { path: "alpha" } },
+    { type: "toolCall", id: "beta", name: "read", arguments: { path: "beta" } },
+  ] });
+  for (const id of ["alpha", "beta"]) manager.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", content: [{ type: "text", text: id }], isError: false, timestamp: 2 });
+  const view = context().read(ctx());
+  const knownSum = view.current.layout.messages.reduce((n, row) => n + (row.tokens ?? 0), 0);
+  assert(view.current.layout.messages.some(row => row.unknown));
+  const nodes = buildContextNodes(view);
+  assert(nodes.get("scope:current")!.preview.includes(`${knownSum.toLocaleString("en-US")} + unknown`));
+  const call = view.current.layout.messages.find(row => row.blocks.some(b => b.type === "toolCall"))!;
+  const preview = nodes.get(`current:R:${call.order}`)!.preview;
+  assert.match(preview, /tool read alpha call@/);
+  assert.match(preview, /tool read beta call@/);
 });
 
 test("manual M revision matches the memory surface; model change keeps last-main labels", async t => {

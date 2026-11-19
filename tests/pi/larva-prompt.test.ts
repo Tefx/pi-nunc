@@ -26,7 +26,7 @@ for (const reason of ["not ready", "damaged managed boundaries", "ambiguous mana
     const view = h.context().read(h.ctx());
     assert.equal(view.lastMain?.resolutionDetail, detail);
     assert(detailsLines({ view, diagnostics: [] }).includes(`Resolution: unavailable (${detail})`));
-    assert(buildContextNodes(view).get("scope:last-main")?.preview.includes(`resolution unavailable (${detail})`));
+    assert(buildContextNodes(view).get("scope:last-main")?.preview.includes(`Resolution: unavailable (${detail})`));
     await h.f.runtime.session.prompt("/nunc details");
     assert(reports.at(-1)?.includes(`Admission CONFIG (unavailable: ${detail})`));
     if (detail === "unavailable") {

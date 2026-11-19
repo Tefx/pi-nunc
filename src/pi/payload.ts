@@ -7,6 +7,7 @@ export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
 export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "control" | "metadata" | "unsupported";
 export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[]; transform?: "last-user-text-append" | "codex-system-instructions" }
 export interface PayloadDelta {
+  googleMaintenanceJsonSchema?: true;
   mode: PayloadMode;
   categories: PayloadCategory[];
   grewTokens: number;
@@ -22,7 +23,7 @@ export type OutputCapState =
   | { kind: "conflict" }
   | { kind: "value"; value: number };
 
-const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens", "generationConfig"]);
+const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens"]);
 const INPUT_KEYS = new Set(["messages", "input", "contents", "system", "instructions", "prompt", "system_instruction", "systemInstruction"]);
 const TOOL_KEYS = new Set(["tools", "functions", "tool_choice", "toolChoice", "toolConfig"]);
 const STREAM_KEYS = new Set(["stream", "background"]);
@@ -56,7 +57,10 @@ function subtreeSize(view: unknown, keys: Set<string>): number {
 function takeOutputCap(body: Record<string, unknown>, take: (value: unknown) => void): void {
   for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) take(body[key]);
   if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) take(body.generationConfig.maxOutputTokens);
-  if (record(body.config) && Object.hasOwn(body.config, "maxOutputTokens")) take(body.config.maxOutputTokens);
+  if (record(body.config)) {
+    if (Object.hasOwn(body.config, "maxOutputTokens")) take(body.config.maxOutputTokens);
+    if (record(body.config.generationConfig) && Object.hasOwn(body.config.generationConfig, "maxOutputTokens")) take(body.config.generationConfig.maxOutputTokens);
+  }
 }
 
 export function outputCapPaths(body: unknown): string[] {
@@ -64,7 +68,10 @@ export function outputCapPaths(body: unknown): string[] {
   const paths: string[] = [];
   for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) paths.push(key);
   if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) paths.push("generationConfig.maxOutputTokens");
-  if (record(body.config) && Object.hasOwn(body.config, "maxOutputTokens")) paths.push("config.maxOutputTokens");
+  if (record(body.config)) {
+    if (Object.hasOwn(body.config, "maxOutputTokens")) paths.push("config.maxOutputTokens");
+    if (record(body.config.generationConfig) && Object.hasOwn(body.config.generationConfig, "maxOutputTokens")) paths.push("config.generationConfig.maxOutputTokens");
+  }
   return paths.sort();
 }
 
@@ -111,7 +118,8 @@ function classifyGoogleConfig(beforeVal: unknown, afterVal: unknown, categories:
   for (const key of new Set([...Object.keys(beforeRec), ...Object.keys(afterRec)])) {
     if (canonical(beforeRec[key]) === canonical(afterRec[key])) continue;
     nested = true;
-    categories.add(key === "maxOutputTokens" ? "output" : categorize(key));
+    if (key === "generationConfig" || key === "config") classifyGoogleConfig(beforeRec[key], afterRec[key], categories);
+    else categories.add(key === "maxOutputTokens" ? "output" : categorize(key));
   }
   if (!nested && canonical(beforeVal) !== canonical(afterVal)) categories.add("metadata");
 }
@@ -155,7 +163,7 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
   const afterRec = record(afterView) ? afterView : {};
   for (const key of new Set([...Object.keys(beforeRec), ...Object.keys(afterRec)])) {
     if (canonical(beforeRec[key]) === canonical(afterRec[key])) continue;
-    if (key === "config") classifyGoogleConfig(beforeRec[key], afterRec[key], categories);
+    if (key === "config" || key === "generationConfig") classifyGoogleConfig(beforeRec[key], afterRec[key], categories);
     else categories.add(categorize(key));
   }
   if (!record(beforeView) || !record(afterView)) {
@@ -165,6 +173,7 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
   if (beforeBlocks.images !== afterBlocks.images || afterBlocks.unsupported.some(t => !beforeBlocks.unsupported.includes(t))) categories.add("media");
   const outputState = outputCapState(afterView);
   return {
+    ...(allowGoogleMaintenanceJsonSchema ? { googleMaintenanceJsonSchema: true as const } : {}),
     mode,
     categories: [...categories],
     grewTokens: Math.max(0, textTokens(canonical(afterView)) - textTokens(canonical(beforeView))),
@@ -315,7 +324,7 @@ export function authorizePayload(args: {
   allowSystemInstructionRewrite?: boolean;
   allowGoogleMaintenanceJsonSchema?: boolean;
 }): void {
-  if (args.allowGoogleMaintenanceJsonSchema === true && ["google-vertex", "google-generative-ai"].includes(args.model.api)) {
+  if (args.allowGoogleMaintenanceJsonSchema === true && !args.delta.googleMaintenanceJsonSchema && ["google-vertex", "google-generative-ai"].includes(args.model.api)) {
     args = { ...args, delta: classifyPayloadChange(args.before, args.after, args.delta.mode, true) };
   }
   const prior = jsonView(args.before);

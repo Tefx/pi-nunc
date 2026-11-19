@@ -1,7 +1,8 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceCandidate, MaintenanceResult, MechanicalFallbackInfo, Memory, PlanningEstimate, Slot, SlotProvenance } from "../engine/index.js";
-import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, messageTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { renderMemoryWithFallback } from "../engine/memory.js";
 import { readSourceRecords } from "../engine/request.js";
 import { integer, record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
@@ -202,8 +203,9 @@ export function createContextSurface(options: {
   const state: { lastMain?: LastMainContext; lastMaintenance?: LastMaintenanceContext; frozen?: FrozenMaintenance } = {};
   const surface: ContextObserver = {
     read(ctx) {
-      const memory = options.memory.read(ctx);
       const projected = project(ctx.sessionManager.buildContextEntries());
+      const memory = options.memory.read(ctx, projected);
+      const fixed = options.fixed(ctx);
       const sessionId = ctx.sessionManager.getSessionId();
       const leafId = ctx.sessionManager.getLeafId();
       const file = ctx.sessionManager.getSessionFile();
@@ -216,14 +218,14 @@ export function createContextSurface(options: {
           const config = options.config(ctx, ctx.model);
           imageTokens = config.imageTokens;
           extraInputTokens = config.main.extraInputTokens;
-          budget = measureBudget(ctx.model, config, options.fixed(ctx), memory.budget.tokens, memory.budget.unknown, memory.memory.slots);
+          budget = measureBudget(ctx.model, config, fixed, memory.budget.tokens, memory.budget.unknown, memory.memory.slots);
         } catch {
           budget = unknownBudget(memory.budget.tokens, true);
         }
       }
       const active = effectiveActive(projected, memory.cleanup?.enabled ?? false);
       const memoryIndex = currentMemoryIndex(sessionId, memory.memory, active, projected.mechanicalFallback);
-      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model, memory.slotProvenance);
+      const layout = layoutFromProjection(fixed, memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model, memory.slotProvenance, projected.mechanicalFallback);
       const current: CurrentContext = {
         scope: "current",
         ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
@@ -497,10 +499,10 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
   } catch { /* Leave cut unknown rather than invent a partition. */ }
 }
 
-function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>, slotProvenance?: Record<string, SlotProvenance>): ContextLayout {
+function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>, slotProvenance?: Record<string, SlotProvenance>, mechanicalFallback?: MechanicalFallbackInfo): ContextLayout {
   const inspected = inspectEntries(active, imageTokens, model);
   const tools = toolLayer(fixed.tools, fixed.toolState === "partial");
-  const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
+  const mTokens = mechanicalFallback ? messageTokens({ role: "user", content: renderMemoryWithFallback(memory.slots, mechanicalFallback), timestamp: 0 }, imageTokens) : memoryTokens(memory.slots, imageTokens);
   const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0,
     ...(slotProvenance ? { slotProvenance: structuredClone(slotProvenance) } : {}) };
   const packagingTokens = 64 + extraInputTokens;
@@ -536,7 +538,7 @@ function layoutFromContext(context: Context, imageTokens: number | undefined, ex
     return true;
   });
   const messages = inspectMessages(rMessages, imageTokens);
-  const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: memoryTokens(projection.memory.slots, imageTokens), envelopeTokens: 0 } : undefined;
+  const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: normalized.messages.filter(isNuncCarrier).reduce((sum, carrier) => sum + messageTokens(carrier, imageTokens), 0), envelopeTokens: 0 } : undefined;
   const currentTools = getCurrentTools(normalized.messages);
   const tools = toolLayer(currentTools);
   const packagingTokens = 64 + extraInputTokens;
@@ -616,7 +618,6 @@ function inspectMessages(messages: readonly Message[], imageTokens: number | und
 }
 
 function inspectMessage(message: Message, order: number, imageTokens: number | undefined, model?: Model<Api>, outputUsageUnavailable = false): ContextMessage {
-  const framing = messageCost(message, imageTokens);
   const blocks: ContextBlock[] = [];
   if (typeof message.content === "string") {
     blocks.push({ type: "text", tokens: textTokens(message.content), unknown: false, preview: preview(message.content), text: message.content });
@@ -625,6 +626,7 @@ function inspectMessage(message: Message, order: number, imageTokens: number | u
   } else {
     blocks.push({ type: "unknown", tokens: null, unknown: true, preview: "[unavailable content]" });
   }
+  const framing = messageCost(message, blocks);
   const unknown = framing.unknown || blocks.some(block => block.unknown);
   const view: ContextMessage = {
     order, role: message.role, tokens: framing.tokens, unknown, preview: messagePreview(message, blocks), blocks,
@@ -674,14 +676,13 @@ function inspectBlock(block: { type: string; text?: string; thinking?: string; t
   }
 }
 
-function messageCost(message: Message, imageTokens: number | undefined): TokenCount {
+function messageCost(message: Message, blocks: ContextBlock[]): TokenCount {
   let tokens = 32 + textTokens(message.role);
   let unknown = false;
   if (message.role === "toolResult") tokens += textTokens(message.toolCallId) + textTokens(message.toolName) + 8;
   if (typeof message.content === "string") return { tokens: tokens + textTokens(message.content), unknown: false };
   if (!Array.isArray(message.content)) return { tokens, unknown: true };
-  for (const block of message.content) {
-    const view = inspectBlock(block, imageTokens);
+  for (const view of blocks) {
     if (view.unknown || view.tokens === null) unknown = true;
     if (view.tokens !== null) tokens += view.tokens;
   }

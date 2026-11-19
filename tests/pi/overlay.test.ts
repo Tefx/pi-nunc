@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { KeybindingsManager, TUI_KEYBINDINGS, type TUI } from "@earendil-works/pi-tui";
-import { initTheme } from "@earendil-works/pi-coding-agent";
+import { visibleWidth, KeybindingsManager, TUI_KEYBINDINGS, type TUI } from "@earendil-works/pi-tui";
+import { initTheme, Theme } from "@earendil-works/pi-coding-agent";
 initTheme();
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { NuncOverlay } from "../../src/ui/overlay.js";
@@ -86,7 +86,11 @@ test("changed editor requires discard intent and keeps draft on cancel", async t
 
 test("list Ctrl+D confirms once, neighbor stays selected, Esc closes nested first", async t => {
   const { overlay, memory, ctx } = await prepared(t);
+  const initial = memory().read(ctx());
+  assert(memory().patch(ctx(), { expectedRevision: initial.revision, add: [{ key: "neighbor", text: "Adjacent note." }] }).ok);
+  overlay.sync();
   const before = memory().read(ctx()).memory.slots.map(slot => slot.id);
+  assert(before.length >= 2);
   overlay.handleInput("\x04");
   assert.equal(overlay.layerName, "confirm-delete");
   overlay.handleInput("\x1b");
@@ -96,6 +100,17 @@ test("list Ctrl+D confirms once, neighbor stays selected, Esc closes nested firs
   overlay.handleInput("\r");
   assert.equal(overlay.layerName, "browse");
   assert.equal(memory().read(ctx()).memory.slots.length, before.length - 1);
+  assert.equal(overlay.selectedSlotId(), before[1]);
+  overlay.handleInput("\t");
+  overlay.handleInput("\r");
+  assert.match(visible(overlay.render(90)), /F · Fixed/);
+  overlay.handleInput("\x1b");
+  assert.match(visible(overlay.render(90)), /Current projection/);
+  overlay.handleInput("\t");
+  assert.equal(overlay.tabName, "slots", "nested Esc popped the Context path without closing");
+  overlay.handleInput("\x1b");
+  overlay.handleInput("\t");
+  assert.equal(overlay.tabName, "slots", "root Esc closed and disposed the overlay");
 });
 
 test("context tab shows F/R/M and jumps M to slots without writing", async t => {
@@ -249,5 +264,80 @@ test("successful save and delete acknowledge mutation even when context.read thr
   assert.doesNotThrow(() => overlay.handleInput("\r"));
   assert.equal(overlay.layerName, "browse");
   overlay.dispose();
+});
+
+for (const mode of ["cancel", "stale", "warning"] as const) test(`async delete ${mode} restores browse selection and focus`, async t => {
+  const { memory, context, ctx } = await prepared(t);
+  const before = memory().read(ctx());
+  const release = Promise.withResolvers<{ stale?: boolean; warning?: string }>();
+  const started = Promise.withResolvers<void>();
+  const warnings: string[] = [];
+  let successes = 0;
+  const overlay = new NuncOverlay({ ctx: ctx(), memory: memory(), context: context(), tui: mockTui(), theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {},
+    onWarning: warning => warnings.push(warning), onSuccess: () => { successes++; warnings.length = 0; },
+    prepareSave: async () => { started.resolve(); return release.promise; },
+  });
+  t.after(() => overlay.dispose());
+  overlay.handleInput("\x04");
+  assert.equal(overlay.layerName, "confirm-delete");
+  assert(!overlay.render(90).join("\n").includes("\x1b_pi:c\x07"), "confirmation must not focus search");
+  overlay.handleInput("\r"); await started.promise;
+  assert.equal(overlay.layerName, "saving");
+  assert(!overlay.render(90).join("\n").includes("\x1b_pi:c\x07"), "saving must not focus search");
+  if (mode === "cancel") overlay.handleInput("\x1b");
+  release.resolve(mode === "stale" ? { stale: true } : { warning: "Cleanup failed after proposed delete" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(overlay.layerName, "browse");
+  if (mode === "warning") {
+    assert.equal(memory().read(ctx()).memory.slots.length, before.memory.slots.length - 1);
+    assert.deepEqual(warnings, ["Cleanup failed after proposed delete"]);
+    assert.equal(successes, 0, "successful commit must not clear its cleanup warning");
+  } else {
+    assert.deepEqual(memory().read(ctx()).memory, before.memory);
+    assert.equal(overlay.selectedSlotId(), before.memory.slots[0]!.id);
+    overlay.handleInput("no-match");
+    assert.match(visible(overlay.render(90)), /No matching slots/, "restored search accepts input");
+  }
+});
+
+test("delete confirmation rejects concurrent revision changes before cleanup", async t => {
+  const { memory, context, ctx, overlay } = await prepared(t);
+  let preparedCalls = 0;
+  const guarded = new NuncOverlay({ ctx: ctx(), memory: memory(), context: context(), tui: mockTui(), theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {}, prepareSave: async () => { preparedCalls++; return {}; } });
+  t.after(() => guarded.dispose());
+  const original = memory().read(ctx());
+  guarded.handleInput("\x04");
+  assert(memory().replace(ctx(), original.revision, original.memory.slots[0]!.id, "Changed during confirmation.").ok);
+  guarded.sync();
+  assert.match(visible(guarded.render(90)), /changed before delete confirmation/);
+  guarded.handleInput("\r");
+  assert.equal(preparedCalls, 0);
+  assert.equal(memory().read(ctx()).memory.slots[0]!.text, "Changed during confirmation.");
+  overlay.dispose();
+});
+
+test("real Theme surface keeps ANSI complete and every row within terminal width", async t => {
+  const { memory, context, ctx } = await prepared(t);
+  // The uniform native Theme exercises actual ANSI generation, including fallback tokens.
+  const colors = Object.fromEntries("accent border borderAccent borderMuted success error warning muted dim text thinkingText userMessageText customMessageText customMessageLabel toolTitle toolOutput mdHeading mdLink mdLinkUrl mdCode mdCodeBlock mdCodeBlockBorder mdQuote mdQuoteBorder mdHr mdListBullet toolDiffAdded toolDiffRemoved toolDiffContext syntaxComment syntaxKeyword syntaxFunction syntaxVariable syntaxString syntaxNumber syntaxType syntaxOperator syntaxPunctuation thinkingOff thinkingMinimal thinkingLow thinkingMedium thinkingHigh thinkingXhigh bashMode".split(" ").map(key => [key, "#dddddd"])) as ConstructorParameters<typeof Theme>[0];
+  const backgrounds: ConstructorParameters<typeof Theme>[1] = { selectedBg: "#333333", customMessageBg: "#222222", userMessageBg: "#222222", toolPendingBg: "#222222", toolSuccessBg: "#222222", toolErrorBg: "#222222" };
+  const theme = new Theme(colors, backgrounds, "truecolor");
+  assert(theme.getBgAnsi("customMessageBg").startsWith("\x1b["));
+  const overlay = new NuncOverlay({ ctx: ctx(), memory: memory(), context: context(), tui: mockTui(), theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {} });
+  t.after(() => overlay.dispose());
+  const original = memory().read(ctx());
+  assert(memory().replace(ctx(), original.revision, original.memory.slots[0]!.id, "ANSI reset \x1b[m and bg \x1b[49m with 中文 and **markdown**.").ok);
+  overlay.sync();
+  for (const key of ["", "\x04", "\x1b", "\r", " extra", "\x1b"]) {
+    if (key) overlay.handleInput(key);
+    for (const width of [8, 10, 24, 40, 90, 120]) for (const line of overlay.render(width)) {
+      assert(visibleWidth(line) <= width, `${visibleWidth(line)} > ${width}: ${JSON.stringify(line)}`);
+      const noControls = line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\x1b_[^\x07]*\x07/g, "");
+      assert(!noControls.includes("\x1b["), `truncated CSI: ${JSON.stringify(line)}`);
+    }
+  }
 });
 

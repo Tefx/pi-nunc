@@ -1,4 +1,5 @@
-import { scoreGuidance } from "./guidance.js";
+import { scoreGuidance, guidanceExchanges } from "./guidance.js";
+import { resolveScenarioPath, VERIFY_COMMANDS } from "./tool-path.js";
 import { project } from "../pi/projection.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
@@ -298,7 +299,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
     }
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;
-      const verifyCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && ((a.event.input as any).command as string).includes("verify.py"));
+      const verifyCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && VERIFY_COMMANDS.includes(((a.event.input as any).command as string).trim()));
 
       if (verifyCalls.length === 0) {
         return { check, status: "UNPROVEN" as const, reason: "No python3 verify.py command was executed" };
@@ -312,15 +313,11 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
 
       // Only a later, same-turn/same-tool result establishes an effect. Failed attempts
       // remain in the history but do not preclude repair and successful reverification.
-      const completed = rawActions.flatMap((call, callIndex) => {
-        if (!object(call) || !object(call.event) || call.event.type !== "tool_call") return [];
-        const resultIndex = rawActions.findIndex((a, i) => i > callIndex && object(a) && object(a.event) && a.turn === call.turn && a.event.type === "tool_result" && a.event.toolCallId === call.event.toolCallId && a.event.toolName === call.event.toolName);
-        return resultIndex >= 0 && rawActions[resultIndex]!.event.isError === false ? [{ call, callIndex, resultIndex, result: rawActions[resultIndex]!.event }] : [];
-      });
+      const completed = guidanceExchanges(rawActions).filter(e => e.resultIndex >= 0 && e.result.isError === false);
       const successful = completed.filter(e => verifyCalls.includes(e.call));
       if (successful.length === 0) return { check, status: "DISPROVEN" as const, reason: "No verification command has an ordered successful result" };
       const edits = completed.filter(e => ["write", "edit"].includes(e.call.event.toolName) && typeof e.call.event.input?.path === "string")
-        .map(e => ({ ...e, path: relative(cwd, resolve(cwd, e.call.event.input.path)) }));
+        .map(e => ({ ...e, path: relative(cwd, resolveScenarioPath(cwd, e.call.event.input.path)) }));
 
       // Check verification artifact created and passed
       const artifactName = observer.id === "e1" ? "verification.json" : "verified.json";
@@ -353,7 +350,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   });
 
   if (observer.id === "e3") {
-    const premature = rawActions.find((a, i) => a.turn !== "b" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && typeof a.event.input?.path === "string" && resolve(cwd, a.event.input.path) === resolve(cwd, "ready.json") && rawActions.slice(i + 1).some(r => r.turn === a.turn && r.event?.type === "tool_result" && r.event.toolCallId === a.event.toolCallId && r.event.isError === false));
+    const premature = rawActions.find((a, i) => a.turn !== "b" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && typeof a.event.input?.path === "string" && resolveScenarioPath(cwd, a.event.input.path) === resolve(cwd, "ready.json") && rawActions.slice(i + 1).some(r => r.turn === a.turn && r.event?.type === "tool_result" && r.event.toolCallId === a.event.toolCallId && r.event.isError === false));
     actionReview.push({ check: "ready artifact remains pending until b", status: premature ? "DISPROVEN" : rawActions.length > 0 ? "PROVEN" : "UNPROVEN", reason: premature ? `Premature ready artifact during ${premature.turn}` : rawActions.length > 0 ? "No successful ready write/edit before authorization in recorded effects" : "No action trace available" });
   }
   return { artifacts, checks, actionReview };
@@ -489,7 +486,7 @@ export function evaluateE2SetupChecks(
   const probeCall = rawActions.find(a => {
     if (a.turn !== "c" || !object(a.event) || a.event.type !== "tool_call" || a.event.toolName !== "read" || !object(a.event.input) || typeof a.event.input.path !== "string") return false;
     const path = a.event.input.path;
-    return cwd ? relative(cwd, resolve(cwd, path)) === "probe.json" : !isAbsolute(path) && relative("/", resolve("/", path)) === "probe.json";
+    return cwd ? relative(cwd, resolveScenarioPath(cwd, path)) === "probe.json" : !isAbsolute(path) && relative("/", resolveScenarioPath("/", path)) === "probe.json";
   });
   const probeCallId = probeCall?.event?.toolCallId;
   const probeResult = probeCallId ? rawActions.find(a => a.turn === "c" && object(a.event) && a.event.type === "tool_result" && a.event.toolName === "read" && a.event.toolCallId === probeCallId && a.event.isError === false) : undefined;

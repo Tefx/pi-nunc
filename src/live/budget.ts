@@ -11,7 +11,7 @@ declare module "@earendil-works/pi-ai/providers/compat-schema" {
 }
 import type { UsageObservation } from "../engine/types.js";
 import { outputCapState } from "../pi/payload.js";
-import { canonical, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
+import { assertBatchConsistency, canonical, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
 
 export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string; ledgerPath?: string }
 export interface CallDiagnostic { code: string; stage: string; transport: "started" | "not-started" | "not-observed"; httpStatus?: number; networkCode?: string }
@@ -151,7 +151,8 @@ export function resolveBatchContext(input: RunInput): {
   firstDispatchAt: number | null;
   deadline: number;
 } {
-  const lim = input.limits as any;
+  assertBatchConsistency(input.batch, input.limits);
+  const lim = input.limits;
   const rawPaths: string[] = [
     ...(input.batch?.priorLedgers ?? []),
     ...(lim?.priorLedgers ?? []),
@@ -334,7 +335,7 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
   const calls = qCalls.map(c => c.record);
   const activeCalls = qCalls.filter(c => c.terminals.length === 0);
   const sum = (key: keyof UsageObservation): number | null =>
-    terminal.length !== calls.length || terminal.some(r => r.usage[key] === null)
+    qCalls.some(c => c.terminals.length !== 1) || terminal.length !== calls.length || terminal.some(r => r.usage[key] === null)
       ? null
       : terminal.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
 
@@ -522,7 +523,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         const info = describeFailure(code, snapshot());
         const message = errorMessage(model, info.message);
         const provenLocal = !transportStarted && (Boolean(localCode) || error instanceof RunnerError && LOCAL_GATE.has(error.code));
-        if (provenLocal || (options.controlled && !transportStarted)) complete(message, info);
+        if ((provenLocal || (options.controlled && !transportStarted)) && !(error instanceof RunnerError && error.code === "USAGE_LIMIT")) complete(message, info);
         if (!ended) { ended = true; output.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); output.end(message); }
       }
     })();

@@ -47,7 +47,7 @@ export type MemoryPatchResult =
   | { ok: false; code: ManualSaveCode; message: string; view: MemoryView };
 
 export interface MemorySurface {
-  read(ctx: ExtensionContext): MemoryView;
+  read(ctx: ExtensionContext, projected?: ReturnType<typeof project>): MemoryView;
   replace(ctx: ExtensionContext, revision: string, slotId: string, text: string): ManualSaveResult;
   delete(ctx: ExtensionContext, revision: string, slotId: string): ManualSaveResult;
   patch(ctx: ExtensionContext, params: MemoryPatchParams, signal?: AbortSignal): MemoryPatchResult;
@@ -60,19 +60,19 @@ export interface MemoryFreeze extends MemorySurface {
 
 export function createMemorySurface(options: {
   pi: ExtensionAPI;
-  fixed: (ctx: ExtensionContext) => FixedContext;
-  settings: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
+  fixed?: (ctx: ExtensionContext) => FixedContext;
+  settings?: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
   cleanup?: (ctx: ExtensionContext, memory: Memory, active: ReturnType<typeof project>["active"], saved: ToolResultDecision[]) => { enabled: boolean; scope: ToolResultRef[] };
   onCommitted: () => void;
 }): MemoryFreeze {
   const state = { occupied: false, ignoreFailed: 0 };
-  const viewOf = (ctx: ExtensionContext): MemoryView => {
+  const viewOf = (ctx: ExtensionContext, snapshot?: ReturnType<typeof project>): MemoryView => {
     // Pi may settle overlapping aborted/manual compactions without delivering
     // their terminal hooks in start order. Native idle proves no checkpoint
     // writer still owns the freeze; never leave a stale lock on M edits.
     if (state.occupied && ctx.isIdle()) { state.occupied = false; state.ignoreFailed = 0; }
     const entries = ctx.sessionManager.buildContextEntries();
-    const projected = project(entries);
+    const projected = snapshot ?? project(entries);
     const slotProvenance = deriveSlotProvenance(ctx.sessionManager.getBranch(), projected.active, projected.memory);
     const budget = measureBudget(ctx, options, projected.memory.slots);
     const enabled = options.cleanup?.(ctx, projected.memory, projected.active, projected.cleanup).enabled ?? false;

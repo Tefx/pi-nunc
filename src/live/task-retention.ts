@@ -6,13 +6,13 @@ import { project } from "../pi/projection.js";
 import { memoryMessage } from "../engine/memory.js";
 import { readSourceRecords } from "../engine/request.js";
 import { semanticEvidence, type CheckResult, type ScenarioInput } from "./scenarios.js";
-import { guidanceExchanges, type GuidanceAction } from "./guidance.js";
-import { metricsCommand } from "./tool-path.js";
+import { guidanceExchanges, textOf, type GuidanceAction } from "./guidance.js";
+import { resolveScenarioPath, metricsCommand } from "./tool-path.js";
 import type { RequestObservation, RolloverObservation } from "./comparison-observation.js";
 
-export const contentText = (content: unknown): string => typeof content === "string" ? content : Array.isArray(content)
-  ? content.filter(b => b?.type === "text").map(b => b.text).join("") : "";
-const pathIs = (cwd: string, actual: unknown, wanted: string) => typeof actual === "string" && resolve(cwd, actual.replace(/^@/, "")) === resolve(cwd, wanted);
+export { textOf as contentText } from "./guidance.js";
+const contentText = textOf;
+const pathIs = (cwd: string, actual: unknown, wanted: string) => typeof actual === "string" && resolveScenarioPath(cwd, actual) === resolve(cwd, wanted);
 const messages = (entries: SessionEntry[]) => convertToLlm(entries.flatMap(e => sessionEntryToContextMessages(e))).map(semanticEvidence);
 const subsequence = (haystack: unknown[], needle: unknown[]) => needle.length > 0 && haystack.some((_v, i) => same(haystack.slice(i, i + needle.length), needle));
 
@@ -48,11 +48,12 @@ export function taskRead(scenario: ScenarioInput, branch: SessionEntry[], action
 
 /** Mechanical edit facts are independent from semantic replacement/merge/deletion safety. */
 export function confirmedEdits(actions: GuidanceAction[]) {
-  return guidanceExchanges(actions).filter(x => x.call.event.toolName === "nunc_memory_patch").map(x => {
+  const exchanges = guidanceExchanges(actions);
+  return exchanges.filter(x => x.call.event.toolName === "nunc_memory_patch").map(x => {
     const id = x.call.event.toolCallId;
     const before = actions.slice(0, x.callIndex).findLast(a => a.event?.type === "memory_state" && a.event.phase === "before" && a.event.toolCallId === id)?.event;
     const after = actions.slice(x.resultIndex + 1).find(a => a.event?.type === "memory_state" && a.event.phase === "after" && a.event.toolCallId === id)?.event;
-    const read = guidanceExchanges(actions).findLast(r => r.call.event.toolName === "nunc_memory_read" && r.resultIndex >= 0 && r.resultIndex < x.callIndex && r.result?.isError === false);
+    const read = exchanges.findLast(r => r.call.event.toolName === "nunc_memory_read" && r.resultIndex >= 0 && r.resultIndex < x.callIndex && r.result?.isError === false);
     const confirmed = Boolean(x.resultIndex >= 0 && x.result?.isError === false && x.result.details?.ok === true && before && after &&
       before.unconfirmed === false && after.unconfirmed === false && x.call.event.input.expectedRevision === read?.result?.details?.revision &&
       after.revision === x.result.details.revision && Array.isArray(before.slots) && Array.isArray(after.slots));
@@ -231,7 +232,8 @@ export function activeEditChecks(...[scenario, turns, branch, active, rollovers,
   const read = taskRead(scenario, branch, actions, cwd), build = buildSequence(actions, cwd), edits = confirmedEdits(actions);
   const facts = rollovers.map(r => retainedRollover(r, branch, requests, rollovers));
   const d = edits.filter(e => e.turn === "d" && e.confirmed);
-  const workAfter = d.some(e => guidanceExchanges(actions).some(x => x.callIndex > e.resultIndex && x.result?.isError === false && behaviorWork(x.call, cwd)));
+  const effects = guidanceExchanges(actions);
+  const workAfter = d.some(e => effects.some(x => x.callIndex > e.resultIndex && x.result?.isError === false && behaviorWork(x.call, cwd)));
   return [
     check("Task read and build failure/repair observed before continuation", read.complete && Boolean(build.failedCallId && build.successfulCallId), { read, build }),
     semantic("Model-authored saved note mixed resolved progress and unfinished obligations", { notes: edits.filter(e => e.turn === "b"), turnStates: actions.filter(a => a.turn === "b" && a.event?.type === "turn_complete") }),

@@ -221,6 +221,23 @@ test("last-maintenance engine vs native states stay on ContextSurface used by th
   assert.match(savedReport, new RegExp(`Last-maintenance input plan: ${saved.lastMaintenance.accounting.extractionInputLimit.toLocaleString("en-US")}`));
 });
 
+test("superseding native checkpoint is reported as failed without a Nunc after projection", async t => {
+  const captured = port();
+  const f = await fixture({ extras: [...captured.extras, { name: "foreign-terminal", factory(pi) {
+    pi.on("session_before_compact", event => ({ compaction: {
+      summary: "External checkpoint", firstKeptEntryId: event.preparation.firstKeptEntryId,
+      tokensBefore: event.preparation.tokensBefore, details: {},
+    } }));
+  } }] });
+  t.after(() => f.close()); f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const view = captured.context().read(captured.ctx());
+  assert.equal(view.lastMaintenance?.engine, "ok");
+  assert.equal(view.lastMaintenance?.native, "failed");
+  assert.equal(view.lastMaintenance?.after, undefined);
+  assert.match(detailsLines({ view, diagnostics: [] }), /Native save: failed/);
+});
+
 test("failed maintenance keeps the received terminal in the existing context report", async t => {
   const captured = port();
   const f = await fixture({ extras: captured.extras }); t.after(() => f.close());

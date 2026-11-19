@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import { resolveScenarioPath } from "./tool-path.js";
 import { pathToFileURL } from "node:url";
 import { buildSessionProjection, estimateTokens, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, Context } from "@earendil-works/pi-ai";
@@ -67,7 +68,7 @@ export async function prepareBoundary(input: {
   if (input.trigger) {
     const t = input.trigger;
     const req = branch.findLast(e => e.type === "message" && e.message.role === "user" && (typeof e.message.content === "string" ? e.message.content : e.message.content.filter(b => b.type === "text").map(b => b.text).join("")) === t.requestText);
-    toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === t.callId && (b.name === control.trigger?.toolName || b.name === control.trigger?.alternateToolName) && typeof b.arguments.path === "string" && resolve(t.cwd, b.arguments.path.replace(/^@/, "")) === resolve(t.cwd, t.path)));
+    toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === t.callId && (b.name === control.trigger?.toolName || b.name === control.trigger?.alternateToolName) && typeof b.arguments.path === "string" && resolveScenarioPath(t.cwd, b.arguments.path) === resolve(t.cwd, t.path)));
     requireValue(req && toolIndex > branch.indexOf(req), "PREPARATION", "Matching request/calling assistant not present");
     retired.add(req.id);
     const call = branch[toolIndex]!;

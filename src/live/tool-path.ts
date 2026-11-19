@@ -1,10 +1,13 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { object, requireValue, within, RunnerError } from "./contract.js";
+export function resolveScenarioPath(cwd: string, path: string): string { return resolve(cwd, path.replace(/^@/, "")); }
+export const VERIFY_COMMANDS = ["python3 verify.py", "/usr/bin/python3 verify.py", "python verify.py"];
+
 /** Resolve existing prefixes to catch accidental aliases; tools see scenario files only. */
 export async function toolPath(cwd: string, input: unknown, toolName?: "read" | "write" | "edit"): Promise<string> {
   requireValue(typeof input === "string" && input.length > 0, "TOOL_PATH", "A scenario-local path is required");
-  const path = resolve(cwd, input.replace(/^@/, ""));
+  const path = resolveScenarioPath(cwd, input);
   const readRoot = toolName === "read" && path === cwd;
   requireValue((readRoot || within(path, cwd)) && !path.slice(cwd.length).split("/").some(p => [".pi", ".agents", ".git"].includes(p) || p.startsWith(".env") || p === "auth.json"), "TOOL_PATH", "Tool path is outside scenario task files");
   if (readRoot) {
@@ -39,7 +42,7 @@ export function metricsCommand(command: string): "build" | "tests" | "solution" 
 export async function authorizeVerification(cwd: string, script: string | undefined, siblingWrites: unknown[] = [], name = "verify.py"): Promise<void> {
   requireValue(script !== undefined, "SCRIPT_UNPROVIDED", "No fixture verification script was provided");
   const path = resolve(cwd, name);
-  requireValue(!siblingWrites.some(p => typeof p === "string" && resolve(cwd, p.replace(/^@/, "")) === path), "SCRIPT_BUSY", "Verification cannot run in the same tool batch as a script write");
+  requireValue(!siblingWrites.some(p => typeof p === "string" && resolveScenarioPath(cwd, p) === path), "SCRIPT_BUSY", "Verification cannot run in the same tool batch as a script write");
   try {
     await toolPath(cwd, name, "read");
     requireValue((await lstat(path)).isFile(), "SCRIPT_CHANGED", "Fixture verification script is not an original regular file");

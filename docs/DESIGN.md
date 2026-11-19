@@ -14,6 +14,8 @@
 
 ## 0. 文档修订与实施状态
 
+Implementation baseline: Pi packages are locked to `1.4.0`; the supported range is `^1.0.3`. Required-item retention, explicit `memory.hardMaxTokens`, automatic maintenance output sizing, and Mechanical Window Roll Fallback are implemented. Runtime semantic quality still requires separately authorized observations.
+
 本节任务保留修订及模型配置记录各自历史范围；后续任务以当轮明确授权为准。当前范围原则见 [CONSTITUTION.md](CONSTITUTION.md)，不据旧文案增加跨次自动恢复或强制模型配置。
 用户已授权继续实施完整任务保留修正。`nunc-task-retention.semantics` 已交付三个生产提示入口及增量场景内容的候选改动；runner 能力、整合及真实续做验收仍待后续 owner 完成；旧交付状态和 DONE 证据只描述相应历史候选。详细当前合同、诊断依据、修改文件及验收边界统一见 [EXTRACTION.md §0、§3–§4](EXTRACTION.md#0-当前修订保留完整任务与完成标准)。
 
@@ -137,15 +139,14 @@ K 中实际交付的有效纠正可以立即更新旧 M；纠正按来源权限�
 {
   "add": [{ "key": "new1", "text": "只有成功提交前可以重试；提交成功后再次执行会重复扣款。" }],
   "remove": ["s4"],
-  "priority": ["new1", "s2", "s8"]
+  "priority": ["new1", "s2", "s8"],
+  "required": ["new1"]
 }
 ```
 
 例中旧集合为 `s2/s4/s8`。替换或合并可表示为删除旧条目并新增替代条目。使用本示例协议时，priority 完整列出删除后存量与新增候选，每个引用恰好一次，避免遗漏被悄悄解释成退役。
 
-当前实现中，候选集合未超预算时无需容量淘汰；超预算时按模型给出的保留顺序选择能完整放入的条目，放不下的整条跳过。这会跳过过大的高优先级条目，尚不能保证任务焦点保留。
-
-下一版按 [EXTRACTION.md §5](EXTRACTION.md#5-必要项预算保护) 增加本次必要项引用，保证可提交候选包含该集合；共同无法容纳时显式报告容量失败，不自动增加模型重试。普通可选项继续整条选择。不在正文中部强行截断，不为装下而例行重写全部 M；已经明确错误的旧结论不能被恢复进一个成功候选。失败事务仍不修改已保存 M/K。
+The implemented patch schema includes `update` and `required`. Every required reference must survive together, including when the necessary set exceeds the soft organizing target. An explicit `memory.hardMaxTokens` limits saved candidates: an oversized required set fails with `CAPACITY` without a checkpoint or model repair call. Optional items are selected whole in priority order within the remaining target. IDs, wrappers and complete item bodies count toward occupancy; priority does not reorder surviving slots. This guard cannot establish that the model identified every semantic requirement.
 
 保留优先级不改变普通请求中的排列。存量条目保持相对位置，新条目追加，避免仅因排序变化重排 M。渲染中的 ID 和包装计入预算。
 
@@ -170,9 +171,9 @@ M_hard = memory.hardMaxTokens（未显式配置时为 null，无硬上限）
 render(M_next) <= M_hard（仅在显式配置 M_hard 时约束候选准入；不追溯缩减已保存 M，亦不保证正确遗忘）
 ```
 
-依据 `accounting.ts:memoryPlan`，`fixedTokens` 包含无记忆与活动消息的固定上下文请求估算及主请求包装开销：`requestTokens(mainContext(fixed, [], []), config.imageTokens) + config.main.extraInputTokens`。`available = effectiveTrigger - fixedTokens` 表达触发上限扣除固定开销后的可用空间，当固定开销超出触发阈值时允许为负数，仅在下游规划中通过 `max(0, available)` 截断。K 规划采用 `reserve = max(memoryLimit, memoryTokens(currentSlots))`，比例基数限制为当前历史规划占用与可用历史空间的较小值；宿主下限、历史软目标和增长空间的组合见 [ENGINE.md](ENGINE.md#configuration-and-capacity)。默认历史软目标为 100000，显式比例不隐含该目标，显式 `rolling.targetTokens` 可覆盖。该目标不保证跨任意小窗口适配。存量 M 占用已纳入 reserve，规划 K 时为其预留空间。同时严格遵循 frozen cut / no-recut 原则：原文切点在提取前一旦冻结即不再重切，维持既有来源估算口径和提交机制。上述规划指导合法 K 的选择和 M 摘录；`memoryTarget(config)` 严格为 `config.memory?.targetTokens ?? 8192`（`accounting.ts:158`），M 的必需事实可超过建议软目标，只要不超过显式配置的独立保存硬上限。实际提取输入与主请求分别核算；历史 F 的预计 L/增长空间不提前拒绝已完成的有效候选，见 [CAPACITY.md](CAPACITY.md)。主动 manual patch 则按 `manual.ts:221-226, 339-348` 执行 `limit = min(memoryTarget, hard ?? Infinity)` 增长判定，仅对使 token 增长的变更应用预算拒绝，并在估算不可用与超出已知限额时分别以 `unknown-budget` 和 `overbudget` 诊断，非增长恢复与修正保持免除。memory.fraction 在 [0, 1) 内，q 在 (0, 1) 内，可选上限为正数。输出预算、thinking、多模态和 provider 的独立输入/输出限制按实际请求语义计算；最大输出能力不等于每次应该预留的输出量。
+依据 `accounting.ts:memoryPlan`，`fixedTokens` 包含无记忆与活动消息的固定上下文请求估算及主请求包装开销：`requestTokens(mainContext(fixed, [], []), config.imageTokens) + config.main.extraInputTokens`。`available = effectiveTrigger - fixedTokens` 表达触发上限扣除固定开销后的可用空间，当固定开销超出触发阈值时允许为负数，仅在下游规划中通过 `max(0, available)` 截断。K 规划采用 `reserve = max(memoryLimit, memoryTokens(currentSlots))`，比例基数限制为当前历史规划占用与可用历史空间的较小值；宿主下限、历史软目标和增长空间的组合见 [ENGINE.md](ENGINE.md#configuration-and-capacity)。The default retained-history target is `min(100000, max(1, settings.keepRecentTokens, floor(triggerTokens * 0.25)))`. An explicit fraction does not imply this target; `rolling.targetTokens` overrides it.该目标不保证跨任意小窗口适配。存量 M 占用已纳入 reserve，规划 K 时为其预留空间。同时严格遵循 frozen cut / no-recut 原则：原文切点在提取前一旦冻结即不再重切，维持既有来源估算口径和提交机制。上述规划指导合法 K 的选择和 M 摘录；`memoryTarget(config)` 严格为 `config.memory?.targetTokens ?? 8192`（`accounting.ts:158`），M 的必需事实可超过建议软目标，只要不超过显式配置的独立保存硬上限。实际提取输入与主请求分别核算；历史 F 的预计 L/增长空间不提前拒绝已完成的有效候选，见 [CAPACITY.md](CAPACITY.md)。主动 manual patch 则按 `manual.ts:221-226, 339-348` 执行 `limit = min(memoryTarget, hard ?? Infinity)` 增长判定，仅对使 token 增长的变更应用预算拒绝，并在估算不可用与超出已知限额时分别以 `unknown-budget` 和 `overbudget` 诊断，非增长恢复与修正保持免除。memory.fraction 在 [0, 1) 内，q 在 (0, 1) 内，可选上限为正数。输出预算、thinking、多模态和 provider 的独立输入/输出限制按实际请求语义计算；最大输出能力不等于每次应该预留的输出量。
 
-主请求保留 Pi 实际 output/thinking 设置。已验证的原生按剩余上下文裁输出路径，以及不发送输出 cap 的 Codex/Responses 路径，以 compaction reserve 与最大输出能力的较小值作为输入规划余量，并覆盖序列化下限。维护默认独立预留 8192（包含 reasoning，且不超过模型能力）；API 支持时发送对应输出 cap，不支持时仅作为规划值。模型能力、规划余量、实际 cap 和费用授权分开。普通请求使用适用的 Pi usage 加新增输入估算，前缀或模型改变后重新估算；维护及候选 M/K 始终重新估算。无硬 tokenizer 上界保证，实际超窗仍交给原生有界恢复。具体接入见 [PI.md](PI.md)。
+主请求保留 Pi 实际 output/thinking 设置。已验证的原生按剩余上下文裁输出路径，以及不发送输出 cap 的 Codex/Responses 路径，以 compaction reserve 与最大输出能力的较小值作为输入规划余量，并覆盖序列化下限。With `outputAuto`, maintenance resolves its complete frozen request toward `min(32768, C)` with floor `min(8192, C)`, where C is the model output capability. Reasoning and JSON wrapping share that reserve; available input/window headroom can bind the resolved cap. On uncapped routes only the planning reserve changes; the native output capability remains authorized.模型能力、规划余量、实际 cap 和费用授权分开。普通请求使用适用的 Pi usage 加新增输入估算，前缀或模型改变后重新估算；维护及候选 M/K 始终重新估算。无硬 tokenizer 上界保证，实际超窗仍交给原生有界恢复。具体接入见 [PI.md](PI.md)。
 
 还要单独检查完整 extraction，包括 M/B/K、控制消息、输出协议、提取输出和余量。原生前缀已经包含 F/M 时不重复计数。cached tokens 仍占上下文；未知 usage 不当成零。
 
@@ -258,7 +259,7 @@ H = 当前 Pi 模型 contextWindow − compaction.reserveTokens
 
 显式 `/compact` 和宿主溢出恢复也进入同一维护语义。关闭 Pi 自动 compaction 后，需要显式触发。当前 `ctx.compact()` 走先 abort 的手动路径，不从每次 context 回调直接调用它并承诺无中断滚动。
 
-接口依据：[Pi 配置说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)、[Pi compaction 与扩展接管说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md)。当前 package/lock 统一使用 Pi/pi-ai 0.85.1。早期 0.85.0 组件观察仅为历史证据；公开文档和组件检查均不能单独建立任意版本兼容承诺。
+接口依据：[Pi 配置说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)、[Pi compaction 与扩展接管说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md)。The current package lock uses Pi/pi-ai `1.4.0`, with supported range `^1.0.3`.早期 0.85.0 组件观察仅为历史证据；公开文档和组件检查均不能单独建立任意版本兼容承诺。
 
 ### 6.2 一份快照，一次提交
 
@@ -270,9 +271,9 @@ H = 当前 Pi 模型 contextWindow − compaction.reserveTokens
 
 完整响应终态、合法引用和预算检查都通过后才返回 snapshot。截断响应即使包含可解析 JSON 也不能提交。当前实现及下一版提取均保持一次正常维护零或一次模型请求，无自动结构修复或重放；新增必要项容量失败不增加重试。取消、提取失败或模型/path/session 改变时，不提交过期候选。末尾追加 D 不属于切换选中分支；原冻结 leaf 仍须是当前路径祖先，冻结来源、M 和清理状态须保持不变。对冻结来源追加 context edit 仍使候选失效。
 
-提取、校验失败或交付前取消时，Nunc 显式返回 hook 的 `cancel: true` 并说明原因，不修改已保存的 M 或原文边界。不能用空返回表示失败，否则 Pi 可能继续生成默认摘要。
+Ordinary maintenance with a completed malformed, truncated or otherwise non-complete response (`RESPONSE`, excluding error/aborted transport) may hand off a deterministic Mechanical Window Roll Fallback: unchanged M, retained cleaned K, the frozen cut and an explicit carrier/UI notice. Its engine result remains failed. Targeted `compact-for`, capacity/configuration failures, transport error/abort and cancellation still return `cancel: true` without changing M or the boundary.不能用空返回表示失败，否则 Pi 可能继续生成默认摘要。
 
-候选交付后的 append/rebuild 及错误处理由 Pi 负责。Nunc 不承诺为宿主写入或重建失败另加事务回滚，也不自行重放提交；认证和路径复制同样沿用宿主能力。
+Pi owns append/rebuild after handoff. Nunc confirms a native save only when `compactionEntry.fromHook`, the cut, `details.nunc` and `details.mechanicalFallback` match the pending candidate; a superseding handler cannot confirm Nunc's candidate or `compact-for` success.Nunc 不承诺为宿主写入或重建失败另加事务回滚，也不自行重放提交；认证和路径复制同样沿用宿主能力。
 
 firstKeptEntryId 指向上下文可见的合法边界。主模型和后续维护只使用最新 M；原生重建中落入保留范围的旧 compaction summary 不得再次成为活动记忆。保留跨旧 checkpoint 的合法 K 重叠。推荐用窄 context 规范化排除被替代的 compaction carrier，不改写 K，不将所有切点一律移到最新 checkpoint 后来回避问题；保持同一不变量的等价实现可以替代它。
 
@@ -316,14 +317,14 @@ Nunc 和验证默认继承 Pi 当前有效 model/provider/options/config，包�
 {
   "policyFile": "./memory-policy.md",
   "memory": { "fraction": 0.10 },
-  "rolling": { "keepRecentFraction": 0.67 },
+  "rolling": { "keepRecentFraction": 0.5 },
   "extraction": { "toolResults": "auto" }
 }
 ```
 
 - policyFile 可省略，相对路径基准在实施时明确；推荐相对配置文件目录。
 - memory.maxTokens 可选，作为 M 维护建议目标的一部分；memory.targetTokens（默认 8192）由 memoryTarget(config) 读取作为整理软目标；未显式配置 hardMaxTokens 时硬上限为 null；显式配置 memory.hardMaxTokens 时独立限制提取候选准入，并在主动 patch 中作为增长上限 `min(memoryTarget, explicitHard ?? Infinity)`，但不追溯缩减已保存 M 亦不保证正确遗忘；主动 patch 中非增长恢复仍予允许。原有显式保存上限须迁移到 hardMaxTokens。
-- rolling.keepRecentFraction 默认 0.5；未显式配置比例时，历史软目标默认为 100000 tokens。显式正整数 rolling.targetTokens 可设置软目标；显式比例单独配置时不隐含该默认软目标。它们只影响保留规划，不降低维护模型的输入容量。
+- `rolling.keepRecentFraction` defaults to 0.5. Without an explicit fraction, `keepRecentTargetTokens = min(100000, max(1, settings.keepRecentTokens, floor(triggerTokens * 0.25)))`.显式正整数 rolling.targetTokens 可设置软目标；显式比例单独配置时不隐含该默认软目标。它们只影响保留规划，不降低维护模型的输入容量。
 - 自动维护启停及 H 使用 Pi 现有配置。cached tokens 计入所有容量检查。
 - extraction.toolResults 的 auto 表示完整优先、容量不足时有界处理；full 禁止工具正文截断。
 - 参数示例可调整；不提供任务类型路由、使用计数、衰减函数、权重 DSL 或跨 session 开关。

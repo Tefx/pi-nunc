@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { resolveScenarioPath } from "./tool-path.js";
 import { resolve, relative } from "node:path";
 import { buildContextEntries, convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { projectedNativeCut } from "./preparation.js";
@@ -81,7 +82,7 @@ export function logicalPlacement(row: RolloverObservation, cwd: string) {
       if (!turn || requestIndex < 0 || requestIndex >= branchCut || k.some(e => e.id === requestId) || (!row.preparation.isSplitTurn && row.active.some(e => e.id === requestId))) issues.push("Original request did not retire before K");
       const unit = p.retainToolExchange;
       const ids = unit ? turnEntries[unit.turn] ?? [] : [];
-      const calls = row.active.filter(e => ids.includes(e.id)).flatMap(e => e.type === "message" && e.message.role === "assistant" ? e.message.content.flatMap(c => c.type === "toolCall" && unit && (c.name === unit.toolName || c.name === contract.control.trigger?.alternateToolName) && typeof c.arguments.path === "string" && resolve(cwd, c.arguments.path.replace(/^@/, "")) === resolve(cwd, unit.pathArgument) ? [{ entry: e, call: c }] : []) : []);
+      const calls = row.active.filter(e => ids.includes(e.id)).flatMap(e => e.type === "message" && e.message.role === "assistant" ? e.message.content.flatMap(c => c.type === "toolCall" && unit && (c.name === unit.toolName || c.name === contract.control.trigger?.alternateToolName) && typeof c.arguments.path === "string" && resolveScenarioPath(cwd, c.arguments.path) === resolve(cwd, unit.pathArgument) ? [{ entry: e, call: c }] : []) : []);
       const selected = row.prepared?.triggerCallId ? calls.find(c => c.call.id === row.prepared!.triggerCallId) : calls[(unit?.occurrence ?? 0) - 1];
       if (!selected || k[0]?.id !== selected.entry.id) issues.push("Requested tool batch does not start K");
       if (k.slice(1).some(e => e.type !== "message" || e.message.role !== "toolResult")) issues.push("Suffix already ran before the requested tool boundary");
@@ -97,7 +98,7 @@ export function fixtureExposure(row: RolloverObservation, cwd: string) {
   const reads: Array<{ turn: string; path: string; complete: boolean }> = [];
   for (const entry of row.active) if (entry.type === "message" && entry.message.role === "assistant") for (const c of entry.message.content) {
     if (c.type !== "toolCall" || c.name !== "read" || typeof c.arguments.path !== "string") continue;
-    const path = relative(cwd, resolve(cwd, c.arguments.path.replace(/^@/, "")));
+    const path = relative(cwd, resolveScenarioPath(cwd, c.arguments.path));
     if (!Object.hasOwn(files, path)) continue;
     const result = row.active.find(e => e.type === "message" && e.message.role === "toolResult" && e.message.toolCallId === c.id && e.message.toolName === c.name);
     reads.push({ turn: Object.keys(turns).find(t => turns[t]!.includes(entry.id)) ?? "unmapped", path,

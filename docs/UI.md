@@ -18,7 +18,7 @@
 | `/nunc details` | 任意模式输出同一完整文字报告：slots、M 占用、occupied/unconfirmed、当前 warning、全部当前预算（含维护输入规划）、最近维护与有界诊断。 |
 | `F7` | 仅 TUI 打开 overlay，不提交主编辑器草稿。行为不变。 |
 
-原生参数补全只有 `details`。未知参数（包括 `status`）显示 `Usage: /nunc [details]`，不打开面板、不发模型。只读命令不追加 session 记录；人工保存与可选模型工具（`--nunc-memory-tools`）是仅有的 M 持久化操作。自定义组件仅在 `ctx.mode === "tui"` 使用；RPC 的 `hasUI` 为真不表示有终端 overlay。不提供非 TUI 人工写入命令。
+Native argument completion offers `details` and `compact-for`; `/nunc compact-for <provider/model-id>` completes fully qualified identities from the current model registry. Unknown arguments (including `status`) show `Usage: /nunc [details | compact-for <provider/model-id>]` without opening the overlay or sending a model request.只读命令不追加 session 记录；人工保存与可选模型工具（`--nunc-memory-tools`）是仅有的 M 持久化操作。自定义组件仅在 `ctx.mode === "tui"` 使用；RPC 的 `hasUI` 为真不表示有终端 overlay。不提供非 TUI 人工写入命令。
 
 范围为状态、Slots 浏览/搜索/单条编辑/删除、Context 分层浏览、根级 Diagnostics 及最近观察。不加入批量修改、回收站、永久 pin、AI 自动修订、跨 session 记忆、配置编辑器或维护调度器。
 
@@ -199,7 +199,7 @@ UI 的只读观察不应阻止合法调用，未知数据留空并标注。保�
 
 - 原生 TUI 的 footer 共存、两个 tab、搜索/预览/编辑/确认、合理选择恢复；窄/短终端、长文本、CJK/IME、paste、theme、resize、嵌套 focus 与 Escape。IME 候选窗口等自动化无法充分证明的行为明确补人工观察，不用输入文本断言冒充证明。
 - 当前和最近请求/维护的范围、F/R/M、消息/内容块计数、tool 关联、包装、fresh 与 usage-backed 差异、未知图片、无记录、本地拒绝、多扩展追加及尚未交付 D。主请求观察不回填维护来源。
-- 原生命令补全仅 `details`；`status` 为未知参数；非 TUI bare `/nunc` 与任意模式 `/nunc details` 为同一完整报告；仅浏览无模型/compaction/session-write 效果，人工保存仅产生预期原生记录。报告不得写入诊断历史。stock TUI 覆盖命令、Diagnostics 导航与短布局。
+- Native completion covers `details`, `compact-for`, and dynamic fully qualified target model identities; `status` 为未知参数；非 TUI bare `/nunc` 与任意模式 `/nunc details` 为同一完整报告；仅浏览无模型/compaction/session-write 效果，人工保存仅产生预期原生记录。报告不得写入诊断历史。stock TUI 覆盖命令、Diagnostics 导航与短布局。
 - 实际保存后首次新请求中的唯一有效 M，K/队列/主编辑器/在途请求不变；原生 session 重启、reload、新建、分支/恢复、后续 compaction 吸收与旧记录不重放。
 - engine 候选完成至 Pi 提交终态的竞态、revision 冲突、模型/预算改变、逐步减少超额 M、空文本、取消、持久化错误与草稿保留。不把候选观察当持久化凭据。
 - 受影响的 native Provider/append/usage 归因与原有媒体、tool、容量、取消回归；整合后的现有完整检查 inventory 通过。历史测试数不作为固定目标。

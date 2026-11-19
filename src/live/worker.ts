@@ -1,3 +1,4 @@
+import { scoreGuidance, type GuidanceAction } from "./guidance.js";
 import { archiveCloseoutEffects } from "./archive-closeout.js";
 import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
 import { qualifyCapacity, checkCapacityRecovery, checkRequiredRetention } from "./capacity-observation.js";
@@ -111,6 +112,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   report.rollovers = []; report.requests = []; report.preparations = [];
   const boundaryControls = observer.controls.filter(c => c.action === "rollover_at_tool_boundary");
   let currentBoundaryIndex = 0;
+  const deferredBoundaries = new Set<number>();
   const boundaryControl = boundaryControls[0];
   const boundaries = boundaryControls.map(c => ({
     control: c,
@@ -170,12 +172,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           const ctrl = boundaryControls[idx] ?? boundaryControl!;
           const bnd = boundaries[idx] ?? boundary!;
           boundaryRestoreConfig = structuredClone(runConfig);
-          const isDeferred = Boolean(report.preparations?.some(p => (p as any).deferred));
+          const isDeferred = deferredBoundaries.has(idx);
           const result = await prepare(data.branch, data.active, ctrl, { callId: data.triggerId, requestText: bnd.requestText,
             path: ctrl.trigger?.pathArgument ?? "", cwd: join(caseRoot, "task"), fixtureContent: bnd.fixtureContent, contextTokens: data.usage?.tokens ?? null }, isDeferred);
           await runtime!.releaseBoundary({ firstKeptEntryId: result.firstKeptEntryId });
         } catch (error) {
           if (error instanceof RunnerError && error.code === "INSUFFICIENT_CONTEXT") {
+            deferredBoundaries.add(currentBoundaryIndex);
             report.preparations!.push({ deferred: true, turn, reason: error.message });
             await runtime!.releaseBoundary({ deferred: true });
             return;
@@ -194,6 +197,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           runConfig = structuredClone(boundaryRestoreConfig); effectiveConfig = runConfig.nunc;
           await runtime!.reconfigure(runConfig);
           (report.configurationChanges ??= []).push({ phase: "boundary-restore", from, to: structuredClone(runConfig) });
+          deferredBoundaries.delete(currentBoundaryIndex);
           currentBoundaryIndex++;
           await runtime!.releaseBoundary({ restored: true });
         } catch {
@@ -312,7 +316,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       await session.prompt(inputTurn.text);
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !isSystemMessage(e.message) && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
-      if (!boundaryFailure && report.preparations?.some(p => (p as any).deferred) && report.rollovers!.length === 0) {
+      if (!boundaryFailure && deferredBoundaries.has(currentBoundaryIndex)) {
         boundaryFailure = "Compaction boundary remained deferred; insufficient context to establish maintenance premise";
       }
       requireValue(!boundaryFailure, "PREPARATION", boundaryFailure ?? "Boundary preparation failed");
@@ -463,7 +467,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               const ids = turns[t] ?? [];
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
             }
-            if (selection.id === "e4") {
+            if (selection.id === "e4" || selection.id === "g8") {
               report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi does not apply Nunc required-item selection" } });
             }
           } else {
@@ -636,8 +640,10 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         report.setupChecks.push(...evaluateTaskFileSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       } else if (selection.id === "g4" && selection.variant === "same-task-history") {
         report.setupChecks.push(...evaluateSameTaskHistorySetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
-      } else if (selection.id === "g4" && ["active-edit", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant))) {
+      } else if (selection.id === "g4" && ["active-edit", "commit-conflict"].includes(String(selection.variant))) {
         report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
+      } else if (selection.id === "g4" && selection.variant === "commit-unconfirmed") {
+        report.setupChecks.push(scoreGuidance("g4", "unconfirmed-no-replay", report.actions as GuidanceAction[], report.prerequisites, join(caseRoot, "task")));
       } else if (selection.id === "g3" && selection.variant === "scoped-tasks") {
         report.setupChecks.push(...evaluateScopedTasksSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       }

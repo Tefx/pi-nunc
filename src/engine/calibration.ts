@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
+import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceCandidate, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
 import { applyToolResultCleanup } from "./cleanup.js";
 import { mainPlanningEstimate, messagePlanningEstimate } from "./accounting.js";
 import { integer, nonempty, record } from "./validation.js";
@@ -167,12 +167,12 @@ export function sameRejectedRequest(overflow: ProviderOverflow | undefined, acti
 
 /** Failed attempts save evidence only. Successful native handoffs rebind the measured correction to original K,
  * whose source is still active after compaction, while retaining the measured request's original provenance. */
-export function maintenanceCalibrationRecord(input: Snapshot, result: MaintenanceResult): MaintenanceCalibrationRecord | undefined {
+export function maintenanceCalibrationRecord(input: Snapshot, result: MaintenanceResult, committed: MaintenanceCandidate | undefined = result.ok ? result.candidate : undefined): MaintenanceCalibrationRecord | undefined {
   if (result.observations.requests < 1) return;
-  const providerOverflow = result.ok ? undefined : result.observations.providerOverflow;
-  const measurement = result.observations.maintenanceCalibration ?? (result.ok ? maintenanceFeedback(input).measurement : undefined);
+  const providerOverflow = committed ? undefined : result.ok ? undefined : result.observations.providerOverflow;
+  const measurement = result.observations.maintenanceCalibration ?? (committed ? maintenanceFeedback(input).measurement : undefined);
   if (!providerOverflow && !measurement) return;
-  const active = result.ok ? applyToolResultCleanup(result.candidate.kept, result.candidate.toolResultCleanup?.applied ?? []) : input.active;
+  const active = committed ? applyToolResultCleanup(committed.kept, committed.toolResultCleanup?.applied ?? []) : input.active;
   return { version: 1, provider: input.model.provider, api: input.model.api, modelId: input.model.id,
     sourceEntryIds: active.map(entry => entry.entryId), sourceDigest: digest(active), limitsDigest: limitsDigest(input),
     ...(providerOverflow ? { providerOverflow, contextDigest: contextDigest(input),

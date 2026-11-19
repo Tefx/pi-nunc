@@ -27,9 +27,15 @@ for (const reason of ["stop", "length", "error", "aborted", "toolUse"] as const)
       const after = project(manager.buildContextEntries());
       assert.deepEqual(after.memory, before.memory);
       assert.deepEqual(after.active, before.active.slice(before.active.findIndex(e => e.entryId === saved.firstKeptEntryId)));
+      const calibration = (saved.details as { maintenanceCalibration?: { sourceEntryIds: string[]; providerOverflow?: unknown } }).maintenanceCalibration;
+      assert(calibration);
+      assert.deepEqual(calibration.sourceEntryIds, after.active.map(e => e.entryId));
+      assert.equal(calibration.providerOverflow, undefined);
+      assert.notDeepEqual(calibration.sourceEntryIds, before.active.map(e => e.entryId));
       assert.equal(after.mechanicalFallback?.code, "RESPONSE");
       assert.match(saved.summary, /Nunc Mechanical Roll Fallback/);
       const view = port.context().read(port.ctx());
+      if (!nonempty) assert((view.current.layout.memory?.tokens ?? 0) > 0, "empty M still accounts for the fallback carrier");
       assert.equal(view.lastMaintenance?.engine, "fail");
       assert.equal(view.lastMaintenance?.native, "saved");
       assert.deepEqual(view.lastMaintenance?.after?.memory, before.memory);

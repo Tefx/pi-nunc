@@ -255,7 +255,7 @@ for (const change of ["model", "provider", "api", "branch", "edit", "prefix", "w
   });
 }
 
-for (const error of ["429 token limit exceeded", "HTTP 429: too many tokens", "Error code: 429 - too many tokens", "Rate limit: too many tokens", "ECONNRESET: connection reset", "fetch failed"]) {
+for (const error of ["429 token limit exceeded", "HTTP 429: too many tokens", "Error code: 429 - too many tokens", "Rate limit: too many tokens", "ECONNRESET: connection reset", "fetch failed", "ECONNRESET: connection reset api.example.com:443"]) {
   test(`${error} is transient, bounded, and not provider context overflow`, async t => {
     const value = await source();
     t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -367,7 +367,10 @@ test("a measured correction can change the resolved reduced cap once; the next i
   remember(value, measuredReduced);
   const changedCap = await maintain(value, async request => overflow(request));
   assert.equal(changedCap.observations.requests, 1);
-  assert.equal(changedCap.observations.accounting!.outputReserveTokens, measuredReduced.observations.accounting!.outputReserveTokens - 900);
+  assert.equal(changedCap.observations.accounting!.calibratedUndercountTokens, 900);
+  assert.equal(changedCap.observations.accounting!.outputReserveTokens,
+    Math.min(32768, value.model.maxTokens, value.model.contextWindow - measuredReduced.observations.maintenanceCalibration!.actualInputTokens - value.config.extraction.safetyTokens),
+    "window headroom absorbs only the part of correction exceeding the previous capability-bound spare room");
   remember(value, changedCap);
   const blocked = await maintain(value, async () => assert.fail("the same newly resolved reduced cap must never resend"));
   assert(!blocked.ok); assert.equal(blocked.code, "CAPACITY"); assert.equal(blocked.observations.requests, 0);
@@ -455,6 +458,23 @@ test("malformed saved calibration is ignored and successful calibration rebinds 
   assert.deepEqual(selectMaintenanceCalibration(value, [{ ...saved, sourceDigest: "invalid" }, { ...saved, measurement: { ...saved.measurement, undercountTokens: -1 } }]), []);
   value.active[0]!.messages = [{ role: "user", content: "same ID, different content", timestamp: 0 }];
   assert.equal(maintenanceFeedback(value).calibratedUndercountTokens, 0);
+});
+
+test("mechanical handoff binds calibration to cleaned K and keeps failed-attempt provenance separate", async () => {
+  const value = await source();
+  const result = await maintain(value, async request => measured(request, 700));
+  assert(!result.ok && result.fallbackCandidate);
+  const failed = maintenanceCalibrationRecord(value, result)!;
+  assert.deepEqual(failed.sourceEntryIds, value.active.map(e => e.entryId));
+  const saved = maintenanceCalibrationRecord(value, result, result.fallbackCandidate)!;
+  assert.deepEqual(saved.sourceEntryIds, result.fallbackCandidate.kept.map(e => e.entryId));
+  assert.deepEqual(saved.measurement?.sourceEntryIds, value.active.map(e => e.entryId));
+  assert.equal(saved.providerOverflow, undefined);
+  const retained = { ...value, active: result.fallbackCandidate.kept, memory: result.fallbackCandidate.memory, calibration: [saved] };
+  assert.equal(maintenanceFeedback(retained).calibratedUndercountTokens, 700);
+  retained.active = structuredClone(retained.active);
+  retained.active[0]!.messages = [{ role: "user", content: "changed retained source", timestamp: 0 }];
+  assert.equal(maintenanceFeedback(retained).calibratedUndercountTokens, 0);
 });
 
 test("calibration equivalence compares every binding and evidence field, independent of object key order", async () => {

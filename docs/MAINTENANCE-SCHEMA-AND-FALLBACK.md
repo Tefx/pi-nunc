@@ -48,6 +48,7 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
 - **Automatic handoff in `session_before_compact` (`src/index.ts`)**:
   - When `!result.ok` in `session_before_compact`, if `!intent` and `result.fallbackCandidate` is present and `eligibleStarts(branch, current.active, current.latestId).includes(result.fallbackCandidate.firstKeptEntryId)`:
     - Construct `mechanicalFallback: MechanicalFallbackInfo = { code: result.code, message: result.message, retiredEntryCount: result.fallbackCandidate.retiredEntryIds.length, firstKeptEntryId: result.fallbackCandidate.firstKeptEntryId }`.
+    - Rebind `savedCalibration` to the committed candidate's retained cleaned K (`applyToolResultCleanup(candidate.kept, candidate.toolResultCleanup?.applied ?? [])`), retaining original measurement provenance and omitting `providerOverflow`. Failed attempts without a committed checkpoint retain B + K refusal binding.
     - Commit the compaction checkpoint using `result.fallbackCandidate` with `summary: renderMemoryWithFallback(result.fallbackCandidate.memory.slots, mechanicalFallback)` and `details: { nunc: result.fallbackCandidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions), mechanicalFallback, ...(savedCalibration ? { maintenanceCalibration: savedCalibration } : {}) }`.
 
 ### 3. Strong User & Model Visibility on Mechanical Fallback (`MUST`)
@@ -72,6 +73,8 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
   - When an equivalent record already exists on the branch, skip `pi.appendEntry()`, preventing failed compactions from advancing `SessionManager.getLeafId()` and re-triggering `provider-resilience`'s `agent_settled` auto-compaction loop.
 
 ### 5. Synchronized Documentation and Regression Tests (`MUST`)
+
+- Calibration regressions must restore both normal and fallback checkpoint records against retained cleaned K, reject changed K, and verify that committed checkpoint records never carry `providerOverflow`. The original measured B + K IDs remain in `measurement.sourceEntryIds` only.
 
 - Update `docs/CONSTITUTION.md`, `docs/ENGINE.md`, `docs/EXTRACTION.md`, `docs/PI.md`, and `docs/UI.md` to document Google maintenance JSON-schema decoding, automatic `Mechanical Window Roll` fallback on `RESPONSE` failures, persistent UI/carrier fallback visibility, and calibration append deduplication.
 - Update `tests/pi/lifecycle.test.ts` and `tests/pi/reporting.test.ts` where `RESPONSE` failures (`stopReason: "stop" | "length" | "toolUse"`) previously asserted `Compaction cancelled`, verifying that they now commit the mechanical fallback checkpoint while preserving `result.ok === false`, `result.code === "RESPONSE"`, unchanged `M`, retained `K`, carrier notice, and persistent `🧠 !N·roll` status; add targeted unit/integration tests for Google maintenance `responseMimeType` + `responseJsonSchema` serialization/authorization and calibration append deduplication.

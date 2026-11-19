@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
-import { parseInput, preflight, requireValue, RunnerError, type ComparisonGroup, type ComparisonMode, type RunInput } from "./contract.js";
+import { canResumeScenario, parseInput, preflight, requireValue, RunnerError, type ComparisonGroup, type ComparisonMode, type RunInput } from "./contract.js";
 import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext, type LedgerRecord } from "./budget.js";
 import { finalizeRun, launchWorker, type ChildReceipt } from "./runner.js";
 import type { SegmentReport } from "./worker.js";
@@ -138,7 +138,10 @@ export async function executeComparison(value: unknown, repository: string, scri
           modeReport.groups[group].scenarios.push(result); report.matrix.push(result);
           requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
           const failed = segment.prerequisites.some(c => c.status !== "PROVEN");
-          if (segment.status === "PAUSED" && !failed) { resume = true; continue; }
+          if (segment.status === "PAUSED") {
+            requireValue(canResumeScenario(selection.id, resume), "RESTART", "Unexpected repeated pause");
+            if (!failed) { resume = true; continue; }
+          }
           if (segment.status !== "OBSERVED" || failed) modeFailed = true;
           break;
         } while (resume);

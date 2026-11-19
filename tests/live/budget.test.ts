@@ -559,6 +559,33 @@ test("wallclock deadline from first dispatch and interval elapsed time; expired 
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
+test("duplicate terminal on one call cannot conceal another call's missing terminal", () => {
+  const reserve: CallRecord = { kind: "reserve", id: 1, at: 1, model: "test/model", inputEstimate: 10, outputCeiling: 100, reservedTokens: 1000, reservedCostUsd: null };
+  const terminal: CallEnd = { kind: "terminal", id: 1, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: 30, cost: null } };
+  const summary = ledgerSummary([reserve, { ...reserve, id: 2 }, terminal, { ...terminal }]);
+  assert.equal(summary.actualTokens, null);
+  assert.equal(summary.input, null);
+  assert.equal(summary.output, null);
+  assert.deepEqual(summary.unreconciledCallIds, [2]);
+});
+
+test("controlled usage overflow preserves an unresolved reservation without a synthetic local terminal", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "overflow", contextWindow: 60000, maxTokens: 8192 }] });
+    faux.setResponses([fauxAssistantMessage("x".repeat(5000))]); // Native faux reports 1250 output tokens, beyond the 1000 authorization.
+    const model = faux.getModel();
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "overflow.jsonl"), input.limits, Date.now() + 10000, new AbortController().signal);
+    const provider = boundedProvider(faux.provider, [model], ledger, { controlled: true });
+    const response = await provider.streamSimple(model, context, { maxTokens: 1000 }).result();
+    assert.equal(response.stopReason, "error");
+    assert.match(response.errorMessage ?? "", /USAGE_LIMIT/);
+    assert.equal(readLedger(ledger.path).length, 1);
+    assert.deepEqual(ledgerSummary(readLedger(ledger.path)).unreconciledCallIds, [1]);
+    assert.throws(() => ledger.reserve(model, context, 1000), /Concurrent model calls|terminal receipt/);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
 test("requireThinkingLevel inspects trailing configuration_update effort on openai-responses and falls back to top-level effort", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {

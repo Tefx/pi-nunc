@@ -70,6 +70,16 @@ export interface Limits {
   priorLedgers?: string[];
   sharedLedger?: string;
 }
+export function assertBatchConsistency(batch: BatchAuthority | undefined, limits: Limits): void {
+  for (const key of ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"] as const) {
+    const a = batch?.[key], b = limits[key];
+    if (a === undefined || b === undefined) continue;
+    const normalize = (value: unknown): unknown => key === "firstDispatchAt" || key === "deadline"
+      ? typeof value === "string" ? Date.parse(value) : value
+      : Array.isArray(value) ? [...new Set(value.map(p => resolve(p)))].sort() : resolve(String(value));
+    requireValue(canonical(normalize(a)) === canonical(normalize(b)), "BATCH", `Conflicting batch and limits ${key}`);
+  }
+}
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
@@ -81,6 +91,9 @@ export interface ComparisonTarget { repository: string; ref?: string }
 export function taskRetentionSelection(s: { id?: unknown; variant?: unknown }): boolean {
   return s.id === "g3" && s.variant === "scoped-tasks" || s.id === "g4" &&
     ["task-file", "same-task-history", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(s.variant));
+}
+export function canResumeScenario(id: Selection["id"], resume: boolean): boolean {
+  return !resume && ["c3", "e1", "e3"].includes(id);
 }
 export function taskRetentionRun(input: { scenarios: unknown; overrides?: unknown }): boolean {
   return Array.isArray(input.scenarios) && input.scenarios.some(s => object(s) && taskRetentionSelection(s)) ||
@@ -174,6 +187,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
     keys(value.batch, ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], "batch");
     validateBatchFields(value.batch, "BATCH", "batch");
   }
+  assertBatchConsistency(value.batch as BatchAuthority | undefined, value.limits as unknown as Limits);
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
   const isGuidance = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("g"));
@@ -361,7 +375,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     catch { throw new RunnerError("BUILD", "Current baseline target must have compiled dist/src/index.js"); }
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
     const curPiVersion = curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
-    requireValue(curPiVersion === (requestedRef === "70dacad" ? "0.85.1" : "0.86.1"), "DEPENDENCY", "Current target uses an unsupported locked Pi version");
+    requireValue(isSupportedPiVersion(curPiVersion) || curPiVersion === (expectedCommit === "70dacad1f065a70b29f565b5bfcf02d31cec2bdc" ? "0.85.1" : expectedCommit === "1d4fc4a210b64f71871ab3f5c10093215a25990c" ? "0.86.1" : undefined), "DEPENDENCY", "Current target uses an unsupported locked Pi version");
     // Verify baseline build parity against its tracked source
     if (!existingOwnedWorker) {
       const { assertBuildParity } = await import("./build.js");
@@ -418,7 +432,8 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const p = isAbsolute(assetFile) ? assetFile : join(repository, assetFile);
     if (existsSync(p)) {
       const stat = await lstat(p);
-      if (stat.isFile()) digest.update(await readFile(p));
+      requireValue(stat.isFile() && !stat.isSymbolicLink(), "ASSETS", "Explicit asset must be a regular file, not a symlink");
+      digest.update(await readFile(p));
     }
   }
   for (const name of ["src", "scripts", "dist/src", "tests/scenarios", "policies", "package.json", "package-lock.json", "tsconfig.json"]) await bind(join(repository, name));

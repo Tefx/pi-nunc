@@ -18,7 +18,7 @@ export function bindHostSettings(bus: EventBus, manager: SettingsManager): void 
       return {
         compaction: manager.getCompactionSettings(model),
         blockImages: manager.getBlockImages(),
-        nunc: p.nunc ?? g.nunc,
+        nunc: (manager.isProjectTrusted() ? p.nunc : undefined) ?? g.nunc,
       };
     },
     getGlobalSettings: () => manager.getGlobalSettings() as Record<string, unknown>,

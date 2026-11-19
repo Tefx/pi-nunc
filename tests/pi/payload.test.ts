@@ -122,6 +122,19 @@ test("Google nested config and Completions n are control, not metadata", () => {
   }
 });
 
+for (const container of ["config", "generationConfig", "nested"] as const) test(`Google ${container} validates every changed field before transport authorization`, () => {
+  const wrap = (value: Record<string, unknown>) => container === "nested" ? { config: { generationConfig: value } } : { [container]: value };
+  const before = { model: model.id, ...wrap({ maxOutputTokens: 128 }) };
+  const authorize = (value: Record<string, unknown>) => {
+    const after = { model: model.id, ...wrap(value) };
+    return authPayload({ model, before, after, delta: classifyPayloadChange(before, after, "replacement"), inputTokens: 100, inputLimit: 10000, authorizedOutput: 128 });
+  };
+  assert.doesNotThrow(() => authorize({ maxOutputTokens: 64 }));
+  for (const [key, value] of Object.entries({ thinking: { budget: 10 }, thinkingConfig: { thinkingBudget: 10 }, modality: "AUDIO", responseModalities: ["AUDIO"], candidateCount: 2, systemInstruction: "changed", tools: [{ name: "read" }], unknown: true })) {
+    assert.throws(() => authorize({ maxOutputTokens: 64, [key]: value }), /unvalidated payload|unrecognized payload field/, key);
+  }
+});
+
 test("same-length input mutation, netted growth, extra image, audio, cap expansion and omitted cap fail", () => {
   const base = { model: model.id, stream: true, max_tokens: 16, metadata: { note: "n".repeat(4000) }, messages: [{ role: "assistant", content: [{ type: "toolCall", id: "c1", name: "read", arguments: {} }] }, { role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: "ok" }] }] };
   const orphan = { ...base, messages: [{ role: "toolResult", toolCallId: "missing", toolName: "read", content: [{ type: "text", text: "ok" }] }] };

@@ -3,6 +3,7 @@ import { existsSync, readFileSync, chmodSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
+import { isSupportedPiVersion } from "../pi/compat.js";
 import { nativeRpcError } from "./native-no-work.js";
 import { getCurrentSystemPrompt, getCurrentTools, type Api, type Context, type Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
@@ -153,7 +154,8 @@ export class NativeHost {
         try {
           // The supported pre-change .86 target exposes this flag; the historical .85 fixture does not.
           const pkg = JSON.parse(readFileSync(join(curRepo, "package-lock.json"), "utf8"));
-          groupHasMemoryTools = pkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version === "0.86.1";
+          const version = pkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
+          groupHasMemoryTools = version === "0.86.1" || isSupportedPiVersion(version);
         } catch {
           groupHasMemoryTools = false;
         }

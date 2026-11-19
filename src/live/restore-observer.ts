@@ -11,8 +11,8 @@ export default function restoreObserver(pi: ExtensionAPI): void {
   const { events } = JSON.parse(readFileSync(source, "utf8")) as { events: string };
   pi.on("session_compact", async () => {
     const state = observerState(source);
-    if (!state?.restorePending) return;
-    const held = new Promise<void>(resolve => { state.held = resolve; });
+    if (!state?.boundary.restorePending) return;
+    const held = new Promise<void>(resolve => { state.boundary.held = resolve; });
     appendFileSync(events, JSON.stringify({ type: "boundary-restore", data: {} }) + "\n", { mode: 0o600 });
     // The public command/reload releases plain state; never use old pi/ctx after await.
     await held;

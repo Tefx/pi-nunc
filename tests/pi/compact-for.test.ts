@@ -75,6 +75,27 @@ test("compact-for saves once using the current model, preserves full sources, an
   assert(notes.at(-1)!.includes("native saved"));
 });
 
+test("a later native handler cannot confirm Nunc's superseded compact-for candidate", async t => {
+  const reports: string[] = [];
+  const { f, context, ctx } = await preparedSurface(t, { extras: [{ name: "superseding-compact", factory(pi) {
+    pi.on("session_before_compact", event => ({ compaction: {
+      summary: "External handler retained its own summary.",
+      firstKeptEntryId: event.preparation.firstKeptEntryId,
+      tokensBefore: event.preparation.tokensBefore,
+      details: {},
+    } }));
+    pi.events.on("nunc:diagnostic", value => reports.push((value as { message: string }).message));
+  } }] });
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.prompt("/nunc compact-for nunc-pi-fixture/small");
+  const view = context().read(ctx());
+  assert.equal(view.lastMaintenance?.engine, "ok");
+  assert.equal(view.lastMaintenance?.native, "failed");
+  assert.equal(view.lastMaintenance?.after, undefined);
+  assert(!reports.some(line => line.includes("Saved compaction for")));
+  assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 1);
+});
+
 test("unknown targets and non-summarizable sessions never send or save", async t => {
   const f = await fixture(); t.after(() => f.close());
   const before = f.runtime.session.sessionManager.getEntries();

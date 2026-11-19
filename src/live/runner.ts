@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { object, canonical, parseInput, preflight, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
+import { object, canResumeScenario, canonical, parseInput, preflight, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
 import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
 import { childEnvironment, nativeEnvironment } from "./host.js";
@@ -84,7 +84,7 @@ export async function execute(value: unknown, repository: string, script: string
         const failedPlacement = segment.prerequisites.some(c => c.status !== "PROVEN");
         requireValue(segment.status !== "STOPPED" && segment.reason !== "CLEANUP", segment.reason === "CLEANUP" ? "CLEANUP" : segment.reason ?? "WORKER", segment.diagnostic ?? "Worker stopped; inspect saved state before any new run");
         if (segment.status === "PAUSED") {
-          requireValue(!resume && selection.id === "c3", "RESTART", "Unexpected repeated pause");
+          requireValue(canResumeScenario(selection.id, resume), "RESTART", "Unexpected repeated pause");
           if (failedPlacement) { failed = true; break; }
           resume = true; continue;
         }

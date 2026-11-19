@@ -96,13 +96,7 @@ export interface NuncSettings {
 
 export function parseNuncSettings(value: unknown, label: string = "settings.json: nunc"): NuncSettings {
   if (value === undefined) return {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new EngineError("CONFIG", `${label} must be an object`);
-  }
-  const obj = value as Record<string, unknown>;
-  for (const key of Object.keys(obj)) {
-    if (key !== "memoryTools" && key !== "toolResultCleanup") throw new EngineError("CONFIG", `Unknown ${label}.${key}`);
-  }
+  const obj = object(value, ["memoryTools", "toolResultCleanup"], label);
   if (obj.memoryTools !== undefined && typeof obj.memoryTools !== "boolean") {
     throw new EngineError("CONFIG", `Invalid ${label}.memoryTools: expected boolean, got ${typeof obj.memoryTools}`);
   }
@@ -126,20 +120,20 @@ export function validateNuncSettings(settings: {
   }
 }
 
+function resolveNuncSetting(options: { projectNunc?: unknown; globalNunc?: unknown; projectTrusted?: boolean }, key: keyof NuncSettings): boolean | undefined {
+  if (options.projectTrusted !== false && options.projectNunc !== undefined) {
+    const value = parseNuncSettings(options.projectNunc, "project settings.json: nunc")[key];
+    if (value !== undefined) return value;
+  }
+  return options.globalNunc === undefined ? undefined : parseNuncSettings(options.globalNunc, "global settings.json: nunc")[key];
+}
+
 export function resolveToolResultCleanup(options: {
   projectNunc?: unknown;
   globalNunc?: unknown;
   projectTrusted?: boolean;
 }): boolean {
-  if (options.projectTrusted !== false && options.projectNunc !== undefined) {
-    const project = parseNuncSettings(options.projectNunc, "project settings.json: nunc");
-    if (project.toolResultCleanup !== undefined) return project.toolResultCleanup;
-  }
-  if (options.globalNunc !== undefined) {
-    const global = parseNuncSettings(options.globalNunc, "global settings.json: nunc");
-    if (global.toolResultCleanup !== undefined) return global.toolResultCleanup;
-  }
-  return true;
+  return resolveNuncSetting(options, "toolResultCleanup") ?? true;
 }
 
 export function resolveMemoryTools(options: {
@@ -149,14 +143,6 @@ export function resolveMemoryTools(options: {
   projectTrusted?: boolean;
 }): boolean {
   if (Boolean(options.cliFlag)) return true;
-  if (options.projectTrusted !== false && options.projectNunc !== undefined) {
-    const project = parseNuncSettings(options.projectNunc, "project settings.json: nunc");
-    if (project.memoryTools !== undefined) return project.memoryTools;
-  }
-  if (options.globalNunc !== undefined) {
-    const global = parseNuncSettings(options.globalNunc, "global settings.json: nunc");
-    if (global.memoryTools !== undefined) return global.memoryTools;
-  }
-  return false;
+  return resolveNuncSetting(options, "memoryTools") ?? false;
 }
 

@@ -67,7 +67,7 @@ export function retryMaintenanceComplete(complete: Complete, baseDelayMs = 1000)
 }
 function transientTransportError(message: string): boolean {
   // A status-bearing deterministic failure wins over incidental retry-like wording.
-  if (/\b4(?!29\b)\d{2}\b|Nunc local|context[_ ]length|context window|overflow|malformed|invalid json|quota|billing|usage.limit|out of budget|available balance|cancel|abort/i.test(message)) return false;
+  if (/(?<![\d:])\b4(?!29\b)\d{2}\b|Nunc local|context[_ ]length|context window|overflow|malformed|invalid json|quota|billing|usage.limit|out of budget|available balance|cancel|abort/i.test(message)) return false;
   return /\b(?:429|5\d{2})\b|rate.?limit|too many requests|stream ended before (?:a terminal response event|message_stop)|stream (?:was interrupted|disconnected before completion)|terminated|connection.?(?:error|lost|refused|reset|closed)|network.?error|fetch failed|socket hang up|other side closed|upstream_stream_read_error/i.test(message);
 }
 function rawThinking(model: Model<Api>, thinking?: ModelThinkingLevel): { reasoningEffort?: Exclude<ModelThinkingLevel, "off"> } {

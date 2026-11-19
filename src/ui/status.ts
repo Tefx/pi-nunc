@@ -180,6 +180,15 @@ export function lastMainLines(last: LastMainContext | undefined): string[] {
   if (last.inputTokens !== undefined) {
     lines.push(`Input estimate: ${thousands(last.inputTokens)}${last.inputLimit !== undefined ? ` / enforced ${thousands(last.inputLimit)}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${thousands(last.plannedInputLimit)}` : ""}`);
   }
+  lines.push(
+    ...(last.inputExceededPlan ? ["input exceeded plan (advisory if delegated)"] : []),
+    ...(last.outputTokens === undefined ? [] : [`output ${last.outputTokens}`]),
+    ...(last.outputReserveTokens === undefined ? [] : [`output reserve ${last.outputReserveTokens}`]),
+    ...(last.outputCapTokens === undefined ? [] : [`output cap ${last.outputCapTokens === null ? "none" : last.outputCapTokens}`]),
+    ...(last.initialMetadataTokens === undefined ? [] : [`initialMetadataTokens ${last.initialMetadataTokens}`]),
+    last.layout.unavailable ? "layout unavailable (unknown)" : `${last.layout.messageCount} messages / ${last.layout.blockCount} blocks · heuristic ${last.layout.heuristic.tokens ?? "unknown"}${last.layout.heuristic.unknown ? " + unknown" : " tok"}`,
+    last.outcome === "reject" ? "Local reject is not a send." : "Delegate is not HTTP success.",
+  );
   return lines;
 }
 

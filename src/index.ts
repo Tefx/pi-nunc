@@ -8,7 +8,7 @@ import { subscriptionBilling, omitsRouteOutputCap } from "./engine/pi-model.js";
 import { messageTextContent } from "./engine/cleanup.js";
 import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
 import { maintenanceCalibrationRecord, hasEquivalentCalibrationRecord } from "./engine/calibration.js";
-import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration } from "./pi/calibration.js";
+import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration, branchCalibrationRecords } from "./pi/calibration.js";
 import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { mainAdmissionLimit, mainContext, requestTokens } from "./engine/accounting.js";
@@ -49,6 +49,7 @@ export default function nunc(pi: ExtensionAPI): void {
     target: NonNullable<MaintenanceInput["target"]>; claimed: boolean;
     outcome?: NonNullable<MaintenanceResult["observations"]["target"]> };
   let compactFor: CompactForIntent | undefined;
+  let pendingCompaction: { firstKeptEntryId: string; memory: Memory; mechanicalFallback?: MechanicalFallbackInfo } | undefined;
   const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; runwayWarned = false; };
   const dropAnchors = () => { clearMemoryAnchors(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
@@ -127,7 +128,7 @@ export default function nunc(pi: ExtensionAPI): void {
     });
     return { systemPrompt, tools, ...(hasSystemState ? {} : { toolState: "partial" as const }) };
   };
-  const memory = createMemorySurface({ pi, fixed, settings, cleanup: cleanupOpportunity, onCommitted: () => { ui.refresh(); } });
+  const memory = createMemorySurface({ pi, cleanup: cleanupOpportunity, onCommitted: () => { ui.refresh(); } });
   let toolsRegistered = false;
   const registerMemoryTools = () => {
     if (toolsRegistered) return;
@@ -316,7 +317,10 @@ export default function nunc(pi: ExtensionAPI): void {
         return { warning: "Cleanup did not complete; memory can still be saved with original tool results" };
       }
       const text = response.content.filter(b => record(b) && b.type === "text").map(b => b.text).join("");
-      const patch = parsePatch(JSON.parse(text), proposal);
+      let parsed: unknown;
+      try { parsed = JSON.parse(text); }
+      catch { throw new EngineError("RESPONSE", "Cleanup response is not valid JSON"); }
+      const patch = parsePatch(parsed, proposal);
       if (patch.add.length || patch.update?.length || patch.remove.length) return { warning: "Cleanup response changed frozen memory; memory saved without cleanup" };
       return { edits: patch.toolResultEdits ?? [] };
     } catch (error) {
@@ -349,8 +353,19 @@ export default function nunc(pi: ExtensionAPI): void {
     }
     ui.refresh(event.ctx);
   };
-  pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
-  pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
+  pi.on("session_compact", (event, ctx) => {
+    const pending = pendingCompaction;
+    pendingCompaction = undefined;
+    const entry = event.compactionEntry;
+    const owned = pending !== undefined && entry.fromHook === true && entry.firstKeptEntryId === pending.firstKeptEntryId &&
+      record(entry.details) && isDeepStrictEqual(entry.details.nunc, pending.memory) &&
+      isDeepStrictEqual(entry.details.mechanicalFallback, pending.mechanicalFallback);
+    admission.invalidateUsage(); memory.endFreeze();
+    contextView.noteNative(owned ? "saved" : "failed");
+    if (!owned && compactFor) delete compactFor.outcome;
+    ui.recover(); ui.refresh(ctx);
+  });
+  pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { pendingCompaction = undefined; memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   const modelDiagnostics = (ctx: ExtensionContext) => {
     const model = ctx.model;
     if (!model) return;
@@ -455,6 +470,7 @@ export default function nunc(pi: ExtensionAPI): void {
   });
   pi.on("session_before_compact", async (event, ctx) => {
     if (!memory.beginFreeze()) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
+    pendingCompaction = undefined;
     const controller = new AbortController(); running = controller;
     const abort = () => controller.abort();
     event.signal.addEventListener("abort", abort, { once: true });
@@ -538,7 +554,7 @@ export default function nunc(pi: ExtensionAPI): void {
       }
       if (target && (!isDeepStrictEqual(ctx.modelRegistry.find(target.model.provider, target.model.id), target.model) ||
           !isDeepStrictEqual(engineConfig({ ...selection.config, extraction: { ...selection.config.extraction, outputTokens: "auto" } }, target.model,
-            getHostSettings(ctx, target.model).compaction), target.config))) {
+            getHostSettings(ctx, target.model).compaction, omitsRouteOutputCap(target.model, ctx.modelRegistry)), target.config))) {
         throw new EngineError("CANCELLED", "Target model or target settings changed during maintenance");
       }
       const savedCalibration = maintenanceCalibrationRecord(maintenanceInput, result);
@@ -546,11 +562,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const candidate = result.ok ? result.candidate : !intent ? result.fallbackCandidate : undefined;
       if (!candidate || !eligibleStarts(branch, current.active, current.latestId).includes(candidate.firstKeptEntryId)) {
         if (!result.ok) {
-          if (savedCalibration && !hasEquivalentCalibrationRecord(branch.flatMap(entry => {
-            if (entry.type === "custom" && entry.customType === MAINTENANCE_CALIBRATION_TYPE) return [entry.data];
-            if (entry.type === "compaction" && record(entry.details)) return [entry.details.maintenanceCalibration];
-            return [];
-          }), savedCalibration))
+          if (savedCalibration && !hasEquivalentCalibrationRecord(branchCalibrationRecords(branch), savedCalibration))
             pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE, savedCalibration);
           notify(ctx, `${result.code}: ${result.message}`);
           return { cancel: true };
@@ -558,19 +570,23 @@ export default function nunc(pi: ExtensionAPI): void {
         throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
       }
       if (!result.ok) {
+        if (result.code !== "RESPONSE") throw new EngineError("INPUT", "Unexpected mechanical fallback failure code");
         mechanicalFallback = { code: result.code, message: result.message,
           retiredEntryCount: candidate.retiredEntryIds.length, firstKeptEntryId: candidate.firstKeptEntryId };
         contextView.noteFallback(mechanicalFallback, candidate);
         notify(ctx, `${result.code}: ${result.message}; rolled window mechanically preserving current M (${candidate.memory.slots.length} slots) and recent K (@ ${candidate.firstKeptEntryId}) so session can continue`, "warning");
       }
       if (intent && result.observations.target) intent.outcome = result.observations.target;
+      const committedCalibration = maintenanceCalibrationRecord(maintenanceInput, result, candidate);
       const retained = new Set(candidate.kept.map(e => e.entryId));
       const nextDecisions = [...projected.cleanup, ...(candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
         !d.sourceRefs?.some(ref => !retained.has(ref.entryId)));
+      pendingCompaction = { firstKeptEntryId: candidate.firstKeptEntryId, memory: structuredClone(candidate.memory),
+        ...(mechanicalFallback ? { mechanicalFallback: structuredClone(mechanicalFallback) } : {}) };
       return { compaction: { summary: renderMemoryWithFallback(candidate.memory.slots, mechanicalFallback), firstKeptEntryId: candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
         details: { nunc: candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions),
           ...(mechanicalFallback ? { mechanicalFallback } : {}),
-          ...(savedCalibration ? { maintenanceCalibration: savedCalibration } : {}) } } };
+          ...(committedCalibration ? { maintenanceCalibration: committedCalibration } : {}) } } };
     } catch (error) {
       contextView.noteInvalidated();
       notify(ctx, `${error instanceof EngineError ? error.code + ": " : ""}${error instanceof Error ? error.message : "Maintenance failed"}`);
@@ -605,7 +621,7 @@ export default function nunc(pi: ExtensionAPI): void {
         const targetModel = structuredClone(matches[0]!);
         const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd);
         const targetConfig = engineConfig({ ...selection.config, extraction: { ...selection.config.extraction, outputTokens: "auto" } }, targetModel,
-          getHostSettings(ctx, targetModel).compaction);
+          getHostSettings(ctx, targetModel).compaction, omitsRouteOutputCap(targetModel, ctx.modelRegistry));
         const intent: CompactForIntent = { marker: `nunc-compact-for:${randomUUID()}`, sessionId: ctx.sessionManager.getSessionId(),
           leafId: ctx.sessionManager.getLeafId(), generation, target: { model: targetModel, config: targetConfig }, claimed: false };
         compactFor = intent;

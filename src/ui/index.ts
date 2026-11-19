@@ -107,12 +107,14 @@ export class NuncUi {
           diagnostics: () => ({ notes: this.diagnostics.slice(), ...(this.warning ? { warning: this.warning } : {}) }),
           done: () => done(null),
           onFailure: message => { try { this.noteDiagnostic("warning", message); } catch { /* Diagnostic only. */ } this.refresh(ctx); },
+          onWarning: message => { this.noteDiagnostic("warning", message); this.refresh(ctx); },
           onSuccess: () => { try { this.recover(); } catch { /* Status only. */ } this.refresh(ctx); },
         });
         this.overlay = overlay;
         return overlay;
       }, { overlay: true, overlayOptions: { width: "90%", maxHeight: "90%", anchor: "center", margin: 1 } });
     } finally {
+      this.overlay?.dispose();
       this.opening = false;
       this.overlay = undefined;
       this.refresh(ctx);

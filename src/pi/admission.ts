@@ -157,9 +157,15 @@ function cloneWithOutputCap(body: unknown, cap: number): unknown {
   if (!record(body)) return body;
   const next = { ...body };
   for (const path of outputCapPaths(body)) {
-    const [root, key] = path.split(".");
-    if (key && root && record(body[root])) next[root] = { ...body[root], [key]: cap };
-    else if (root) next[root] = cap;
+    const keys = path.split(".");
+    let target = next;
+    for (const key of keys.slice(0, -1)) {
+      const child = target[key];
+      if (!record(child)) break;
+      target[key] = { ...child };
+      target = target[key] as Record<string, unknown>;
+    }
+    target[keys.at(-1)!] = cap;
   }
   return next;
 }

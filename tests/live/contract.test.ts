@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { lstat, mkdir, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { parseInput, preflight, readBoundedJson, selectedModels, validateTarget } from "../../src/live/contract.js";
+import { canResumeScenario, assertBatchConsistency, parseInput, preflight, readBoundedJson, selectedModels, validateTarget } from "../../src/live/contract.js";
 import { childEnvironment, execute } from "../../src/live/runner.js";
 import { fixture, publicSelection, repository } from "./fixtures.js";
 
@@ -146,6 +146,32 @@ test("seven legal unique scenario combinations are admitted; duplicates still fa
   const duplicated = [...combos, combos[0]!];
   assert.throws(() => parseInput({ ...input, models, scenarios: duplicated }));
 });
+test("resume eligibility is shared across supported restart scenarios", () => {
+  for (const id of ["c3", "e1", "e3"] as const) {
+    assert.equal(canResumeScenario(id, false), true);
+    assert.equal(canResumeScenario(id, true), false);
+  }
+  for (const id of ["c1", "e2", "g4"] as const) assert.equal(canResumeScenario(id, false), false);
+});
+
+test("duplicate batch authority must agree after timestamp/path normalization", async () => {
+  const input = await fixture();
+  const timestamp = Date.now();
+  const limits = { ...input.limits, firstDispatchAt: timestamp, priorLedgers: ["/tmp/a", "/tmp/b"], sharedLedger: "/tmp/shared" };
+  assert.doesNotThrow(() => assertBatchConsistency({ firstDispatchAt: new Date(timestamp).toISOString(), priorLedgers: ["/tmp/b", "/tmp/a", "/tmp/a"], sharedLedger: "/tmp/./shared" }, limits));
+  for (const batch of [{ firstDispatchAt: timestamp + 1 }, { priorLedgers: ["/tmp/c"] }, { sharedLedger: "/tmp/other" }]) {
+    assert.throws(() => parseInput({ ...input, limits, batch }), /Conflicting batch and limits/);
+  }
+});
+
+test("explicit scenario assets reject symlinks even when their JSON is valid", async () => {
+  const input = await fixture();
+  const alias = join(repository, ".scratch", `asset-alias-${Date.now()}.json`);
+  await symlink(join(repository, "tests/scenarios/inputs.json"), alias);
+  try { await assert.rejects(preflight({ ...input, assets: { inputs: alias } }, repository), /symlink/); }
+  finally { await rm(alias); }
+});
+
 test("child environment is constructed without caller credentials, proxy or NODE_OPTIONS", () => {
   const env = childEnvironment("/isolated");
   assert.deepEqual(Object.keys(env).sort(), ["HOME", "NO_COLOR", "PATH", "PI_CODING_AGENT_DIR", "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME"].sort());

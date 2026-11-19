@@ -8,10 +8,13 @@ export const MAINTENANCE_CALIBRATION_TYPE = "nunc.maintenance-calibration";
 
 /** Read only the selected getBranch() path. buildContextEntries() can omit older measurement records. */
 export function projectMaintenanceCalibration(branch: readonly SessionEntry[], input: Omit<MaintenanceInput, "signal">) {
-  const records = branch.flatMap(entry => {
+  return selectMaintenanceCalibration(input, branchCalibrationRecords(branch));
+}
+
+export function branchCalibrationRecords(branch: readonly SessionEntry[]): unknown[] {
+  return branch.flatMap(entry => {
     if (entry.type === "custom" && entry.customType === MAINTENANCE_CALIBRATION_TYPE) return [entry.data];
     if (entry.type === "compaction" && record(entry.details) && entry.details.maintenanceCalibration !== undefined) return [entry.details.maintenanceCalibration];
     return [];
   });
-  return selectMaintenanceCalibration(input, records);
 }

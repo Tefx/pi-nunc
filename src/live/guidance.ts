@@ -5,7 +5,12 @@ import type { CheckResult } from "./scenarios.js";
 import { executeMetricsOracle } from "./metrics-oracle.js";
 
 export interface GuidanceAction { turn?: string; event?: any }
-export const VERIFY_COMMANDS = ["python3 verify.py", "/usr/bin/python3 verify.py", "python verify.py"];
+import { resolveScenarioPath, VERIFY_COMMANDS } from "./tool-path.js";
+export { VERIFY_COMMANDS } from "./tool-path.js";
+export function textOf(content: unknown): string {
+  return typeof content === "string" ? content : Array.isArray(content)
+    ? content.filter(b => b?.type === "text" && typeof b.text === "string").map(b => b.text).join("") : "";
+}
 export const TOOLS_CHECK = "memory tools exposed in session";
 export const SPLIT_CHECK = "actual tool batch followed by automatic native split compaction and same-loop continuation";
 const sameScopedEast = (value: unknown) => isDeepStrictEqual(value, { port: 9090, timeoutMs: 650, database: "sqlite", crossTenantSharing: false });
@@ -30,7 +35,7 @@ export function scoreGuidance(
     a.event?.type === "tool_intent" && !actions.some(b => b.turn === a.turn && ["tool_call", "tool_blocked"].includes(b.event?.type) && b.event.toolCallId === a.event.toolCallId));
   const exchanges = guidanceExchanges(actions);
   const completed = (turn: string) => actions.some(a => a.turn === turn && a.event?.type === "turn_complete" && a.event.stopReason === "stop");
-  const pathIs = (a: GuidanceAction, path: string) => typeof a.event?.input?.path === "string" && resolve(cwd, a.event.input.path.replace(/^@/, "")) === resolve(cwd, path);
+  const pathIs = (a: GuidanceAction, path: string) => typeof a.event?.input?.path === "string" && resolveScenarioPath(cwd, a.event.input.path) === resolve(cwd, path);
   const writes = (path: string) => calls.filter(a => ["write", "edit"].includes(a.event.toolName) && pathIs(a, path));
   const semantic = () => result("UNPROVEN", "Independent observation required: judge meaning against task requirements, actual saved M + delivered K/recovery reads, responses and artifacts; no keyword, language, length or slot-count oracle.", {
     completedTurns: actions.filter(a => a.event?.type === "turn_complete"),

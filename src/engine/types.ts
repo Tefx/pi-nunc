@@ -239,7 +239,6 @@ export type CleanupSkippedReason =
   | "has_omissions"
   | "invalid_shape"
   | "duplicate_edit"
-  | "batch_conflict"
   | "missing_memory_dependency"
   | "missing_source_dependency"
   | "no_net_savings"
@@ -262,7 +261,7 @@ export interface ToolResultCleanupResult {
 }
 
 export interface MechanicalFallbackInfo {
-  code: FailureCode;
+  code: "RESPONSE";
   message: string;
   retiredEntryCount: number;
   firstKeptEntryId: string;

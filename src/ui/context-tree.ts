@@ -1,6 +1,6 @@
-import type { ContextLayout, ContextMessage, ContextView, CurrentContext, LastMainContext, LastMaintenanceContext } from "../pi/context.js";
+import type { ContextLayout, ContextMessage, ContextView, CurrentContext, LastMainContext, LastMaintenanceContext, ToolDefinitionView } from "../pi/context.js";
 import type { Slot, SlotProvenance } from "../engine/index.js";
-import { budgetLines, firstLine, maintenanceLines, memoryOccupancy, planningLines, thousands, type DiagnosticNote } from "./status.js";
+import { budgetLines, firstLine, lastMainLines, maintenanceLines, memoryOccupancy, planningLines, thousands, type DiagnosticNote } from "./status.js";
 
 export interface CtxNode {
   id: string;
@@ -172,14 +172,18 @@ function scopeLastMaintenance(last: LastMaintenanceContext | undefined, add: (no
   };
 }
 
-function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNode) => string, slots?: Slot[]): string[] {
-  const toolIds = layout.tools.definitions.map(def => add({
-    id: `${prefix}:F:tools:${def.name}`,
-    label: def.name,
-    description: def.unknown ? "unknown" : `${def.tokens ?? "?"} tok`,
-    preview: [def.name, def.description, def.unknown ? "estimate unknown" : `${thousands(def.tokens ?? 0)} tok`, JSON.stringify(def.parameters), ...(def.constrainedSampling === undefined ? [] : [`Constrained sampling: ${JSON.stringify(def.constrainedSampling)}`])].join("\n"),
+function toolNode(prefix: string, def: ToolDefinitionView): CtxNode {
+  return {
+    id: `${prefix}:F:tools:${def.name}`, label: def.name,
+    description: tokenLabel(def.tokens, def.unknown),
+    preview: [def.name, def.description, tokenLabel(def.tokens, def.unknown), JSON.stringify(def.parameters),
+      ...(def.constrainedSampling === undefined ? [] : [`Constrained sampling: ${JSON.stringify(def.constrainedSampling)}`])].join("\n"),
     children: [],
-  }));
+  };
+}
+
+function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNode) => string, slots?: Slot[]): string[] {
+  const toolIds = layout.tools.definitions.map(def => add(toolNode(prefix, def)));
   const mIds = slotChildren(`${prefix}:M`, slots ?? [], add, layout.memory?.slotProvenance, prefix === "current");
   const rIds = messageChildren(prefix, layout.messages, layout.associations, add);
   return [
@@ -212,12 +216,7 @@ function layoutChildren(prefix: string, layout: ContextLayout, add: (node: CtxNo
 
 function frozenChildren(prefix: string, before: LastMaintenanceContext["before"], add: (node: CtxNode) => string): string[] {
   const tools = before.tools;
-  const toolIds = tools.definitions.map(def => add({
-    id: `${prefix}:F:tools:${def.name}`,
-    label: def.name,
-    preview: [def.name, def.description, JSON.stringify(def.parameters), ...(def.constrainedSampling === undefined ? [] : [`Constrained sampling: ${JSON.stringify(def.constrainedSampling)}`])].join("\n"),
-    children: [],
-  }));
+  const toolIds = tools.definitions.map(def => add(toolNode(prefix, def)));
   return [
     add({
       id: `${prefix}:F`,
@@ -287,39 +286,18 @@ function messageChildren(prefix: string, messages: readonly ContextMessage[], as
       preview: block.text ?? block.thinking ?? (block.toolName ? `${block.toolName} ${JSON.stringify(block.arguments ?? {})}` : block.preview),
       children: [],
     }));
-    const assoc = associations.find(item => item.callOrder === message.order || item.resultOrder === message.order);
+    const associated = associations.filter(item => item.callOrder === message.order || item.resultOrder === message.order);
     return add({
       id: `${prefix}:R:${message.order}`,
       label: `${message.order} ${message.role}`,
       description: tokenLabel(message.tokens, message.unknown),
-      preview: [`#${message.order} ${message.role} ${tokenLabel(message.tokens, message.unknown)}`, message.preview, ...(message.planning ? planningLines(message.planning, "Message retention planning") : []), assoc ? `tool ${assoc.toolName} ${assoc.toolCallId} call@${assoc.callOrder} result@${assoc.resultOrder}` : ""].filter(Boolean).join("\n"),
+      preview: [`#${message.order} ${message.role} ${tokenLabel(message.tokens, message.unknown)}`, message.preview, ...(message.planning ? planningLines(message.planning, "Message retention planning") : []), ...associated.map(assoc => `tool ${assoc.toolName} ${assoc.toolCallId} call@${assoc.callOrder} result@${assoc.resultOrder}`)].filter(Boolean).join("\n"),
       children: blockIds,
     });
   });
 }
 
-function lastMainSummary(last: LastMainContext): string {
-  const when = new Date(last.observedAt).toISOString();
-  const layout = last.layout.unavailable
-    ? "layout unavailable (unknown)"
-    : `${last.layout.messageCount} messages / ${last.layout.blockCount} blocks · heuristic ${tokenLabel(last.layout.heuristic.tokens, last.layout.heuristic.unknown)}`;
-  return [
-    `Scope: last-main · ${last.outcome}${last.code ? ` ${last.code}` : ""}`,
-    `${last.model.provider}/${last.model.id} (${last.model.api})`,
-    when,
-    last.resolution ? `resolution ${last.resolution}${last.resolutionDetail ? ` (${last.resolutionDetail})` : ""}` : "",
-    last.estimator ? `estimator ${last.estimator}` : "",
-    last.layout.memoryIndex !== undefined ? `memory request index ${last.layout.memoryIndex}` : (last.layout.memory?.slots.length ? "memory request index unknown" : ""),
-    last.inputTokens !== undefined ? `input ${last.inputTokens}${last.inputLimit !== undefined ? ` / enforced ${last.inputLimit}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${last.plannedInputLimit}` : ""}` : "",
-    last.inputExceededPlan === true ? "input exceeded plan (advisory if delegated)" : "",
-    last.outputTokens !== undefined ? `output ${last.outputTokens}` : "",
-    last.outputReserveTokens !== undefined ? `output reserve ${last.outputReserveTokens}` : "",
-    last.outputCapTokens === null ? "output cap none" : last.outputCapTokens !== undefined ? `output cap ${last.outputCapTokens}` : "",
-    last.initialMetadataTokens !== undefined ? `initialMetadataTokens ${last.initialMetadataTokens}` : "",
-    layout,
-    last.outcome === "reject" ? "Local reject is not a send." : "Delegate is not HTTP success.",
-  ].filter(Boolean).join("\n");
-}
+function lastMainSummary(last: LastMainContext): string { return lastMainLines(last).join("\n"); }
 
 function payloadPreview(last: LastMainContext): string {
   const payload = last.payload;
@@ -347,7 +325,7 @@ function bars(current: CurrentContext): string {
   const layout = current.layout;
   const f = layout.system.tokens + (layout.tools.tokens ?? 0);
   const fUnknown = layout.tools.unknown;
-  const rKnown = layout.messages.every(message => !message.unknown) ? layout.messages.reduce((n, message) => n + (message.tokens ?? 0), 0) : null;
+  const rKnown = layout.messages.reduce((n, message) => n + (message.tokens ?? 0), 0);
   const rUnknown = layout.messages.some(message => message.unknown);
   const cap = current.budget.modelWindow;
   return [
@@ -379,7 +357,7 @@ function countsPreview(layout: ContextLayout): string {
 }
 
 function memoryPositionLine(layout: ContextLayout, slotCount: number): string {
-  if (slotCount === 0) return "no carrier";
+  if (slotCount === 0 && !layout.memory?.tokens) return "no carrier";
   if (layout.memoryIndex === undefined) return "position unknown";
   return `request index ${layout.memoryIndex}`;
 }
