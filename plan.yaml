@@ -10347,7 +10347,7 @@ phases:
       - Worktree removed cleanly.'
   - id: nunc-post-remediation-closure.live-verification-and-supervisor-closure
     name: Live 验证监督器配额对称、延迟边界放置、引导与账本孤立终态闭环（C1, C2, T3）
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/live/**\"]\n  blocked_paths: [\"\
       plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -10418,6 +10418,58 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-19T17:54:29.498570Z'
+    done_at: '2026-11-19T18:19:52.083401+00:00'
+    evidence: 'Artifact:
+
+      - Rebased integrated commit: d78b5d2bebecf830a1d74f1172d8d43ec39a1e8c (retained
+      original candidate ref refs/vectl/candidates/nunc-post-remediation-closure.live-verification-and-supervisor-closure
+      -> fd806e4a2b885919d7c636cba546942587c4093b)
+
+      - Changed files (22 files strictly in allowed src/live/** and tests/live/**
+      paths): src/live/{budget,comparison-observation,comparison,contract,guidance,host,native-no-work,observer,placement-observation,preparation,runner,scenarios,task-retention,tool-path,worker}.ts,
+      tests/live/{closure-regressions,comparison,host,preparation-readiness,same-task-history,task-retention-branches}.test.ts,
+      tests/live/supervisor-loop-worker.mjs
+
+
+      Closure:
+
+      - C1: Excluded `"Independent semantic..."` items from `scorePrerequisites` passed
+      to `scoreArtifacts` (`worker.ts`); parameterized `activeEditChecks(..., { expectConfirmedTurnD
+      })` (`task-retention.ts`/`worker.ts`) to restore a-c mechanical setup checks
+      on `g4/commit-unconfirmed` without duplicating `score.actionReview`; added `PreparedBoundary.deferred`
+      (`preparation.ts`) honored by `logicalPlacement` (`placement-observation.ts`);
+      evaluated build/unittest runs & post-test edits (incl. `test_solution.py`) from
+      completed `guidanceExchanges` (`guidance.ts`); protected all non-`solution.py`
+      initial scenario fixtures in `same-task-history` (`worker.ts`); restricted `autonomousTask`
+      non-requested compaction exemption to `!activeBoundary()` (`observer.ts`) and
+      fixed `deferredBoundaries.add(idx)` (`worker.ts`).
+
+      - C2: Unified pre-launch quota guards (`maxCalls`, `maxTotalTokens`, `maxCostUsd`)
+      and immediate `STOPPED`/`CLEANUP` settlement via `assertDispatchQuota`/`dispatchWorker`/`assertSegmentSettled`
+      across `runner.ts` & `comparison.ts`; switched `noRetirablePrefix` (`native-no-work.ts`)
+      to `projectedNativeCut`; verified `curRepo/node_modules/@earendil-works/pi-coding-agent/package.json`
+      version matches `curPiVersion` (`contract.ts`); rejected orphan `terminal` records
+      and qualified multi-ledger `unreconciledCallIds` by `ledgerPath` (`budget.ts`).
+
+      - T3: Extracted shared worker dispatch/quota/settlement helpers, consolidated
+      `textOf`/`userText` and `pathIs`, removed singular `boundary` leftovers in favor
+      of `boundaries[]`, and deduplicated `batchTimestamp` normalization between `contract.ts`
+      & `budget.ts`.
+
+      - Out-of-scope note: `tests/live/host.test.ts` replaced the stale `scripts/observe-independent-cases.mjs
+      --quota` invocation with an inline 1-child `CALL_LIMIT` test; `scripts/observe-independent-cases.mjs
+      --quota` itself remains untouched outside `allowed_paths`.
+
+
+      Verification:
+
+      - Run (worktree on fd806e4): `npm run build` -> exit 0; requested 7-file live
+      suite (`--test-concurrency=2`) -> 109/109 pass; final affected-delta suite ->
+      41/41 pass; quota regression -> 1/1 pass.
+
+      - Run (integrated main d78b5d2): `npm run build` -> exit 0.
+
+      - Worktree removed cleanly (no nested worktrees remain).'
   - id: nunc-post-remediation-closure.gate
     name: 第二轮全量契约与精简审查及实时压缩循环修复阶段整合验收（PHASE_GATE）
     status: pending
