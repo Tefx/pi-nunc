@@ -9330,7 +9330,7 @@ phases:
       9/9).'
 - id: nunc-contract-simplicity-remediation
   name: 全仓契约与精简审查（Contract & Simplicity）收敛账本修复与回归验收
-  status: in_progress
+  status: done
   gate: nunc-contract-simplicity-remediation.gate 由 gate-reviewer 对 nunc-contract-simplicity-remediation.implement-remediation
     与 nunc-contract-simplicity-remediation.repair-gate-findings 的整合提交及确定性离线验证证据（npm
     run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断（PHASE_GATE，由保留的
@@ -9679,7 +9679,7 @@ phases:
       Ledger (A1–A4, B1–B3, C1–C2, D1–D2, T1–T7)'
   - id: nunc-contract-simplicity-remediation.gate
     name: 全仓 Contract & Simplicity 审查收敛账本修复阶段整合验收
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\", \"package.json\"\
       , \"package-lock.json\", \".node-version\", \"tsconfig.json\"]\n  blocked_paths:\
@@ -9811,6 +9811,43 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-19T15:21:18.767468Z'
+    done_at: '2026-11-19T15:39:42.108434+00:00'
+    evidence: 'Artifact:
+
+      - Integrated commits: 99be84dcd08fe6e16611e41f7ee56dc3f35fef08 (implement-remediation)
+      and b2655bddafda4a067c317e74acf2a7a78d7724e1 (repair-gate-findings); gate target
+      HEAD f269db279b5838e1784716fd67668ddbf447fe2e
+
+      - Gate report: /tmp/nunc-gate-delta-report-84637.json (`gate.report.v2`, `PHASE_GATE`,
+      `DELTA`, `status: "PASS"`, `evidence_disposition: "POSITIVE_GATE_EVIDENCE"`,
+      21/21 requirements `PROVEN`, 0 blocking findings)
+
+      - Binding file: /tmp/nunc-gate-delta-binding-84637.json (`review.report.binding.v1`)
+
+
+      Verification:
+
+      - Run: `python3 ~/.pi/agent/scripts/review_report_validator.py --kind gate --binding
+      /tmp/nunc-gate-delta-binding-84637.json /tmp/nunc-gate-delta-report-84637.json`
+      -> exit 0 (`valid: true`, `binding_checked: true`, `evidence_disposition: "POSITIVE_GATE_EVIDENCE"`)
+
+      - Run (gate-reviewer on integrated HEAD f269db2): `npm run build` -> exit 0;
+      targeted delta tests -> 72/72 pass; `/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1
+      PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 node scripts/check.mjs all` -> exit 0
+      (111 test files, 1,044 pass, 0 fail, 2 optional external Dasein injector skips;
+      source-loss `9972 > 9576 >= 9184`, source-unavailable `9985 > 9576 >= 9195`;
+      historical baseline worktrees prepared and removed); `dist/tests/pi/larva.integration.js`
+      -> exit 0 (9/9 pass)
+
+      - Run: `git diff --exit-code d415f75127b0084b74338d38a3c00ab32628e267 HEAD --
+      package.json package-lock.json .node-version src/pi/compat.ts tests/pi/compat.test.ts`
+      -> exit 0
+
+
+      Spec link:
+
+      - plan.yaml#nunc-contract-simplicity-remediation (18/18 Admitted Finding Ledger
+      items + F1–F3 + global invariants)'
   - id: nunc-contract-simplicity-remediation.repair-gate-findings
     name: 闭环阶段验收阻断缺陷（F1 Google 4xx 重试栅栏、F2 提交后检视异常告警持久化、F3 source-loss 离线回归容量校准）
     status: done
