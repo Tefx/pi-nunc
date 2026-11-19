@@ -9354,7 +9354,7 @@ phases:
   steps:
   - id: nunc-contract-simplicity-remediation.implement-remediation
     name: 闭环全仓 Contract & Simplicity 审查收敛账本（A1–A4, B1–B3, C1–C2, D1–D2, T1–T7）
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -9616,6 +9616,71 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-19T10:22:36.211456Z'
+    done_at: '2026-11-19T11:17:42.298015+00:00'
+    evidence: 'Artifact:
+
+      - Integrated commit: 99be84d (rebased onto 2f0163c from candidate ref refs/vectl/candidates/nunc-contract-simplicity-remediation.implement-remediation
+      at 08aa297c30189f84a01c08d400e293f03346d4ea)
+
+      - 44 files updated across docs/ (3 files), src/ (30 files), tests/ (11 files);
+      package.json (0.3.1), package-lock.json, .node-version, SUPPORTED_PI_RANGE ("^1.0.3"),
+      and Pi virtual-module allowlist unchanged.
+
+
+      Closure (18/18 Admitted Finding Ledger items):
+
+      - Tier 1: A1 (generationConfig + nested config field-level authorization), A2
+      (normal + fallback calibration rebound to cleaned K without providerOverflow),
+      A3 (session_compact ownership verification on compactionEntry), A4 (prepareUiCleanup
+      JSON error redaction + :443 exclusion in transientTransportError), B1 (NuncOverlay.surface
+      getBgAnsi + ANSI reset reapplication), B2 (confirm-delete revision capture,
+      occupied/unconfirmed guards, focus/rebuildList restoration, finishCommit warning
+      persistence, dispose), B3 (context-tree partial R known tokens, parallel tool
+      associations, mechanicalFallback in readyLine & empty-slot M layout), C1 (shared
+      canResumeScenario, boundary-scoped deferral, g4/same-task-history, g8 native
+      guard applicability, g4/commit-unconfirmed), C2 (isSupportedPiVersion + expectedCommit
+      70dacad check, normalized @ paths, explicitAssets symlink rejection, hasVerification
+      isVerify guard, budget terminal cardinality & USAGE_LIMIT preservation), D1
+      (DESIGN/UI/MAINTENANCE-SCHEMA-AND-FALLBACK docs synced), D2 (strengthened overlay/theme/async-delete/conflict/warning
+      tests).
+
+      - Tier 2: T1 (Modal discriminated union), T2 (optional fixed/settings in createMemorySurface),
+      T3 (isProjectTrusted guard in bindHostSettings), T4 (shared branchCalibrationRecords,
+      config deduplication, omitsRouteOutputCap in compact-for, googleMaintenanceJsonSchema
+      flag skipping duplicate classifyPayloadChange), T5 (removed batch_conflict,
+      narrowed MechanicalFallbackInfo.code to "RESPONSE"), T6 (eliminated duplicate
+      buildContextNodes, project/fixed/measureBudget, inspectBlock passes; shared
+      helpers), T7 (shared live helpers, BatchAuthority/Limits consistency check,
+      grouped ObserverState.boundary).
+
+
+      Verification:
+
+      - Run (worktree pre-rebase on 08aa297): `/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1
+      PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 node scripts/check.mjs all` -> exit 0
+      (111 test files; 1018 tests, 1016 pass, 0 fail, 2 skipped optional external
+      Dasein injector checks; Node 26.13.1, npm 11.20.0; temporary .scratch/baseline-70dacad
+      & .scratch/prechange worktrees removed after run).
+
+      - Run (worktree pre-rebase on 08aa297): `/usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1
+      PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent
+      NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test --test-concurrency=1 dist/tests/pi/larva.integration.js` -> exit
+      0 (9/9 pass).
+
+      - Run (integrated main on 99be84d): `npm run build` -> exit 0.
+
+
+      Worktree cleanup:
+
+      - Removed `.vectl/worktrees/nunc-contract-simplicity-remediation.implement-remediation`
+      (+38,632 KB disk space reclaimed).
+
+
+      Spec link:
+
+      - nunc-contract-simplicity-remediation.implement-remediation Admitted Finding
+      Ledger (A1–A4, B1–B3, C1–C2, D1–D2, T1–T7)'
   - id: nunc-contract-simplicity-remediation.gate
     name: 全仓 Contract & Simplicity 审查收敛账本修复阶段整合验收
     status: pending
