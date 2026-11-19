@@ -9330,7 +9330,7 @@ phases:
       9/9).'
 - id: nunc-contract-simplicity-remediation
   name: 全仓契约与精简审查（Contract & Simplicity）收敛账本修复与回归验收
-  status: pending
+  status: in_progress
   gate: nunc-contract-simplicity-remediation.gate 由 gate-reviewer 对 nunc-contract-simplicity-remediation.implement-remediation
     的整合提交与确定性离线验证证据（npm run build、node scripts/check.mjs all 与 dist/tests/pi/larva.integration.js）作唯一阶段验收判断（PHASE_GATE），确认基于上游提交
     d415f75127b0084b74338d38a3c00ab32628e267 收敛的全部 18 项 Admitted Finding Ledger（Tier
@@ -9354,7 +9354,7 @@ phases:
   steps:
   - id: nunc-contract-simplicity-remediation.implement-remediation
     name: 闭环全仓 Contract & Simplicity 审查收敛账本（A1–A4, B1–B3, C1–C2, D1–D2, T1–T7）
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/**\", \"docs/**\", \"tests/**\", \"scripts/check.mjs\"\
       , \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
@@ -9614,6 +9614,8 @@ phases:
     - package-lock.json
     - tsconfig.json
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-19T10:22:36.211456Z'
   - id: nunc-contract-simplicity-remediation.gate
     name: 全仓 Contract & Simplicity 审查收敛账本修复阶段整合验收
     status: pending
