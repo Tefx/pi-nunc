@@ -10577,7 +10577,7 @@ phases:
   - id: nunc-post-remediation-closure.repair-source-branch-budget
     name: 校准整合后 Src-1 提取提示词增长下的受控 source-loss / source-unavailable 测试输入预算边界（F1 / Src-1
       / INV-OFFLINE-REGRESSION-GREEN）
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"tests/live/task-retention-branches.test.ts\"]\n  blocked_paths:\
       \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
@@ -10637,3 +10637,5 @@ phases:
     - nunc-post-remediation-closure.engine-compaction-and-retention
     - nunc-post-remediation-closure.live-verification-and-supervisor-closure
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-19T19:13:46.603696Z'
