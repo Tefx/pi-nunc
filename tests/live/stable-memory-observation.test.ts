@@ -241,6 +241,71 @@ test("serialized chat evidence rejects changed calls, unrelated messages and an 
   }
 });
 
+test("Responses configuration updates preserve evidence only when the complete message sequence survives", () => {
+  for (const api of ["openai-responses", "openai-codex-responses"] as const) {
+    const model = { api, provider: "fixture", id: "native" } as Model<typeof api>;
+    const request: RequestObservation = {
+      callId: 1, turn: "a", kind: "main", model, thinking: "medium", reasoning: "medium", outputPlanning: null,
+      context: { messages: [
+        { role: "user", content: "Read the task file.", timestamp: 1 },
+        { role: "assistant", content: [
+          { type: "text", text: "Reading the task." },
+          { type: "toolCall", id: "call-1|fc-1", name: "read", arguments: { path: "task.txt" } },
+        ], api, provider: model.provider, model: model.id, timestamp: 2, stopReason: "toolUse",
+          usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } },
+        { role: "toolResult", toolCallId: "call-1|fc-1", toolName: "read", content: [{ type: "text", text: "Task obligations" }], isError: false, timestamp: 3 },
+        { role: "user", content: "Saved M", timestamp: 4 },
+      ] },
+      admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 3, memoryContent: "Saved M" },
+      finalPayload: { input: [
+        { role: "user", content: "Read the task file." },
+        { type: "configuration_update", reasoning: { effort: "low" } },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Reading the task." }] },
+        { type: "function_call", call_id: "call-1", name: "read", arguments: '{"path":"task.txt"}' },
+        { type: "function_call_output", call_id: "call-1", output: "Task obligations" },
+        { role: "user", content: "Saved M" },
+        { type: "configuration_update", reasoning: { effort: "medium" } },
+      ] },
+    };
+    const change = (mutate: (items: any[]) => void) => {
+      const changed = structuredClone(request);
+      mutate((changed.finalPayload as any).input);
+      return serializedEvidence(changed);
+    };
+    assert.deepEqual(serializedEvidence(request), { memory: true, synthetic: false }, api);
+    for (const control of [
+      { type: "configuration_update" },
+      ...[null, [], "medium", 1, false].map(reasoning => ({ type: "configuration_update", reasoning })),
+      { type: "configuration_update", reasoning: { effort: "medium" }, content: "hidden message" },
+      { type: "configuration_update", reasoning: { effort: "medium" }, content: undefined },
+      { type: "unrecognized", reasoning: { effort: "medium" } },
+    ]) {
+      assert.deepEqual(change(items => { items[1] = control; }), {}, "malformed or unknown controls remain unknown");
+    }
+    for (const mutate of [
+      (items: any[]) => { items[2].content[0].text = "Substituted assistant text"; },
+      (items: any[]) => { items.splice(2, 1); },
+      (items: any[]) => { [items[0], items[2]] = [items[2], items[0]]; },
+      (items: any[]) => { items[0].content = "Substituted user text"; },
+      (items: any[]) => { items[5].content = "Changed M"; },
+    ]) {
+      assert.deepEqual(change(mutate), { memory: false, synthetic: false }, "controls cannot mask message changes");
+    }
+    for (const mutate of [
+      (items: any[]) => { items[3].name = "write"; },
+      (items: any[]) => { items[4].output = "Fabricated result"; },
+    ]) {
+      assert.deepEqual(change(mutate), { memory: false, synthetic: true }, "controls cannot mask tool changes");
+    }
+    assert.deepEqual(change(items => { items.push({ type: "custom_tool_call", call_id: "extra" }); }), {});
+    const empty = structuredClone(request);
+    empty.context.messages.pop();
+    (empty.finalPayload as any).input.splice(5, 1);
+    empty.admission = { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" };
+    assert.deepEqual(serializedEvidence(empty), { memory: true, synthetic: false }, "explicit empty M remains supported");
+  }
+});
+
 test("public parseInput admits m* with explicit fractions and refuses Astra or calibrated m4", async () => {
   const base = await fixture();
   const compaction = base.scenarios[0]!.config.compaction;

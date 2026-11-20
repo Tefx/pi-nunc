@@ -132,6 +132,9 @@ function serializedResponsesEvidence(request: RequestObservation, payload: any):
   if (payload.instructions !== undefined && request.context.messages[0]?.role !== "system" &&
       !(request.model.api === "openai-codex-responses" && payload.instructions === "You are a helpful assistant.")) return {};
   for (const item of actual) {
+    // Native reasoning controls carry no messages and do not affect sequence preservation.
+    if (item.type === "configuration_update" && item.reasoning && typeof item.reasoning === "object" &&
+        !Array.isArray(item.reasoning) && !("content" in item)) continue;
     if (item.type === "additional_tools" && item.role === "developer" && Array.isArray(item.tools)) continue;
     if (item.type === "function_call") {
       try { actualSequence.push({ type: item.type, callId: item.call_id, name: item.name, arguments: JSON.parse(item.arguments) }); }
