@@ -11721,7 +11721,7 @@ phases:
       (11 passed, 0 failed). Worktree removed and protected files untouched.
   - id: delta-worker-organizing-target-repair
     name: Live Worker 容量资格判定 organizingTarget 权威预算绑定与原生回归修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/worker.ts\", \"tests/live/guidance-native.test.ts\"\
       , \"tests/live/comparison-native.test.ts\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -11776,3 +11776,5 @@ phases:
     - tests/live/guidance-native.test.ts
     - tests/live/comparison-native.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-20T18:42:40.250168Z'
