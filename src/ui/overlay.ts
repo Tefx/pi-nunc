@@ -24,6 +24,8 @@ import type { ContextSurface, ContextView } from "../pi/context.js";
 import { unknownBudget } from "../pi/context.js";
 import type { MemorySurface, MemoryView } from "../pi/manual.js";
 import type { Memory } from "../engine/index.js";
+import { memoryTokens } from "../engine/accounting.js";
+import { revisionApplies } from "../pi/projection.js";
 import { formatSlotProvenance, buildContextNodes, CONTEXT_ROOT_IDS, type CtxNode } from "./context-tree.js";
 import { UNLOAD_LIMIT, firstLine, thousands, type DiagnosticNote } from "./status.js";
 
@@ -168,9 +170,9 @@ export class NuncOverlay implements Focusable {
       this.memoryView = this.host.memory.read(this.host.ctx);
       this.contextView = this.host.context.read(this.host.ctx);
       if (this.layer === "browse") this.rebuildList();
-      else if (this.modal.kind === "confirm-delete" && this.modal.revision !== this.memoryView.revision) {
+      else if (this.modal.kind === "confirm-delete" && !this.revisionApplies(this.modal.revision)) {
         this.error = "Saved memory changed before delete confirmation; cancel and review before deleting.";
-      } else if (this.editBasis && this.memoryView.revision !== this.editBasis.revision) {
+      } else if (this.editBasis && !this.revisionApplies(this.editBasis.revision)) {
         this.error = "Saved memory changed while editing; review before saving. Draft keeps the original revision.";
       }
     } catch (error) {
@@ -204,9 +206,8 @@ export class NuncOverlay implements Focusable {
       }
       return;
     }
-    if (this.layer === "saving") {
+    if (this.modal.kind === "saving") {
       if (this.hit(data, "tui.select.cancel")) {
-        if (this.modal.kind !== "saving") return;
         this.modal.controller.abort();
         this.transition(this.modal.source);
         this.error = "Save cancelled; no memory or cleanup was committed";
@@ -269,6 +270,7 @@ export class NuncOverlay implements Focusable {
   private handleBrowse(data: string): void {
     if (this.hit(data, "tui.select.cancel")) {
       if (this.tab === "context" && this.contextPath.length > 0) {
+        this.search.setValue("");
         const popped = this.contextPath.pop();
         this.preferredContextId = popped;
         this.previewOffset = 0;
@@ -323,6 +325,8 @@ export class NuncOverlay implements Focusable {
     if (this.search.getValue() !== before) {
       this.previewOffset = 0;
       this.rebuildList();
+      this.host.tui.requestRender();
+    } else if ([Key.left, Key.right, Key.home, Key.end].some(key => matchesKey(data, key))) {
       this.host.tui.requestRender();
     }
   }
@@ -434,6 +438,20 @@ export class NuncOverlay implements Focusable {
         this.fail("Maintenance has not finished native commit; draft was not saved.", untrimmed);
         return;
       }
+      if (!this.revisionApplies(basis.revision)) {
+        this.fail("Saved memory changed while editing; review before saving.", untrimmed);
+        return;
+      }
+      if (!this.memoryView.memory.slots.some(slot => slot.id === slotId)) {
+        this.fail("Slot no longer exists; draft was not saved.", untrimmed);
+        return;
+      }
+      const nextTokens = memoryTokens(this.memoryView.memory.slots.map(slot => slot.id === slotId ? { ...slot, text: untrimmed } : slot));
+      const { tokens, limit } = this.memoryView.budget;
+      if (nextTokens > tokens && (this.memoryView.budget.unknown || limit !== null && nextTokens > limit)) {
+        this.fail("Manual memory growth exceeds the current budget; draft was not saved.", untrimmed);
+        return;
+      }
       if (!this.host.prepareSave) {
         this.finishCommit(this.host.memory.replace(this.host.ctx, basis.revision, slotId, untrimmed), slotId, untrimmed);
         return;
@@ -537,7 +555,7 @@ export class NuncOverlay implements Focusable {
       this.fail(error instanceof Error ? error.message : String(error));
       return;
     }
-    if (this.memoryView.revision !== revision) {
+    if (!this.revisionApplies(revision)) {
       this.fail("Saved memory changed before delete confirmation; cancel and review before deleting.");
       return;
     }
@@ -547,6 +565,10 @@ export class NuncOverlay implements Focusable {
     }
     const slots = this.memoryView.memory.slots;
     const index = slots.findIndex(slot => slot.id === id);
+    if (index < 0) {
+      this.fail("Slot no longer exists; delete was not started.");
+      return;
+    }
     const neighbor = slots[index + 1]?.id ?? slots[index - 1]?.id;
     if (!this.host.prepareSave) {
       try {
@@ -564,6 +586,11 @@ export class NuncOverlay implements Focusable {
     const proposal: Memory = { ...this.memoryView.memory, slots: this.memoryView.memory.slots.filter(slot => slot.id !== id) };
     await this.commitPrepared("browse", proposal,
       () => ({ expectedRevision: revision, remove: [id] }), neighbor);
+  }
+
+  private revisionApplies(revision: string): boolean {
+    const manager = this.host.ctx.sessionManager;
+    return revisionApplies(revision, manager.getSessionId(), manager.getLeafId(), manager.buildContextEntries(), manager.getBranch());
   }
 
   private close(): void {
@@ -665,9 +692,8 @@ export class NuncOverlay implements Focusable {
     const theme = this.host.theme;
     const hint = theme.fg("dim", this.layer === "saving" ? `Saving… · ${this.keyLabel("tui.select.cancel")} cancel entire save` :
       `${this.keyLabel("tui.input.submit")} save · ${this.keyLabel("tui.select.cancel")} cancel · ${this.keyLabel("tui.input.newLine")} newline`);
-    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error.replace(/\r\n?/g, "\n")), contentWidth).slice(0, 1) : [];
-    const noticeAllowed = innerBudget - 1 - error.length >= 7;
-    const notice = noticeAllowed ? wrapTextWithAnsi(theme.fg("muted", UNLOAD_LIMIT), contentWidth).slice(0, 1) : [];
+    const error = this.error ? wrapTextWithAnsi(theme.fg("error", this.error.replace(/\r\n?/g, "\n")), contentWidth).slice(0, Math.max(0, innerBudget - 4)) : [];
+    const notice = wrapTextWithAnsi(theme.fg("muted", UNLOAD_LIMIT), contentWidth).slice(0, Math.max(0, innerBudget - error.length - 4));
     const reserved = notice.length + error.length + 1;
     const editorBudget = Math.max(3, innerBudget - reserved);
     this.editorRows = editorBudget;
@@ -722,7 +748,7 @@ export class NuncOverlay implements Focusable {
       view.cleanup?.unavailable.length ? `${view.cleanup.unavailable.length} cleanup sources unavailable` : undefined,
       view.status.unconfirmed ? "save unconfirmed" : undefined,
       view.mechanicalFallback ? "mechanical fallback" : undefined,
-      this.editBasis && view.revision !== this.editBasis.revision ? "revision changed" : undefined,
+      this.editBasis && !this.revisionApplies(this.editBasis.revision) ? "revision changed" : undefined,
       warning ? `warning ${firstLine(warning, 80)}` : undefined,
     ].filter(Boolean).join(" · ");
     const base = `Ready · ${view.memory.slots.length} slots · ${m}`;
@@ -732,7 +758,7 @@ export class NuncOverlay implements Focusable {
   private emptyLine(): string | undefined {
     if (this.tab === "slots") {
       if (this.memoryView.memory.slots.length === 0) return "Empty memory";
-      if (this.slotItems().length === 0) return "No matching slots";
+      if (!this.list.getSelectedItem()) return "No matching slots";
       return undefined;
     }
     if (!this.list.getSelectedItem()) return this.search.getValue().trim() ? "No matches" : "No records";
@@ -778,6 +804,7 @@ export class NuncOverlay implements Focusable {
   }
 
   private hintLine(): string {
+    if (this.modal.kind === "saving") return `Saving… · ${this.keyLabel("tui.select.cancel")} cancel entire save`;
     const preview = `${this.keyLabel("tui.select.pageUp")}/${this.keyLabel("tui.select.pageDown")} preview`;
     const cancel = this.keyLabel("tui.select.cancel");
     if (this.tab === "slots") {

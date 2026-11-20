@@ -484,6 +484,7 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
   try {
     const texts: string[] = [];
     for (const message of context.messages) {
+      if (message.role !== "user") continue;
       if (typeof message.content === "string") texts.push(message.content);
       else if (Array.isArray(message.content)) {
         for (const block of message.content) if (block.type === "text") texts.push(block.text);
@@ -625,10 +626,9 @@ function inspectMessage(message: Message, order: number, imageTokens: number | u
   } else {
     blocks.push({ type: "unknown", tokens: null, unknown: true, preview: "[unavailable content]" });
   }
-  const framing = messageCost(message, blocks);
-  const unknown = framing.unknown || blocks.some(block => block.unknown);
+  const unknown = blocks.some(block => block.unknown || block.tokens === null);
   const view: ContextMessage = {
-    order, role: message.role, tokens: framing.tokens, unknown, preview: messagePreview(message, blocks), blocks,
+    order, role: message.role, tokens: messageTokens(message, imageTokens), unknown, preview: messagePreview(message, blocks), blocks,
     ...(model ? { planning: messagePlanningEstimate(message, model, imageTokens, outputUsageUnavailable) } : {}),
   };
   if (message.role === "toolResult") {
@@ -673,19 +673,6 @@ function inspectBlock(block: { type: string; text?: string; thinking?: string; t
     default:
       return { type: "unknown", tokens: null, unknown: true, preview: `[${block.type}]` };
   }
-}
-
-function messageCost(message: Message, blocks: ContextBlock[]): TokenCount {
-  let tokens = 32 + textTokens(message.role);
-  let unknown = false;
-  if (message.role === "toolResult") tokens += textTokens(message.toolCallId) + textTokens(message.toolName) + 8;
-  if (typeof message.content === "string") return { tokens: tokens + textTokens(message.content), unknown: false };
-  if (!Array.isArray(message.content)) return { tokens, unknown: true };
-  for (const view of blocks) {
-    if (view.unknown || view.tokens === null) unknown = true;
-    if (view.tokens !== null) tokens += view.tokens;
-  }
-  return { tokens, unknown };
 }
 
 function associationsOf(messages: readonly ContextMessage[]): ToolAssociation[] {

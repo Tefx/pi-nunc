@@ -181,6 +181,55 @@ test("asynchronous cleanup save preserves the edit on cancellation and commits o
   assert.match(await readFile(f.runtime.session.sessionFile!, "utf8"), /NATIVE_UI_EDIT/);
 });
 
+for (const reason of ["occupied", "unconfirmed", "revision", "missing-slot", "overbudget"] as const) test(`save preflight rejects ${reason} before asynchronous cleanup`, async t => {
+  const { memory, context, ctx } = await prepared(t);
+  const real = memory();
+  const initial = real.read(ctx());
+  let prepareCalls = 0;
+  let armed = false;
+  const overlay = new NuncOverlay({ ctx: ctx(), memory: { ...real, read(c) {
+    const view = real.read(c);
+    if (armed && reason === "occupied") view.status.occupied = true;
+    if (armed && reason === "unconfirmed") view.status.unconfirmed = true;
+    if (armed && reason === "missing-slot") view.memory.slots = [];
+    return view;
+  } }, context: context(), tui: mockTui(), theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {}, prepareSave: async () => { prepareCalls++; return {}; } });
+  t.after(() => overlay.dispose());
+  overlay.handleInput("\r");
+  overlay.handleInput(reason === "overbudget" ? "x".repeat(40000) : " local draft");
+  const draft = overlay.draftText();
+  if (reason === "revision") assert(real.replace(ctx(), initial.revision, initial.memory.slots[0]!.id, "external change").ok);
+  armed = true;
+  const before = real.read(ctx()).memory;
+  overlay.handleInput("\r");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(prepareCalls, 0);
+  assert.equal(overlay.layerName, "edit");
+  assert.equal(overlay.draftText(), draft);
+  assert.deepEqual(real.read(ctx()).memory, before);
+});
+
+test("ordinary appended history keeps an editor revision compatible through cleanup and commit", async t => {
+  const { memory, context, ctx, f } = await prepared(t);
+  let prepareCalls = 0;
+  const overlay = new NuncOverlay({ ctx: ctx(), memory: memory(), context: context(), tui: mockTui(), theme: ctx().ui.theme,
+    keybindings: new KeybindingsManager(TUI_KEYBINDINGS), done() {}, prepareSave: async () => { prepareCalls++; return {}; } });
+  t.after(() => overlay.dispose());
+  overlay.handleInput("\r");
+  overlay.handleInput(" compatible draft");
+  const revision = overlay.editRevision();
+  f.runtime.session.sessionManager.appendMessage({ role: "user", content: "appended background context", timestamp: 2 });
+  overlay.sync();
+  assert.equal(overlay.editRevision(), revision);
+  assert.doesNotMatch(visible(overlay.render(120)), /revision changed|changed while editing/);
+  overlay.handleInput("\r");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(prepareCalls, 1);
+  assert.equal(overlay.layerName, "browse");
+  assert.match(memory().read(ctx()).memory.slots[0]!.text, /compatible draft/);
+});
+
 test("native compact during edit conflicts on original revision and keeps draft", async t => {
   const { overlay, memory, ctx, f } = await prepared(t);
   const before = memory().read(ctx());

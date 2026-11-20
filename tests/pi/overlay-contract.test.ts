@@ -10,18 +10,19 @@ import type { MemoryView } from "../../src/pi/manual.js";
 import type { DiagnosticNote } from "../../src/ui/status.js";
 
 function clean(lines: string[]): string {
-  return lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b_pi:c\x07/g, "");
+  return lines.join("\n").replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b_pi:[^\x07]*\x07/g, "");
 }
 
 function fixture(options: { rows?: number; text?: string; failure?: string; unconfirmed?: boolean; keybindings?: KeybindingsManager } = {}) {
   const text = options.text ?? "original saved text";
   let view: MemoryView = {
-    revision: "old",
+    revision: "s\n\n\nl",
     memory: { version: 1, nextId: 3, slots: [{ id: "s1", text }, { id: "s2", text: "second slot" }] },
     status: { occupied: false, unconfirmed: options.unconfirmed === true },
     budget: { tokens: 20, limit: 2000, unknown: false, overLimit: false },
     contextLayout: { slotCount: 2, activeEntries: 0 },
   };
+  let renders = 0;
   const saves: { rev: string; id: string; text: string }[] = [];
   const statuses: { key: string; value: string | undefined }[] = [];
   const memory = {
@@ -80,17 +81,52 @@ function fixture(options: { rows?: number; text?: string; failure?: string; unco
   });
   const ctx = {
     hasUI: true, mode: "tui",
+    sessionManager: { getSessionId: () => view.revision.split("\n")[0], getLeafId: () => "l", buildContextEntries: () => [], getBranch: () => [] },
     ui: { theme: { fg: (_: string, s: string) => s, bg: (_: string, s: string) => s, bold: (s: string) => s }, setStatus: (key: string, value: string | undefined) => statuses.push({ key, value }) },
   };
   const overlay = new NuncOverlay({
     ctx: ctx as never, memory: memory as never, context: { read: () => structuredClone(contextView()) } as never,
-    tui: { requestRender() {}, terminal: { rows: options.rows ?? 40, columns: 120 } } as TUI,
+    tui: { requestRender() { renders++; }, terminal: { rows: options.rows ?? 40, columns: 120 } } as TUI,
     theme: ctx.ui.theme as never,
     keybindings: options.keybindings ?? new KeybindingsManager(TUI_KEYBINDINGS),
     done() { overlay.dispose(); },
   });
-  return { overlay, memory, ctx, contextView, saves, statuses, get view() { return view; }, set view(next: MemoryView) { view = next; } };
+  return { overlay, memory, ctx, contextView, saves, statuses, get renders() { return renders; }, get view() { return view; }, set view(next: MemoryView) { view = next; } };
 }
+
+test("search cursor keys repaint without changing the filtered query", () => {
+  const f = fixture();
+  f.overlay.handleInput("original");
+  for (const key of ["\x1b[D", "\x1b[C", "\x1b[H", "\x1b[F"]) {
+    const before = f.renders;
+    f.overlay.handleInput(key);
+    assert.equal(f.renders, before + 1);
+    assert.match(clean(f.overlay.render(90)), /Search original/);
+    assert.equal(f.overlay.selectedSlotId(), "s1");
+  }
+});
+
+test("nested Escape clears the local filter before returning to the parent", () => {
+  const f = fixture();
+  f.overlay.handleInput("\t"); f.overlay.handleInput("\r");
+  f.overlay.handleInput("Fixed");
+  assert.match(clean(f.overlay.render(90)), /Search Fixed/);
+  f.overlay.handleInput("\x1b");
+  const parent = clean(f.overlay.render(90));
+  assert.doesNotMatch(parent, /Search Fixed/);
+  assert.match(parent, /Current projection/);
+  assert.match(parent, /Diagnostics/);
+});
+
+test("tall editors show every wrapped unload notice and error line", () => {
+  const f = fixture({ rows: 50, failure: "DETAIL ".repeat(12) + "ERROR_TAIL" });
+  f.overlay.handleInput("\r");
+  f.overlay.handleInput(" changed"); f.overlay.handleInput("\r");
+  const shown = clean(f.overlay.render(60));
+  assert.match(shown, /last native summary\./);
+  assert.match(shown, /ERROR_TAIL/);
+  assert(shown.includes("save"));
+});
 
 test("rejected and occupied submits keep the full editor draft", () => {
   for (const failure of ["overbudget", "conflict", "unconfirmed"] as const) {
@@ -115,7 +151,7 @@ test("rejected and occupied submits keep the full editor draft", () => {
   assert.equal(occupied.overlay.layerName, "edit");
 });
 
-test("edit keeps original revision when live saved view changes", () => {
+test("edit rejects changed revision before attempting a save and keeps the original draft", () => {
   const f = fixture();
   f.overlay.handleInput("\r");
   f.overlay.handleInput(" local edit");
@@ -125,8 +161,10 @@ test("edit keeps original revision when live saved view changes", () => {
   f.overlay.sync();
   assert.equal(f.overlay.editRevision(), started);
   f.overlay.handleInput("\r");
-  assert.equal(f.saves[0]?.rev, started);
-  assert.match(f.saves[0]?.text ?? "", /local edit/);
+  assert.equal(f.saves.length, 0);
+  assert.match(f.overlay.draftText() ?? "", /local edit/);
+  assert.equal(f.overlay.layerName, "edit");
+  assert.match(clean(f.overlay.render(120)), /changed while editing/);
 });
 
 test("context arrows move the list; page keys scroll preview; recent scopes drill down", () => {

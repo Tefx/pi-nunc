@@ -169,6 +169,12 @@ try {
   }, "native manual entry");
   const savedFile = f.log.filter(e => e.type === "snapshot").at(-1)?.data?.file ?? sessionFile;
   const saved = await readFile(savedFile, "utf8");
+  const savedEntries = saved.trim().split("\n").map(JSON.parse);
+  const savedMemory = savedEntries.findLast(entry => entry.type === "custom" && entry.customType === "nunc.memory");
+  assert(savedMemory, 'acknowledged save has a real memory entry');
+  assert.equal(savedMemory.data.nunc.slots.find(slot => slot.id === 's12')?.text, 'Edited via native TUI.');
+  assert.equal(savedMemory.data.toolResultCleanup.length, 1);
+  assert.equal(savedMemory.data.toolResultCleanup[0].entryId, firstResult);
   assert.match(saved, /nunc\.memory/);
   assert.match(saved, /Edited via native TUI/);
   assert.match(saved, /"toolResultCleanup":\[\{"entryId"/, 'native TUI save persists cleanup with M');
@@ -184,7 +190,11 @@ try {
   p.keys("\x04");
   await delay(100);
   p.keys("\r");
-  await delay(250);
+  await f.wait(() => {
+    const entries = readFileSync(savedFile, 'utf8').trim().split('\n').map(JSON.parse);
+    const current = entries.findLast(entry => entry.type === 'custom' && entry.customType === 'nunc.memory');
+    return current && !current.data.nunc.slots.some(slot => slot.id === 's12');
+  }, 'confirmed delete persisted the selected slot removal');
   p.keys("\t");
   await f.wait(() => /\[Context\]/.test(strip(p.stdout)), "context tab");
   assert.match(strip(p.stdout), /Current projection|Last main|Last maintenance|F |M /);

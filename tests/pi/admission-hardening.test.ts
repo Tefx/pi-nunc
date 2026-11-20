@@ -50,7 +50,7 @@ async function harness(t: { after(fn: () => void): void }, api: Api = "openai-co
   admission.ensure(ctx);
   t.after(() => admission.close(ctx));
   const options = { signal, sessionId: "caps" };
-  return { model, admission, observations, sent, options,
+  return { model, admission, observations, sent, options, registry, ctx,
     setUsage(n: number) { usage = n; },
     async run(body: unknown, messages: TranscriptContext["messages"] = [{ role: "user", content: "x".repeat(20000), timestamp: 1 }], hook?: SimpleStreamOptions["onPayload"]) {
       payload = body;
@@ -98,6 +98,50 @@ test("actual native Responses serialization sends the post-authorization clamp a
   const last = f.runtime.session.messages.at(-1);
   assert(last?.role === "assistant");
   assert.equal(last.stopReason, "stop", last.errorMessage ?? "");
+});
+
+test("clamping preserves live SDK fields and only clones cap containers", async t => {
+  const h = await harness(t, "google-generative-ai");
+  const signal = new AbortController().signal;
+  const thinkingConfig = { thinkingBudget: 0 };
+  const body = { contents: [{ role: "user", parts: [{ text: "x".repeat(20000) }] }],
+    config: { maxOutputTokens: 90000, abortSignal: signal, thinkingConfig } };
+  assert.equal((await h.run(body)).stopReason, "stop");
+  const sent = h.sent[0] as typeof body;
+  assert.notEqual(sent, body);
+  assert.notEqual(sent.config, body.config);
+  assert.equal(sent.contents, body.contents);
+  assert.equal(sent.config.abortSignal, signal);
+  assert.equal(sent.config.thinkingConfig, thinkingConfig);
+  assert.equal(body.config.maxOutputTokens, 90000);
+  assert(sent.config.maxOutputTokens < 90000);
+});
+
+for (const phase of ["serialize", "throw", "reject", "invalidate", "replace-provider"] as const) test(`payload ${phase} settles rejection without speculative delegate`, async t => {
+  const h = await harness(t);
+  const body = phase === "serialize" ? { toJSON() { throw new Error("invalid JSON"); } } : { max_tokens: 90000, messages: [] };
+  const response = await h.run(body, undefined, async () => {
+    if (phase === "throw") throw new Error("hook failed");
+    if (phase === "reject") return Promise.reject(new Error("hook rejected"));
+    if (phase === "invalidate") h.admission.invalidateUsage();
+    if (phase === "replace-provider") h.registry.unregisterProvider(h.model.provider);
+  });
+  assert.equal(response.stopReason, "error");
+  assert.equal(h.sent.length, 0);
+  assert.deepEqual(h.observations.map(o => o.outcome), ["reject"]);
+  assert.equal(h.observations[0]?.code, phase === "invalidate" || phase === "replace-provider" ? "CANCELLED" : "CONFIG");
+});
+
+for (const key of ["samplingParams", "samplingParamsByThinkingLevel"] as const) test(`raw model ${key} rejects before provider or hook`, async t => {
+  const h = await harness(t);
+  Object.assign(h.model, { [key]: key === "samplingParams" ? { max_tokens: 1 } : { off: { max_tokens: 1 } } });
+  let hooks = 0;
+  const response = await h.run({ max_tokens: 90000 }, undefined, () => { hooks++; });
+  assert.equal(response.stopReason, "error");
+  assert.match(response.errorMessage ?? "", /Raw sampling payload overrides/);
+  assert.equal(hooks, 0);
+  assert.equal(h.sent.length, 0);
+  assert.deepEqual(h.observations.map(o => [o.outcome, o.code]), [["reject", "CONFIG"]]);
 });
 
 const caps = { max_tokens: 90000, max_output_tokens: 90000, max_completion_tokens: 90000,

@@ -37,9 +37,10 @@ export class NuncUi {
   currentWarning(): string | undefined { return this.warning; }
 
   noteDiagnostic(level: DiagnosticNote["level"], message: string): void {
+    if (level === "info") return;
     this.diagnostics.push({ level, message });
     if (this.diagnostics.length > DIAGNOSTIC_LIMIT) this.diagnostics = this.diagnostics.slice(-DIAGNOSTIC_LIMIT);
-    if (level !== "info") this.warning = message;
+    this.warning = message;
   }
 
   recover(): void {

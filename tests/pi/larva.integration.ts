@@ -1,4 +1,4 @@
-import { test, after } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync, chmodSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -19,12 +19,14 @@ import { RunnerError } from "../../src/live/contract.js";
 import { openHost, type NativeHost } from "../../src/live/host.js";
 import { fixture as liveFixture, repository } from "../live/fixtures.js";
 
-// Check NUNC_LARVA_EXTENSION: must be present and exist; no skipping or double substitution allowed.
-const larvaExtensionPath = process.env.NUNC_LARVA_EXTENSION;
-if (!larvaExtensionPath || !existsSync(larvaExtensionPath)) {
-  console.error(`Missing or inaccessible NUNC_LARVA_EXTENSION: ${larvaExtensionPath ?? "undefined"}`);
-  process.exit(1);
-}
+test("actual Larva extension integration", { timeout: 300_000, skip: !process.env.NUNC_LARVA_EXTENSION && "Set NUNC_LARVA_EXTENSION to run actual Larva integration" }, async t => {
+const larvaExtensionPath = process.env.NUNC_LARVA_EXTENSION!;
+assert(existsSync(larvaExtensionPath), `Inaccessible NUNC_LARVA_EXTENSION: ${larvaExtensionPath}`);
+const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith("LARVA_")));
+t.after(() => {
+  for (const key of Object.keys(process.env)) if (key.startsWith("LARVA_")) delete process.env[key];
+  Object.assign(process.env, inherited);
+});
 
 // Clean any inherited parent session LARVA_* environment variables to prevent host leakage.
 for (const key of Object.keys(process.env)) {
@@ -35,6 +37,10 @@ for (const key of Object.keys(process.env)) {
 
 // Setup task-isolated mock Larva CLI for synthetic persona specs
 const isolatedDir = mkdtempSync(join(tmpdir(), "nunc-larva-int-"));
+t.after(() => {
+  rmSync(isolatedDir, { recursive: true, force: true });
+  assert(!existsSync(isolatedDir), "Isolated test directory must be completely removed");
+});
 const mockLarvaScript = join(isolatedDir, "mock-larva.mjs");
 
 writeFileSync(
@@ -101,12 +107,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   });
 }
 
-after(() => {
-  rmSync(isolatedDir, { recursive: true, force: true });
-  assert(!existsSync(isolatedDir), "Isolated test directory must be completely removed");
-});
-
-test("real loader loads user-supplied Larva v1 and resolves system prompt through native Responses serializer", async t => {
+await t.test("real loader loads user-supplied Larva v1 and resolves system prompt through native Responses serializer", async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
 
@@ -159,7 +160,7 @@ test("real loader loads user-supplied Larva v1 and resolves system prompt throug
   assert.equal(main.resolution, "resolved");
 });
 
-test("stable actual Larva state leaves target instructions unchanged in native Codex serializer and establishes reusable receipt", async t => {
+await t.test("stable actual Larva state leaves target instructions unchanged in native Codex serializer and establishes reusable receipt", async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
 
@@ -230,7 +231,7 @@ test("stable actual Larva state leaves target instructions unchanged in native C
   assert.equal(turn2.estimateReason, "matching-receipt");
 });
 
-test("temporary borrow and automatic restoration with adjacent M writes, continuation and idle callback on native Codex serializer", async t => {
+await t.test("temporary borrow and automatic restoration with adjacent M writes, continuation and idle callback on native Codex serializer", async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
   let piRef: ExtensionAPI | undefined;
@@ -388,7 +389,7 @@ test("temporary borrow and automatic restoration with adjacent M writes, continu
   assert.equal((idleBody.input as unknown[]).filter(item => JSON.stringify(item).includes("M3 after automatic restoration")).length, 1);
 });
 
-test("real resource reload invalidates old resolver listener and native maintenance stays isolated", async t => {
+await t.test("real resource reload invalidates old resolver listener and native maintenance stays isolated", async t => {
   let capturedBus: any;
   let maintenanceActive = false;
   let maintenanceResolverEmissions = 0;
@@ -444,7 +445,7 @@ test("real resource reload invalidates old resolver listener and native maintena
   assert.equal(repliesAfter, 1, "Old instance must be unregistered; exactly one new resolver replies");
 });
 
-test("genuine late change at before_provider_request validates and charges growth", async t => {
+await t.test("genuine late change at before_provider_request validates and charges growth", async t => {
   const admissions: AdmissionObservation[] = [];
   const EXTRA_TEXT = "\nLate appended instruction note.";
 
@@ -498,7 +499,7 @@ test("genuine late change at before_provider_request validates and charges growt
   assert.equal(main.payload.transform, "last-user-text-append");
 });
 
-test("real Pi/Larva/Nunc joint loop: model-tool M mutation, native serializer wire payload verification, tail carrier, and usage-backed receipt reuse", async t => {
+await t.test("real Pi/Larva/Nunc joint loop: model-tool M mutation, native serializer wire payload verification, tail carrier, and usage-backed receipt reuse", async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
   const settledResolvers: Array<() => void> = [];
@@ -640,7 +641,7 @@ test("real Pi/Larva/Nunc joint loop: model-tool M mutation, native serializer wi
   assert.equal(main2.receiptBreakdown?.retainedOldMMargin, true);
 });
 
-test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overlapping M writes, proving F/R/M shared snapshot and receipt invalidation/re-establishment", async t => {
+await t.test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overlapping M writes, proving F/R/M shared snapshot and receipt invalidation/re-establishment", async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
   const settledResolvers: Array<() => void> = [];
@@ -782,7 +783,7 @@ test("real Pi/Larva/Nunc joint loop: persona switch/restore with adjacent/overla
   assert(adm5.anchorTrailingMessages! >= 2);
 });
 
-test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, then reload reconstructs M and receipts", { timeout: 30000 }, async t => {
+await t.test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, then reload reconstructs M and receipts", { timeout: 30000 }, async t => {
   const admissions: AdmissionObservation[] = [];
   const bodies: Record<string, unknown>[] = [];
   const settledResolvers: Array<() => void> = [];
@@ -956,7 +957,7 @@ test("real Pi/Larva/Nunc: idle M, compact engine-to-native-terminal exclusion, t
   assert.equal(sendCount, 7);
 });
 
-test("actual Larva default persona cannot keep an unauthorized model after native RPC startup restore", { timeout: 90000 }, async t => {
+await t.test("actual Larva default persona cannot keep an unauthorized model after native RPC startup restore", { timeout: 90000 }, async t => {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 80000, compaction: { enabled: false } });
   let host: NativeHost | undefined;
@@ -1019,4 +1020,5 @@ export default function (pi) {
   writeFileSync(join(f.dir, "larva-startup-model-proof.json"), JSON.stringify({
     defaultPersona: "synth-other", sessionStart: applied, getState: { provider: state.model?.provider, id: state.model?.id }, requestModel: f.requests[0]?.payload?.model,
   }, null, 2));
+});
 });

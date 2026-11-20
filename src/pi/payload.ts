@@ -23,7 +23,8 @@ export type OutputCapState =
   | { kind: "conflict" }
   | { kind: "value"; value: number };
 
-const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens"]);
+const CAP_KEYS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
+const OUTPUT_KEYS: ReadonlySet<string> = new Set(CAP_KEYS);
 const INPUT_KEYS = new Set(["messages", "input", "contents", "system", "instructions", "prompt", "system_instruction", "systemInstruction"]);
 const TOOL_KEYS = new Set(["tools", "functions", "tool_choice", "toolChoice", "toolConfig"]);
 const STREAM_KEYS = new Set(["stream", "background"]);
@@ -34,8 +35,6 @@ const METADATA_KEYS = new Set(["temperature", "top_p", "topP", "top_k", "topK", 
 const IMAGE_TYPES = new Set(["image", "input_image", "image_url"]);
 const UNSUPPORTED_TYPES = new Set(["audio", "input_audio", "pdf", "document", "video", "file", "input_file"]);
 const UNVALIDATED = new Set<PayloadCategory>(["input", "tools", "media", "thinking", "control", "unsupported"]);
-const CAP_KEYS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
-
 /** JSON-enumerable view. Drops prototypes, undefined, functions; matches HTTP JSON bytes. */
 export function jsonView(value: unknown): unknown {
   try { return JSON.parse(JSON.stringify(value)); }
@@ -52,15 +51,6 @@ function subtreeSize(view: unknown, keys: Set<string>): number {
     size += textTokens(canonical(view[key]));
   }
   return size;
-}
-
-function takeOutputCap(body: Record<string, unknown>, take: (value: unknown) => void): void {
-  for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) take(body[key]);
-  if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) take(body.generationConfig.maxOutputTokens);
-  if (record(body.config)) {
-    if (Object.hasOwn(body.config, "maxOutputTokens")) take(body.config.maxOutputTokens);
-    if (record(body.config.generationConfig) && Object.hasOwn(body.config.generationConfig, "maxOutputTokens")) take(body.config.generationConfig.maxOutputTokens);
-  }
 }
 
 export function outputCapPaths(body: unknown): string[] {
@@ -83,7 +73,10 @@ export function outputCapState(body: unknown): OutputCapState {
     if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) invalid = true;
     else found.push(value);
   };
-  takeOutputCap(body, take);
+  for (const path of outputCapPaths(body)) {
+    const value = path.split(".").reduce<unknown>((value, key) => record(value) ? value[key] : undefined, body);
+    take(value);
+  }
   if (invalid) return { kind: "invalid" };
   if (found.length === 0) return { kind: "missing" };
   if (found.some(n => n !== found[0])) return { kind: "conflict" };
@@ -133,7 +126,9 @@ function census(value: unknown, acc: { images: number; unsupported: Set<string> 
     if (IMAGE_TYPES.has(value.type)) acc.images++;
     if (UNSUPPORTED_TYPES.has(value.type)) acc.unsupported.add(value.type);
   }
-  for (const child of Object.values(value)) census(child, acc);
+  // Protocol messages and nested tool-result blocks carry content/parts.
+  // Other object fields (metadata, tool-call arguments and schemas) are data.
+  for (const key of ["content", "parts"]) if (Object.hasOwn(value, key)) census(value[key], acc);
   return { images: acc.images, unsupported: [...acc.unsupported] };
 }
 
@@ -169,7 +164,12 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
   if (!record(beforeView) || !record(afterView)) {
     if (canonical(beforeView) !== canonical(afterView)) categories.add("metadata");
   }
-  const beforeBlocks = census(beforeView), afterBlocks = census(afterView);
+  // Only protocol content can introduce media; metadata and tool schemas are opaque.
+  const mediaContent = (body: Record<string, unknown>) => [
+    ...["messages", "input", "contents", "system", "instructions", "system_instruction", "systemInstruction"].map(key => body[key]),
+    ...(record(body.config) ? [body.config.systemInstruction] : []),
+  ];
+  const beforeBlocks = census(mediaContent(beforeRec)), afterBlocks = census(mediaContent(afterRec));
   if (beforeBlocks.images !== afterBlocks.images || afterBlocks.unsupported.some(t => !beforeBlocks.unsupported.includes(t))) categories.add("media");
   const outputState = outputCapState(afterView);
   return {
@@ -337,7 +337,7 @@ export function authorizePayload(args: {
   } else if (body.stream === false) throw new EngineError("CONFIG", "Nunc: non-streaming payload is unsupported; request was not sent");
   if (body.background === true) throw new EngineError("CONFIG", "Nunc: background payload is unsupported; request was not sent");
   if (Object.hasOwn(priorRec, "model")) {
-    if (!Object.hasOwn(body, "model") || body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload removed or changed its native model field; request was not sent");
+    if (typeof body.model !== "string" || body.model.length === 0 || (body.model !== args.model.id && body.model !== priorRec.model)) throw new EngineError("CONFIG", "Nunc: payload removed or changed its native model field; request was not sent");
   } else if (Object.hasOwn(body, "model") && body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload model differs from the selected model; request was not sent");
   const beforePaths = outputCapPaths(prior), afterPaths = outputCapPaths(body);
   if (beforePaths.length > 0 && beforePaths.join("\0") !== afterPaths.join("\0")) throw new EngineError("CONFIG", "Nunc: payload output cap field was replaced or removed; request was not sent");

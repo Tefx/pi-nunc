@@ -25,6 +25,33 @@ const HOOK_A = "HOOK_A_TEMP_INJECTION";
 const HOOK_B = "HOOK_B_TEMP_INJECTION";
 const QUEUED = "queued-D-not-in-layout";
 
+test("maintenance cut ignores system-policy JSON examples and records only user source blocks", async t => {
+  const h = await prepared(t);
+  h.f.seed();
+  const active = project(h.f.runtime.session.sessionManager.buildContextEntries()).active;
+  h.f.respond(memoryPatch);
+  await h.f.runtime.session.compact();
+  const result = h.f.events[0]!.result;
+  assert(result.ok);
+  const model = h.f.faux.getModel();
+  const surface = createContextSurface({ pi: h.pi(), memory: h.memory(), fixed: () => ({ systemPrompt: "", tools: [] }),
+    config: () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }) });
+  surface.beginMaintenance({ ctx: h.ctx(), model, fixed: { systemPrompt: "", tools: [] }, memory: emptyMemory(), active, reason: "manual" });
+  const kept = result.candidate.kept.map(entry => entry.entryId);
+  const sources = [...result.candidate.retiredEntryIds.map(entryId => ({ region: "B", entryId })), ...kept.map(entryId => ({ region: "K", entryId }))];
+  const context = normalizeContext({ messages: [
+    { role: "system", content: JSON.stringify({ region: "K", entryId: "policy-example" }), timestamp: 0 },
+    { role: "user", content: sources.map(source => JSON.stringify(source)).join("\n"), timestamp: 1 },
+  ] });
+  surface.observeAdmission({ ctx: h.ctx(), model, context, observation: { kind: "maintenance", outcome: "delegate" } });
+  surface.noteEngine(result); surface.noteNative("saved");
+  const view = surface.read(h.ctx()).lastMaintenance!;
+  assert.deepEqual(view.cut?.keptEntryIds, kept);
+  assert.equal(view.cut?.firstKeptEntryId, kept[0]);
+  assert.deepEqual(view.after?.keptEntryIds, kept);
+  assert(!JSON.stringify(view.cut).includes("policy-example"));
+});
+
 
 
 for (const imageTokens of [undefined, 512]) test(`current F/M/R counts, tool association, packaging, and long bodies stay original (${imageTokens ?? "Pi image default"})`, async t => {
@@ -235,8 +262,9 @@ test("rejected requests are not sent; candidate is not saved; fail/cancel have n
   assert.equal(pending.lastMaintenance?.native, "pending");
   assert.equal(pending.lastMaintenance?.engine, undefined);
   assert.equal(pending.lastMaintenance?.after, undefined);
-  assert(pending.lastMaintenance?.cut?.firstKeptEntryId);
-  assert.equal(pending.lastMaintenance.cut.retiredEntryIds.length > 0, true);
+  // Faux has no serialized-payload callback: a blocked responder has no
+  // authorized send observation yet. Never invent a cut from preflight.
+  assert.equal(pending.lastMaintenance?.cut, undefined);
   g.runtime.session.abortCompaction();
   release.resolve();
   await Promise.allSettled([compacting]);

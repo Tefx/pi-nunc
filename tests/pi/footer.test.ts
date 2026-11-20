@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { commandCompletions, compactFooter, COMMAND_USAGE } from "../../src/ui/status.js";
+import { commandCompletions, compactFooter, COMMAND_USAGE, firstLine, lastMainLines } from "../../src/ui/status.js";
+
+test("single-line status handles CR, LF, and CRLF without leaking another line", () => {
+  for (const separator of ["\r", "\n", "\r\n"]) assert.equal(firstLine(`warning${separator}hidden`), "warning");
+  assert.equal(firstLine("abcdef", 3), "abc…");
+  const lines = lastMainLines({ scope: "last-main", observedAt: 0, sessionId: "s", leafId: null,
+    model: { id: "m", provider: "p", api: "a" }, outcome: "delegate", outputCapTokens: 8192,
+    layout: { unavailable: true, system: { text: "", tokens: 0 },
+      tools: { count: 0, names: [], tokens: 0, unknown: false, definitions: [] },
+      messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0,
+      heuristic: { tokens: 0, unknown: false }, associations: [] } });
+  assert(lines.includes("output cap 8,192"));
+});
 
 test("compact footer keeps unknown, zero-budget, and over-100 honest", () => {
   const base = { warning: false, unconfirmed: false, slotCount: 8, budget: { tokens: 10, limit: 20, unknown: false } };

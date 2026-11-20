@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFile, rename, mkdir, rm } from "node:fs/promises";
+import { writeFile, rename, mkdir, rm, access } from "node:fs/promises";
+import { dirname } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { sourceRecords, answer } from "../engine/fixtures.js";
 import { assertOnlyCalibrationAppend, fixture, memoryPatch, surfacePort } from "./fixtures.js";
@@ -22,6 +23,10 @@ for (const reason of ["stop", "length", "error", "aborted", "toolUse"] as const)
       if (reason === "aborted") assert.deepEqual(manager.getEntries(), entries);
       else assertOnlyCalibrationAppend(entries, manager.getEntries(), f.events[0]!.result);
       assert.equal(project(manager.buildContextEntries()).mechanicalFallback, undefined);
+      const failed = port.context().read(port.ctx());
+      assert.equal(failed.lastMaintenance?.native, "failed");
+      assert.equal(failed.lastMaintenance?.after, undefined);
+      assert.equal(port.memory().read(port.ctx()).status.occupied, false);
     } else {
       const saved = await f.runtime.session.compact();
       const after = project(manager.buildContextEntries());
@@ -54,6 +59,8 @@ for (const reason of ["stop", "length", "error", "aborted", "toolUse"] as const)
     }
     const result = f.events[0]!.result;
     assert(!result.ok); assert.equal(result.code, "RESPONSE");
+    assert.equal(f.events.length, 1);
+    assert.equal(f.faux.state.callCount, reason === "error" || reason === "aborted" ? 1 : 3, "one extraction plus the two explicit continuation prompts, with no recursive maintenance");
   });
 }
 for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"required":[]}', '{"add":[],"remove":[],"priority":[]}', '{"add":[],"remove":[],"priority":[],"required":["unknown"]}', '{"add":[{"key":"k","text":"note"}],"remove":[],"priority":[],"required":[]}']) test(`invalid patch rolls once: ${bad}`, async t => {
@@ -66,6 +73,19 @@ for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"requ
   assert.match(saved.summary, /without updating M/);
   assert.equal(f.events[0]?.result.ok, false);
   assert.equal(f.faux.state.callCount, 1);
+});
+
+test("failed disk-settings fixture initialization restores the environment and removes its directory", async () => {
+  const inherited = process.env.PI_CODING_AGENT_DIR;
+  let dir: string | undefined;
+  await assert.rejects(fixture({ diskSettings: true, extras: [{ name: "fail-fixture-init", factory() {
+    assert(process.env.PI_CODING_AGENT_DIR);
+    dir = dirname(process.env.PI_CODING_AGENT_DIR);
+    throw new Error("fixture-init-error");
+  } }] }), /fixture-init-error/);
+  assert.equal(process.env.PI_CODING_AGENT_DIR, inherited);
+  assert(dir);
+  await assert.rejects(access(dir), { code: "ENOENT" });
 });
 
 test("public abortCompaction propagates to service and leaves saved state unchanged", async t => {

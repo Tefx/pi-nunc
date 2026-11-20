@@ -49,7 +49,7 @@ export default function nunc(pi: ExtensionAPI): void {
     target: NonNullable<MaintenanceInput["target"]>; claimed: boolean;
     outcome?: NonNullable<MaintenanceResult["observations"]["target"]> };
   let compactFor: CompactForIntent | undefined;
-  let pendingCompaction: { priorBranchIds: Set<string>; firstKeptEntryId: string; memory: Memory; mechanicalFallback?: MechanicalFallbackInfo } | undefined;
+  let pendingCompaction: { priorBranchIds: Set<string>; firstKeptEntryId: string; memory: Memory; summary: string; toolResultCleanup: ReturnType<typeof sealDecisions>; maintenanceCalibration: ReturnType<typeof maintenanceCalibrationRecord>; warned: boolean; mechanicalFallback?: MechanicalFallbackInfo } | undefined;
   const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; runwayWarned = false; };
   const dropAnchors = () => { clearMemoryAnchors(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
@@ -164,10 +164,11 @@ export default function nunc(pi: ExtensionAPI): void {
               hardLimitTokens: view.budget.hardLimit,
             },
             writable: !view.status.occupied && !view.status.unconfirmed,
-            ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.map(ref => {
+            ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.flatMap(ref => {
               const message = projected.active.find(e => e.entryId === ref.entryId)?.messages[ref.messageIndex];
-              return { ...ref, toolName: message?.role === "toolResult" ? message.toolName : "", toolCallId: message?.role === "toolResult" ? message.toolCallId : "",
-                textLength: message?.role === "toolResult" ? messageTextContent(message)?.length ?? 0 : 0 };
+              if (message?.role !== "toolResult") return [];
+              const text = messageTextContent(message);
+              return text === null ? [] : [{ ...ref, toolName: message.toolName, toolCallId: message.toolCallId, textLength: text.length }];
             }) } : {}),
             ...(originals === undefined ? {} : { originals }),
             ...(history === undefined ? {} : { history }),
@@ -294,16 +295,26 @@ export default function nunc(pi: ExtensionAPI): void {
         model: frozen.model, fixed: frozen.fixed, memory: proposal, active, eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), cleanupCandidateScope: semanticScope,
         policy, config };
       const plan = memoryPlan(frozen.fixed, frozen.model, config, input.memory.slots);
-      const resolved = resolveExtractionRequest(input, cap => {
-        const context = extractionContext(input, 0, plan.organizingTarget, active, [], cap);
+      const calibratedInput = { ...input, calibration: projectMaintenanceCalibration(ctx.sessionManager.getBranch(), input) };
+      const resolved = resolveExtractionRequest(calibratedInput, cap => {
+        const context = extractionContext(calibratedInput, 0, plan.organizingTarget, active, [], cap);
         const request = context.messages[0];
         if (request && Array.isArray(request.content)) request.content.push({ type: "text", text:
           `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], update: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });
         return context;
       });
       callStartedAt = Date.now();
-      const response = await admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens,
-        ...(resolved.calibratedUndercountTokens > 0 ? { calibratedUndercountTokens: resolved.calibratedUndercountTokens } : {}), signal: combined });
+      combined.throwIfAborted();
+      let abort: () => void = () => {};
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        abort = () => reject(combined.reason);
+        combined.addEventListener("abort", abort, { once: true });
+      });
+      const response = await Promise.race([
+        admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens,
+          ...(resolved.calibratedUndercountTokens > 0 ? { calibratedUndercountTokens: resolved.calibratedUndercountTokens } : {}), signal: combined }),
+        cancelled,
+      ]).finally(() => combined.removeEventListener("abort", abort));
       observedResponse = true;
       try { pi.events.emit("nunc:ui-cleanup-usage", { status: "response", model: { provider: frozen.model.provider, id: frozen.model.id },
         elapsedMs: Date.now() - callStartedAt, outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens, outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy, stopReason: record(response) ? response.stopReason : null,
@@ -362,11 +373,15 @@ export default function nunc(pi: ExtensionAPI): void {
     const entry = ctx.sessionManager.getBranch().findLast(entry => entry.type === "compaction");
     const owned = pending !== undefined && entry !== undefined && !pending.priorBranchIds.has(entry.id) && entry.fromHook === true && entry.firstKeptEntryId === pending.firstKeptEntryId &&
       record(entry.details) && isDeepStrictEqual(entry.details.nunc, pending.memory) &&
-      isDeepStrictEqual(entry.details.mechanicalFallback, pending.mechanicalFallback);
+      isDeepStrictEqual(entry.details.mechanicalFallback, pending.mechanicalFallback) && entry.summary === pending.summary &&
+      isDeepStrictEqual(entry.details.toolResultCleanup, pending.toolResultCleanup) &&
+      isDeepStrictEqual(entry.details.maintenanceCalibration, pending.maintenanceCalibration);
     admission.invalidateUsage(); memory.endFreeze();
     contextView.noteNative(owned ? "saved" : "failed");
     if (!owned && compactFor) delete compactFor.outcome;
-    ui.recover(); ui.refresh(ctx);
+    if (!owned) notify(ctx, "Native compaction did not match Nunc's prepared checkpoint; save ownership is unconfirmed");
+    else if (!pending.warned) ui.recover();
+    ui.refresh(ctx);
   });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { pendingCompaction = undefined; memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
   const modelDiagnostics = (ctx: ExtensionContext) => {
@@ -417,11 +432,12 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_tree", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("session_shutdown", (_event, ctx) => { completionRegistry = undefined; memory.endFreeze(); invalidate(); dropAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
   pi.on("model_select", (_event, ctx) => {
-    invalidate(); admission.ensure(ctx); ui.refresh(ctx);
-    if (!ctx.model) return;
+    invalidate();
     try {
+      admission.ensure(ctx);
       modelDiagnostics(ctx);
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Cannot estimate selected model capacity"); }
+    finally { ui.refresh(ctx); }
   });
   pi.on("thinking_level_select", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("agent_settled", (_event, ctx) => { admission.settled(); ui.refresh(ctx); });
@@ -435,8 +451,8 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("context", (event, ctx) => {
     // Pi puts the newest native checkpoint first, even when its kept range
     // includes earlier checkpoints. Keep that carrier once and every real K.
-    admission.ensure(ctx);
     try {
+      admission.ensure(ctx);
       const sessionId = ctx.sessionManager.getSessionId();
       const entries = ctx.sessionManager.buildContextEntries();
       const projected = project(entries);
@@ -474,6 +490,7 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_before_compact", async (event, ctx) => {
     if (!memory.beginFreeze()) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
     pendingCompaction = undefined;
+    let warned = false;
     const controller = new AbortController(); running = controller;
     const abort = () => controller.abort();
     event.signal.addEventListener("abort", abort, { once: true });
@@ -530,11 +547,11 @@ export default function nunc(pi: ExtensionAPI): void {
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }
       const accounting = result.observations.accounting;
       if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
-        headroomWarned = true;
+        warned = true; headroomWarned = true;
         notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds the extraction input limit planned with the minimum maintenance output reserve; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
       }
       if (accounting?.mainAfterTokens != null && accounting.growthTokens != null && accounting.growthTokens < 0.35 * accounting.effectiveTrigger && !runwayWarned) {
-        runwayWarned = true;
+        warned = true; runwayWarned = true;
         notify(ctx, `Candidate post-compaction growth runway ${accounting.growthTokens} is narrow after projected input ${accounting.mainAfterTokens} against trigger ${accounting.effectiveTrigger}. Reduce retained history or fixed/memory input, or choose a larger context window. Settings were not changed; candidate success is not a native save.`);
       }
       const currentEntries = manager.buildContextEntries();
@@ -584,10 +601,13 @@ export default function nunc(pi: ExtensionAPI): void {
       const retained = new Set(candidate.kept.map(e => e.entryId));
       const nextDecisions = (candidate.toolResultCleanup?.applied ?? []).filter(d => retained.has(d.entryId) &&
         !d.sourceRefs?.some(ref => !retained.has(ref.entryId)));
+      const summary = renderMemoryWithFallback(candidate.memory.slots, mechanicalFallback);
+      const toolResultCleanup = sealDecisions(projected.active, nextDecisions);
       pendingCompaction = { priorBranchIds: new Set(branch.map(entry => entry.id)), firstKeptEntryId: candidate.firstKeptEntryId, memory: structuredClone(candidate.memory),
+        summary, toolResultCleanup: structuredClone(toolResultCleanup), maintenanceCalibration: structuredClone(committedCalibration), warned: warned || mechanicalFallback !== undefined,
         ...(mechanicalFallback ? { mechanicalFallback: structuredClone(mechanicalFallback) } : {}) };
-      return { compaction: { summary: renderMemoryWithFallback(candidate.memory.slots, mechanicalFallback), firstKeptEntryId: candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
-        details: { nunc: candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions),
+      return { compaction: { summary, firstKeptEntryId: candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
+        details: { nunc: candidate.memory, toolResultCleanup,
           ...(mechanicalFallback ? { mechanicalFallback } : {}),
           ...(committedCalibration ? { maintenanceCalibration: committedCalibration } : {}) } } };
     } catch (error) {

@@ -28,14 +28,14 @@ const npm = spawnSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, "--ve
 const npmVersion = npm.stdout?.trim() ?? "";
 if (npm.status !== 0 || !satisfiesStableCaret(npmVersion, pkg.engines.npm)) fail(`Requires npm ${pkg.engines.npm}; found ${npmVersion || npm.error || npm.status}`);
 console.log(`check: observed Node ${process.versions.node}, npm ${npmVersion}`);
-const tests = readdirSync(resolve(root, "tests"), { recursive: true }).filter(name => name.endsWith(".test.ts") && (selected[0] === "all" || name.startsWith("engine/"))).sort();
+const tests = readdirSync(resolve(root, "tests"), { recursive: true }).filter(name => (name.endsWith(".test.ts") || name === "pi/larva.integration.ts") && (selected[0] === "all" || name.startsWith("engine/"))).sort();
 if (tests.length === 0) fail("Empty test selection");
 if (selected[0] === "all") for (const suite of ["engine", "pi", "live"]) {
   if (!tests.some(name => name.startsWith(`${suite}/`))) fail(`Missing required ${suite} inventory`);
 }
 function run(args) {
   console.log(`> ${process.execPath} ${args.join(" ")}`);
-  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
+  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.NUNC_LARVA_EXTENSION ? { NUNC_LARVA_EXTENSION: resolve(process.env.NUNC_LARVA_EXTENSION) } : {}), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
   if (result.error || result.status !== 0) fail(`Command failed: ${result.error?.message ?? result.signal ?? result.status}`);
 }
 run([resolve(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"]);

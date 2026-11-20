@@ -105,7 +105,7 @@ test("prepareRequest header await wrap does not skip admission on the captured w
   }).result();
   assert.equal(escaped.stopReason, "error", escaped.errorMessage ?? "");
   assert.equal(e.faux.state.callCount, before);
-  assert(e.observations.some(o => o.outcome === "reject"));
+  assert.deepEqual(e.observations.filter(o => o.kind === "main").map(o => [o.outcome, o.code]), [["reject", "CONFIG"]]);
 });
 
 test("maintenance same-Context replay via a held older wrapper cannot consume a second extraction", async () => {
@@ -230,6 +230,7 @@ test("ambiguous projection witnesses and missing bindings cannot establish pure-
   bind(context.messages);
   bind([second, first]);
   const response = await e.held.streamSimple(e.model, context, e.options).result();
+  assert.equal(e.faux.state.callCount, 1);
   assert.equal(response.stopReason, "stop");
   assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).estimateReason, "messages-mismatch");
   e.admission.invalidateUsage();

@@ -615,7 +615,7 @@ export class Admission {
         ? 0 : textTokens(JSON.stringify(options?.metadata ?? {}));
       if (ctx.modelRegistry.getRegisteredNativeProvider(model.provider) !== wrapper) throw new EngineError("CONFIG", "Provider changed after request preparation; reload before continuing");
       if (legacyStream) throw new EngineError("CONFIG", "Legacy stream overrides are unsupported; select a native Provider without a legacy stream override");
-      if (model.samplingParams && Object.keys(model.samplingParams).length || options?.samplingParams && Object.keys(options.samplingParams).length) throw new EngineError("CONFIG", "Raw sampling payload overrides are unsupported");
+      if (model.samplingParams && Object.keys(model.samplingParams).length || model.samplingParamsByThinkingLevel && Object.keys(model.samplingParamsByThinkingLevel).length || options?.samplingParams && Object.keys(options.samplingParams).length) throw new EngineError("CONFIG", "Raw sampling payload overrides are unsupported");
       if (kind === "maintenance" && !ownedMaintenance) throw new EngineError("INPUT", "Nunc maintenance request already used or changed binding");
       if (kind === "main") {
         // Stock TUI flushes its compaction queue even after Escape. Reject any
@@ -750,37 +750,47 @@ export class Admission {
         if (inputTokens > limit) throw new EngineError("CAPACITY", `Maintenance input estimate ${inputTokens} exceeds planned input ${limit}; no recursive recovery`);
       }
       const onPayload = options?.onPayload;
+      const generation = this.generation;
+      const installation = this.installed.get(model.provider);
       // Pi composes before_provider_request in load order and returns the current
       // payload object when handlers return undefined. Compare JSON bytes, not
       // prototypes; re-check only capacity-relevant growth/output/illegal fields.
+      let payloadObserved = false;
       const forwarded = { ...options, onPayload: async (payload: unknown, selected: Model<Api>) => {
-        const before = jsonView(payload);
-        const replacement = await onPayload?.(payload, selected);
-        options?.signal?.throwIfAborted();
-        const final = replacement === undefined ? payload : replacement;
-        const after = jsonView(final);
-        const cap = outputCapState(after);
-        budgetObservation.outputCapTokens = cap.kind === "value" ? cap.value : null;
-        const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload), kind === "maintenance" && ["google-vertex", "google-generative-ai"].includes(selected.api));
-        if (snapshot && delta.categories.some(c => c !== "output")) snapshot.payloadBound = false;
-        const rewrite = kind === "main" ? codexSystemInstructionRewrite(selected, before, after) : { ok: false } as const;
-        const append = rewrite.ok ? rewrite.append : lastUserTextAppend(before, after);
-        const observation: PayloadObservation = rewrite.ok
-          ? { mode: delta.mode, categories: delta.categories, transform: "codex-system-instructions" }
-          : append.ok ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
-          : { mode: delta.mode, categories: delta.categories };
-        const chargedTokens = Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0, rewrite.ok ? rewrite.addedTokens : 0);
-        const payloadGrowth = {
-          grewTokens: delta.grewTokens,
-          inputGrewTokens: delta.inputGrewTokens,
-          chargedTokens,
-          append: append.ok,
-          ...(append.ok ? { addedTokens: append.addedTokens, addedText: append.addedText } : {}),
-        };
-        const finalInputTokens = inputTokens! + chargedTokens;
-        if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
-        const layout = { ctx, model, context: effectiveContext, payloadGrowth, initialMetadataTokens, ...(projection ? { projection } : {}) };
+        payloadObserved = true;
+        let finalInputTokens = inputTokens!;
+        let observation: PayloadObservation | undefined;
+        let layout: Omit<AdmissionLayoutEvent, "observation"> = { ctx, model, context: effectiveContext, initialMetadataTokens, ...(projection ? { projection } : {}) };
         try {
+          const before = jsonView(payload);
+          const replacement = await onPayload?.(payload, selected);
+          options?.signal?.throwIfAborted();
+          if (this.generation !== generation || this.installed.get(model.provider) !== installation || ctx.modelRegistry.getRegisteredNativeProvider(model.provider) !== wrapper) {
+            throw new EngineError("CANCELLED", "Request ownership changed during payload preparation");
+          }
+          const final = replacement === undefined ? payload : replacement;
+          const after = jsonView(final);
+          const cap = outputCapState(after);
+          budgetObservation.outputCapTokens = cap.kind === "value" ? cap.value : null;
+          const delta = classifyPayloadChange(before, after, payloadMode(before, after, replacement, payload), kind === "maintenance" && ["google-vertex", "google-generative-ai"].includes(selected.api));
+          if (snapshot && delta.categories.some(c => c !== "output")) snapshot.payloadBound = false;
+          const rewrite = kind === "main" ? codexSystemInstructionRewrite(selected, before, after) : { ok: false } as const;
+          const append = rewrite.ok ? rewrite.append : lastUserTextAppend(before, after);
+          observation = rewrite.ok
+            ? { mode: delta.mode, categories: delta.categories, transform: "codex-system-instructions" }
+            : append.ok ? { mode: delta.mode, categories: delta.categories, transform: "last-user-text-append" }
+            : { mode: delta.mode, categories: delta.categories };
+          const chargedTokens = Math.max(delta.grewTokens, delta.inputGrewTokens, append.ok ? append.addedTokens : 0, rewrite.ok ? rewrite.addedTokens : 0);
+          const payloadGrowth = {
+            grewTokens: delta.grewTokens,
+            inputGrewTokens: delta.inputGrewTokens,
+            chargedTokens,
+            append: append.ok,
+            ...(append.ok ? { addedTokens: append.addedTokens, addedText: append.addedText } : {}),
+          };
+          finalInputTokens = inputTokens! + chargedTokens;
+          if (budgetObservation.plannedInputLimit !== undefined) budgetObservation.inputExceededPlan = finalInputTokens > budgetObservation.plannedInputLimit;
+          layout = { ctx, model, context: effectiveContext, payloadGrowth, initialMetadataTokens, ...(projection ? { projection } : {}) };
           authorizePayload({ model: selected, uncapped: omitsRouteOutputCap(selected, ctx.modelRegistry), delta, before, after: final, inputTokens: inputTokens!, inputLimit: limit!, enforceInputLimit, authorizedOutput: outputTokens!, context: effectiveContext, allowSystemInstructionRewrite: kind === "main", allowGoogleMaintenanceJsonSchema: kind === "maintenance" });
           // Authorization must see hook mutations before any output-only mitigation.
           let sent = final;
@@ -794,28 +804,36 @@ export class Admission {
             const safeFloor = Math.min(cap.value, Math.max(outputFloor(model), reserve, Math.min(32768, Math.floor(model.contextWindow * 0.25))));
             const remaining = Math.floor(model.contextWindow - conservativeInput - clampConfig.main.safetyTokens);
             if (conservativeInput + cap.value > model.contextWindow && remaining >= safeFloor) {
-              sent = cloneWithOutputCap(after, Math.max(safeFloor, remaining));
+              sent = cloneWithOutputCap(final, Math.max(safeFloor, remaining));
               budgetObservation.outputCapTokens = Math.max(safeFloor, remaining);
             }
           }
           this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
           return sent === final ? replacement : sent;
         } catch (error) {
-          const code = error instanceof EngineError ? error.code : "CONFIG";
+          const code = options?.signal?.aborted ? "CANCELLED" : error instanceof EngineError ? error.code : "CONFIG";
           const aborted = options?.signal?.aborted === true || code === "CANCELLED";
           const capacity = kind === "main" && code === "CAPACITY" && !aborted;
           const errorMessage = `${capacity ? "context_length_exceeded: " : ""}Nunc local ${code}; request=${randomUUID()}; ${error instanceof Error ? error.message : "Request rejected"}`;
           if (capacity && options?.signal) this.rejected.set(errorMessage, options.signal);
-          this.observe({ kind, outcome: "reject", code, ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
+          this.observe({ kind, outcome: "reject", code, ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, ...(observation ? { payload: observation } : {}) }, this.generation === generation ? layout : undefined);
           throw new EngineError(code, errorMessage);
         }
       } };
-      this.observe({ kind, outcome: "delegate", ...budgetObservation, ...(inputTokens === undefined ? {} : { inputTokens, inputLimit: limit!, outputTokens: outputTokens! }) }, { ctx, model, context: effectiveContext, initialMetadataTokens, ...(projection ? { projection } : {}) });
       // The simple branch receives SimpleStreamOptions from wrapper.streamSimple;
       // raw stream options differ only in API-specific fields and never enter it.
       const currentRecord = this.call.getStore();
       if (currentRecord) currentRecord.effectiveContext = effectiveContext;
       const stream = simple ? delegate.streamSimple(model, effectiveContext, forwarded as SimpleStreamOptions) : delegate.stream(model, effectiveContext, forwarded);
+      // Providers without a serialized-payload hook (for example Pi's faux
+      // provider) have only the Context gate. Report them after completion,
+      // never speculatively before a hook can fail.
+      void stream.result().then(() => {
+        if (!payloadObserved && this.generation === generation && this.installed.get(model.provider) === installation) {
+          this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens! },
+            { ctx, model, context: effectiveContext, initialMetadataTokens, ...(projection ? { projection } : {}) });
+        }
+      }, () => {});
       if (snapshot) this.watchCompletion(stream, snapshot);
       return stream;
     } catch (error) {

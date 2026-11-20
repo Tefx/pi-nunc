@@ -196,9 +196,9 @@ test("invalid reply shapes trigger protocol-error and local CONFIG refusal", asy
     null,
   ];
 
-  for (const invalid of invalidReplies) {
-    const admissions: AdmissionObservation[] = [];
-    const f = await fixture({
+  let invalid: unknown;
+  const admissions: AdmissionObservation[] = [];
+  const f = await fixture({
       extras: [{
         name: "larva-invalid",
         factory(pi) {
@@ -210,7 +210,9 @@ test("invalid reply shapes trigger protocol-error and local CONFIG refusal", asy
         },
       }],
     });
-
+  t.after(() => f.close());
+  for (invalid of invalidReplies) {
+    admissions.length = 0;
     await f.runtime.session.prompt("Attempt request with invalid reply");
     assert.equal(f.faux.state.callCount, 0);
 
@@ -221,7 +223,8 @@ test("invalid reply shapes trigger protocol-error and local CONFIG refusal", asy
     assert.equal(lastMain.resolution, "protocol-error");
     assert.equal(lastMain.resolutionDetail, "invalid-payload");
 
-    await f.close();
+    assert.equal(admissions.filter(a => a.kind === "main").length, 1);
+    assert.equal(admissions.some(a => a.outcome === "delegate"), false);
   }
 });
 

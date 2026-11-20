@@ -26,6 +26,24 @@ test("uncalibrated main input is diagnostic while explicit limits and native cla
     delta: classifyPayloadChange(base, metadata, "replacement"), enforceInputLimit: false }), /native output clamp/);
 });
 
+test("metadata type labels and tool schemas never enter the content media census", () => {
+  const before = { model: model.id, messages: [{ role: "user", content: "a" }] };
+  for (const type of ["image", "document", "file"]) {
+    const after = { ...before, metadata: { type } };
+    const delta = classifyPayloadChange(before, after, "replacement");
+    assert.deepEqual(delta.categories, ["metadata"]);
+    assert.equal(delta.imagesAdded, 0);
+    assert.deepEqual(delta.unsupportedAdded, []);
+    authPayload({ model, before, after, delta, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
+    const tools = { ...before, tools: [{ parameters: { type } }] };
+    assert.deepEqual(classifyPayloadChange(before, tools, "replacement").categories, ["tools"]);
+    const messageMetadata = { ...before, messages: [{ role: "user", content: "a", metadata: { type }, tool_calls: [{ function: { arguments: { type } } }] }] };
+    assert.deepEqual(classifyPayloadChange(before, messageMetadata, "replacement").categories, ["input"]);
+    const content = { ...before, messages: [{ role: "user", content: [{ type }] }] };
+    assert(classifyPayloadChange(before, content, "replacement").categories.includes("media"));
+  }
+});
+
 class SdkParams {
   model = "engine-test";
   stream = true;

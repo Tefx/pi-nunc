@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, getSystemMessageText, normalizeContext, renderSystemMessageUpdate, type AssistantMessage, type Context, type SystemMessage, type Tool, type ToolReference } from "@earendil-works/pi-ai";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, getSystemMessageText, normalizeContext, renderSystemMessageUpdate, type AssistantMessage, type AzureOpenAIResponsesOptions, type Model, type Context, type SystemMessage, type Tool, type ToolReference } from "@earendil-works/pi-ai";
+import { fixture, memoryPatch, responsesSSE } from "./fixtures.js";
 import { answer, sourceRecords } from "../engine/fixtures.js";
 import { project } from "../../src/pi/projection.js";
 import { messageTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
@@ -72,13 +72,30 @@ test("admission delegates a registered native Azure Responses provider outside t
   const f = await fixture({ extras: [{ name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as { outcome?: string; code?: string })); } }] });
   t.after(() => f.close());
   const azure = f.modelRuntime.getProvider("azure"); assert(azure);
-  new ModelRegistry(f.modelRuntime).registerProvider(azure);
+  const bodies: Record<string, unknown>[] = [];
+  const transport: typeof fetch = async (resource, init) => {
+    const request = new Request(resource, init);
+    const body = await request.json() as Record<string, unknown>;
+    bodies.push(body);
+    return responsesSSE("gpt-4o-mini", "Controlled Azure answer");
+  };
+  const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const,
+    azureBaseUrl: "https://controlled.openai.azure.com/openai/v1", env: { AZURE_OPENAI_BASE_URL: "https://controlled.openai.azure.com/openai/v1", AZURE_OPENAI_DEPLOYMENT_NAME_MAP: "gpt-4o-mini=mapped-deployment" } };
+  new ModelRegistry(f.modelRuntime).registerProvider({ ...azure,
+    stream: (m, c, o) => azure.stream(m as Model<"azure-openai-responses">, c, { ...o, ...bound } as AzureOpenAIResponsesOptions),
+    streamSimple: (m, c, o) => azure.streamSimple(m, c, { ...o, ...bound }),
+  });
   const model = azure.getModels().find(m => m.id === "gpt-4o-mini");
   assert(model && model.api === "azure-openai-responses");
   assert(!["openai-completions", "openai-responses", "anthropic-messages", "openai-codex-responses"].includes(model.api));
   await f.modelRuntime.setRuntimeApiKey(model.provider, "offline-fixture-key");
   await f.runtime.session.setModel(model);
-  await f.runtime.session.prompt("Use the currently selected native provider").catch(() => {});
+  await f.runtime.session.prompt("Use the currently selected native provider");
+  assert.equal(bodies.length, 1, JSON.stringify({ admissions, response: f.runtime.session.messages.at(-1) }));
+  assert.equal(bodies[0]?.model, "mapped-deployment");
+  const response = f.runtime.session.messages.at(-1);
+  assert(response?.role === "assistant");
+  assert.equal(response.stopReason, "stop", response.errorMessage ?? "");
   assert.equal(f.faux.state.callCount, 0);
   const last = admissions.at(-1);
   assert.equal(last?.outcome, "delegate", JSON.stringify(admissions));
