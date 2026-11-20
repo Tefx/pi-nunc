@@ -11797,7 +11797,7 @@ phases:
       and protected files untouched.
   - id: delta-stable-memory-configuration-update-repair
     name: Responses 序列化证据原生 configuration_update 控制项兼容与回归修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/stable-memory-observation.ts\", \"tests/live/stable-memory-observation.test.ts\"\
       , \"tests/pi/openai-native-migration.test.ts\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -11850,3 +11850,5 @@ phases:
     - tests/live/stable-memory-observation.test.ts
     - tests/pi/openai-native-migration.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-20T19:25:58.716736Z'
