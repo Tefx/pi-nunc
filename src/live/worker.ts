@@ -11,7 +11,8 @@ import { convertToLlm, sessionEntryToContextMessages, SessionManager, type Sessi
 import { openHost, type NativeHost } from "./host.js";
 import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection, taskRetentionSelection } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult } from "./scenarios.js";
-import { isSystemMessage } from "../engine/accounting.js";
+import { isSystemMessage, memoryPlan } from "../engine/accounting.js";
+import { engineConfig } from "../pi/config.js";
 import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
 import type { MaintenanceResult } from "../engine/types.js";
 import { project, type NuncConfig } from "../pi/index.js";
@@ -467,6 +468,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             const frozenCapacityMemory = project(beforeActive).memory;
             const capacityResponseStart = maintenanceResponses.length, capacityContextStart = report.contexts.length;
             const capacityModel = session.model ? `${session.model.provider}/${session.model.id}` : "";
+            // Capture the same organizing plan as maintenance before compaction changes F.
+            // History and current M affect retention, but not organizingTarget.
+            const organizingTarget = (selection.id === "e4" || selection.id === "g8") && group === "candidate" && session.model
+              ? memoryPlan(session.fixed, session.model, engineConfig(runConfig.nunc, session.model, runConfig.compaction)).organizingTarget
+              : runConfig.nunc.memory?.targetTokens ?? 8192;
             const steerTurn = control.steer ? scenario.turns.find(t => t.id === control.steer) : undefined;
             let steered = false, overlap = false;
             const frozenContext = () => report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
@@ -493,7 +499,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
                 report.contexts.slice(capacityContextStart).filter(c => c.kind === "maintenance").map(c => c.context),
                 maintenanceResponses.slice(capacityResponseStart), capacityModel, runConfig.nunc.memory?.hardMaxTokens ?? null,
-                report.rollovers!.at(-1)?.prepared?.calibration?.accounting, runConfig.nunc.memory?.targetTokens ?? 8192)
+                report.rollovers!.at(-1)?.prepared?.calibration?.accounting, organizingTarget)
                 .filter(c => selection.id !== "g8" || c.check !== "at least one necessary candidate is larger than an optional candidate"));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {

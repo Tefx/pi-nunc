@@ -82,7 +82,7 @@ async function guidanceNative(lowUsage = false) {
   const selection: any = { target: { repository, stateRoot: join(f.dir, "nunc-live-guidance"), cleanup: "retain" }, limits: { maxCalls: 160, maxTotalTokens: 24000000, maxDurationMs: 240000, maxOutputTokens: 20000, maxCostUsd: null }, scenarios: selections,
     overrides: [{ requirement: "offline-guidance-mechanics", reason: "Synthetic loopback protocol only; no live model calls", model: { provider, id: model }, config: { nunc: { extraction: { outputTokens: 1024 } }, compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } },
       { requirement: "split", reason: "Actual automatic native split", scenario: "g6", config: { compaction: { enabled: true } } },
-      ...(lowUsage ? [] : ["fits-required", "required-too-large"]).map(variant => ({ requirement: "capacity", reason: "Measured finite memory competition", scenario: `g8/${variant}`, config: { nunc: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 1024 } } } }))] };
+      ...(lowUsage ? [] : ["fits-required", "required-too-large"]).map(variant => ({ requirement: "capacity", reason: "Measured finite memory competition", scenario: `g8/${variant}`, config: { nunc: { memory: { maxTokens: 100, hardMaxTokens: 100, ...(variant === "fits-required" ? { targetTokens: 160 } : {}) }, extraction: { outputTokens: 1024 } } } }))] };
   const run = async (args: string[], input = selection) => {
     const child = spawn(process.execPath, [join(repository, "scripts/verify-live.mjs"), ...args], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "", stderr = "";
@@ -150,7 +150,13 @@ async function guidanceNative(lowUsage = false) {
     assert.equal(faults[1].score.actionReview[0].status, "PROVEN", JSON.stringify(faults[1]));
     assert(faults[1].actions.some((a: any) => a.event.phase === "save-file-restored"));
     assert.equal((await stat(faults[1].sessionFile)).mode & 0o200, 0o200);
-    for (const s of segments.filter((s: any) => s.scenario === "g8")) assert.equal(s.score.actionReview[0].status, "PROVEN", JSON.stringify(s));
+    for (const s of segments.filter((s: any) => s.scenario === "g8")) {
+      assert.equal(s.score.actionReview[0].status, "PROVEN", JSON.stringify(s));
+      assert(s.setupChecks.every((c: any) => c.status === "PROVEN"), JSON.stringify(s.setupChecks));
+    }
+    const g8 = segments.filter((s: any) => s.scenario === "g8");
+    assert.equal(g8[0].calibrations[0].effectiveConfig.memory.targetTokens, 160, "fits-required clamps an explicit organizing target to maxTokens");
+    assert.equal(g8[1].calibrations[0].effectiveConfig.memory.targetTokens, undefined, "required-too-large uses maxTokens without targetTokens");
   } finally { await f.close({ guidance: observed }); }
 }
 

@@ -250,10 +250,15 @@ test("defaults actual maintenance failure remains terminal with sanitized phase/
   } finally { await f.close(); }
 });
 
-test("E4 actual required-capacity failure delivers c once, preserves state and terminates without repeated maintenance", { timeout: 60000 }, async () => {
+for (const targetTokens of [undefined, 80]) test(`E4 required-capacity recovery qualifies with ${targetTokens === undefined ? "maxTokens only" : "explicit targetTokens"}`, { timeout: 60000 }, async () => {
   const f = await comparisonStock({ tooLarge: true });
   try {
-    const { first, ledger } = await actualWorker(f, { id: "e4", variant: "required-too-large" });
+    const { first, ledger } = await actualWorker(f, { id: "e4", variant: "required-too-large" }, "candidate", false, {
+      compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
+      nunc: { memory: { maxTokens: 100, hardMaxTokens: 100, ...(targetTokens === undefined ? {} : { targetTokens }) }, extraction: { outputTokens: 1024 } },
+      retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 },
+    });
+    assert.equal(first.calibrations[0]?.effectiveConfig.memory?.targetTokens, targetTokens);
     assert.equal(first.status, "OBSERVED", JSON.stringify(first));
     assert(first.setupChecks?.every(c => c.status === "PROVEN"));
     assert.equal(first.rolloverQuality?.status, "UNPROVEN");
