@@ -10695,7 +10695,7 @@ phases:
       worktree_removed_reclaimed_1.11GiB
 - id: nunc-third-audit-closure
   name: 第三轮全量契约与精简审查（3-Pass Contract & Simplicity）收敛账本闭环与回归验收
-  status: in_progress
+  status: done
   gate: 'nunc-third-audit-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-projection-and-cleanup、admission-context-and-ui-closure、live-runner-benchmarks-and-docs-closure）与
     8 个 Delta 修复步骤的最终整合提交与确定性离线测试证据（npm run build、文档化完整离线套件运行器 node scripts/check.mjs
     all、node --test dist/tests/pi/larva.integration.js；受保护 package.json、package-lock.json、.node-version
@@ -11189,7 +11189,7 @@ phases:
       0 skipped). Protected files untouched.'
   - id: gate
     name: 第三轮全量契约与精简审查阶段整合验收（PHASE_GATE）
-    status: claimed
+    status: done
     description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
       \ [\"src/**\", \"policies/**\", \"docs/**\", \"examples/**\", \"README.md\"\
       , \"tests/**\", \"scripts/**\", \"package.json\", \"package-lock.json\", \"\
@@ -11324,6 +11324,44 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-11-20T20:07:36.485376Z'
+    done_at: '2026-11-20T20:26:09.031477+00:00'
+    evidence: 'Artifact:
+
+      - Gate report: /tmp/nunc-third-audit-closure-gate-delta2.report.json (gate.report.v2,
+      bound to git:b8ad9f848a185448e8305967c904f89c37d9c9c2 via /tmp/nunc-third-audit-closure-gate-delta2.binding.json)
+
+      - Gate reviewer session: /Users/tefx/.pi/larva/child-sessions/2026-11-20T18-55-28-992Z_01a1fa50-4cdf-7591-bddd-a11ddb800670.jsonl
+
+      - Full suite log: /tmp/nunc-third-audit-gate-delta2-all.log
+
+
+      Verification:
+
+      - Run: python3 ~/.pi/agent/scripts/review_report_validator.py --kind gate --binding
+      /tmp/nunc-third-audit-closure-gate-delta2.binding.json /tmp/nunc-third-audit-closure-gate-delta2.report.json
+      -> exit 0 ({"valid":true,"binding_checked":true,"kind":"gate","schema_version":"gate.report.v2","evidence_disposition":"POSITIVE_GATE_EVIDENCE","errors":[]},
+      13/13 requirements PROVEN, 0 findings)
+
+      - Run: npm run build -> exit 0
+
+      - Run: python3 -m py_compile scripts/pty-driver.py -> exit 0
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node scripts/check.mjs all -> exit 0 (1,172 passed, 0 failed, 2 skipped optional
+      external Dasein-injector observations across 117 files in ~713s)
+
+      - Run: /usr/bin/env -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+      HOME=.scratch/offline-home PI_CODING_AGENT_DIR=.scratch/offline-agent NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts
+      node --test dist/tests/pi/larva.integration.js -> exit 0 (10/10 passed, 0 failed)
+
+      - Run: git diff --quiet 383f2155addd13e54deffd80b69a0b4ef2266831..HEAD -- package.json
+      package-lock.json .node-version -> exit 0
+
+
+      Spec link:
+
+      - plan.yaml#nunc-third-audit-closure.gate (PHASE_GATE, DELTA PASS)'
   - id: delta-engine-admission-and-ui-repair
     name: '引擎传输状态分类、准入载荷编解码器/无载荷结算、压缩告警保持与投影测试预言机修复（Findings #1–#7）'
     status: done
