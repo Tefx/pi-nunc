@@ -11483,7 +11483,7 @@ phases:
       passed, 0 failed). Protected files untouched.'
   - id: delta-live-runner-comparison-and-docs-repair
     name: 'Live 进程组正常退出后代清理、对照运行器前置账本校验与文档/报告一致性修复（Findings #8, #12, #15）'
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/runner.ts\", \"src/live/host.ts\", \"src/live/comparison.ts\"\
       , \"scripts/pty-driver.py\", \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\", \"tests/live/host-child.mjs\"\
@@ -11553,6 +11553,16 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T17:40:10.259079Z'
+    done_at: '2026-11-20T18:10:47.505060+00:00'
+    evidence: 'Integrated rebased commit cc0fe66 (original 2b891806d2ab72ed6e6dc061001ffc209bccab09
+      retained at refs/vectl/retained/nunc-third-audit-closure.delta-live-runner-comparison-and-docs-repair)
+      onto main across 9 authorized files. Findings #8, #12, #15 closed: unconditional
+      process-group descendant settlement on normal exit across runner/host/pty-driver,
+      executeComparison() batch/ledger & deadline pre-validation before target mkdir,
+      and comparison restriction & Pi 1.x vs historical baseline documentation alignment.
+      npm run build and py_compile passed; targeted 4-file suite passed (47 passed,
+      0 failed) and host + optional-quotas passed (22 passed, 0 failed). Protected
+      files untouched.'
   - id: delta-stock-observation-receipts-repair
     name: 'Stock 观测驱动与脚本收据清理状态诚实性闭环（Finding #14）'
     status: claimed
