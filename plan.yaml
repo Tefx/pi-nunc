@@ -11642,7 +11642,7 @@ phases:
       (29 passed, 0 failed), and 10 smoke receipts passed. Protected files untouched.'
   - id: delta-check-runner-and-cleanup-timeout-repair
     name: 离线检查运行器 npm 工具链/缓存环境与 UI 清理请求超时并发竞态修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/check.mjs\", \"tests/live/fixtures.ts\", \"src/index.ts\"\
       , \"tests/pi/ui-cleanup-update.test.ts\"]\n  blocked_paths: [\"plan.yaml\",\
@@ -11700,3 +11700,5 @@ phases:
     - src/index.ts
     - tests/pi/ui-cleanup-update.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-20T18:18:10.554298Z'
