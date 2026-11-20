@@ -11299,7 +11299,7 @@ phases:
     agent: gate-reviewer
   - id: delta-engine-admission-and-ui-repair
     name: '引擎传输状态分类、准入载荷编解码器/无载荷结算、压缩告警保持与投影测试预言机修复（Findings #1–#7）'
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/pi-model.ts\", \"src/pi/admission.ts\", \"src/index.ts\"\
       , \"tests/engine/pi-model.test.ts\", \"tests/pi/admission.test.ts\", \"tests/pi/admission-hardening.test.ts\"\
@@ -11378,6 +11378,16 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T17:40:10.257503Z'
+    done_at: '2026-11-20T18:10:37.230236+00:00'
+    evidence: 'Integrated commit b18a731810c17f5eba950c0e7e1dbb4efeebe331 (retained
+      at refs/vectl/retained/nunc-third-audit-closure.delta-engine-admission-and-ui-repair)
+      onto main across 8 authorized files. Findings #1–#7 closed: pi-model HTTP prefix
+      vs unit/port precedence & decimal duration handling, admission cloneWithOutputCap
+      toJSON() codec wire consistency, no-payload stream.result() terminal settlement,
+      compaction active warning vs notification dedup decoupling, and context-view
+      oracle alignment. npm run build passed; focused 7-file suite passed (164 passed,
+      0 failed) and reverse-dependency engine/pi regression passed (859 passed, 0
+      failed, 2 skipped). Protected files untouched.'
   - id: delta-live-calibration-and-observers-repair
     name: 'Live 校准有效清理历史对齐、容量目标绑定、Responses 助手序列核验与空记忆计量修复（Findings #9, #10, #11,
       #13）'
