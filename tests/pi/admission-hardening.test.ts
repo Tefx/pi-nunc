@@ -117,6 +117,29 @@ test("clamping preserves live SDK fields and only clones cap containers", async 
   assert(sent.config.maxOutputTokens < 90000);
 });
 
+for (const codec of ["root", "config", "config.generationConfig"] as const) test(`clamp reports the native wire ceiling when ${codec} codec overrides it`, async t => {
+  const h = await harness(t, "google-generative-ai");
+  const signal = new AbortController().signal;
+  const untouched = { thinkingBudget: 0 };
+  const config = { maxOutputTokens: 90000, abortSignal: signal, thinkingConfig: untouched };
+  const contents = [{ role: "user", parts: [{ text: "x".repeat(20000) }] }];
+  const body = codec === "config.generationConfig"
+    ? { contents, config: { abortSignal: signal, thinkingConfig: untouched, generationConfig: { maxOutputTokens: 90000,
+      toJSON() { return { maxOutputTokens: 90000 }; } } } }
+    : { contents, config };
+  if (codec === "root") Object.assign(body, { toJSON() { return { contents, config }; } });
+  if (codec === "config") Object.assign(config, { toJSON() { return { maxOutputTokens: 90000, abortSignal: signal, thinkingConfig: untouched }; } });
+  assert.equal((await h.run(body)).stopReason, "stop");
+  const sent = h.sent[0] as typeof body;
+  const wire = outputCapState(JSON.parse(JSON.stringify(sent)));
+  assert.deepEqual(wire, { kind: "value", value: 90000 });
+  assert.equal(h.observations.at(-1)?.outputCapTokens, 90000);
+  assert.equal(sent.contents, contents);
+  assert.equal(sent.config.abortSignal, signal);
+  assert.equal(sent.config.thinkingConfig, untouched);
+  assert.equal(sent, body, "ineffective mitigation preserves the original SDK payload");
+});
+
 for (const phase of ["serialize", "throw", "reject", "invalidate", "replace-provider"] as const) test(`payload ${phase} settles rejection without speculative delegate`, async t => {
   const h = await harness(t);
   const body = phase === "serialize" ? { toJSON() { throw new Error("invalid JSON"); } } : { max_tokens: 90000, messages: [] };

@@ -81,7 +81,9 @@ function transientTransportError(message: string): boolean {
   const terminalStatus = [...message.matchAll(/\b4(?!29\b)\d{2}\b/g)].some(match => {
     const prefix = message.slice(0, match.index);
     const suffix = message.slice(match.index + match[0].length);
-    if (/^\s*(?:ms|s|sec|seconds|tokens|requests|chars|bytes|min|minute)\b/i.test(suffix)) return false;
+    if (/\b(?:http(?:\/[\d.]+)?|status(?:[ _]?code)?|error[ _]?code|error(?=[:="'])|code)[\s:="']+$/i.test(prefix) && !/^\.\d/.test(suffix)) return true;
+    // A three-digit prefix of a decimal quantity is never a status code.
+    if (/^\.\d/.test(suffix) || /^\s*(?:ms|s|sec|seconds|tokens|requests|chars|bytes|min|minute)\b/i.test(suffix)) return false;
     const address = /(?<!["'])([\w.[\]:-]*):$/.exec(prefix);
     if (address && !/^(?:http|status|code|status_?code|error_?code)$/i.test(address[1]!)) return false;
     return !prefix || /\($|\b(?:http(?:\/[\d.]+)?|status(?:[ _]?code)?|error(?:[ _]?code)?|code)[\s:="']+$/i.test(prefix);

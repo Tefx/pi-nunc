@@ -58,16 +58,33 @@ for (const field of ["summary", "toolResultCleanup", "maintenanceCalibration"] a
   assert(diagnostics.some(message => message.includes("save ownership is unconfirmed")));
 });
 
-test("native save keeps the headroom warning emitted before handoff", async t => {
+for (const warning of ["headroom", "runway"] as const) test(`native saves retain deduplicated ${warning} warning until genuine recovery`, async t => {
   const diagnostics: string[] = [];
-  const { f } = await preparedSurface(t, { config: { budget: { extraExtractionInputTokens: 26000 } },
+  const prefix = warning === "headroom" ? "Normal-trigger extraction estimate" : "Candidate post-compaction growth runway";
+  const { f } = await preparedSurface(t, { config: { budget: warning === "headroom" ? { extraExtractionInputTokens: 26000 } : { extraMainInputTokens: 16000 } },
     bus: bus => bus.on("nunc:diagnostic", value => diagnostics.push((value as { message: string }).message)) });
-  f.seed(); f.respond(memoryPatch);
+  f.respond(memoryPatch);
+  for (let i = 0; i < 2; i++) {
+    if (i === 0) f.seed("warning");
+    else f.runtime.session.sessionManager.appendMessage({ role: "user", content: "Next warning compaction", timestamp: 2 });
+    await f.runtime.session.compact();
+    const accounting = f.events[i]!.result.observations.accounting!;
+    if (warning === "headroom") assert.equal(accounting.normalHeadroomSufficient, false);
+    else assert(accounting.growthTokens! < 0.35 * accounting.effectiveTrigger);
+    await f.runtime.session.prompt("/nunc details");
+    assert(diagnostics.at(-1)!.includes(`Current warning: ${prefix}`));
+  }
+  assert.equal(diagnostics.filter(message => message.startsWith(prefix)).length, 1, "repeat notification is deduplicated without clearing warning");
+  await writeFile(f.configFile, JSON.stringify({ ...f.config, budget: { extraExtractionInputTokens: 0 } }));
+  f.seed("recovered");
   await f.runtime.session.compact();
-  assert.equal(f.events[0]!.result.observations.accounting?.normalHeadroomSufficient, false);
-  assert(diagnostics.some(message => message.startsWith("Normal-trigger extraction estimate")));
+  assert.equal(f.events.at(-1)!.result.observations.accounting?.normalHeadroomSufficient, true);
   await f.runtime.session.prompt("/nunc details");
-  assert.match(diagnostics.at(-1)!, /Current warning: Normal-trigger extraction estimate/);
+  assert.match(diagnostics.at(-1)!, /Current warning: none/);
+  await writeFile(f.configFile, JSON.stringify(f.config));
+  f.runtime.session.sessionManager.appendMessage({ role: "user", content: "Warning regressed", timestamp: 3 });
+  await f.runtime.session.compact();
+  assert.equal(diagnostics.filter(message => message.startsWith(prefix)).length, 2, "genuine recovery re-arms warning notification");
 });
 
 test("model_select and context contain provider installation failures and recover on the next request", async t => {

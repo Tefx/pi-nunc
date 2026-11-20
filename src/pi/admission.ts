@@ -804,8 +804,14 @@ export class Admission {
             const safeFloor = Math.min(cap.value, Math.max(outputFloor(model), reserve, Math.min(32768, Math.floor(model.contextWindow * 0.25))));
             const remaining = Math.floor(model.contextWindow - conservativeInput - clampConfig.main.safetyTokens);
             if (conservativeInput + cap.value > model.contextWindow && remaining >= safeFloor) {
-              sent = cloneWithOutputCap(final, Math.max(safeFloor, remaining));
-              budgetObservation.outputCapTokens = Math.max(safeFloor, remaining);
+              const desiredCap = Math.max(safeFloor, remaining);
+              const clamped = cloneWithOutputCap(final, desiredCap);
+              const wireCap = outputCapState(jsonView(clamped));
+              // Custom codecs may override the cloned fields. Keep the authorized
+              // native payload unless its JSON-visible cap really was lowered.
+              if (wireCap.kind === "value" && wireCap.value === desiredCap) sent = clamped;
+              const sentCap = outputCapState(jsonView(sent));
+              budgetObservation.outputCapTokens = sentCap.kind === "value" ? sentCap.value : null;
             }
           }
           this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: finalInputTokens, inputLimit: limit!, outputTokens: outputTokens!, payload: observation }, layout);
@@ -828,12 +834,16 @@ export class Admission {
       // Providers without a serialized-payload hook (for example Pi's faux
       // provider) have only the Context gate. Report them after completion,
       // never speculatively before a hook can fail.
-      void stream.result().then(() => {
-        if (!payloadObserved && this.generation === generation && this.installed.get(model.provider) === installation) {
-          this.observe({ kind, outcome: "delegate", ...budgetObservation, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens! },
-            { ctx, model, context: effectiveContext, initialMetadataTokens, ...(projection ? { projection } : {}) });
-        }
-      }, () => {});
+      const observeCompletion = (message?: AssistantMessage) => {
+        if (payloadObserved || this.generation !== generation || this.installed.get(model.provider) !== installation ||
+            ctx.modelRegistry.getRegisteredNativeProvider(model.provider) !== wrapper) return;
+        const cancelled = options?.signal?.aborted || message?.stopReason === "aborted";
+        const failed = cancelled || message === undefined || message.stopReason === "error";
+        this.observe({ kind, outcome: failed ? "reject" : "delegate", ...(failed ? { code: cancelled ? "CANCELLED" : "RESPONSE" } : {}),
+          ...budgetObservation, inputTokens: inputTokens!, inputLimit: limit!, outputTokens: outputTokens! },
+          { ctx, model, context: effectiveContext, initialMetadataTokens, ...(projection ? { projection } : {}) });
+      };
+      void stream.result().then(message => observeCompletion(message), () => observeCompletion());
       if (snapshot) this.watchCompletion(stream, snapshot);
       return stream;
     } catch (error) {

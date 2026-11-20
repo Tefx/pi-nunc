@@ -380,7 +380,7 @@ export default function nunc(pi: ExtensionAPI): void {
     contextView.noteNative(owned ? "saved" : "failed");
     if (!owned && compactFor) delete compactFor.outcome;
     if (!owned) notify(ctx, "Native compaction did not match Nunc's prepared checkpoint; save ownership is unconfirmed");
-    else if (!pending.warned) ui.recover();
+    else if (!pending.warned) { ui.recover(); headroomWarned = false; runwayWarned = false; }
     ui.refresh(ctx);
   });
   pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { pendingCompaction = undefined; memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
@@ -546,12 +546,15 @@ export default function nunc(pi: ExtensionAPI): void {
       if (subscriptionBilling(model, ctx.modelRegistry)) result.observations.usage.cost = null;
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }
       const accounting = result.observations.accounting;
-      if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
-        warned = true; headroomWarned = true;
+      const headroomWarning = accounting != null && !accounting.normalHeadroomSufficient;
+      const runwayWarning = accounting?.mainAfterTokens != null && accounting.growthTokens != null && accounting.growthTokens < 0.35 * accounting.effectiveTrigger;
+      warned = headroomWarning || runwayWarning;
+      if (headroomWarning && !headroomWarned) {
+        headroomWarned = true;
         notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds the extraction input limit planned with the minimum maintenance output reserve; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
       }
-      if (accounting?.mainAfterTokens != null && accounting.growthTokens != null && accounting.growthTokens < 0.35 * accounting.effectiveTrigger && !runwayWarned) {
-        warned = true; runwayWarned = true;
+      if (runwayWarning && !runwayWarned) {
+        runwayWarned = true;
         notify(ctx, `Candidate post-compaction growth runway ${accounting.growthTokens} is narrow after projected input ${accounting.mainAfterTokens} against trigger ${accounting.effectiveTrigger}. Reduce retained history or fixed/memory input, or choose a larger context window. Settings were not changed; candidate success is not a native save.`);
       }
       const currentEntries = manager.buildContextEntries();

@@ -11,7 +11,7 @@ import { semanticEvidence } from "../../src/live/scenarios.js";
 import { answer, input, noChange, sourceRecords } from "./fixtures.js";
 import { retryMaintenanceComplete } from "../../src/engine/pi-model.js";
 
-for (const failure of ["stream ended before a terminal response event", "terminated", "Connection error", "ECONNREFUSED example.com:443", "ECONNREFUSED 127.0.0.1:443", "ECONNREFUSED [::1]:443", "Connection error :443", "ECONNRESET: connection closed", "HTTP 429", "HTTP 503"]) {
+for (const failure of ["stream ended before a terminal response event", "terminated", "Connection error", "ECONNREFUSED example.com:443", "ECONNREFUSED 127.0.0.1:443", "ECONNREFUSED [::1]:443", "Connection error :443", "Connection error (400 ms)", "Connection error (400.5 ms)", "Connection error (400.0 seconds)", "Connection error (403 requests)", "ECONNRESET: connection closed", "HTTP 429", "HTTP 503"]) {
   test(`bounded extraction retry recovers ${failure} with unchanged request`, async () => {
     const s = await input();
     const request = { model: s.model, context: { messages: [] }, outputTokens: 4096, signal: s.signal };
@@ -35,6 +35,9 @@ for (const failure of [
   { stopReason: "error", errorMessage: "400 server error: input overflow" },
   ...['{"error":{"code":400,"message":"Connection error","status":"INVALID_ARGUMENT"}}',
     "HTTP:400 Connection error", "status:403 Connection error", "code:401 Connection error",
+    "HTTP 403 requests forbidden; Connection error", "HTTP 401 bytes rejected; Connection error",
+    "HTTP/1.1:401 Connection error", "HTTP/2 403 Connection error", "status: 401 bytes rejected; Connection error",
+    "error code 403 requests forbidden; Connection error",
     ...["statusCode", "status_code", "errorCode", "error_code"].map(label => `${label}:400 Connection error`),
     "Nunc local Connection error", "billing Connection error"].map(errorMessage => ({ stopReason: "error", errorMessage })),
   { stopReason: "error", errorMessage: "429 insufficient_quota" },

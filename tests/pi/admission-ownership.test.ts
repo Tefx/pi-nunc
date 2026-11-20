@@ -44,6 +44,28 @@ async function env() {
   return { faux, runtime, registry, model, ctx, admission, held, options, context, huge, observations, rewrap };
 }
 
+for (const terminal of ["stop", "error", "aborted", "late-cancel", "reject"] as const) test(`no-payload completion settles ${terminal} from the real terminal outcome`, async t => {
+  const e = await env(); t.after(() => e.admission.close(e.ctx));
+  const controller = new AbortController();
+  Object.assign(e.ctx, { signal: controller.signal });
+  const completed = Promise.withResolvers<AssistantMessage>();
+  e.registry.registerProvider({ ...e.faux.provider, streamSimple() {
+    const stream = createAssistantMessageEventStream();
+    stream.result = () => completed.promise;
+    return stream;
+  } });
+  e.admission.ensure(e.ctx);
+  const stream = e.registry.getProvider(e.model.provider)!.streamSimple(e.model, e.context, { ...e.options, signal: controller.signal });
+  assert.equal(e.observations.filter(o => o.kind === "main").length, 0, "no speculative recovery before completion");
+  if (terminal === "late-cancel") controller.abort();
+  if (terminal === "reject") completed.reject(new Error("pre-payload transport rejection"));
+  else completed.resolve({ ...fauxAssistantMessage("late completion"), stopReason: terminal === "late-cancel" ? "stop" : terminal });
+  await stream.result().catch(() => {});
+  await Promise.resolve();
+  assert.deepEqual(e.observations.filter(o => o.kind === "main").map(o => [o.outcome, o.code]),
+    [[terminal === "stop" ? "delegate" : "reject", terminal === "stop" ? undefined : terminal === "aborted" || terminal === "late-cancel" ? "CANCELLED" : "RESPONSE"]]);
+});
+
 test("maintenance admission carries its measured correction through native input checks without charging main requests", async t => {
   const e = await env(); t.after(() => e.admission.close(e.ctx));
   const complete = e.admission.complete(piComplete(e.registry));
