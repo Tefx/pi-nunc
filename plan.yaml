@@ -10695,7 +10695,7 @@ phases:
       worktree_removed_reclaimed_1.11GiB
 - id: nunc-third-audit-closure
   name: 第三轮全量契约与精简审查（3-Pass Contract & Simplicity）收敛账本闭环与回归验收
-  status: pending
+  status: in_progress
   gate: 'nunc-third-audit-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-projection-and-cleanup、admission-context-and-ui-closure、live-runner-benchmarks-and-docs-closure）的最终整合提交与确定性离线测试证据（npm
     run build、文档化完整离线套件运行器 node scripts/check.mjs all、node --test dist/tests/pi/larva.integration.js；受保护
     package.json、package-lock.json、.node-version 保持未改动）做唯一阶段验收判断（PHASE_GATE, mode:
@@ -10706,7 +10706,7 @@ phases:
   steps:
   - id: engine-projection-and-cleanup
     name: '引擎清理、投影对齐、校准与手动记忆守护闭环（#1–#7, #8-engine, #13–#17, #19, #21-manual, #38/#43/#44/#53-step1）'
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"src/pi/projection.ts\", \"src/pi/manual.ts\"\
       , \"src/pi/calibration.ts\", \"src/pi/compat.ts\", \"src/pi/config.ts\", \"\
@@ -10855,10 +10855,12 @@ phases:
     - tests/pi/active-memory.test.ts
     - tests/pi/slot-provenance.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-20T15:44:37.215223Z'
   - id: admission-context-and-ui-closure
     name: '准入载荷、上下文切点、压缩生命周期与 TUI 浮层状态闭环（#8-admission, #9–#12, #17-context, #18, #20,
       #21-index, #22–#24, #37–#40/#42/#45/#46/#52/#53-step2）'
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/index.ts\", \"src/pi/admission.ts\", \"src/pi/payload.ts\"\
       , \"src/pi/context.ts\", \"src/pi/index.ts\", \"src/ui/**\", \"tests/pi/admission.test.ts\"\
@@ -11001,9 +11003,11 @@ phases:
     - scripts/observe-lifecycle.mjs
     - scripts/ime-fixture.mjs
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-20T15:44:37.215422Z'
   - id: live-runner-benchmarks-and-docs-closure
     name: 'Live 运行器账本、进程组清理、观察器、基准测试评分与文档测试卫生闭环（#8-live, #25–#36, #37/#38/#41/#47/#49–#52/#54-step3）'
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/live/**\", \"tests/pi/native-lifecycle.test.ts\"\
       , \"scripts/verify-live.mjs\", \"scripts/compare-extraction.mjs\", \"scripts/live-cli.mjs\"\
@@ -11157,6 +11161,8 @@ phases:
     - tests/live/task-retention-observation.test.ts
     - tests/pi/native-lifecycle.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-20T15:44:37.215492Z'
   - id: gate
     name: 第三轮全量契约与精简审查阶段整合验收（PHASE_GATE）
     status: pending
