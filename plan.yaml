@@ -11022,7 +11022,7 @@ phases:
       Larva integration passed (10 passed, 0 failed). Protected files untouched.'
   - id: live-runner-benchmarks-and-docs-closure
     name: 'Live 运行器账本、进程组清理、观察器、基准测试评分与文档测试卫生闭环（#8-live, #25–#36, #37/#38/#41/#47/#49–#52/#54-step3）'
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/**\", \"tests/live/**\", \"tests/pi/native-lifecycle.test.ts\"\
       , \"scripts/verify-live.mjs\", \"scripts/compare-extraction.mjs\", \"scripts/live-cli.mjs\"\
@@ -11178,6 +11178,15 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T15:44:37.215492Z'
+    done_at: '2026-11-20T17:11:35.053297+00:00'
+    evidence: 'Integrated rebased commits 98e47c6, eb5ed05, 96caf0e, e83dc7a2bdd619eaf282f58756ecd48b7e796d5b
+      (original candidate 8c2617c retained at refs/vectl/retained/nunc-third-audit-closure.live-runner-benchmarks-and-docs-closure)
+      onto main across 65 authorized files, including cross-track consumer reconciliation
+      in scripts/observe-capacity-recurrence.mjs for #12. All Step 3 admitted items
+      (#8-live, #25–#36, #37/#38/#41/#47/#49–#52/#54-step3) resolved; on the integrated
+      tree npm run build passed, dist/tests/pi/native-lifecycle.test.js passed (9
+      passed, 0 failed), and dist/tests/live/*.test.js passed (283 passed, 0 failed,
+      0 skipped). Protected files untouched.'
   - id: gate
     name: 第三轮全量契约与精简审查阶段整合验收（PHASE_GATE）
     status: pending
