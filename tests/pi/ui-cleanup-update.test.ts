@@ -82,7 +82,7 @@ for (const updateMode of ["nonempty", "empty", "legacy", "errorMessage", "endTur
   assert.equal(overlay.draftText(), proposalText);
   const nativeTimeout = AbortSignal.timeout;
   if (updateMode === "hung-timeout") {
-    AbortSignal.timeout = ms => nativeTimeout(ms === 60_000 ? 10 : ms);
+    AbortSignal.timeout = ms => nativeTimeout(ms === 60_000 ? 50 : ms);
     t.after(() => { AbortSignal.timeout = nativeTimeout; });
   }
   overlay.handleInput("\r");

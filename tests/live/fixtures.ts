@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { after } from "node:test";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, readFile, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +13,15 @@ export const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../.
 export async function temporaryBaseline(ref = "70dacad"): Promise<string> {
   const parent = await mkdtemp(join(await realpath(tmpdir()), "nunc-baseline-"));
   const path = join(parent, "checkout");
-  const env = { ...process.env, NODE_OPTIONS: "", DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
+  const hostHome = process.env.HOME ?? homedir();
+  const nodeDirectories = [dirname(process.execPath), dirname(realpathSync(process.execPath))];
+  const npmCli = [...nodeDirectories.flatMap(dir => [
+    resolve(dir, "../lib/node_modules/npm/bin/npm-cli.js"),
+    resolve(dir, "node_modules/npm/bin/npm-cli.js"),
+  ]), "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"].find(p => existsSync(p));
+  const env = { ...process.env, NODE_OPTIONS: "", DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools",
+    npm_config_cache: process.env.npm_config_cache ?? (existsSync(join(hostHome, ".npm")) ? join(hostHome, ".npm") : join(repository, ".npm-cache")),
+    npm_config_update_notifier: "false" };
   let attached = false;
   const cleanup = async () => {
     try {
@@ -26,7 +35,8 @@ export async function temporaryBaseline(ref = "70dacad"): Promise<string> {
   try {
     execFileSync("/usr/bin/git", ["-C", repository, "worktree", "add", "--detach", path, ref], { env, stdio: "pipe" });
     attached = true;
-    execFileSync("npm", ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: path, env, stdio: "pipe" });
+    const npmArgs = ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"];
+    execFileSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, ...npmArgs] : npmArgs, { cwd: path, env, stdio: "pipe" });
     execFileSync(process.execPath, [join(repository, "node_modules/typescript/bin/tsc"), "--project", join(path, "tsconfig.json")], { cwd: path, env, stdio: "pipe" });
     return path;
   } catch (error) { await cleanup(); throw error; }

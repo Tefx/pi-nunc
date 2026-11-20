@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { satisfiesStableCaret } from "../src/live/toolchain.ts";
 
@@ -19,12 +20,14 @@ for (const name of Object.keys(pkg.devDependencies)) {
   const wanted = lock.packages?.[`node_modules/${name}`]?.version;
   if (!wanted || json(path).version !== wanted) fail(`Local ${name} differs from the tracked lock`);
 }
+const hostHome = process.env.HOME ?? homedir();
+const npmCache = process.env.npm_config_cache ?? (existsSync(resolve(hostHome, ".npm")) ? resolve(hostHome, ".npm") : resolve(root, ".npm-cache"));
 const nodeDirectories = [dirname(process.execPath), dirname(realpathSync(process.execPath))];
 const npmCli = [...nodeDirectories.flatMap(dir => [
   resolve(dir, "../lib/node_modules/npm/bin/npm-cli.js"),
   resolve(dir, "node_modules/npm/bin/npm-cli.js"),
 ]), "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"].find(p => existsSync(p));
-const npm = spawnSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, "--version"] : ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: resolve(root, ".npm-cache"), npm_config_update_notifier: "false" } });
+const npm = spawnSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, "--version"] : ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: npmCache, npm_config_update_notifier: "false" } });
 const npmVersion = npm.stdout?.trim() ?? "";
 if (npm.status !== 0 || !satisfiesStableCaret(npmVersion, pkg.engines.npm)) fail(`Requires npm ${pkg.engines.npm}; found ${npmVersion || npm.error || npm.status}`);
 console.log(`check: observed Node ${process.versions.node}, npm ${npmVersion}`);
@@ -35,7 +38,7 @@ if (selected[0] === "all") for (const suite of ["engine", "pi", "live"]) {
 }
 function run(args) {
   console.log(`> ${process.execPath} ${args.join(" ")}`);
-  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.NUNC_LARVA_EXTENSION ? { NUNC_LARVA_EXTENSION: resolve(process.env.NUNC_LARVA_EXTENSION) } : {}), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
+  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: [...new Set([...nodeDirectories, "/usr/bin", "/bin"])].join(":"), HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: npmCache, npm_config_update_notifier: "false", PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.NUNC_LARVA_EXTENSION ? { NUNC_LARVA_EXTENSION: resolve(process.env.NUNC_LARVA_EXTENSION) } : {}), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
   if (result.error || result.status !== 0) fail(`Command failed: ${result.error?.message ?? result.signal ?? result.status}`);
 }
 run([resolve(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"]);

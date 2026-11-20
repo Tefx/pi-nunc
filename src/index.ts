@@ -280,15 +280,13 @@ export default function nunc(pi: ExtensionAPI): void {
     };
     const controller = new AbortController();
     uiRunning = controller;
-    const timeout = AbortSignal.timeout(60_000);
-    const combined = AbortSignal.any([signal, controller.signal, timeout]);
     let callStartedAt: number | undefined;
     let observedResponse = false;
     try {
       const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction, omitsRouteOutputCap(frozen.model, ctx.modelRegistry));
       config.toolResultCleanup = true;
       const policy = await loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) });
-      if (stale()) return { stale: true };
+      if (controller.signal.aborted || stale()) return { stale: true };
       const active = effectiveActive(projected, true);
       const slotProvenance = deriveSlotProvenance(ctx.sessionManager.getBranch(), projected.active, proposal);
       const input = { slotProvenance, binding: { sessionId: frozen.sessionId, leafId: frozen.leafId ?? "", generation: String(generation) },
@@ -303,6 +301,8 @@ export default function nunc(pi: ExtensionAPI): void {
           `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], update: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });
         return context;
       });
+      const timeout = AbortSignal.timeout(60_000);
+      const combined = AbortSignal.any([signal, controller.signal, timeout]);
       callStartedAt = Date.now();
       combined.throwIfAborted();
       let abort: () => void = () => {};
