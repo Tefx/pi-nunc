@@ -11869,7 +11869,7 @@ phases:
       native-migration). Worktree removed and protected files untouched.
   - id: delta-pty-cleanup-race-repair
     name: PTY 驱动信号前置挂载、macOS 僵尸进程组 EPERM 兼容与后代退出同步竞态修复
-    status: pending
+    status: claimed
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/pty-driver.py\", \"tests/live/host-child.mjs\"\
       , \"tests/live/defensive-controls.test.ts\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -11929,3 +11929,5 @@ phases:
     - tests/live/host-child.mjs
     - tests/live/defensive-controls.test.ts
     agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-20T19:57:37.887005Z'
