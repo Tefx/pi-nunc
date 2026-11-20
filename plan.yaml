@@ -11642,7 +11642,7 @@ phases:
       (29 passed, 0 failed), and 10 smoke receipts passed. Protected files untouched.'
   - id: delta-check-runner-and-cleanup-timeout-repair
     name: 离线检查运行器 npm 工具链/缓存环境与 UI 清理请求超时并发竞态修复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/check.mjs\", \"tests/live/fixtures.ts\", \"src/index.ts\"\
       , \"tests/pi/ui-cleanup-update.test.ts\"]\n  blocked_paths: [\"plan.yaml\",\
@@ -11702,3 +11702,13 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T18:18:10.554298Z'
+    done_at: '2026-11-20T18:37:16.217191+00:00'
+    evidence: Integrated commit 341e50516eebb250612fe65989aff3037171cd83 (retained
+      at refs/vectl/retained/nunc-third-audit-closure.delta-check-runner-and-cleanup-timeout-repair)
+      onto main across 4 authorized files (scripts/check.mjs, tests/live/fixtures.ts,
+      src/index.ts, tests/pi/ui-cleanup-update.test.ts). Fixed npm CLI/cache preservation
+      in check.mjs & temporaryBaseline() and moved AbortSignal.timeout(60_000) after
+      loadPolicy/resolveExtractionRequest in prepareUiCleanup(). npm run build passed;
+      targeted ui-cleanup-update + comparison passed (22 passed, 0 failed); check.mjs
+      engine passed (298 passed, 0 failed); restricted PATH comparison.test.js passed
+      (11 passed, 0 failed). Worktree removed and protected files untouched.
