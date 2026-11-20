@@ -11391,7 +11391,7 @@ phases:
   - id: delta-live-calibration-and-observers-repair
     name: 'Live 校准有效清理历史对齐、容量目标绑定、Responses 助手序列核验与空记忆计量修复（Findings #9, #10, #11,
       #13）'
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/calibration.ts\", \"src/live/preparation.ts\"\
       , \"src/live/capacity-observation.ts\", \"src/live/stable-memory-observation.ts\"\
@@ -11471,6 +11471,16 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T17:40:10.258988Z'
+    done_at: '2026-11-20T18:10:41.820223+00:00'
+    evidence: 'Integrated rebased commit 3af6498 (original 3d376f5807ade96ed2414f79673ad66b6c23b4fb
+      retained at refs/vectl/retained/nunc-third-audit-closure.delta-live-calibration-and-observers-repair)
+      onto main across 11 authorized files. Findings #9, #10, #11, #13 closed: cleanup-aware
+      calibration effective suffix & extraction source isomorphism with maintain(),
+      strict organizingTarget vs advisory binding in qualifyCapacity(), full Responses
+      assistant-history & sequence verification in stable-memory-observation, and
+      empty-aware memoryTokens() in rolloverFacts(). npm run build passed; targeted
+      6-file suite passed (39 passed, 0 failed) and fast sibling suite passed (29
+      passed, 0 failed). Protected files untouched.'
   - id: delta-live-runner-comparison-and-docs-repair
     name: 'Live 进程组正常退出后代清理、对照运行器前置账本校验与文档/报告一致性修复（Findings #8, #12, #15）'
     status: claimed
