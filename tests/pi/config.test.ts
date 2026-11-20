@@ -293,6 +293,15 @@ test("relative config/policy loading, one frozen policy per extraction, later ed
   assert.equal(f.events.filter(e => e.result.ok).length, 2);
 });
 
+test("malformed config errors omit V8 source excerpts and parser causes", async t => {
+  const f = await fixture(); t.after(() => f.close());
+  await writeFile(f.configFile, '{"secret":"private-value", invalid}');
+  assert.throws(() => readConfig(f.configFile, f.cwd), error => {
+    assert(error instanceof Error); assert.equal(error.cause, undefined);
+    assert(!String(error).includes("private-value")); return true;
+  });
+});
+
 test("unreadable policy / invalid UTF-8 or configuration cannot fall through to Pi default generation", async t => {
   const f = await fixture({ config: { policyFile: "missing.md" } }); t.after(() => f.close()); f.seed();
   await assert.rejects(f.runtime.session.compact(), /cancel/i); assert.equal(f.faux.state.callCount, 0);

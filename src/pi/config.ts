@@ -54,7 +54,7 @@ export function readConfig(flag: unknown, cwd: string, settings: { projectNunc?:
     return { config: parseConfig(JSON.parse(text)), configFile };
   } catch (cause) {
     if (cause instanceof EngineError) throw cause;
-    throw new EngineError("CONFIG", `Cannot load Nunc configuration: ${configFile}`, { cause });
+    throw new EngineError("CONFIG", `Cannot load Nunc configuration: ${configFile}`);
   }
 }
 export interface HostCompactionSettings { reserveTokens: number; keepRecentTokens: number }

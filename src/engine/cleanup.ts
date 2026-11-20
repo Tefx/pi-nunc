@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { ActiveEntry, CleanupSkipped, Memory, Omission, SourceRef, ToolResultDecision, ToolResultEdit, ToolResultCleanupResult, ToolResultRef } from "./types.js";
 import { isMemoryUnchanged } from "./memory.js";
-import { integer, nonempty, record } from "./validation.js";
+import { canonical, integer, nonempty, record } from "./validation.js";
 
 export function refKey(ref: ToolResultRef): string {
   return `${ref.entryId}:${ref.messageIndex}`;
@@ -235,15 +235,8 @@ export interface CleanupDecisionOptions {
 export function messageTextContent(message: ActiveEntry["messages"][number]): string | null {
   if (typeof message.content === "string") return message.content;
   if (!Array.isArray(message.content)) return null;
-  let text = "";
-  for (const block of message.content) {
-    if (block.type === "text") {
-      text += block.text;
-    } else {
-      return null;
-    }
-  }
-  return text;
+  if (!message.content.every(block => block.type === "text")) return null;
+  return message.content.map(block => block.text).join("\n");
 }
 
 /**
@@ -259,7 +252,7 @@ function extractToolCallAssociationMap(active: ActiveEntry[]): Map<string, { too
       if (message.role === "assistant" && Array.isArray(message.content)) {
         for (const block of message.content) {
           if (block.type === "toolCall") {
-            openCalls.set(block.id, { toolName: block.name, argsJson: JSON.stringify(block.arguments) });
+            openCalls.set(block.id, { toolName: block.name, argsJson: canonical(block.arguments) });
           }
         }
       } else if (message.role === "toolResult") {
@@ -501,7 +494,7 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
 
   for (const entry of active) {
     for (const [messageIndex, message] of entry.messages.entries()) {
-      if (message.role !== "toolResult") continue;
+      if (message.role !== "toolResult" || !Array.isArray(message.content) || message.content.length !== 1) continue;
       const ref: ToolResultRef = { entryId: entry.entryId, messageIndex };
       const key = refKey(ref);
       const text = messageTextContent(message);

@@ -485,7 +485,7 @@ test("calibration equivalence compares every binding and evidence field, indepen
   const reordered = Object.fromEntries(Object.entries(candidate).reverse());
   assert.equal(hasEquivalentCalibrationRecord([reordered], candidate), true);
   for (const key of ["provider", "api", "modelId", "sourceDigest", "limitsDigest", "contextDigest", "headTailChars", "providerOverflow", "measurement"] as const) {
-    const changed: Record<string, unknown> = { ...candidate, [key]: key === "headTailChars" ? 99 : key === "measurement" ? undefined : "different" };
+    const changed: Record<string, unknown> = { ...candidate, [key]: key === "headTailChars" ? 99 : key === "measurement" ? undefined : key.endsWith("Digest") ? "f".repeat(64) : "different" };
     assert.equal(hasEquivalentCalibrationRecord([changed], candidate), false, key);
   }
 });

@@ -205,8 +205,10 @@ export function reduceToolBodies(active: ActiveEntry[], chars: number): { source
       const points = [...block.text];
       const omittedCodePoints = points.length - 2 * chars;
       const marker = `\n[Nunc omitted ${omittedCodePoints} middle code points from this maintenance request for capacity; the main agent received this tool output in the live turn, while the omitted middle was not shown to maintenance]\n`;
-      if (omittedCodePoints <= marker.length) continue;
-      block.text = points.slice(0, chars).join("") + marker + points.slice(-chars).join("");
+      if (omittedCodePoints <= 0) continue;
+      const nextText = points.slice(0, chars).join("") + marker + points.slice(-chars).join("");
+      if (nextText.length >= block.text.length) continue;
+      block.text = nextText;
       omissions.push({ entryId: entry.entryId, messageIndex, blockIndex, toolCallId: message.toolCallId, omittedCodePoints, headChars: chars, tailChars: chars });
     }
   }

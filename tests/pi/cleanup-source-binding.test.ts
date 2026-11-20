@@ -1,13 +1,13 @@
 import { test } from "node:test";
-import { writeFile } from "node:fs/promises";
+import { writeFile, rename, mkdir, rm } from "node:fs/promises";
 import { historyPlanningEstimate, memoryTokens } from "../../src/engine/accounting.js";
 import { engineConfig } from "../../src/pi/config.js";
 import assert from "node:assert/strict";
 import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { answer } from "../engine/fixtures.js";
-import { memorySurface } from "../../src/pi/manual.js";
-import { effectiveActive, project } from "../../src/pi/projection.js";
+import { createMemorySurface, memorySurface } from "../../src/pi/manual.js";
+import { compactionCleanupScope, effectiveActive, project } from "../../src/pi/projection.js";
 import { fixture } from "./fixtures.js";
 
 async function setup(t: { after(fn: () => unknown): unknown }, substantialPrefix = false) {
@@ -37,6 +37,50 @@ async function setup(t: { after(fn: () => unknown): unknown }, substantialPrefix
   f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
   return { f, ctx, api, surface, manager, bodies, ids };
 }
+
+test("manual saves protect existing sourceRefs and report cleanup on unchanged M", async t => {
+  const { ctx, surface, manager, ids, api } = await setup(t);
+  const first = surface.read(ctx);
+  const saved = surface.patch(ctx, { expectedRevision: first.revision,
+    update: [{ id: first.memory.slots[0]!.id, text: "Consume target with protected keeper." }],
+    toolResultEdits: [{ entryId: ids[1], messageIndex: 0, action: "omit", sourceRefs: [{ entryId: ids[0], messageIndex: 0 }] }] });
+  assert(saved.ok && saved.cleanup?.applied.length === 1);
+  const current = surface.read(ctx);
+  const noop = surface.patch(ctx, { expectedRevision: current.revision, toolResultEdits: [{ entryId: ids[0], messageIndex: 0, action: "omit" }] });
+  assert(noop.ok); assert.equal(noop.cleanup?.skipped[0]?.reason, "m_unchanged");
+  assert.equal(noop.revision, current.revision);
+  const projected = project(manager.buildContextEntries());
+  assert(!compactionCleanupScope(projected.active, projected.cleanup).some(ref => ref.entryId === ids[0]));
+  // A stale/foreign scope cannot bypass the patch owner's own dependency guard.
+  const permissive = createMemorySurface({ pi: api, config: () => ({}), onCommitted() {},
+    cleanup: () => ({ enabled: true, scope: [{ entryId: ids[0]!, messageIndex: 0 }] }) });
+  const next = permissive.patch(ctx, { expectedRevision: current.revision,
+    update: [{ id: current.memory.slots[0]!.id, text: "Keep source dependency unchanged." }],
+    toolResultEdits: [{ entryId: ids[0], messageIndex: 0, action: "omit" }] });
+  assert(next.ok); assert.equal(next.cleanup?.applied.length, 0);
+  assert.equal(project(manager.buildContextEntries()).cleanup.length, 1);
+});
+
+test("unconfirmed native append exposes in-memory M without activating new cleanup", async t => {
+  const { f, ctx, surface, manager, ids, bodies } = await setup(t);
+  const before = surface.read(ctx), file = manager.getSessionFile()!;
+  await rename(file, file + ".saved"); await mkdir(file);
+  try {
+    const result = surface.patch(ctx, { expectedRevision: before.revision,
+      update: [{ id: before.memory.slots[0]!.id, text: "Unconfirmed memory remains visible." }],
+      toolResultEdits: [{ entryId: ids[1], messageIndex: 0, action: "omit" }] });
+    assert(!result.ok); assert.equal(result.code, "unconfirmed");
+    assert.equal(result.view.status.unconfirmed, true);
+    assert.equal(result.view.memory.slots[0]?.text, "Unconfirmed memory remains visible.");
+    const projected = project(manager.buildContextEntries());
+    assert.equal(projected.cleanup.length, 0);
+    assert(JSON.stringify(effectiveActive(projected, true)).includes(bodies[1]!));
+  } finally {
+    await rm(file, { recursive: true }); await rename(file + ".saved", file);
+  }
+  await f.runtime.switchSession(file);
+  assert.equal(project(f.runtime.session.sessionManager.buildContextEntries()).cleanup.length, 0);
+});
 
 test("native compaction expires saved source-dependent cleanup before measuring K", async t => {
   const { f, ctx, surface, manager, ids, bodies } = await setup(t, true);

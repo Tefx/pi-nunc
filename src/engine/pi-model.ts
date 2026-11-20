@@ -24,22 +24,33 @@ export function omitsRouteOutputCap(model: Model<Api>, registry: Pick<ModelRegis
  * OpenAI-compatible raw calls need explicit effort; omitting it does not inherit
  * the session's thinking level. Other APIs retain their existing raw-call behavior. */
 export function piComplete(registry: Pick<ModelRegistry, "complete">, thinking?: ModelThinkingLevel): Complete {
-  return ({ model, context, outputTokens, signal }) => registry.complete(model, context, {
-    maxTokens: outputTokens,
-    signal,
-    maxRetries: 0,
-    cacheRetention: "none",
-    transport: "sse",
-    sessionId: randomUUID(),
-    ...rawThinking(model, thinking),
-    ...(["google-vertex", "google-generative-ai"].includes(model.api) ? {
-      onPayload: (payload: unknown) => {
-        if (!record(payload)) throw new EngineError("CONFIG", "Expected a Google payload object");
-        return { ...structuredClone(payload), config: { ...(record(payload.config) ? payload.config : {}),
-          responseMimeType: "application/json", responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA } };
-      },
-    } : {}),
-  });
+  return ({ model, context, outputTokens, signal }) => {
+    if (hasRawSamplingParams(model.samplingParams) || hasRawSamplingParams(model.samplingParamsByThinkingLevel)) {
+      throw new EngineError("CONFIG", "Raw model sampling overrides are unsupported for maintenance");
+    }
+    return registry.complete(model, context, {
+      maxTokens: outputTokens,
+      signal,
+      maxRetries: 0,
+      cacheRetention: "none",
+      transport: "sse",
+      sessionId: randomUUID(),
+      ...rawThinking(model, thinking),
+      ...(["google-vertex", "google-generative-ai"].includes(model.api) ? {
+        onPayload: (payload: unknown) => {
+          if (!record(payload)) throw new EngineError("CONFIG", "Expected a Google payload object");
+          return { ...structuredClone(payload), config: { ...(record(payload.config) ? payload.config : {}),
+            responseMimeType: "application/json", responseJsonSchema: PATCH_RESPONSE_JSON_SCHEMA } };
+        },
+      } : {}),
+    });
+  };
+}
+export function hasRawSamplingParams(value: unknown): boolean {
+  return value !== undefined && value !== null && (!record(value) || Object.keys(value).length > 0);
+}
+export function rateLimited(message: string): boolean {
+  return /(?:^|\(|\b(?:http(?:\/[\d.]+)?|status(?: code)?|error(?: code)?)[\s:]+)429\b/i.test(message);
 }
 /** Retrying must wrap Admission.complete, never run inside its single-use ALS ticket.
  * Only transport interruptions/throttling/server failures qualify; parsing and length
@@ -68,10 +79,12 @@ export function retryMaintenanceComplete(complete: Complete, baseDelayMs = 1000)
 function transientTransportError(message: string): boolean {
   // A status-bearing deterministic failure wins over incidental retry-like wording.
   const terminalStatus = [...message.matchAll(/\b4(?!29\b)\d{2}\b/g)].some(match => {
-    // Adjacent host:port (including IPv6 and bare :443) is a network address.
-    // JSON keys end in a quote; explicit HTTP/status/code labels remain statuses.
-    const address = /(?<!["'])([\w.[\]:-]*):$/.exec(message.slice(0, match.index));
-    return !address || /^(?:http|status|code|status_?code|error_?code)$/i.test(address[1]!);
+    const prefix = message.slice(0, match.index);
+    const suffix = message.slice(match.index + match[0].length);
+    if (/^\s*(?:ms|s|sec|seconds|tokens|requests|chars|bytes|min|minute)\b/i.test(suffix)) return false;
+    const address = /(?<!["'])([\w.[\]:-]*):$/.exec(prefix);
+    if (address && !/^(?:http|status|code|status_?code|error_?code)$/i.test(address[1]!)) return false;
+    return !prefix || /\($|\b(?:http(?:\/[\d.]+)?|status(?:[ _]?code)?|error(?:[ _]?code)?|code)[\s:="']+$/i.test(prefix);
   });
   if (terminalStatus || /Nunc local|context[_ ]length|context window|overflow|malformed|invalid json|quota|billing|usage.limit|out of budget|available balance|cancel|abort/i.test(message)) return false;
   return /\b(?:429|5\d{2})\b|rate.?limit|too many requests|stream ended before (?:a terminal response event|message_stop)|stream (?:was interrupted|disconnected before completion)|terminated|\bECONN(?:REFUSED|RESET)\b|connection.?(?:error|lost|refused|reset|closed)|network.?error|fetch failed|socket hang up|other side closed|upstream_stream_read_error/i.test(message);

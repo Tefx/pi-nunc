@@ -67,7 +67,8 @@ test("native usage eligibility excludes retained K and every anchor before the l
   const f = await fixture(); t.after(() => f.close()); const { body } = seed(f);
   const manager = f.runtime.session.sessionManager;
   let entries = manager.buildContextEntries(), active = project(entries).active;
-  assert.deepEqual(eligibleUsageEntryIds(entries, active), active.map(entry => entry.entryId));
+  const manualIndex = entries.findLastIndex(entry => entry.type === "custom" && entry.customType === MANUAL_MEMORY_TYPE);
+  assert.deepEqual(eligibleUsageEntryIds(entries, active), entries.slice(manualIndex + 1).filter(entry => active.some(item => item.entryId === entry.id)).map(entry => entry.id));
   manager.appendContextEdit(body, { content: "Corrected body." });
   entries = manager.buildContextEntries(); active = project(entries).active;
   assert.deepEqual(eligibleUsageEntryIds(entries, active), []);

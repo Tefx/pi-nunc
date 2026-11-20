@@ -7,7 +7,66 @@ import { Type } from "typebox";
 import { sourceRecords } from "../engine/fixtures.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { isSystemMessage } from "../../src/engine/accounting.js";
-import { project, eligibleStarts } from "../../src/pi/projection.js";
+import { project, eligibleStarts, originalResults, searchBranchHistory, withEffectiveMemory, peekMemoryAnchor, sealDecisions, MANUAL_MEMORY_TYPE, injectedCarrierIndex } from "../../src/pi/projection.js";
+
+test("native edits share active, history, originals and anchor projection semantics", async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const manager = f.runtime.session.sessionManager;
+  const user = manager.appendMessage({ role: "user", content: "Original user", timestamp: 1 });
+  const assistant = manager.appendMessage(fauxAssistantMessage("Original assistant"));
+  const tool = manager.appendMessage({ role: "toolResult", toolCallId: "c", toolName: "read", isError: false,
+    content: [{ type: "text", text: "old caption" }, { type: "image", data: "AAAA", mimeType: "image/png" }], timestamp: 2 });
+  const custom = manager.appendCustomMessageEntry("visible", "Old custom", false);
+  manager.appendMessage({ role: "bashExecution", command: "private", output: "Excluded bash", excludeFromContext: true,
+    exitCode: 0, cancelled: false, truncated: false, timestamp: 3 });
+  manager.appendCustomEntry(MANUAL_MEMORY_TYPE, { nunc: { version: 1, nextId: 2, slots: [{ id: "s1", text: "Saved M" }] } });
+  for (const id of [user, assistant, tool, custom]) manager.appendContextEdit(id, { content: "Edited visible body" });
+  const entries = manager.buildContextEntries(), projected = project(entries);
+  assert.equal(projected.active.length, 4);
+  assert(projected.active.every(entry => JSON.stringify(entry.messages).includes("Edited visible body")));
+  assert(projected.active.find(entry => entry.entryId === assistant)?.outputUsageUnavailable);
+  assert.equal(originalResults(projected, [{ entryId: tool, messageIndex: 0 }], manager.getBranch())[0]?.text, "Edited visible body");
+  const messages = manager.buildSessionContext().messages;
+  withEffectiveMemory(messages, projected.memory, { sessionId: manager.getSessionId(), entries });
+  assert.deepEqual(peekMemoryAnchor(manager.getSessionId())?.prefixEntryIds, projected.active.map(entry => entry.entryId));
+  manager.appendCompaction("Retired", custom, 1000);
+  const retired = project(manager.buildContextEntries());
+  assert.equal(originalResults(retired, [{ entryId: tool, messageIndex: 0 }], manager.getBranch())[0]?.text, "Edited visible body");
+  manager.appendContextEdit(tool, null);
+  const omitted = project(manager.buildContextEntries());
+  assert.equal(searchBranchHistory(manager.getBranch(), omitted.active, { entryIds: [tool] }).entries[0]?.messages.length, 0);
+  assert(originalResults(omitted, [{ entryId: tool, messageIndex: 0 }], manager.getBranch())[0]?.error);
+});
+
+test("a mismatched tool name cannot establish a completed memory boundary", () => {
+  const messages = [
+    { role: "user", content: "Begin", timestamp: 1 },
+    fauxAssistantMessage(fauxToolCall("read", {}, { id: "c" }), { stopReason: "toolUse" }),
+    { role: "toolResult", toolCallId: "c", toolName: "write", content: [{ type: "text", text: "Wrong tool" }], timestamp: 2 },
+    { role: "user", content: "Continue", timestamp: 3 },
+  ];
+  const result = withEffectiveMemory(messages, { version: 1, nextId: 2, slots: [{ id: "s1", text: "Saved M" }] });
+  assert.equal(injectedCarrierIndex(result), 1);
+});
+
+test("saved cleanup digests distinguish block partitions and malformed cleanup containers", async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const manager = f.runtime.session.sessionManager;
+  const id = manager.appendMessage({ role: "toolResult", toolCallId: "c", toolName: "read", isError: false,
+    content: [{ type: "text", text: "a".repeat(300) }, { type: "text", text: "b".repeat(300) }], timestamp: 1 });
+  const before = project(manager.buildContextEntries());
+  const decision = { entryId: id, messageIndex: 0, toolCallId: "c", toolName: "read", kind: "semantic" as const, action: "replace" as const,
+    text: "Summary", originalLength: 601, cleanedLength: 7, netSavings: 594 };
+  const data = { nunc: before.memory, toolResultCleanup: sealDecisions(before.active, [decision]) };
+  manager.appendCustomEntry(MANUAL_MEMORY_TYPE, data);
+  assert.equal(project(manager.buildContextEntries()).cleanup.length, 1);
+  const changed = structuredClone(manager.buildContextEntries());
+  const source = changed.find(entry => entry.id === id); assert(source?.type === "message" && source.message.role === "toolResult");
+  source.message.content = [{ type: "text", text: "a".repeat(300) + "\n" + "b".repeat(300) }];
+  assert.equal(project(changed).cleanup.length, 0);
+  manager.appendCustomEntry(MANUAL_MEMORY_TYPE, { nunc: before.memory, toolResultCleanup: {} });
+  assert.equal(project(manager.buildContextEntries()).unavailable.length, 1);
+});
 
 test("real main tool loop and extraction retain complete bodies, arguments, associations, and visible custom/bash/branch projections", async t => {
   const body = "BEGIN\n" + "tool evidence ".repeat(1100) + "\nEND";

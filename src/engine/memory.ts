@@ -1,4 +1,3 @@
-import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { Message } from "@earendil-works/pi-ai";
 import type { Memory, MechanicalFallbackInfo, RequiredObservation, Slot, ToolResultEdit } from "./types.js";
 import { EngineError, freezeCopy, integer, keys, nonempty, record, requireThat, validateMemory } from "./validation.js";

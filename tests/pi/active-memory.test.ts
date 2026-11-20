@@ -288,7 +288,20 @@ test("budget constraints: unknown budget blocks growth, overbudget blocks growth
   assert.equal(fitResult.isError, undefined);
   const read2 = JSON.parse((await readTool.execute("c4", {}, undefined, undefined, ctxRef)).content[0].text);
 
-  // 3. Shrinking overbudget memory: reducing edit must succeed
+  // 3. A missing selected model makes growth unbudgetable without altering saved M.
+  const unknownContext = Object.create(ctxRef) as ExtensionContext;
+  Object.defineProperty(unknownContext, "model", { value: undefined });
+  const unknownGrowth = await patchTool.execute("unknown", {
+    expectedRevision: read2.revision,
+    update: [{ id: "s1", text: "A modest note plus more details" }],
+  }, undefined, undefined, unknownContext);
+  assert.equal(JSON.parse(unknownGrowth.content[0].text).code, "unknown-budget");
+
+  // 4. Lower the cap below saved usage so this really exercises overbudget recovery.
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(f.configFile, JSON.stringify({ memory: { hardMaxTokens: 1 } }));
+  const overRead = JSON.parse((await readTool.execute("over-read", {}, undefined, undefined, ctxRef)).content[0].text);
+  assert(overRead.budget.usedTokens > overRead.budget.limitTokens);
   const shrinkResult = await patchTool.execute("c5", {
     expectedRevision: read2.revision,
     update: [{ id: "s1", text: "Tiny" }],

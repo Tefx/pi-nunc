@@ -846,6 +846,8 @@ test("applyToolResultCleanup replaces text body exactly once and preserves all h
     messages: [originalMessage],
   };
 
+  const replacement = "Short summary";
+  const originalLength = originalMessage.content.map(block => block.text).join("\n").length;
   const decision: ToolResultDecision = {
     entryId: "e-multi",
     messageIndex: 0,
@@ -853,10 +855,10 @@ test("applyToolResultCleanup replaces text body exactly once and preserves all h
     toolName: "fetch_data",
     kind: "semantic",
     action: "replace",
-    text: "[Nunc summary; original recoverable from entry e-multi message 0]:\nSingle summary text",
-    originalLength: 36,
-    cleanedLength: 85,
-    netSavings: 20,
+    text: replacement,
+    originalLength,
+    cleanedLength: replacement.length,
+    netSavings: originalLength - replacement.length,
   };
 
   const projected = applyToolResultCleanup([entry], [decision]);

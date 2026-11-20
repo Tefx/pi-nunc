@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { retryMaintenanceComplete } from "./pi-model.js";
+import { hasRawSamplingParams, rateLimited, retryMaintenanceComplete } from "./pi-model.js";
 import { isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
 import { maintenanceFeedback, sameRejectedRequest } from "./calibration.js";
 import type { Complete, MaintenanceCandidate, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
@@ -50,7 +50,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     }
     requireThat(record(frozen.policy) && nonempty(frozen.policy.builtin) && typeof frozen.policy.user === "string", "CONFIG", "Expected a loaded policy snapshot");
     requireThat(record(frozen.model) && nonempty(frozen.model.id) && nonempty(frozen.model.provider) && nonempty(frozen.model.api) && Array.isArray(frozen.model.input) && frozen.model.input.includes("text"), "UNSUPPORTED_INPUT", "Current model cannot accept text maintenance input");
-    requireThat(!frozen.model.samplingParams || Object.keys(frozen.model.samplingParams).length === 0, "CONFIG", "Raw model samplingParams can override request/budget fields; use a model without raw payload overrides");
+    requireThat(!hasRawSamplingParams(frozen.model.samplingParams) && !hasRawSamplingParams(frozen.model.samplingParamsByThinkingLevel), "CONFIG", "Raw model samplingParams can override request/budget fields; use a model without raw payload overrides");
     let cuts = legalCuts(frozen.active);
     if (frozen.eligibleKeptEntryIds !== undefined) {
       const eligible = frozen.eligibleKeptEntryIds;
@@ -120,12 +120,24 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
         }),
       };
     }
-    if (fallbackCandidate?.toolResultCleanup) fallbackCandidate.toolResultCleanup.applied.unshift(...retainedToolResultCleanup(fallbackCandidate.kept, priorCleanup));
+    const cleanedSources = new Set(survivingCleanup.map(ref => `${ref.entryId}:${ref.messageIndex}`));
+    const filterDependencies = (result: NonNullable<MaintenanceCandidate["toolResultCleanup"]>) => {
+      result.applied = result.applied.filter(decision => {
+        if (!decision.sourceRefs?.some(ref => cleanedSources.has(`${ref.entryId}:${ref.messageIndex}`))) return true;
+        result.skipped.push({ entryId: decision.entryId, messageIndex: decision.messageIndex, action: decision.action,
+          reason: "missing_source_dependency", details: "Saved cleanup source is not a full original copy" });
+        return false;
+      });
+    };
+    if (fallbackCandidate?.toolResultCleanup) {
+      filterDependencies(fallbackCandidate.toolResultCleanup);
+      fallbackCandidate.toolResultCleanup.applied.unshift(...retainedToolResultCleanup(fallbackCandidate.kept, priorCleanup));
+    }
     const keptTokens = historyPlanningEstimate(effectiveSuffix(cut), frozen.model, config.imageTokens).tokens;
     const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, effectiveSuffix(0), frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;
     const mainBeforeVisibleTokens = beforePlan.visibleTokens;
-    let selectedSource = frozen.active;
+    let selectedSource = priorCleanup.length ? applyToolResultCleanup(frozen.active, priorCleanup) : frozen.active;
     let includeCleanupCandidates = true;
     let context = extractionContext(frozen, cut, organizingTarget, selectedSource, [], undefined, includeCleanupCandidates);
     const fullExtractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
@@ -165,7 +177,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       }
     }
     if ((observations.accounting.extractionPlanningTokens! > extractionInputLimit || knownOverflow) && config.extraction.toolResults === "auto") {
-      const reduced = reduceToolBodies(frozen.active, config.extraction.headTailChars);
+      const reduced = reduceToolBodies(selectedSource, config.extraction.headTailChars);
       observations.omissions = reduced.omissions;
       selectedSource = reduced.source;
       includeCleanupCandidates = true;
@@ -222,18 +234,18 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     // cancelled responses and HTTP 429 must never become a capacity refusal.
     const usableOverflowResponse = response.stopReason === "error" || record(response.usage) &&
       integer(response.usage.input) && integer(response.usage.cacheRead) && integer(response.usage.output);
-    const rateLimited = typeof response.errorMessage === "string" && /(?:^|\b(?:http(?:\/[\d.]+)?|status(?: code)?|error(?: code)?)[\s:]+)429\b/i.test(response.errorMessage);
-    if (response.stopReason !== "aborted" && !rateLimited && usableOverflowResponse && isContextOverflow(response as unknown as AssistantMessage, frozen.model.contextWindow)) {
+    const throttled = typeof response.errorMessage === "string" && rateLimited(response.errorMessage);
+    if (response.stopReason !== "aborted" && !throttled && usableOverflowResponse && isContextOverflow(response as unknown as AssistantMessage, frozen.model.contextWindow)) {
       observations.providerOverflow = { provider: frozen.model.provider, api: frozen.model.api, modelId: frozen.model.id, mode,
         sourceEntryIds: frozen.active.map(entry => entry.entryId), estimatedInputTokens: resolved.extractionTokens,
         extractionInputLimit: resolved.extractionInputLimit, outputReserveTokens: resolved.outputTokens,
         reportedInputTokens: observations.usage.contextInput, errorMessage: typeof response.errorMessage === "string" ? response.errorMessage : undefined };
     }
     const responseError = typeof response.errorMessage === "string" && response.errorMessage ? `: ${response.errorMessage}` : "";
-    requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}${responseError}`);
     const usage = observations.usage;
     observations.accounting.inputExceededPlan = usage.contextInput !== null && usage.contextInput > resolved.extractionInputLimit;
     observations.accounting.outputExceededPlan = usage.output !== null && usage.output > resolved.outputTokens;
+    requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}${responseError}`);
     // A complete stop already produced the candidate. Reported occupancy vs the
     // catalog window is observational; vetoing here cancels native compaction and retries forever.
     if (config.extraction.inputLimit !== undefined && usage.contextInput !== null) {
@@ -245,7 +257,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     const text = response.content.filter(b => b.type === "text").map(b => b.text).join("");
     let patch: unknown;
     try { patch = JSON.parse(text); }
-    catch (cause) { throw new EngineError("RESPONSE", "Maintenance response is not one complete JSON object", { cause }); }
+    catch { throw new EngineError("RESPONSE", "Maintenance response is not one complete JSON object"); }
     const applied = applyPatch(frozen.memory, patch, { targetTokens: organizingTarget, ...(config.memory.hardMaxTokens === undefined ? {} : { hardMaxTokens: config.memory.hardMaxTokens }) }, slots => memoryTokens(slots, config.imageTokens));
     observations.droppedSlotIds = applied.droppedSlotIds;
     observations.required = applied.required;
@@ -264,13 +276,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       disabled: config.toolResultCleanup === false,
       mechanicalWhenMemoryUnchanged: true,
     });
-    const cleanedSources = new Set(survivingCleanup.map(ref => `${ref.entryId}:${ref.messageIndex}`));
-    cleanupResult.applied = cleanupResult.applied.filter(decision => {
-      if (!decision.sourceRefs?.some(ref => cleanedSources.has(`${ref.entryId}:${ref.messageIndex}`))) return true;
-      cleanupResult.skipped.push({ entryId: decision.entryId, messageIndex: decision.messageIndex, action: decision.action,
-        reason: "missing_source_dependency", details: "Saved cleanup source is not a full original copy" });
-      return false;
-    });
+    filterDependencies(cleanupResult);
     cleanupResult.applied.unshift(...survivingCleanup);
     observations.toolResultCleanup = cleanupResult;
 

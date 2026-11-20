@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { applyToolResultCleanup } from "./cleanup.js";
 import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceCandidate, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
 import { mainPlanningEstimate, messagePlanningEstimate } from "./accounting.js";
 import { integer, nonempty, record } from "./validation.js";
@@ -102,7 +103,9 @@ export function activeUsageObservation(input: Snapshot, selectedSource: readonly
     ...source.slice(0, anchor.entryIndex),
     { ...source[anchor.entryIndex]!, messages: source[anchor.entryIndex]!.messages.slice(0, anchor.messageIndex + 1) },
   ];
-  const fullPlan = mainPlanningEstimate(input.fixed, input.memory.slots, prefixEntries(input.active),
+  const fullPrefix = prefixEntries(input.active);
+  const fullPlan = mainPlanningEstimate(input.fixed, input.memory.slots,
+    input.config.toolResultCleanup === false ? fullPrefix : applyToolResultCleanup(fullPrefix, input.priorCleanup ?? []),
     input.model, input.config.imageTokens, input.config.main.extraInputTokens);
   const anchorEntry = input.active[anchor.entryIndex]!;
   const anchorMessage = anchorEntry.messages[anchor.messageIndex]!;
