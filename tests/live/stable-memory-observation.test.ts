@@ -142,7 +142,8 @@ test("legal-tail evidence checks parallel pending/completed tool Contexts indepe
   for (const row of [pending, complete]) {
     assert.equal(row.legalTailIndex, 1, "parallel group cannot advance the legal tail past its calling assistant");
     assert.equal(row.memoryBoundaryLegal, true);
-    assert.equal(row.deliveredMemoryMatches, true);
+    assert.equal(row.deliveredMemoryMatches, row === complete,
+      "Responses requires the complete input sequence; a synthesized pending result contradicts preservation");
     assert.notEqual(row.memoryIndex, row.messageCount - 1, "legal tail is distinct from the physical end");
   }
   assert.equal(pending.payloadSyntheticMissing, true, "pending sibling remains independently visible in serializer evidence");

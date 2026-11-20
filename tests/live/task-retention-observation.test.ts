@@ -12,6 +12,11 @@ import { createAssistantMessageEventStream, type Model, type Context, type Api, 
 import { resolveInput } from "../../src/live/defaults.js";
 import { taskFileChecks } from "../../src/live/task-retention.js";
 
+import { rolloverFacts, type RolloverObservation } from "../../src/live/comparison-observation.js";
+import { memoryTokens, textTokens } from "../../src/engine/accounting.js";
+import { model as fixtureModel } from "../engine/fixtures.js";
+import type { MechanicalFallbackInfo, Slot } from "../../src/engine/types.js";
+
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 
@@ -30,6 +35,27 @@ async function setupWorkspace(dir: string, files: Record<string, string>) {
     await writeFile(join(dir, name), content, "utf8");
   }
 }
+
+test("rollover memory measurement matches zero-carrier, populated and fallback projections", () => {
+  const fallback: MechanicalFallbackInfo = { code: "RESPONSE", message: "Incomplete response", retiredEntryCount: 1, firstKeptEntryId: "kept" };
+  for (const slots of [[], [{ id: "s1", text: "Retained task" }]] satisfies Slot[][]) {
+    for (const mechanicalFallback of [undefined, fallback]) {
+      const row: RolloverObservation = { turn: "a", reason: "threshold", model: fixtureModel, thinking: "low", branch: [], active: [], config,
+        preparation: { firstKeptEntryId: "kept", settings: config.compaction, isSplitTurn: false, messagesToSummarize: [], turnPrefixMessages: [], tokensBefore: 1000 },
+        snapshot: { type: "compaction", id: "snapshot", parentId: null, timestamp: new Date(0).toISOString(), firstKeptEntryId: "kept", tokensBefore: 1000, summary: "", details: { nunc: { slots }, ...(mechanicalFallback ? { mechanicalFallback } : {}) } }, callIds: [] };
+      const facts = rolloverFacts(row, [], "current");
+      assert.equal(facts.mTokens, memoryTokens(slots, undefined, mechanicalFallback));
+      assert.equal(facts.overhead.wrapperOverheadTokens, facts.mTokens! - textTokens(slots.map(slot => slot.text).join("")));
+      if (!slots.length && !mechanicalFallback) {
+        assert.equal(facts.mTokens, 0);
+        assert.equal(facts.overhead.wrapperOverheadTokens, 0);
+      } else {
+        assert(facts.mTokens! > 0);
+        assert(facts.overhead.wrapperOverheadTokens! > 0);
+      }
+    }
+  }
+});
 
 test("unrelated file writes after a build cannot prove subsequent behavior work", () => {
   const actions: any[] = [];

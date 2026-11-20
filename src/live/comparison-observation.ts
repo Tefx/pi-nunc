@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, serializeConversation, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { memoryTokens, messageTokens, requestTokens, textTokens } from "../engine/accounting.js";
-import { memoryMessage } from "../engine/memory.js";
 import type { AdmissionObservation } from "../pi/admission.js";
 import { checkFullExtraction, semanticEvidence } from "./scenarios.js";
 import { fixtureExposure, logicalPlacement, type PlacementContract } from "./placement-observation.js";
@@ -35,7 +34,7 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
   const summaryMessages = snap ? convertToLlm(sessionEntryToContextMessages(snap)) : null;
   const details = snap?.details as any;
   const slots = details?.nunc?.slots;
-  const mTokens = !snap ? null : native ? summaryMessages!.reduce((sum, m) => sum + messageTokens(m), 0) : Array.isArray(slots) ? messageTokens(memoryMessage(slots, details.mechanicalFallback)) : null;
+  const mTokens = !snap ? null : native ? summaryMessages!.reduce((sum, m) => sum + messageTokens(m), 0) : Array.isArray(slots) ? memoryTokens(slots, undefined, details.mechanicalFallback) : null;
   const summaryBodyTokens = snap ? textTokens(snap.summary) : null;
   const model = row.model;
   const calls = row.callIds.map(id => requests.find(r => r.callId === id)).filter((r): r is RequestObservation => Boolean(r));

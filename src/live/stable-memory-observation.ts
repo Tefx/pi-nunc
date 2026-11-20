@@ -99,15 +99,59 @@ function serializedResponsesEvidence(request: RequestObservation, payload: any):
   }
   const admission = request.admission;
   if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
+  // Compare the complete supported sequence, not just its user-message projection.
+  // Responses emits one message per assistant text block, interleaved with calls.
+  const blocks = (content: unknown): string[] | undefined => {
+    if (typeof content === "string") return [content];
+    if (!Array.isArray(content) || content.some(b => !b || !["text", "input_text", "output_text"].includes(b.type) || typeof b.text !== "string")) return;
+    return content.map(b => b.text);
+  };
+  const expectedSequence: unknown[] = [], actualSequence: unknown[] = [];
+  const compat = request.model.compat;
+  const instructionRole = request.model.reasoning && !(compat && "supportsDeveloperRole" in compat && compat.supportsDeveloperRole === false) ? "developer" : "system";
+  for (const [i, message] of request.context.messages.entries()) {
+    if (message.role === "system") {
+      const content = i === 0 ? getSystemMessageText(message) : renderSystemMessageUpdate(message);
+      if (i === 0 && payload.instructions !== undefined) {
+        if (payload.instructions !== content) return {};
+      } else if (content) expectedSequence.push({ role: instructionRole, content: [content] });
+    } else if (message.role === "user") {
+      const content = blocks(message.content);
+      if (!content) return {};
+      if (content.length) expectedSequence.push({ role: "user", content });
+    } else if (message.role === "assistant") {
+      for (const block of message.content) {
+        if (block.type === "text") expectedSequence.push({ role: "assistant", content: [block.text] });
+        else if (block.type === "toolCall" && codexCallId(block.id) !== undefined) expectedSequence.push({ type: "function_call", callId: codexCallId(block.id), name: block.name, arguments: block.arguments });
+        else return {};
+      }
+    } else if (message.role === "toolResult" && codexCallId(message.toolCallId) !== undefined && text(message.content) !== undefined) {
+      expectedSequence.push({ type: "function_call_output", callId: codexCallId(message.toolCallId), output: text(message.content) });
+    } else return {};
+  }
+  if (payload.instructions !== undefined && request.context.messages[0]?.role !== "system" &&
+      !(request.model.api === "openai-codex-responses" && payload.instructions === "You are a helpful assistant.")) return {};
+  for (const item of actual) {
+    if (item.type === "additional_tools" && item.role === "developer" && Array.isArray(item.tools)) continue;
+    if (item.type === "function_call") {
+      try { actualSequence.push({ type: item.type, callId: item.call_id, name: item.name, arguments: JSON.parse(item.arguments) }); }
+      catch { return {}; }
+    } else if (item.type === "function_call_output") {
+      actualSequence.push({ type: item.type, callId: item.call_id, output: item.output });
+    } else if ((item.type === undefined || item.type === "message") && ["system", "developer", "user", "assistant"].includes(item.role)) {
+      const content = blocks(item.content);
+      if (!content) return {};
+      actualSequence.push({ role: item.role, content });
+    } else return {};
+  }
+  const sameSequence = isDeepStrictEqual(actualSequence, expectedSequence);
   const users = actual.filter(item => item.role === "user" && (item.type === undefined || item.type === "message"));
-  const contextUsers = request.context.messages.filter(message => message.role === "user");
-  const sameCount = users.length === contextUsers.length && users.every((item, i) => text(item.content) === text(contextUsers[i]!.content));
   if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}),
-    memory: sameCount && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
+    memory: sameSequence && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
   const index = admission.memoryIndex;
   const ordinal = index === undefined ? -1 : request.context.messages.slice(0, index).filter(message => message.role === "user").length;
   return { ...(synthetic !== undefined ? { synthetic } : {}),
-    memory: sameCount && ordinal >= 0 && text(users[ordinal]?.content) === admission.memoryContent };
+    memory: sameSequence && ordinal >= 0 && text(users[ordinal]?.content) === admission.memoryContent };
 }
 /** Independent Context oracle: tool-call/result intervals exclude interrupted boundaries.
  * Unlike the production selector, enumerate boundaries after validating the complete

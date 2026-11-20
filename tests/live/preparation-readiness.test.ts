@@ -10,6 +10,12 @@ import { RunnerError } from "../../src/live/contract.js";
 import { requestTokens, mainContext, messageTokens } from "../../src/engine/accounting.js";
 import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { repository } from "./fixtures.js";
+import { project, eligibleStarts, engineConfig } from "../../src/pi/index.js";
+import { sealDecisions, eligibleUsageEntryIds } from "../../src/pi/projection.js";
+import { decideToolResultCleanup } from "../../src/engine/cleanup.js";
+import { maintain } from "../../src/engine/engine.js";
+import { loadPolicy } from "../../src/engine/index.js";
+import { responder } from "../engine/fixtures.js";
 
 function createExactFixtureEntries(): { branch: SessionEntry[]; requestText: string; fixtureContent: string; extraMainInputTokens: number } {
   const requestText = "Read TASK.md. We have work to do.";
@@ -324,6 +330,43 @@ test("contract errors never defer: invalid config, corrupted turn mapping, place
       return true;
     }
   );
+});
+
+test("preparation forecasts actual maintenance with persisted cleanup and cross-cut source expiration", async () => {
+  const model = fauxProvider({ provider: "nunc-preparation", models: [{ id: "fixture", contextWindow: 200000, maxTokens: 8192 }] }).getModel();
+  for (const dependent of [false, true]) {
+    const { branch, requestText } = createExactFixtureEntries();
+    const body = JSON.stringify({ evidence: "value".repeat(500) }, null, 200);
+    const current = branch[2]!;
+    assert(current.type === "message" && current.message.role === "toolResult");
+    current.message.content = [{ type: "text", text: body }];
+    const keeperCall: SessionEntry = { type: "message", id: "keeper-call", parentId: null, timestamp: new Date(0).toISOString(), message: fauxAssistantMessage(fauxToolCall("read", { path: dependent ? "TASK.md" : "other.json" }, { id: "keeper" }), { stopReason: "toolUse" }) };
+    const keeperResult: SessionEntry = { type: "message", id: "keeper-result", parentId: "keeper-call", timestamp: new Date(0).toISOString(), message: { role: "toolResult", toolCallId: "keeper", toolName: "read", content: [{ type: "text", text: body }], isError: false, timestamp: 0 } };
+    branch.unshift(keeperCall, keeperResult);
+    branch[2]!.parentId = "keeper-result";
+    const before = project(branch);
+    const cleanup = decideToolResultCleanup({ active: before.active, retainedEntries: before.active, initialMemory: before.memory, finalMemory: before.memory,
+      candidateScope: [{ entryId: "entry-result", messageIndex: 0 }], mechanicalWhenMemoryUnchanged: true }).applied;
+    assert.equal(cleanup[0]?.action, dependent ? "deduplicate" : "compact_json");
+    branch.push({ type: "custom", customType: "nunc.memory", id: "saved-cleanup", parentId: "entry-result", timestamp: new Date(4).toISOString(), data: { nunc: before.memory, toolResultCleanup: sealDecisions(before.active, cleanup) } });
+    const config = { compaction: { enabled: false, reserveTokens: 16384, keepRecentTokens: 1 }, nunc: { budget: { growthTokens: 1024 } }, retentionCalibration: { minFraction: 0.00001, maxFraction: 0.99999 } };
+    const fixed = { systemPrompt: "Work on the task", tools: [] };
+    const prepared = await prepareBoundary({ branch, active: buildContextEntries(branch), control: {
+      duringTurn: "a", action: "rollover_at_tool_boundary", trigger: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", when: "after_result_before_continuation" },
+      placement: { retireRequestOfTurn: "a", retainToolExchange: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", turn: "a" } },
+    }, turns: { a: ["entry-req", "entry-call", "entry-result"] }, turnOrder: ["a"], config, fixed, model, repository, signal: new AbortController().signal,
+      trigger: { callId: "call-task", requestText, path: "TASK.md", cwd: "/task", fixtureContent: body, contextTokens: 30000 } });
+    const projected = project(buildContextEntries(branch));
+    assert.equal(projected.cleanup.length, 1);
+    const result = await maintain({ binding: { sessionId: "fixture", leafId: "saved-cleanup", generation: "fixture" }, model, fixed, memory: projected.memory, active: projected.active,
+      priorCleanup: projected.cleanup, eligibleKeptEntryIds: eligibleStarts(branch, projected.active, projected.latestId), eligibleUsageEntryIds: eligibleUsageEntryIds(branch, projected.active),
+      config: engineConfig(prepared.config.nunc, model, prepared.config.compaction), policy: await loadPolicy(), signal: new AbortController().signal }, responder());
+    assert(result.ok, result.ok ? "" : result.message);
+    assert.equal(result.candidate.firstKeptEntryId, prepared.calibration!.firstKeptEntryId);
+    assert.equal(result.observations.accounting!.keepTarget, prepared.calibration!.accounting.keepTarget);
+    assert.equal(result.observations.accounting!.fullExtractionTokens, prepared.calibration!.accounting.fullExtractionTokens);
+    assert.equal(result.observations.accounting!.keptTokens, prepared.calibration!.accounting.keptTokens);
+  }
 });
 
 test("metricsCommand recognizes minimal necessary invocation forms and rejects unauthorized commands", () => {

@@ -1,4 +1,5 @@
 import * as accounting from "../engine/accounting.js";
+import { applyToolResultCleanup, retainedToolResultCleanup } from "../engine/cleanup.js";
 import { maintenanceFeedback } from "../engine/calibration.js";
 import * as request from "../engine/request.js";
 import * as validation from "../engine/validation.js";
@@ -30,6 +31,12 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     requireValue(Number.isFinite(range.minFraction) && Number.isFinite(range.maxFraction) && range.minFraction > 0 && range.minFraction <= range.maxFraction && range.maxFraction < 1, "CALIBRATION", "Invalid authorized fraction range");
     validateConfig(source.config); validateMemory(source.memory);
     const { active, config, model } = source;
+    const priorCleanup = config.toolResultCleanup === false ? [] : source.priorCleanup ?? [];
+    const effectiveSuffix = (cut: number) => {
+      const kept = active.slice(cut);
+      return applyToolResultCleanup(kept, retainedToolResultCleanup(kept, priorCleanup));
+    };
+    const baseSource = priorCleanup.length ? applyToolResultCleanup(active, priorCleanup) : active;
     const placement = control.placement;
     const ids = new Set(active.map(e => e.entryId));
     const mapped = (turn: string): string[] => {
@@ -63,9 +70,12 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       requireValue(available > 0, "CALIBRATION", `Effective F exhausts the work budget: F=${fixed}, H=${trigger}, mainInputLimit=${mainInput}`);
     }
     const suffix = new Array<number>(active.length + 1).fill(0);
-    for (let i = active.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + (typeof currentAccounting.historyPlanningEstimate === "function"
-      ? currentAccounting.historyPlanningEstimate([active[i]!], model, config.imageTokens).tokens
-      : active[i]!.messages.reduce((sum, message) => sum + messageTokens(message, config.imageTokens), 0));
+    for (let i = 0; i < active.length; i++) {
+      const kept = effectiveSuffix(i);
+      suffix[i] = typeof currentAccounting.historyPlanningEstimate === "function"
+        ? currentAccounting.historyPlanningEstimate(kept, model, config.imageTokens).tokens
+        : kept.reduce((sum, entry) => sum + entry.messages.reduce((n, message) => n + messageTokens(message, config.imageTokens), 0), 0);
+    }
     const targetPlan = currentAccounting.memoryPlan(source.fixed, model, config, source.memory.slots, suffix[0]);
     const memoryLimit = targetPlan.memoryLimit;
     const memoryReserve = targetPlan.memoryReserveTokens ?? memoryLimit;
@@ -74,7 +84,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     const organizingTarget = targetPlan.organizingTarget ?? memoryLimit;
     const feasible = cuts.filter(cut => {
       try {
-        return fixed + memoryReserve + chooseCut(active, [cut], fixed, memoryReserve, 0, trigger, config, model, source.priorCleanup).keptTokens + config.growthTokens <= trigger;
+        return fixed + memoryReserve + chooseCut(active, [cut], fixed, memoryReserve, 0, trigger, config, model, priorCleanup).keptTokens + config.growthTokens <= trigger;
       } catch (error) {
         // Historical selectors reject infeasible singleton cuts rather than
         // returning their size. Keep enumerating, preserving other failures.
@@ -102,25 +112,25 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       if (fraction < range.minFraction || fraction > range.maxFraction || fraction <= 0 || fraction >= 1) continue;
       const selectedConfig = { ...config, keepRecentFraction: fraction };
       const keepTarget = currentAccounting.memoryPlan(source.fixed, model, selectedConfig, source.memory.slots, suffix[0]).keepTarget;
-      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, selectedConfig, model, source.priorCleanup);
+      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, selectedConfig, model, priorCleanup);
       if (chosen.cut !== cut) continue; // Includes an empty intersection at an exclusive floating-point edge.
-      const context = extractionContext(source, cut, organizingTarget, active, []);
+      const context = extractionContext(source, cut, organizingTarget, baseSource, []);
       const fullExtraction = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
       const mainBefore = typeof currentAccounting.mainPlanningEstimate === "function"
-        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).tokens
-        : requestTokens(mainContext(source.fixed, source.memory.slots, active), config.imageTokens) + config.main.extraInputTokens;
-      const fullFeedback = !target ? maintenanceFeedback(source, active, fullExtraction) : undefined;
-      const mainBeforeVisible = !target ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).visibleTokens : mainBefore;
+        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, effectiveSuffix(0), model, config.imageTokens, config.main.extraInputTokens).tokens
+        : requestTokens(mainContext(source.fixed, source.memory.slots, effectiveSuffix(0)), config.imageTokens) + config.main.extraInputTokens;
+      const fullFeedback = !target ? maintenanceFeedback(source, baseSource, fullExtraction) : undefined;
+      const mainBeforeVisible = !target ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, effectiveSuffix(0), model, config.imageTokens, config.main.extraInputTokens).visibleTokens : mainBefore;
       const triggerExtraUndercount = fullFeedback ? Math.max(0, fullFeedback.maintenanceUndercountTokens - fullFeedback.activeUndercountTokens) : 0;
       const normalAtTrigger = fullExtraction + triggerExtraUndercount - mainBeforeVisible + trigger;
       // Trigger headroom is advisory. Calibrate against the actual extraction below.
-      let extraction = fullExtraction, selectedSource = active;
+      let extraction = fullExtraction, selectedSource = baseSource;
       let omissions: Omission[] = [];
       let includeCleanupCandidates = true;
       let resolved: ReturnType<typeof request.resolveExtractionRequest> | undefined;
       if (target) {
         if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
-          const reduction = reduceToolBodies(active, config.extraction.headTailChars);
+          const reduction = reduceToolBodies(baseSource, config.extraction.headTailChars);
           selectedSource = reduction.source; omissions = reduction.omissions;
           extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
         }
@@ -136,7 +146,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
           }
         }
         if ((extraction + undercount > extractionInput || knownOverflow) && config.extraction.toolResults === "auto") {
-          const reduction = reduceToolBodies(active, config.extraction.headTailChars);
+          const reduction = reduceToolBodies(baseSource, config.extraction.headTailChars);
           selectedSource = reduction.source; omissions = reduction.omissions;
           includeCleanupCandidates = true;
           extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions, undefined, true), config.imageTokens) + config.extraction.extraInputTokens;

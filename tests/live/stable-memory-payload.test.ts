@@ -55,6 +55,49 @@ test("native Codex Responses binds M and every function call/result to the actua
   const absent = structuredClone(base); delete absent.finalPayload;
   assert.equal(serializedEvidence(absent).synthetic, undefined);
 });
+test("Responses preserves ordinary assistant blocks, role mapping and the full message order", () => {
+  for (const api of ["openai-responses", "openai-codex-responses"] as const) {
+    const row: RequestObservation = { callId: 1, turn: "a", kind: "main", model: { api, provider: "fixture", id: "fixture", reasoning: true } as any,
+      thinking: null, reasoning: null, outputPlanning: null,
+      admission: { memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 4, memoryContent: "Saved M" } as any,
+      context: { messages: [
+        { role: "system", content: "Follow the task", timestamp: 0 },
+        { role: "user", content: "Task", timestamp: 1 },
+        { role: "assistant", content: [{ type: "text", text: "First" }, { type: "text", text: "Second" }] },
+        { role: "user", content: "Continue", timestamp: 2 },
+        { role: "user", content: "Saved M", timestamp: 0 },
+      ] } as any,
+      finalPayload: { ...(api === "openai-codex-responses" ? { instructions: "Follow the task" } : {}), input: [
+        ...(api === "openai-responses" ? [{ role: "developer", content: "Follow the task" }] : []),
+        { role: "user", content: [{ type: "input_text", text: "Task" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "First" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Second" }] },
+        { role: "user", content: "Continue" }, { role: "user", content: "Saved M" },
+      ] } };
+    assert.equal(serializedEvidence(row).memory, true);
+    const first = api === "openai-responses" ? 2 : 1;
+    for (const mutate of [
+      (items: any[]) => { items.splice(first, 1); },
+      (items: any[]) => { items[first].content[0].text = "Replacement"; },
+      (items: any[]) => { [items[first], items[first + 1]] = [items[first + 1], items[first]]; },
+      (items: any[]) => { items.push({ type: "unrecognized", content: "extra" }); },
+    ]) {
+      const changed = structuredClone(row); mutate((changed.finalPayload as any).input);
+      assert.notEqual(serializedEvidence(changed).memory, true);
+    }
+    const changed = structuredClone(row);
+    if (api === "openai-codex-responses") (changed.finalPayload as any).instructions = "Changed";
+    else (changed.finalPayload as any).input[0].role = "system";
+    assert.notEqual(serializedEvidence(changed).memory, true);
+    const empty = structuredClone(row);
+    empty.context.messages.pop(); (empty.finalPayload as any).input.pop();
+    empty.admission = { memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" } as any;
+    assert.equal(serializedEvidence(empty).memory, true);
+    (empty.finalPayload as any).input.splice(first, 1);
+    assert.equal(serializedEvidence(empty).memory, false);
+  }
+});
+
 test("an unbound main row cannot positively prove either unique M or the final payload", () => {
   const checks = scoreStableMemory({ id: "m2", layouts: [{ turn: "a", kind: "main", model: "fixture", messageCount: 1, uniqueCarrier: false }], config: {} });
   assert(checks.every(c => c.status === "UNPROVEN"));

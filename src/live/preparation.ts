@@ -128,7 +128,7 @@ export async function prepareBoundary(input: {
   if (input.repository) {
     // Arithmetic comes from the actually loaded product target, including its policy and wire contract.
     const load = (file: string) => import(pathToFileURL(join(input.repository!, `dist/src/${file}.js`)).href);
-    const [pi, accounting, request, validation, engine, memory] = await Promise.all([load("pi/index"), load("engine/accounting"), load("engine/request"), load("engine/validation"), load("engine/index"), load("engine/memory")]);
+    const [pi, projection, accounting, request, validation, engine, memory] = await Promise.all([load("pi/index"), load("pi/projection"), load("engine/accounting"), load("engine/request"), load("engine/validation"), load("engine/index"), load("engine/memory")]);
     if (input.matched) {
       const ref = input.reference;
       const caps = ref?.outputCaps;
@@ -152,8 +152,9 @@ export async function prepareBoundary(input: {
     const calibrationConfig = pi.engineConfig({ ...config.nunc,
       rolling: { ...config.nunc.rolling, keepRecentFraction: initial.keepRecentFraction } }, model, config.compaction);
     const source = { binding: { sessionId: "observer-arithmetic", leafId: branch.at(-1)!.id, generation: "prepared" }, model,
-      fixed: input.fixed, memory: projected.memory, active: projected.active, priorCleanup: projected.cleanup,
+      fixed: input.fixed, memory: projected.memory, active: projected.active, priorCleanup: calibrationConfig.toolResultCleanup === false ? [] : projected.cleanup,
       eligibleKeptEntryIds: pi.eligibleStarts(branch, projected.active, projected.latestId),
+      ...(typeof projection.eligibleUsageEntryIds === "function" ? { eligibleUsageEntryIds: projection.eligibleUsageEntryIds(branch, projected.active) } : {}),
       config: calibrationConfig, policy: await engine.loadPolicy({ ...config.nunc, configFile: join(input.repository, "nunc-config.json") }), signal: input.signal };
     try {
       prepared.calibration = calibrateRetention(source, control, turns, input.turnOrder,
