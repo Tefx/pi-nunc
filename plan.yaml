@@ -11869,7 +11869,7 @@ phases:
       native-migration). Worktree removed and protected files untouched.
   - id: delta-pty-cleanup-race-repair
     name: PTY 驱动信号前置挂载、macOS 僵尸进程组 EPERM 兼容与后代退出同步竞态修复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/pty-driver.py\", \"tests/live/host-child.mjs\"\
       , \"tests/live/defensive-controls.test.ts\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -11931,3 +11931,37 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T19:57:37.887005Z'
+    done_at: '2026-11-20T20:07:08.666113+00:00'
+    evidence: 'Artifact:
+
+      - Commit: b44c79753ab241f76b5b1c6b42af2de6134ad133 (retained at refs/vectl/retained/nunc-third-audit-closure.delta-pty-cleanup-race-repair;
+      fast-forwarded onto main)
+
+      - Modified files (strictly within scope.allowed_paths): scripts/pty-driver.py,
+      tests/live/host-child.mjs, tests/live/defensive-controls.test.ts (+51/-18)
+
+
+      Verification:
+
+      - Run: npm run build -> exit 0 (worktree + main)
+
+      - Run: PYTHONPYCACHEPREFIX=/tmp/nunc-pty-race-pycache python3 -m py_compile
+      scripts/pty-driver.py -> exit 0
+
+      - Run: /usr/bin/env -u NODE_OPTIONS NODE_DISABLE_COMPILE_CACHE=1 PI_OFFLINE=1
+      PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 node --test --test-concurrency=2 dist/tests/live/defensive-controls.test.js
+      dist/tests/live/host.test.js -> exit 0 (31/31 passed, 0 failed)
+
+      - Run: 30-iteration concurrent stress loop on "PTY cleanup" -> 30/30 passed,
+      0 failed
+
+      - Run: Targeted Darwin zombie EPERM and pre-fork pending SIGTERM probes -> PASS
+
+      - Protected files check: git diff --quiet 383f2155addd13e54deffd80b69a0b4ef2266831..HEAD
+      -- package.json package-lock.json .node-version -> exit 0
+
+
+      Spec link:
+
+      - nunc-third-audit-closure.delta-pty-cleanup-race-repair (closing DELTA Gate
+      F2)'
