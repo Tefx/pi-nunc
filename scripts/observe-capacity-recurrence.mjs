@@ -5,6 +5,8 @@
 import assert from 'node:assert/strict';
 import { StockFixture, text } from './stock-driver.mjs';
 import { estimateTextTokens } from '@earendil-works/pi-ai/utils/estimate';
+import { canonical } from '../dist/src/engine/validation.js';
+import { SYNTHETIC_LAST_USER_APPEND } from '../dist/src/live/append.js';
 
 for (const test of [
   { name: 'short-history-auto', enabled: true },
@@ -54,7 +56,32 @@ for (const test of [
       if (!test.fresh && !test.append) assert.equal(observation.inputTokens, (test.receipt ?? 254497) + 50 + trailing);
       if (test.receipt) assert(observation.inputTokens > 272000, 'default catalog overrun remains diagnostic');
       if (test.append) {
-        assert.equal(observations.filter(o => !o.payload).at(-1).inputTokens, 254489 + 50 + trailing);
+        // Native serializers emit one authorized observation per send. Its
+        // receipt describes pre-hook input; final input also pays append growth.
+        assert.equal(observations.length, f.requests.length);
+        assert(observations.every(o => o.payload));
+        const metadataTokens = estimateTextTokens('{}');
+        assert.deepEqual(observation.receiptBreakdown, {
+          observedU: 254489 + 50, deltaRTokens: trailing - metadataTokens,
+          currentMTokens: 0, additionalMTokens: 0, retainedOldMMargin: false,
+        });
+        const receipt = observation.receiptBreakdown;
+        const beforeInput = receipt.observedU + receipt.deltaRTokens + receipt.additionalMTokens + metadataTokens;
+        assert.equal(beforeInput, 254489 + 50 + trailing);
+        assert(beforeInput <= observation.plannedInputLimit, 'pre-append input fits the planning threshold');
+        const sent = f.requests.at(-1).payload;
+        const before = structuredClone(sent);
+        const user = before.input.findLast(m => m.role === 'user');
+        assert.equal(user.content.length, 2);
+        assert.deepEqual(user.content.pop(), { type: 'input_text', text: SYNTHETIC_LAST_USER_APPEND });
+        assert.deepEqual(user.content, [{ type: 'input_text', text: 'next' }]);
+        const chargedGrowth = Math.max(
+          estimateTextTokens(canonical(sent)) - estimateTextTokens(canonical(before)),
+          estimateTextTokens(canonical(sent.input)) - estimateTextTokens(canonical(before.input)),
+          estimateTextTokens(SYNTHETIC_LAST_USER_APPEND),
+        );
+        assert(chargedGrowth > 0);
+        assert.equal(observation.inputTokens, beforeInput + chargedGrowth);
         assert(observation.inputTokens > observation.plannedInputLimit);
         assert.equal(observation.payload.transform, 'last-user-text-append');
       }
