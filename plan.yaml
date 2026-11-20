@@ -10706,7 +10706,7 @@ phases:
   steps:
   - id: engine-projection-and-cleanup
     name: '引擎清理、投影对齐、校准与手动记忆守护闭环（#1–#7, #8-engine, #13–#17, #19, #21-manual, #38/#43/#44/#53-step1）'
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/engine/**\", \"src/pi/projection.ts\", \"src/pi/manual.ts\"\
       , \"src/pi/calibration.ts\", \"src/pi/compat.ts\", \"src/pi/config.ts\", \"\
@@ -10857,6 +10857,13 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T15:44:37.215223Z'
+    done_at: '2026-11-20T17:11:24.648250+00:00'
+    evidence: 'Integrated commit 3878aa99cac0f818c9c190bdb6a059c702f07e68 (retained
+      ref refs/vectl/retained/nunc-third-audit-closure.engine-projection-and-cleanup)
+      onto main across 19 authorized files. All Step 1 admitted items (#1–#7, #8-engine,
+      #13–#17, #19, #21-manual, #38/#43/#44/#53-step1) resolved; npm run build passed;
+      targeted 17-file suite passed (322 passed, 0 failed) and expanded Step 1 cone
+      passed (448 passed, 0 failed). Protected files untouched.'
   - id: admission-context-and-ui-closure
     name: '准入载荷、上下文切点、压缩生命周期与 TUI 浮层状态闭环（#8-admission, #9–#12, #17-context, #18, #20,
       #21-index, #22–#24, #37–#40/#42/#45/#46/#52/#53-step2）'
