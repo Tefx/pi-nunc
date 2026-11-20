@@ -35,4 +35,4 @@ try {
   assert.equal(entries.filter(e => e.type === 'compaction').length, 1); assert.equal(entries.at(-1).message.stopReason, 'stop');
   await p.quit(); outcome = { status: 'PROVEN_CONTROLLED', api, requests: f.requests.length, compactions: 1, memoryQuality: 'UNPROVEN: controlled service' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
-finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }
+finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt() })); }

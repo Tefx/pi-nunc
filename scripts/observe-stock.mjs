@@ -90,4 +90,4 @@ try {
   await p.quit();
   outcome = { status: 'PROVEN_CONTROLLED', mode, requirements: ['real stock loader and native transport', 'engine maintenance with one native CompactionEntry', 'native threshold maintenance without local soft-budget errors', 'delivered B/K and future D separation', 'steering/follow-up/custom delivery exactly once in order', 'empty editor after recovery', 'real user cancellation without restart'], requests: f.requests.length, compactions: 1, memoryQuality: 'UNPROVEN: controlled service responses' };
 } catch (error) { outcome.error = { message: error.message, stack: error.stack }; console.error(error); process.exitCode = 1; }
-finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }
+finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt() })); }

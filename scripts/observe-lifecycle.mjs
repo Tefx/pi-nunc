@@ -147,4 +147,4 @@ try {
   await p.quit();
   outcome = { status: 'PROVEN_CONTROLLED', checkpoints: 3, overlappingOlderCheckpoint: true, actualRestartReload: true, modelCloneForkNewTree: true, threshold: true, disabledAuto: true, defaultOversizedInputDelegated: true, extractionFailureAndCancellation: true, independentRawDelegated: true, providerReplacementAndComposition: true, payloadMutationAndSamplingRejected: true, requests: f.requests.length, memoryQuality: 'UNPROVEN: controlled protocol responses' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
-finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }
+finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt() })); }

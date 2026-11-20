@@ -370,5 +370,5 @@ try {
   throw error;
 } finally {
   await f.close(outcome);
-  console.log(JSON.stringify({ ...outcome, dir: f.dir, requests: f.requests.length }, null, 2));
+  console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt(), requests: f.requests.length }, null, 2));
 }

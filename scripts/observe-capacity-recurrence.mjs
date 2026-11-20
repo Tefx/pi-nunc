@@ -100,7 +100,7 @@ for (const test of [
   } catch (error) {
     outcome.error = { message: error.message, stack: error.stack }; process.exitCode = 1;
   } finally {
-    await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir }));
+    await f.close(outcome); console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt() }));
   }
   if (process.exitCode) break;
 }

@@ -33,7 +33,7 @@ export class StockFixture {
     assert(this.limits.maxOutputTokens >= (this.codex ? 128000 : 20000), 'authorize stock fixture default total output ceiling');
     timeoutMs = Math.min(timeoutMs, this.limits.maxDurationMs);
     await mkdir(artifactParent, { recursive: true });
-    this.dir = await mkdtemp(join(await realpath(artifactParent), 'nunc-stock-'));
+    this.dir = await mkdtemp(join(await realpath(artifactParent), `nunc-stock-${process.pid}-`));
     this.state = join(this.dir, 'isolated');
     for (const d of ['home', 'agent', 'sessions', 'work', 'tmp', 'xdg']) await mkdir(join(this.state, d), { recursive: true });
     this.logFile = join(this.dir, 'events.jsonl'); await writeFile(this.logFile, '');
@@ -187,6 +187,11 @@ export class StockFixture {
     p.prompt = async message => { const n = this.log.filter(e => e.type === 'settled').length; await p.send(message); await this.wait(() => this.log.filter(e => e.type === 'settled').length > n, 'settled'); };
     p.quit = async () => { if (p.exit) return; await p.send('/fixture-quit'); await this.wait(() => p.exit, 'graceful stock exit'); assert.equal(p.exit.code, 0); };
     return p;
+  }
+  artifactReceipt() {
+    assert(this.closed && this.dir, 'Close the fixture before reporting artifacts');
+    assert.equal(existsSync(this.dir), !this.removeArtifacts, 'Artifact receipt must match completed cleanup');
+    return this.removeArtifacts ? { cleanup: 'removed' } : { evidence: this.dir };
   }
   async close(outcome = {}) {
     if (this.closed) return;

@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { dirname, delimiter } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
@@ -18,5 +19,15 @@ const cases: Array<[string, string[]]> = [
 for (const [name, args] of cases) test(name, { timeout: 110000 }, () => {
   const result = spawnSync(process.execPath, args, { cwd: root, encoding: "utf8", timeout: 100000, maxBuffer: 2_000_000, env });
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? ""));
+  const receipts = result.stdout.trim().split("\n").map(line => JSON.parse(line));
+  assert(receipts.length > 0);
+  for (const receipt of receipts) {
+    // The required-capacity observer has its own multi-fixture summary contract.
+    if (args[0] !== "scripts/observe-required-capacity.mjs") assert.equal(receipt.cleanup, "removed");
+    assert.equal(Object.hasOwn(receipt, "evidence"), false);
+    assert.equal(Object.hasOwn(receipt, "dir"), false);
+  }
+  const stock = join(root, ".scratch/stock");
+  assert.deepEqual(existsSync(stock) ? readdirSync(stock).filter(name => name.startsWith(`nunc-stock-${result.pid}-`)) : [], []);
   console.log(result.stdout.trim());
 });
