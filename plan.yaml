@@ -10697,7 +10697,7 @@ phases:
   name: 第三轮全量契约与精简审查（3-Pass Contract & Simplicity）收敛账本闭环与回归验收
   status: in_progress
   gate: 'nunc-third-audit-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-projection-and-cleanup、admission-context-and-ui-closure、live-runner-benchmarks-and-docs-closure）与
-    7 个 Delta 修复步骤的最终整合提交与确定性离线测试证据（npm run build、文档化完整离线套件运行器 node scripts/check.mjs
+    8 个 Delta 修复步骤的最终整合提交与确定性离线测试证据（npm run build、文档化完整离线套件运行器 node scripts/check.mjs
     all、node --test dist/tests/pi/larva.integration.js；受保护 package.json、package-lock.json、.node-version
     保持未改动）做唯一阶段验收判断（PHASE_GATE, mode: FULL），确认基于提交 383f2155addd13e54deffd80b69a0b4ef2266831
     收敛的第三轮 3-pass contract-and-simplicity Admitted Finding Ledger 全部准入义务 100% 闭环且无阻断缺陷。'
@@ -11196,16 +11196,16 @@ phases:
       .node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
       , \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\"\
       , \"**/auth.json\"]\n\nDeliver: 对 `nunc-third-audit-closure` 阶段 3 个已完成基础实现步骤（`engine-projection-and-cleanup`、`admission-context-and-ui-closure`、`live-runner-benchmarks-and-docs-closure`）及\
-      \ 7 个 Delta 修复步骤（`delta-engine-admission-and-ui-repair`、`delta-live-calibration-and-observers-repair`、`delta-live-runner-comparison-and-docs-repair`、`delta-stock-observation-receipts-repair`、`delta-check-runner-and-cleanup-timeout-repair`、`delta-worker-organizing-target-repair`、`delta-stable-memory-configuration-update-repair`）合并后的最终整合提交做唯一阶段验收判断（`PHASE_GATE`,\
+      \ 8 个 Delta 修复步骤（`delta-engine-admission-and-ui-repair`、`delta-live-calibration-and-observers-repair`、`delta-live-runner-comparison-and-docs-repair`、`delta-stock-observation-receipts-repair`、`delta-check-runner-and-cleanup-timeout-repair`、`delta-worker-organizing-target-repair`、`delta-stable-memory-configuration-update-repair`、`delta-pty-cleanup-race-repair`）合并后的最终整合提交做唯一阶段验收判断（`PHASE_GATE`,\
       \ `mode: FULL`）。注意受保护清单 `package.json`（`0.3.1`）、`package-lock.json` 与 `.node-version`\
       \ 保持未改动且 `package.json` 不含 `test` 脚本，仓库文档化的完整离线测试运行器为 `node scripts/check.mjs\
       \ all`（配合 `npm run build` 与 `node --test dist/tests/pi/larva.integration.js`）。`gate-reviewer`\
       \ 独立执行一次全量重型回归验证并逐项核实第三轮收敛账本全部准入义务、15 项增量审查发现（Findings #1–#15）及后续运行器/Worker/Responses\
-      \ 序列化证据回归修复 100% 闭环：\n\n1. **Step 1（`engine-projection-and-cleanup`）与 `delta-engine-admission-and-ui-repair`（Findings\
-      \ #1–#7）闭环核验**：\n   - `#1`–`#7`、`#8-engine`、`#13`–`#17`、`#19`、`#21-manual` 基础义务及测试/精简闭环。\n\
-      \   - Delta Findings #1–#3（`#13`）：`transientTransportError` 在单位词排除与 `host:port`\
-      \ 排除前优先识别显式 HTTP/status 前缀（含 `HTTP/1.1:401`、`HTTP 403 requests forbidden`、`HTTP\
-      \ 401 bytes rejected`），并正确解析带小数点的耗时/数量（`400.5 ms`、`400.0 seconds`）使其保持有界重试。\n\
+      \ 序列化证据/PTY 进程组清理竞态回归修复 100% 闭环：\n\n1. **Step 1（`engine-projection-and-cleanup`）与\
+      \ `delta-engine-admission-and-ui-repair`（Findings #1–#7）闭环核验**：\n   - `#1`–`#7`、`#8-engine`、`#13`–`#17`、`#19`、`#21-manual`\
+      \ 基础义务及测试/精简闭环。\n   - Delta Findings #1–#3（`#13`）：`transientTransportError`\
+      \ 在单位词排除与 `host:port` 排除前优先识别显式 HTTP/status 前缀（含 `HTTP/1.1:401`、`HTTP 403 requests\
+      \ forbidden`、`HTTP 401 bytes rejected`），并正确解析带小数点的耗时/数量（`400.5 ms`、`400.0 seconds`）使其保持有界重试。\n\
       \   - Delta Finding #4（`#10`）：`cloneWithOutputCap` / `onPayload` 核验克隆后载荷的 JSON\
       \ 可见输出上限（防止根或嵌套 `config.toJSON()` 编解码器使线协议上限与报告的 `outputCapTokens` 不一致，同时保留\
       \ `abortSignal`）。\n   - Delta Finding #5（`#12`）：无 `onPayload` 钩子的 `stream.result()`\
@@ -11219,15 +11219,17 @@ phases:
       \ `HOME=.scratch/offline-home` 下正确解析 `npm` 工具链与离线缓存，且 `src/index.ts`（`prepareUiCleanup`）在\
       \ `loadPolicy` 完成后启动 60s 请求超时计时，确保 `tests/pi/ui-cleanup-update.test.ts` 与 `node\
       \ scripts/check.mjs all` 在并发负载下稳定通过。\n\n3. **Step 3（`live-runner-benchmarks-and-docs-closure`）与\
-      \ 5 个 Live/Stock Delta 修复步骤（Findings #8–#15、Worker `organizingTarget` 对齐及 Responses\
-      \ `configuration_update` 控制项兼容）闭环核验**：\n   - `#8-live`, `#25`–`#36` 基础义务及基准测试/文档/测试卫生闭环。\n\
-      \   - Delta Finding #8（`#28`）：`launchWorker`、`runStock`、`NativeHost.close` 与\
-      \ `scripts/pty-driver.py` 在组长正常退出以及超时/中止时均完整清理所属进程组的残留后代进程（覆盖继承管道与关闭管道后代）。\n\
-      \   - Delta Finding #9（`#30`）：`calibrateRetention` 与 `prepareBoundary` 使用与 `maintain()`\
-      \ 完全一致的 `priorCleanup` 有效历史视图（含 `toolResultCleanup` 开关与跨切点 `sourceRefs` 依赖过期）计算\
-      \ `suffix`、`historyBase`、`keepTarget` 与初始提取源。\n   - Delta Finding #10（`#31`）与\
-      \ `delta-worker-organizing-target-repair`：`qualifyCapacity` 将 `organizing` 与\
-      \ `advisory` 提示词格式严格绑定至各自权威预算（拒绝 `memoryReserveTokens` 冒充 `organizingTarget`），且\
+      \ 6 个 Live/Stock/PTY Delta 修复步骤（Findings #8–#15、Worker `organizingTarget` 对齐、Responses\
+      \ `configuration_update` 控制项兼容及 PTY 清理并发竞态修复）闭环核验**：\n   - `#8-live`, `#25`–`#36`\
+      \ 基础义务及基准测试/文档/测试卫生闭环。\n   - Delta Finding #8（`#28`）与 `delta-pty-cleanup-race-repair`：`launchWorker`、`runStock`、`NativeHost.close`\
+      \ 与 `scripts/pty-driver.py` 在组长正常退出以及超时/中止时均完整清理所属进程组的残留后代进程（覆盖继承管道与关闭管道后代），且\
+      \ `scripts/pty-driver.py` 在 `pty.fork()` 前注册信号处理器、兼容 macOS 僵尸进程组 `PermissionError`（`EPERM`）、消除\
+      \ `tests/live/host-child.mjs` 与 `tests/live/defensive-controls.test.ts` 中 `pty-descendant`\
+      \ 组长退出与 `SIGTERM` 的调度竞态。\n   - Delta Finding #9（`#30`）：`calibrateRetention`\
+      \ 与 `prepareBoundary` 使用与 `maintain()` 完全一致的 `priorCleanup` 有效历史视图（含 `toolResultCleanup`\
+      \ 开关与跨切点 `sourceRefs` 依赖过期）计算 `suffix`、`historyBase`、`keepTarget` 与初始提取源。\n\
+      \   - Delta Finding #10（`#31`）与 `delta-worker-organizing-target-repair`：`qualifyCapacity`\
+      \ 将 `organizing` 与 `advisory` 提示词格式严格绑定至各自权威预算（拒绝 `memoryReserveTokens` 冒充 `organizingTarget`），且\
       \ `src/live/worker.ts` 传入与 `memoryPlan()` 一致的权威 `organizingTarget`（使 `e4`/`g8`\
       \ 在 `guidance-native.test.ts` 与 `comparison-native.test.ts` 中 100% 通过）。\n  \
       \ - Delta Finding #11（`#32`）与 `delta-stable-memory-configuration-update-repair`：`serializedResponsesEvidence`\
@@ -11243,7 +11245,7 @@ phases:
       \  - Delta Finding #15：`docs/LIVE.md`、`docs/DEVELOPMENT.md` 与 `src/live/comparison.ts:65`\
       \ 准确区分当前 `native` 目标（稳定版 Pi `1.4.0` / `^1.0.3`）与历史固定基线（`70dacad` Pi `0.85.1`、`1d4fc4a2`\
       \ Pi `0.86.1`），并明确区分终端 token 结算释放与未知成本保留。\n\nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
-      \ `plan.yaml`，不运行外部付费 live-LLM 调用。\n\nAdmit: 依赖 3 个已完成基础实现步骤与 7 个 Delta 修复步骤全部完成并合并至不可变整合候选提交；消费整合提交自\
+      \ `plan.yaml`，不运行外部付费 live-LLM 调用。\n\nAdmit: 依赖 3 个已完成基础实现步骤与 8 个 Delta 修复步骤全部完成并合并至不可变整合候选提交；消费整合提交自\
       \ `383f2155addd13e54deffd80b69a0b4ef2266831` 以来的代码差异与确定性全量离线测试证据（`npm run build`、`node\
       \ scripts/check.mjs all`、`node --test dist/tests/pi/larva.integration.js`）。\n\
       \nRecovery: 若发现任何未闭环的准入项、跨模块回归、受保护文件改动或测试失败，返回明确阻断发现列表；全部解决前不予通过。"
@@ -11305,6 +11307,8 @@ phases:
     - tests/live/comparison-native.test.ts
     - tests/live/stable-memory-observation.test.ts
     - tests/pi/openai-native-migration.test.ts
+    - tests/live/host-child.mjs
+    - tests/live/defensive-controls.test.ts
     depends_on:
     - engine-projection-and-cleanup
     - admission-context-and-ui-closure
@@ -11316,6 +11320,7 @@ phases:
     - delta-check-runner-and-cleanup-timeout-repair
     - delta-worker-organizing-target-repair
     - delta-stable-memory-configuration-update-repair
+    - delta-pty-cleanup-race-repair
     agent: gate-reviewer
   - id: delta-engine-admission-and-ui-repair
     name: '引擎传输状态分类、准入载荷编解码器/无载荷结算、压缩告警保持与投影测试预言机修复（Findings #1–#7）'
@@ -11862,3 +11867,65 @@ phases:
       npm run build passed; stable-memory-observation.test.js + stable-memory-payload.test.js
       + openai-native-migration.test.js passed (15 passed, 0 failed, including 5/5
       native-migration). Worktree removed and protected files untouched.
+  - id: delta-pty-cleanup-race-repair
+    name: PTY 驱动信号前置挂载、macOS 僵尸进程组 EPERM 兼容与后代退出同步竞态修复
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"scripts/pty-driver.py\", \"tests/live/host-child.mjs\"\
+      , \"tests/live/defensive-controls.test.ts\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\", \"package.json\", \"package-lock.json\"\
+      , \".node-version\", \"src/**\", \"policies/**\", \"docs/**\", \"README.md\"\
+      , \"examples/**\"]\n\n[REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver:\
+      \ 在严格聚焦的 3 文件可写边界内（`scripts/pty-driver.py`、`tests/live/host-child.mjs`、`tests/live/defensive-controls.test.ts`；1\
+      \ 个脚本文件 + 2 个测试文件，1 个内聚机制族），基于当前 `main`（`b6ec8e39ef0cd3f03a60e5dc1c8f3d8e0994732b`）修复\
+      \ DELTA Gate 在全量 `node scripts/check.mjs all` 并发运行下发现的唯一阻断项 F2（`PTY cleanup\
+      \ settles inherited-pipe and normal closed-pipe leader exits` 3 处调度/内核信号竞态）：\n\
+      \n1. **`scripts/pty-driver.py` 信号处理器前置挂载与 `pty.fork()` 窗口安全转发闭环（`scripts/pty-driver.py:16–43`）**：\n\
+      \   - 将 `signal.signal(signal.SIGTERM, stop)` 与 `signal.signal(signal.SIGINT,\
+      \ stop)` 移至 `pty.fork()` 之前注册（并在 `pid == 0` 子进程分支调用 `os.execv` 前恢复 `SIG_DFL`\
+      \ 默认处理器，避免干扰被驱动子进程信号语义）。\n   - 当信号在父进程绑定 `pid` 之前到达时，通过待决信号标志暂存，并在 `pid` 就绪后立即执行\
+      \ `stop()` 转发进程组信号与设置 `kill_at` 升级截止时间，消除高并发负载下 `driver.kill(\"SIGTERM\")` 早于信号处理器安装到达导致\
+      \ `pty-driver.py` 直接被 `SIGTERM` 终止的竞态。\n\n2. **`scripts/pty-driver.py` macOS（Darwin）僵尸进程组\
+      \ `PermissionError`（`EPERM`）兼容与 `finally:` 完整回收闭环（`scripts/pty-driver.py:25–40,\
+      \ 81–96`）**：\n   - 在 `stop()`、`escalate()` 与 `finally:` 块的所有 `os.killpg(pid,\
+      \ ...)` 调用点统一捕获 `(ProcessLookupError, PermissionError)`，兼容 macOS（Darwin）下会话/进程组长处于\
+      \ `<defunct>` 僵尸态（`Z`）且组内无存活后代时 `os.killpg` 抛出 `PermissionError: [Errno 1] Operation\
+      \ not permitted` 的内核行为，杜绝未捕获 `PermissionError` 导致退出码 `1`。\n   - 在 `finally:`\
+      \ 中确保完整回收 `pid`（`os.waitpid`），并在发送 `SIGKILL` 后短暂轮询等待进程组消失（直至 `os.killpg(pid,\
+      \ 0)` 抛出 `ProcessLookupError` 或 `PermissionError`），保证驱动退出时同组后代进程已终结。\n\n3. **`tests/live/host-child.mjs`\
+      \ 与 `tests/live/defensive-controls.test.ts` 组长退出同步与继承/关闭管道双重 PTY 清理验证闭环（`tests/live/host-child.mjs:18–23;\
+      \ tests/live/defensive-controls.test.ts:355–395`）**：\n   - 消除 `pty-descendant`\
+      \ 模式下 `writeFileSync(\"descendant.pid\")` 与 `process.exit(0)` 之间的 `SIGTERM`\
+      \ 竞态（例如写出 `leader.pid` 或在发送 `driver.kill(\"SIGTERM\")` 前确认组长进程已退出/进入僵尸态，或等价同步机制），同时完整保留两项测试意图：\n\
+      \     - `pty-descendant`：继承 PTY 从端管道的后代进程在组长正常退出（`code === 0`）后阻止 PTY EOF，经\
+      \ `driver.kill(\"SIGTERM\")` 触发进程组清理后完整终结，且 `driver` 以 `signal === null && code\
+      \ === 0` 干净退出；\n     - `pty-descendant-closed`：关闭管道的后代进程仅靠组长正常退出触发 `pty-driver.py`\
+      \ 的 `finally:` 进程组清理即被完整终结。\n   - 验证 `npm run build`、`dist/tests/live/defensive-controls.test.js`\
+      \ 与 `dist/tests/live/host.test.js` 在并发与重复压力负载下 100% 稳定通过。\n\nImplementation\
+      \ Notes (Non-Binding):\n- 在 `scripts/pty-driver.py` 中可初始化 `pid = None` 与 `pending_signal\
+      \ = None`；`stop(signum, _frame)` 在 `pid is None` 时记录 `pending_signal = signum`\
+      \ 并设置 `kill_at`，`pty.fork()` 返回父进程 `pid > 0` 后若 `pending_signal is not None`\
+      \ 则立即调用 `stop(pending_signal, None)`。\n- 在 `tests/live/host-child.mjs` 中，`descendant`\
+      \ 分支可在写出 `descendant.pid` 前或同时写出 `leader.pid`（或单文件含 `{ leaderPid, descendantPid\
+      \ }` / 双文件），使 `tests/live/defensive-controls.test.ts` 在 `pty-descendant` 分支发送\
+      \ `driver.kill(\"SIGTERM\")` 前可等待组长退出或就绪，避免 `SIGTERM` 在 `process.exit(0)` 完成前击中组长导致退出码\
+      \ `-15`/`241`。\n\nBoundary: owner 为 `node-typescript-engineer`；严格限制在 `[\"scripts/pty-driver.py\"\
+      , \"tests/live/host-child.mjs\", \"tests/live/defensive-controls.test.ts\"]`\
+      \ 3 个文件内，严禁修改 `package.json`、`package-lock.json`、`.node-version` 或其他模块文件。\n\n\
+      Admit: 基于当前 `main`；`depends_on: []`，完成后汇入 `nunc-third-audit-closure.gate`。\n\
+      \nRecovery: 若构建或定向测试失败，在本步骤 3 文件边界内定位并修复；不跨界修改其他模块。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: py-compile-pty-driver\n    argv: [python3, -m, py_compile,\
+      \ scripts/pty-driver.py]\n    exit_code: 0\n  - id: targeted-defensive-controls-and-host\n\
+      \    argv: [/usr/bin/env, -u, NODE_OPTIONS, NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1,\
+      \ PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, --test, --test-concurrency=2,\
+      \ dist/tests/live/defensive-controls.test.js, dist/tests/live/host.test.js]\n\
+      \    exit_code: 0\n```\n验证 `npm run build`、`python3 -m py_compile scripts/pty-driver.py`、`dist/tests/live/defensive-controls.test.js`\
+      \ 与 `dist/tests/live/host.test.js` 在并发负载下 100% 稳定通过，且仅修改本步骤 `allowed_paths`\
+      \ 内的 3 个文件。"
+    refs:
+    - scripts/pty-driver.py
+    - tests/live/host-child.mjs
+    - tests/live/defensive-controls.test.ts
+    agent: node-typescript-engineer
