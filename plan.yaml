@@ -11195,34 +11195,45 @@ phases:
       , \"tests/**\", \"scripts/**\", \"package.json\", \"package-lock.json\", \"\
       .node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
       , \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\"\
-      , \"**/auth.json\"]\n\nDeliver: 对 `nunc-third-audit-closure` 阶段 3 个严格不相交并行实现步骤（`engine-projection-and-cleanup`、`admission-context-and-ui-closure`、`live-runner-benchmarks-and-docs-closure`）合并后的最终整合提交做唯一阶段验收判断（`PHASE_GATE`,\
+      , \"**/auth.json\"]\n\nDeliver: 对 `nunc-third-audit-closure` 阶段 3 个已完成基础实现步骤（`engine-projection-and-cleanup`、`admission-context-and-ui-closure`、`live-runner-benchmarks-and-docs-closure`）及\
+      \ 4 个严格不相交并行 Delta 修复步骤（`delta-engine-admission-and-ui-repair`、`delta-live-calibration-and-observers-repair`、`delta-live-runner-comparison-and-docs-repair`、`delta-stock-observation-receipts-repair`）合并后的最终整合提交做唯一阶段验收判断（`PHASE_GATE`,\
       \ `mode: FULL`）。注意受保护清单 `package.json`（`0.3.1`）、`package-lock.json` 与 `.node-version`\
       \ 保持未改动且 `package.json` 不含 `test` 脚本，仓库文档化的完整离线测试运行器为 `node scripts/check.mjs\
       \ all`（配合 `npm run build` 与 `node --test dist/tests/pi/larva.integration.js`）。`gate-reviewer`\
-      \ 独立执行一次全量重型回归验证并逐项核实第三轮收敛账本全部准入义务 100% 闭环：\n\n1. **Step 1（`engine-projection-and-cleanup`）闭环核验**：\n\
-      \   - `#1`–`#7`：`effectiveEntryMessages` 在 `project()`/`sourceUnits()`/`originalResults()`/`branchHistoryCandidates()`\
-      \ 中的 `context_edit` 与 `excludeFromContext` 对齐；`completedCleanupScope()` 与 `manual.patch()`\
-      \ 对 `sourceRefs` 的保护；`maintain()` 提取源与 `activeUsageObservation` 应用 `priorCleanup`；`fallbackCandidate`\
-      \ 的 `cleanedSources` 依赖过滤；未确认手动保存不激活新 `toolResultCleanup` 决策；多文本块 `toolResult`\
-      \ 在 `messageTextContent()` 与 `sourceDigest()` 中的边界保护；非数组 `data.toolResultCleanup`\
-      \ 校验与无操作 `manual.patch()` 的 `m_unchanged` 报告。\n   - `#8-engine`, `#13`–`#17`,\
-      \ `#19`, `#21-manual` 及测试/精简闭环：`samplingParamsByThinkingLevel` 守卫、`(429)` 速率限制识别、`terminalStatus`\
-      \ 单位词排除、`reduceToolBodies` 非 BMP 长度比较、手动记忆变更后旧 usage 锚点失效、非 `stop` 响应前记录 `inputExceededPlan`/`outputExceededPlan`、移除原始\
-      \ `SyntaxError` `cause`、有标签重叠压缩失败冻结保护、`onCommitted` 异常隔离与 `\"overbudget\"` 保存预算保留，以及对应测试与代码精简项。\n\
+      \ 独立执行一次全量重型回归验证并逐项核实第三轮收敛账本全部准入义务及 15 项增量审查发现（Findings #1–#15）100% 闭环：\n\n\
+      1. **Step 1（`engine-projection-and-cleanup`）与 `delta-engine-admission-and-ui-repair`（Findings\
+      \ #1–#7）闭环核验**：\n   - `#1`–`#7`、`#8-engine`、`#13`–`#17`、`#19`、`#21-manual` 基础义务及测试/精简闭环。\n\
+      \   - Delta Findings #1–#3（`#13`）：`transientTransportError` 在单位词排除与 `host:port`\
+      \ 排除前优先识别显式 HTTP/status 前缀（含 `HTTP/1.1:401`、`HTTP 403 requests forbidden`、`HTTP\
+      \ 401 bytes rejected`），并正确解析带小数点的耗时/数量（`400.5 ms`、`400.0 seconds`）使其保持有界重试。\n\
+      \   - Delta Finding #4（`#10`）：`cloneWithOutputCap` / `onPayload` 核验克隆后载荷的 JSON\
+      \ 可见输出上限（防止根或嵌套 `config.toJSON()` 编解码器使线协议上限与报告的 `outputCapTokens` 不一致，同时保留\
+      \ `abortSignal`）。\n   - Delta Finding #5（`#12`）：无 `onPayload` 钩子的 `stream.result()`\
+      \ 完成分支严格按终态（`stopReason`、取消信号、Promise 拒绝）结算，绝不为失败/中止请求伪造 `delegate`。\n   - Delta\
+      \ Finding #6（`#18`）：`src/index.ts` 将活跃压缩告警条件与通知去重标志解耦，连续告警压缩期间绝不调用 `ui.recover()`\
+      \ 擦除活跃告警。\n   - Delta Finding #7（`#1`）：`tests/pi/context-view.test.ts` 原生纯文本\
+      \ `context_edit` 预言机与签名 thinking 替换行为对齐，并保留签名编辑的 `replay-mapping-unknown` 独立断言。\n\
       \n2. **Step 2（`admission-context-and-ui-closure`）闭环核验**：\n   - `#8-admission`,\
-      \ `#9`–`#12`, `#17-context`, `#18`, `#20`, `#21-index`, `#22`–`#24` 及测试/脚本/精简闭环：`Admission.enter`\
-      \ 的 `samplingParamsByThinkingLevel` 检查、Azure OpenAI 映射部署名准入、`cloneWithOutputCap`\
-      \ 保留非 JSON SDK 字段（`abortSignal`）、媒体 `census()` 限定于协议消息内容树、`Admission.onPayload`\
-      \ 早期异常结算与 `await` 后所有权复核、`captureSentCut()` 跳过 `role === \"system\"`、`session_compact`\
-      \ 的 `owned` 完整字段核验与告警保留、`prepareUiCleanup` 校准绑定与 60s 超时中止竞速、`model_select`/`context`\
-      \ 中 `admission.ensure` 的异常捕获与 `nunc_memory_read` 非文本候选过滤、TUI `NuncOverlay`/`status`/`NuncUi`\
-      \ 修复，以及 `larva.integration.ts` 标准化与 `.scratch/` 清理。\n\n3. **Step 3（`live-runner-benchmarks-and-docs-closure`）闭环核验**：\n\
-      \   - `#8-live`, `#25`–`#36` 及文档/测试卫生闭环：`contract.ts`/`defaults.ts` 守卫（`samplingParamsByThinkingLevel`、`[::1]`、`google/gemini-3.8-flash`、独立\
-      \ worker stdin 上限）、`metricsCommand` 单引号 `<<'JSON'`、预算账本严格校验与超预留拒绝及 `LEDGER_RECONCILIATION`\
-      \ 降级、`NativeHost` UTF-8 解码与进程组超时清理、校准切点边界分数与 `priorCleanup`/`selectedSource`\
-      \ 透传、容量/稳定记忆/对照/引导/产物评分修复、Arena/BEAM/MAB 基准测试评分与 `buildReceipt`/预留核算修复，以及文档同步与临时工作树/目录自动清理。\n\
-      \nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
-      \ `plan.yaml`，不运行外部付费 live-LLM 调用。\n\nAdmit: 依赖 3 个并行实现步骤全部完成并合并至不可变整合候选提交；消费整合提交自\
+      \ `#9`–`#12`, `#17-context`, `#18`, `#20`, `#21-index`, `#22`–`#24` 及测试/脚本/精简闭环。\n\
+      \n3. **Step 3（`live-runner-benchmarks-and-docs-closure`）与 3 个 Live/Stock Delta\
+      \ 修复步骤（Findings #8–#15）闭环核验**：\n   - `#8-live`, `#25`–`#36` 基础义务及基准测试/文档/测试卫生闭环。\n\
+      \   - Delta Finding #8（`#28`）：`launchWorker`、`runStock`、`NativeHost.close` 与\
+      \ `scripts/pty-driver.py` 在组长正常退出以及超时/中止时均完整清理所属进程组的残留后代进程（覆盖继承管道与关闭管道后代）。\n\
+      \   - Delta Finding #9（`#30`）：`calibrateRetention` 与 `prepareBoundary` 使用与 `maintain()`\
+      \ 完全一致的 `priorCleanup` 有效历史视图（含 `toolResultCleanup` 开关与跨切点 `sourceRefs` 依赖过期）计算\
+      \ `suffix`、`historyBase`、`keepTarget` 与初始提取源。\n   - Delta Finding #10（`#31`）：`qualifyCapacity`\
+      \ 将 `organizing` 与 `advisory` 提示词格式严格绑定至各自权威预算，拒绝 `memoryReserveTokens` 冒充 `organizingTarget`。\n\
+      \   - Delta Finding #11（`#32`）：`serializedResponsesEvidence` 完整核验受支持 Responses\
+      \ 消息序列与普通 assistant 历史保留。\n   - Delta Finding #12（`#26/#27`）：`executeComparison`\
+      \ 在创建目标目录前先校验 `resolveBatchContext(input)` 与截止时间，避免缺失 `priorLedgers` 时残留无主孤儿目录。\n\
+      \   - Delta Finding #13（`#32/#33`）：`rolloverFacts` 统一使用空感知的 `memoryTokens(slots,\
+      \ undefined, details.mechanicalFallback)` 计算 `mTokens`（空记忆且无回退时为 `0`）。\n   -\
+      \ Delta Finding #14（`#49–#52`）：`StockFixture` 与 `scripts/observe-*.mjs` 在默认删除临时目录时报告\
+      \ `cleanup: \"removed\"` 而不打印已删除的 `evidence`/`dir` 路径，显式保留时仍返回真实存在的 `evidence`\
+      \ 目录。\n   - Delta Finding #15：`docs/LIVE.md`、`docs/DEVELOPMENT.md` 与 `src/live/comparison.ts:65`\
+      \ 准确区分当前 `native` 目标（稳定版 Pi `1.4.0` / `^1.0.3`）与历史固定基线（`70dacad` Pi `0.85.1`、`1d4fc4a2`\
+      \ Pi `0.86.1`），并明确区分终端 token 结算释放与未知成本保留。\n\nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
+      \ `plan.yaml`，不运行外部付费 live-LLM 调用。\n\nAdmit: 依赖 3 个已完成基础实现步骤与 4 个并行 Delta 修复步骤全部完成并合并至不可变整合候选提交；消费整合提交自\
       \ `383f2155addd13e54deffd80b69a0b4ef2266831` 以来的代码差异与确定性全量离线测试证据（`npm run build`、`node\
       \ scripts/check.mjs all`、`node --test dist/tests/pi/larva.integration.js`）。\n\
       \nRecovery: 若发现任何未闭环的准入项、跨模块回归、受保护文件改动或测试失败，返回明确阻断发现列表；全部解决前不予通过。"
@@ -11261,11 +11272,17 @@ phases:
     - src/live/host.ts
     - src/live/calibration.ts
     - src/live/preparation.ts
+    - src/live/capacity-observation.ts
+    - src/live/stable-memory-observation.ts
+    - src/live/comparison-observation.ts
     - src/live/scenarios.ts
+    - scripts/pty-driver.py
+    - scripts/stock-driver.mjs
     - scripts/check.mjs
     - tests/pi/larva.integration.ts
     - README.md
     - docs/LIVE.md
+    - docs/DEVELOPMENT.md
     - docs/EXTRACTION.md
     - docs/TOOL-RESULT-CLEANUP.md
     - package.json
@@ -11275,4 +11292,299 @@ phases:
     - engine-projection-and-cleanup
     - admission-context-and-ui-closure
     - live-runner-benchmarks-and-docs-closure
+    - delta-engine-admission-and-ui-repair
+    - delta-live-calibration-and-observers-repair
+    - delta-live-runner-comparison-and-docs-repair
+    - delta-stock-observation-receipts-repair
     agent: gate-reviewer
+  - id: delta-engine-admission-and-ui-repair
+    name: '引擎传输状态分类、准入载荷编解码器/无载荷结算、压缩告警保持与投影测试预言机修复（Findings #1–#7）'
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/engine/pi-model.ts\", \"src/pi/admission.ts\", \"src/index.ts\"\
+      , \"tests/engine/pi-model.test.ts\", \"tests/pi/admission.test.ts\", \"tests/pi/admission-hardening.test.ts\"\
+      , \"tests/pi/admission-ownership.test.ts\", \"tests/pi/lifecycle.test.ts\",\
+      \ \"tests/pi/lifecycle-closure.test.ts\", \"tests/pi/context-view.test.ts\"\
+      ]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\",\
+      \ \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      , \"package.json\", \"package-lock.json\", \".node-version\", \"src/live/**\"\
+      , \"tests/live/**\", \"scripts/**\", \"docs/**\", \"README.md\", \"examples/**\"\
+      ]\n\n[REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver: 在严格与其余 3 个并行 Delta\
+      \ 修复步骤（`delta-live-calibration-and-observers-repair`、`delta-live-runner-comparison-and-docs-repair`、`delta-stock-observation-receipts-repair`）完全不相交的\
+      \ `src/engine/pi-model.ts`、`src/pi/admission.ts`、`src/index.ts` 及对应单元测试可写边界内（3\
+      \ 个可写生产文件、4 个内聚机制族），基于 `main`（`5e12c5e3f40e01571623b4dd2d4e0d04a0049642`）完成编译（`npm\
+      \ run build`）与定向测试闭环，保持既有跨模块导出签名兼容（$\\delta s|_{\\partial} = 0$），100% 闭环 Slice\
+      \ 1 与 Slice 2 增量审查发现的第 1–7 项：\n\n1. **Finding #1–#3（`#13 [REPAIR_REGRESSION]`\
+      \ + `[UNCLOSED_ORIGINAL]`）维护传输错误终态 4xx 与单位/地址词法优先级闭环（`src/engine/pi-model.ts:80–90;\
+      \ tests/engine/pi-model.test.ts`）**：\n   - 在 `transientTransportError()` 中优先于单位词排除与\
+      \ `host:port` 地址排除识别完整显式 HTTP/status 前缀（含带版本号的 `HTTP/1.1:401`、`HTTP/2 403`、`status:\
+      \ 401`、`error code 403` 等），使 `\"HTTP 403 requests forbidden; Connection error\"\
+      `、`\"HTTP 401 bytes rejected; Connection error\"` 与 `\"HTTP/1.1:401 Connection\
+      \ error\"` 均判定为终态 4xx（仅执行 1 次尝试，绝不因后续 `requests`/`bytes` 词汇或 `1.1:` 误判为可重试 3\
+      \ 次）。\n   - 解析含小数点的完整数值量纲表达式（如 `\"Connection error (400.5 ms)\"`、`\"Connection\
+      \ error (400.0 seconds)\"`），确保小数耗时/字节/令牌数量中的整数部分 `400` 绝不触发括号或状态上下文下的终态 4xx\
+      \ 判定，保持最多 3 次有界重试。\n   - 在 `tests/engine/pi-model.test.ts` 中覆盖返回型（`stopReason:\
+      \ \"error\"`）与抛出型（`throw new Error(...)`）失败及正负向对照。\n\n2. **Finding #4（`#10 [REPAIR_REGRESSION]`）输出上限钳制与\
+      \ `toJSON()` 编解码器序列化一致性闭环（`src/pi/admission.ts:155–172, 807–815; tests/pi/admission.test.ts;\
+      \ tests/pi/admission-hardening.test.ts`）**：\n   - 在 `cloneWithOutputCap()` /\
+      \ `onPayload` 中，对钳制后的候选 payload 重新校验其 JSON 可见视图（`outputCapState(jsonView(sent))`）的序列化上限：若根对象或嵌套容器（如\
+      \ `config.toJSON()`）定义了自定义 `toJSON()` 导致克隆后的对象在 `JSON.stringify` 时仍输出未钳制的旧上限（如\
+      \ `90000`），则在克隆时剥离受影响容器上的 `toJSON`（以 `jsonView` 结构化克隆或移除覆盖编解码器，同时保留 `payload.config.abortSignal`\
+      \ 等非 JSON SDK 属性），或在编解码器阻止钳制时如实保留并报告实际原生序列化上限（`budgetObservation.outputCapTokens`\
+      \ 与线协议发出值严格一致，绝不伪报已钳制的 `79837`）。\n   - 在 `tests/pi/admission.test.ts` / `tests/pi/admission-hardening.test.ts`\
+      \ 中同时测试根级与嵌套 `config.toJSON()` 编解码器、`AbortSignal` 保留以及未触碰分支引用恒等。\n\n3. **Finding\
+      \ #5（`#12 [UNCLOSED_ORIGINAL]`）无 payload 钩子完成分支的终态结算与取消诚实性闭环（`src/pi/admission.ts:831–836;\
+      \ tests/pi/admission.test.ts; tests/pi/admission-ownership.test.ts`）**：\n  \
+      \ - 修复 `stream.result().then(...)` 无 `onPayload` 回退分支：检查解析出的 `AssistantMessage`\
+      \ 终态（`stopReason === \"error\" || stopReason === \"aborted\"`）、`options?.signal?.aborted`\
+      \ 以及被拒绝的 `stream.result()` Promise，严格按真实终态与取消状态结算观测（失败或中止时绝不伪造 `outcome: \"\
+      delegate\"` 或触发 `ui.recover()`，并在 Promise 拒绝时记录对应拒绝/失败观测而非静默丢弃）。\n   - 在测试中覆盖无\
+      \ payload 钩子 provider 的预发送失败、`stopReason: \"error\" | \"aborted\"`、信号中止与 Promise\
+      \ 拒绝。\n\n4. **Finding #6（`#18 [UNCLOSED_ORIGINAL]`）活跃压缩告警状态与通知去重解耦闭环（`src/index.ts:383,\
+      \ 493, 549–554, 607; tests/pi/lifecycle.test.ts; tests/pi/lifecycle-closure.test.ts`）**：\n\
+      \   - 将当前压缩是否存在活跃 headroom/runway 告警条件（`activeWarning` / `pending.warned`）与通知去重标志（`headroomWarned`\
+      \ / `runwayWarned`）解耦：即使重复通知被抑制，只要当次压缩仍处于 headroom 不足、runway 过窄或 `mechanicalFallback`\
+      \ 状态，`pendingCompaction.warned` 必须保持 `true`，使 `session_compact` 在告警条件持续存在时绝不调用\
+      \ `ui.recover()` 擦除活跃 UI 告警；仅当后续压缩真实恢复正常（既无 headroom/runway 告警也无 `mechanicalFallback`）时才恢复告警状态（并重置去重标志以允许未来再次退化时重新告警）。\n\
+      \   - 在 `tests/pi/lifecycle.test.ts` / `tests/pi/lifecycle-closure.test.ts`\
+      \ 中覆盖连续两次告警压缩保持告警、以及第三次真实恢复后清除告警的完整序列。\n\n5. **Finding #7（`#1 [REPAIR_REGRESSION]`）原生编辑投影测试预言机对齐（`tests/pi/context-view.test.ts:640–658`）**：\n\
+      \   - 保持 `src/pi/projection.ts` 中已修复的 `effectiveEntryMessages()` 生产行为不变；更新 `tests/pi/context-view.test.ts:653`\
+      \ 处的纯文本 `context_edit` 替换断言，验证编辑后消息体已替换为纯文本、签名 thinking 块已移除、`outputUsageUnavailable\
+      \ === true`、`fallback.additionalTokens === 0` 且 `fallback.basis === \"visible-heuristic\"\
+      `（无虚假 `replay-mapping-unknown`），并新增/保留一个编辑后仍携带签名 thinking 块的独立用例以验证 `replay-mapping-unknown`\
+      \ 不确定性标记。\n\nBoundary: owner 为 `node-typescript-engineer`；严格限制在本步骤 10 个 `allowed_paths`\
+      \ 文件内，严禁触碰 `package.json`、`package-lock.json`、`.node-version` 或其余并行步骤文件。\n\n\
+      Admit: 基于 `5e12c5e3f40e01571623b4dd2d4e0d04a0049642`；与其余 3 个并行 Delta 修复步骤并发执行，汇入\
+      \ `nunc-third-audit-closure.gate`。\n\nRecovery: 在本步骤隔离工作树内定位并修复构建或定向测试失败；不跨界修改其他并行步骤文件。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-delta-engine-admission-ui\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, node, --test, dist/tests/engine/pi-model.test.js, dist/tests/pi/admission.test.js,\
+      \ dist/tests/pi/admission-hardening.test.js, dist/tests/pi/admission-ownership.test.js,\
+      \ dist/tests/pi/lifecycle.test.js, dist/tests/pi/lifecycle-closure.test.js,\
+      \ dist/tests/pi/context-view.test.js]\n    exit_code: 0\n```\n验证 Findings #1–#7\
+      \ 全部单元测试与类型编译通过，且仅修改本步骤 `allowed_paths` 内的文件。"
+    refs:
+    - src/engine/pi-model.ts
+    - src/pi/admission.ts
+    - src/index.ts
+    - tests/engine/pi-model.test.ts
+    - tests/pi/admission.test.ts
+    - tests/pi/admission-hardening.test.ts
+    - tests/pi/admission-ownership.test.ts
+    - tests/pi/lifecycle.test.ts
+    - tests/pi/lifecycle-closure.test.ts
+    - tests/pi/context-view.test.ts
+    agent: node-typescript-engineer
+  - id: delta-live-calibration-and-observers-repair
+    name: 'Live 校准有效清理历史对齐、容量目标绑定、Responses 助手序列核验与空记忆计量修复（Findings #9, #10, #11,
+      #13）'
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/calibration.ts\", \"src/live/preparation.ts\"\
+      , \"src/live/capacity-observation.ts\", \"src/live/stable-memory-observation.ts\"\
+      , \"src/live/comparison-observation.ts\", \"tests/live/calibration.test.ts\"\
+      , \"tests/live/preparation-readiness.test.ts\", \"tests/live/capacity-observation.test.ts\"\
+      , \"tests/live/stable-memory-observation.test.ts\", \"tests/live/stable-memory-payload.test.ts\"\
+      , \"tests/live/task-retention-observation.test.ts\"]\n  blocked_paths: [\"plan.yaml\"\
+      , \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\"\
+      , \".env\", \".env.*\", \"**/auth.json\", \"package.json\", \"package-lock.json\"\
+      , \".node-version\", \"src/engine/**\", \"src/pi/**\", \"src/index.ts\", \"\
+      src/ui/**\", \"src/live/runner.ts\", \"src/live/host.ts\", \"src/live/comparison.ts\"\
+      , \"scripts/**\", \"docs/**\", \"README.md\", \"examples/**\"]\n\n[REQUIRES_SKILL:\
+      \ contract-and-simplicity]\n\nDeliver: 在严格与其余 3 个并行 Delta 修复步骤完全不相交的 `src/live/{calibration,preparation,capacity-observation,stable-memory-observation,comparison-observation}.ts`\
+      \ 及对应单元测试可写边界内（5 个可写生产文件、4 个内聚机制族），基于 `main`（`5e12c5e3f40e01571623b4dd2d4e0d04a0049642`）完成编译（`npm\
+      \ run build`）与定向测试闭环，保持既有跨模块导出签名兼容（$\\delta s|_{\\partial} = 0$），100% 闭环 Slice\
+      \ 3 增量审查发现的第 9、10、11、13 项：\n\n1. **Finding #9（`#30 [UNCLOSED_ORIGINAL]`）Live\
+      \ 保留校准与边界准备的有效清理历史及提取源同构闭环（`src/live/calibration.ts:56–148; src/live/preparation.ts:145–160;\
+      \ tests/live/calibration.test.ts; tests/live/preparation-readiness.test.ts`）**：\n\
+      \   - 在 `calibrateRetention()`（`src/live/calibration.ts`）中构造与 `maintain()`（`src/engine/engine.ts:63–72,\
+      \ 124–168`）完全同构的有效历史视图与提取源视图：尊重 `config.toolResultCleanup === false` 开关（`const\
+      \ priorCleanup = config.toolResultCleanup === false ? [] : source.priorCleanup\
+      \ ?? []`），按每个切点 `c` 计算经 `retainedToolResultCleanup(active.slice(c), priorCleanup)`\
+      \ 源依赖过期过滤后的 `effectiveSuffix(c) = applyToolResultCleanup(kept, retainedToolResultCleanup(kept,\
+      \ priorCleanup))` token 数（用于 `suffix[c]`、`memoryPlan(..., suffix[0])` 的 `historyBase`/`keepTarget`\
+      \ 以及 `mainBefore`/`mainBeforeVisible`），并将初始提取源 `baseSource` 设为 `priorCleanup.length\
+      \ ? applyToolResultCleanup(active, priorCleanup) : active`（供 `extractionContext`、`maintenanceFeedback`\
+      \ 与 `reduceToolBodies(baseSource, ...)` 消费）。\n   - 在 `prepareBoundary()`（`src/live/preparation.ts:145–160`）中同步绑定\
+      \ `toolResultCleanup` 开关与 `eligibleUsageEntryIds`（当目标导出 `eligibleUsageEntryIds`\
+      \ 时传入），并在 `tests/live/calibration.test.ts` / `tests/live/preparation-readiness.test.ts`\
+      \ 中通过含已保存 `priorCleanup`（含跨切点 `sourceRefs` 过期）的真实 `maintain()` 对照测试验证预测切点 `firstKeptEntryId`\
+      \ 与实际 `maintain()` 选择完全一致。\n\n2. **Finding #10（`#31 [REPAIR_REGRESSION]`）容量资格判定提示词目标严格绑定闭环（`src/live/capacity-observation.ts:24–38;\
+      \ tests/live/capacity-observation.test.ts`）**：\n   - 在 `qualifyCapacity()` 中将每种提示词格式严格绑定至其权威预算：当\
+      \ `declared[1] === \"organizing\"` 时仅匹配实际 `organizingTarget`（绝不接受 `accounting.memoryReserveTokens`\
+      \ 或 `advisory` 冒充 `organizingTarget`）；当 `declared[1] === \"advisory\"` 时仅匹配历史/咨询目标\
+      \ `Math.min(advisory, hardLimit)`。\n   - 在 `tests/live/capacity-observation.test.ts`\
+      \ 中验证当提示词声明 `186`（`memoryReserveTokens`）而非配置的 `50`（`organizingTarget`）时，`qualifyCapacity`\
+      \ 严格返回 `UNPROVEN`。\n\n3. **Finding #11（`#32 [UNCLOSED_ORIGINAL]`）Responses 序列化证据完整消息序列与助手历史保留核验闭环（`src/live/stable-memory-observation.ts:74–110;\
+      \ tests/live/stable-memory-observation.test.ts; tests/live/stable-memory-payload.test.ts`）**：\n\
+      \   - 在 `serializedResponsesEvidence()` 中，除核对 `function_call`/`function_call_output`\
+      \ 与 `user` 消息外，完整比对受支持 Responses 输入序列与 `request.context.messages` 的消息顺序、角色映射（含\
+      \ `system`/`developer`/`instructions`、普通 `user` 与 `assistant` 消息文本块及顺序）和助手历史保留；若任何普通\
+      \ `assistant` 消息被替换、删除、重排或出现无法识别的非标准消息项，严格返回 `memory: false` 或未知（`{}`）使检查判定为\
+      \ `UNPROVEN`，绝不放行被篡改的助手历史为 `PROVEN`。\n   - 在 `tests/live/stable-memory-observation.test.ts`\
+      \ / `tests/live/stable-memory-payload.test.ts` 中覆盖 Responses 载荷中普通 assistant\
+      \ 消息被删除、替换、重排及完整保留的正负向用例。\n\n4. **Finding #13（`#32/#33 [UNCLOSED_ORIGINAL]`）对照观测空记忆\
+      \ token 计量一致性闭环（`src/live/comparison-observation.ts:38, 68; tests/live/task-retention-observation.test.ts`）**：\n\
+      \   - 在 `rolloverFacts()`（`src/live/comparison-observation.ts:38`）中将非 native\
+      \ 分支的 `mTokens` 计算从 `messageTokens(memoryMessage(slots, details.mechanicalFallback))`\
+      \ 统一改为 `memoryTokens(slots, undefined, details.mechanicalFallback)`，使无 `mechanicalFallback`\
+      \ 的空 `slots: []` 精确计为 `0` token（与实际不发送空记忆载体的投影行为及第 68 行 `wrapperOverheadTokens`\
+      \ 完全一致）。\n   - 在 `tests/live/task-retention-observation.test.ts` 中验证空 `slots:\
+      \ []`（无回退）时 `mTokens === 0` 且 `wrapperOverheadTokens === 0`，有回退或非空槽位时保持精确载体\
+      \ token 计数。\n\nBoundary: owner 为 `node-typescript-engineer`；严格限制在本步骤 11 个 `allowed_paths`\
+      \ 文件内，严禁触碰 `package.json`、`package-lock.json`、`.node-version` 或其余并行步骤文件。\n\n\
+      Admit: 基于 `5e12c5e3f40e01571623b4dd2d4e0d04a0049642`；与其余 3 个并行 Delta 修复步骤并发执行，汇入\
+      \ `nunc-third-audit-closure.gate`。\n\nRecovery: 在本步骤隔离工作树内定位并修复构建或定向测试失败；不跨界修改其他并行步骤文件。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-delta-live-calibration-observers\n    argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1,\
+      \ PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, --test, dist/tests/live/calibration.test.js,\
+      \ dist/tests/live/preparation-readiness.test.js, dist/tests/live/capacity-observation.test.js,\
+      \ dist/tests/live/stable-memory-observation.test.js, dist/tests/live/stable-memory-payload.test.js,\
+      \ dist/tests/live/task-retention-observation.test.js]\n    exit_code: 0\n```\n\
+      验证 Findings #9, #10, #11, #13 全部单元测试与类型编译通过，且仅修改本步骤 `allowed_paths` 内的文件。"
+    refs:
+    - src/live/calibration.ts
+    - src/live/preparation.ts
+    - src/live/capacity-observation.ts
+    - src/live/stable-memory-observation.ts
+    - src/live/comparison-observation.ts
+    - tests/live/calibration.test.ts
+    - tests/live/preparation-readiness.test.ts
+    - tests/live/capacity-observation.test.ts
+    - tests/live/stable-memory-observation.test.ts
+    - tests/live/stable-memory-payload.test.ts
+    - tests/live/task-retention-observation.test.ts
+    agent: node-typescript-engineer
+  - id: delta-live-runner-comparison-and-docs-repair
+    name: 'Live 进程组正常退出后代清理、对照运行器前置账本校验与文档/报告一致性修复（Findings #8, #12, #15）'
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/runner.ts\", \"src/live/host.ts\", \"src/live/comparison.ts\"\
+      , \"scripts/pty-driver.py\", \"docs/LIVE.md\", \"docs/DEVELOPMENT.md\", \"tests/live/host-child.mjs\"\
+      , \"tests/live/defensive-controls.test.ts\", \"tests/live/closure-regressions.test.ts\"\
+      , \"tests/live/comparison.test.ts\", \"tests/live/budget.test.ts\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"package.json\",\
+      \ \"package-lock.json\", \".node-version\", \"src/engine/**\", \"src/pi/**\"\
+      , \"src/index.ts\", \"src/ui/**\", \"src/live/calibration.ts\", \"src/live/preparation.ts\"\
+      , \"src/live/capacity-observation.ts\", \"src/live/stable-memory-observation.ts\"\
+      , \"src/live/comparison-observation.ts\", \"scripts/stock-driver.mjs\", \"scripts/observe-*.mjs\"\
+      , \"README.md\", \"examples/**\"]\n\n[REQUIRES_SKILL: contract-and-simplicity]\n\
+      \nDeliver: 在严格与其余 3 个并行 Delta 修复步骤完全不相交的 `src/live/{runner,host,comparison}.ts`、`scripts/pty-driver.py`、`docs/{LIVE,DEVELOPMENT}.md`\
+      \ 及对应测试可写边界内（4 个可写生产代码/脚本文件 + 2 个文档文件、3 个内聚机制族），基于 `main`（`5e12c5e3f40e01571623b4dd2d4e0d04a0049642`）完成编译（`npm\
+      \ run build`）与定向测试闭环，保持既有跨模块导出签名兼容（$\\delta s|_{\\partial} = 0$），100% 闭环 Slice\
+      \ 3 增量审查发现的第 8、12、15 项：\n\n1. **Finding #8（`#28 [UNCLOSED_ORIGINAL]`）进程组长正常退出时的后代进程组完整清理闭环（`src/live/runner.ts:27–33,\
+      \ 144–152; src/live/host.ts:323–331; scripts/pty-driver.py:81–90; tests/live/host-child.mjs;\
+      \ tests/live/defensive-controls.test.ts`）**：\n   - 在 `NativeHost.close()`（`src/live/host.ts:323–331`）中，无论\
+      \ `this.child` 是通过 `/nunc-observer-quit` 正常退出还是经 `grace` 超时中止，在 `await this.closed`\
+      \ 之后始终对所属进程组 `-this.pid` 执行有界信号清理（先发 `SIGTERM`，若进程组内仍有存活后代则升级至 `SIGKILL`），确保关闭/重定向了继承\
+      \ stdio 的后代进程（如 `stdio: \"ignore\"`）在组长正常退出后绝不残留。\n   - 在 `launchWorker()`（`src/live/runner.ts:27–33`）与\
+      \ `runStock()`（`src/live/runner.ts:144–152`）的 `close`/`error` 结算路径中，即使未触发 `stop()`\
+      \ 超时定时器，也在子进程退出时对 `-child.pid` 清理残留同组进程。\n   - 在 `scripts/pty-driver.py:81–90`\
+      \ 的 `finally:` 块中，无论 `kill_at` 是否已设置（包括 PTY 组长正常退出导致 `fd` EOF/EIO 的路径），均向进程组\
+      \ `pid` 发送终止/清理信号以回收未退出的同组后代进程。\n   - 在 `tests/live/host-child.mjs` 与 `tests/live/defensive-controls.test.ts`\
+      \ 中同时测试继承管道（`stdio: [\"ignore\", \"inherit\", \"inherit\"]`）与关闭管道（`stdio: \"\
+      ignore\"`，组长立即正常退出且忽略 `SIGTERM`）的后代进程清理。\n\n2. **Finding #12（`#26/#27 [UNCLOSED_ORIGINAL]`）`executeComparison()`\
+      \ 在创建目标目录前预校验批次账本与截止时间闭环（`src/live/comparison.ts:53–62; tests/live/comparison.test.ts;\
+      \ tests/live/budget.test.ts`）**：\n   - 在 `executeComparison()` 中调整初始化顺序以严格对齐\
+      \ `execute()`（`src/live/runner.ts:72–76`）：在调用 `await mkdir(root, ...)` 与 `await\
+      \ mkdir(join(root, \"tmp\"), ...)` 之前，先执行 `const { priorLedgerPaths, firstDispatchAt,\
+      \ deadline } = resolveBatchContext(input);` 与 `requireValue(Date.now() < deadline,\
+      \ \"TIME_LIMIT\", \"Run deadline reached\");`，确保当声明的 `priorLedgers` 缺失或损坏抛出\
+      \ `LEDGER_RECONCILIATION`（或截止时间已过）时，绝不在磁盘上留下无 `owner.json`/`report.json` 的孤儿目标目录。\n\
+      \   - 在 `tests/live/comparison.test.ts` / `tests/live/budget.test.ts` 中断言当 `priorLedgers`\
+      \ 缺失导致 `executeComparison()` 拒绝时，`input.target.stateRoot` 未被创建（`ENOENT`）。\n\n\
+      3. **Finding #15（`[UNCLOSED_ORIGINAL]`）文档与对照报告限制说明一致性闭环（`src/live/comparison.ts:65;\
+      \ docs/LIVE.md:210–217; docs/DEVELOPMENT.md:81–102`）**：\n   - 将 `src/live/comparison.ts:65`\
+      \ 中的限制说明更新为与 `src/live/runner.ts:84` 及终端账本结算契约一致的表述：明确区分“可信终端实际 token 用量会结算并释放未使用的\
+      \ token 预留（未知或不可信 token 用量保留全额预留），而未知成本保持为 `null` 且成本预留绝不退还为 0”，消除 `\"reservations\
+      \ are never refunded\"` 的笼统误导。\n   - 在 `docs/LIVE.md:210–217` 与 `docs/DEVELOPMENT.md`\
+      \ 中明确区分当前开发/候选及 `native` 对照目标（使用当前锁定的稳定版 Pi `1.4.0` / 兼容稳定版 `^1.0.3`）与历史固定基线（`70dacad`\
+      \ 使用锁定 Pi `0.85.1`、`1d4fc4a210b64f71871ab3f5c10093215a25990c` 使用锁定 Pi `0.86.1`），确保面向当前行为的章节不再将\
+      \ `native` 对照目标描述为固定 `0.85.1`。\n\nBoundary: owner 为 `node-typescript-engineer`；严格限制在本步骤\
+      \ 11 个 `allowed_paths` 文件内，严禁触碰 `package.json`、`package-lock.json`、`.node-version`\
+      \ 或其余并行步骤文件。\n\nAdmit: 基于 `5e12c5e3f40e01571623b4dd2d4e0d04a0049642`；与其余 3 个并行\
+      \ Delta 修复步骤并发执行，汇入 `nunc-third-audit-closure.gate`。\n\nRecovery: 在本步骤隔离工作树内定位并修复构建或定向测试失败；不跨界修改其他并行步骤文件。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-delta-live-runner-comparison\n    argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1,\
+      \ PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, --test, --test-concurrency=2,\
+      \ dist/tests/live/defensive-controls.test.js, dist/tests/live/closure-regressions.test.js,\
+      \ dist/tests/live/budget.test.js, dist/tests/live/comparison.test.js]\n    exit_code:\
+      \ 0\n```\n验证 Findings #8, #12, #15 全部定向测试与类型编译通过，且仅修改本步骤 `allowed_paths` 内的文件。"
+    refs:
+    - src/live/runner.ts
+    - src/live/host.ts
+    - src/live/comparison.ts
+    - scripts/pty-driver.py
+    - docs/LIVE.md
+    - docs/DEVELOPMENT.md
+    - tests/live/host-child.mjs
+    - tests/live/defensive-controls.test.ts
+    - tests/live/closure-regressions.test.ts
+    - tests/live/comparison.test.ts
+    - tests/live/budget.test.ts
+    agent: node-typescript-engineer
+  - id: delta-stock-observation-receipts-repair
+    name: 'Stock 观测驱动与脚本收据清理状态诚实性闭环（Finding #14）'
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"scripts/stock-driver.mjs\", \"scripts/observe-apis.mjs\"\
+      , \"scripts/observe-capacity-defaults.mjs\", \"scripts/observe-capacity-recurrence.mjs\"\
+      , \"scripts/observe-grok-budget.mjs\", \"scripts/observe-independent-cases.mjs\"\
+      , \"scripts/observe-lifecycle.mjs\", \"scripts/observe-payload.mjs\", \"scripts/observe-runner.mjs\"\
+      , \"scripts/observe-stock.mjs\", \"scripts/observe-ui.mjs\", \"tests/pi/native-lifecycle.test.ts\"\
+      , \"tests/pi/ui-panel.test.ts\", \"tests/live/host.test.ts\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"package.json\",\
+      \ \"package-lock.json\", \".node-version\", \"src/**\", \"docs/**\", \"README.md\"\
+      , \"examples/**\"]\n\n[REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver:\
+      \ 在严格与其余 3 个并行 Delta 修复步骤完全不相交的 `scripts/stock-driver.mjs`、`scripts/observe-*.mjs`\
+      \ 及对应测试运行器（`tests/pi/native-lifecycle.test.ts`、`tests/pi/ui-panel.test.ts`、`tests/live/host.test.ts`）可写边界内（1\
+      \ 个内聚机制族），基于 `main`（`5e12c5e3f40e01571623b4dd2d4e0d04a0049642`）完成编译（`npm run\
+      \ build`）与定向测试闭环，100% 闭环 Slice 3 增量审查发现的第 14 项：\n\n1. **Finding #14（`#49–#52\
+      \ [REPAIR_REGRESSION]`）观测脚本收据与已删除临时证据目录诚实性闭环（`scripts/stock-driver.mjs:26, 210;\
+      \ scripts/observe-{apis,capacity-defaults,capacity-recurrence,grok-budget,independent-cases,lifecycle,payload,runner,stock,ui}.mjs;\
+      \ tests/pi/native-lifecycle.test.ts; tests/pi/ui-panel.test.ts; tests/live/host.test.ts`）**：\n\
+      \   - 修复 `StockFixture` 与全部 `scripts/observe-*.mjs` 的终态收据输出契约，使其与 `scripts/observe-segment.mjs:174`\
+      \ 及 `src/live/runner.ts:154–163`（`runStock` 传入显式 `artifactParent = parent` 并读取\
+      \ `row.evidence`）严格一致：\n     - 当显式传入了保留目录（`artifactParent !== undefined`，例如\
+      \ `runStock` 调用 `observe-stock.mjs <mode> <parent>` 或调用方在 `setup({ artifactParent\
+      \ })` / CLI 参数中显式请求保留产物）时，`f.removeArtifacts === false`，`f.close()` 保留 `f.dir`，且输出\
+      \ JSON 包含可实际读取的 `evidence: f.dir`（确保 `src/live/runner.ts:156` 的 `within(row.evidence,\
+      \ parent)` 与 `readdir(row.evidence)` 完全兼容）。\n     - 当使用默认临时目录（`artifactParent\
+      \ === undefined`，即 `f.removeArtifacts === true`）且 `f.close()` 已删除 `f.dir` 时，所有\
+      \ `scripts/observe-{apis,capacity-defaults,capacity-recurrence,grok-budget,independent-cases,lifecycle,payload,runner,stock,ui}.mjs`\
+      \ 输出的 JSON 收据必须报告 `cleanup: \"removed\"`，且**严禁**输出指向已删除目录的 `evidence: f.dir`\
+      \ 或 `dir: f.dir` 字段。\n   - 在 `tests/pi/native-lifecycle.test.ts`、`tests/pi/ui-panel.test.ts`\
+      \ 与 `tests/live/host.test.ts` 中对子进程 stdout JSON 收据增加断言：验证默认运行下 `cleanup ===\
+      \ \"removed\"` 且不含悬空的 `evidence`/`dir` 路径（或若任何收据声明了 `evidence` 路径，该路径在磁盘上必须真实存在）。\n\
+      \nBoundary: owner 为 `node-typescript-engineer`；严格限制在本步骤 14 个 `allowed_paths`\
+      \ 文件内，严禁触碰 `src/**`、`docs/**`、`package.json`、`package-lock.json`、`.node-version`\
+      \ 或其余并行步骤文件。\n\nAdmit: 基于 `5e12c5e3f40e01571623b4dd2d4e0d04a0049642`；与其余 3 个并行\
+      \ Delta 修复步骤并发执行，汇入 `nunc-third-audit-closure.gate`。\n\nRecovery: 在本步骤隔离工作树内定位并修复构建或定向测试失败；不跨界修改其他并行步骤文件。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-delta-stock-observation-receipts\n    argv:\
+      \ [/usr/bin/env, -u, NODE_OPTIONS, NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1,\
+      \ PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, --test, --test-concurrency=2,\
+      \ dist/tests/pi/native-lifecycle.test.js, dist/tests/pi/ui-panel.test.js, dist/tests/live/host.test.js]\n\
+      \    exit_code: 0\n```\n验证 Finding #14 全部观测脚本收据断言与定向测试通过，且仅修改本步骤 `allowed_paths`\
+      \ 内的文件。"
+    refs:
+    - scripts/stock-driver.mjs
+    - scripts/observe-apis.mjs
+    - scripts/observe-capacity-defaults.mjs
+    - scripts/observe-capacity-recurrence.mjs
+    - scripts/observe-grok-budget.mjs
+    - scripts/observe-independent-cases.mjs
+    - scripts/observe-lifecycle.mjs
+    - scripts/observe-payload.mjs
+    - scripts/observe-runner.mjs
+    - scripts/observe-stock.mjs
+    - scripts/observe-ui.mjs
+    - tests/pi/native-lifecycle.test.ts
+    - tests/pi/ui-panel.test.ts
+    - tests/live/host.test.ts
+    agent: node-typescript-engineer
