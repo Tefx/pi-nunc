@@ -355,8 +355,8 @@ test("metricsCommand recognizes minimal necessary invocation forms and rejects u
   assert.equal(metricsCommand("python3 solution.py"), "solution");
   assert.equal(metricsCommand("python3 ./solution.py"), "solution");
   assert.equal(metricsCommand("python3 solution.py <<'JSON'\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), "solution");
-  assert.equal(metricsCommand("python3 solution.py <<\"JSON\"\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), "solution");
-  assert.equal(metricsCommand("python3 solution.py <<JSON\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), "solution");
+  assert.equal(metricsCommand("python3 solution.py <<\"JSON\"\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), undefined);
+  assert.equal(metricsCommand("python3 solution.py <<JSON\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), undefined);
 
   // 4. Unauthorized commands are rejected (no arbitrary shell expansion, no unauthorized tools)
   assert.equal(metricsCommand("find . -maxdepth 2 -type f -print"), undefined);

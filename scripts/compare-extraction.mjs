@@ -8,7 +8,7 @@ const flags = process.argv.slice(2);
 try {
   if (flags.length > 1 || (flags.length === 1 && !["--preflight", "--worker"].includes(flags[0]))) throw new Error("ARGUMENTS");
   const { parseInput, preflight } = await import("../dist/src/live/contract.js");
-  let value = await readInput();
+  let value = await readInput(flags[0] === "--worker");
   if (flags[0] !== "--worker") {
     if (!value || typeof value !== "object" || !("comparison" in value)) {
       const { RunnerError } = await import("../dist/src/live/contract.js");

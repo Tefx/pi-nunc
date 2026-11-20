@@ -58,7 +58,7 @@ export async function executeComparison(value: unknown, repository: string, scri
   const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
   const started = Date.now();
   requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
-  const readAll = () => readQualifiedLedgers([...priorLedgerPaths, join(root, "calls.jsonl")]);
+  const readAll = () => readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(join(root, "calls.jsonl")) ? [join(root, "calls.jsonl")] : [])]);
   await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600, flag: "wx" });
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
   const report: ComparisonReport = { version: 1, status: "STOPPED", selection: structuredClone(input), comparison: { modes: [] }, matrix: [], rawSegments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
@@ -166,7 +166,7 @@ export async function executeComparison(value: unknown, repository: string, scri
     try {
       report.ledger = existsSync(join(root, "calls.jsonl")) ? readLedger(join(root, "calls.jsonl")) : [];
       report.usage = ledgerSummary(readAll(), input.limits);
-    } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
+    } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; report.status = "UNPROVEN"; }
     report.elapsedMs = Date.now() - (firstDispatchAt ?? started);
     await finalizeRun(input, receipt, report);
   }

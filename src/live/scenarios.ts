@@ -283,14 +283,15 @@ function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: st
 }
 export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean; artifactSnapshots?: Record<string, unknown>; fixtures?: Record<string, string> }) {
   const artifacts: Record<string, unknown> = { ...context?.artifactSnapshots };
+  const unavailable = new Set<string>();
   for (const check of observer.artifactChecks) {
     if (Object.hasOwn(artifacts, check.path)) continue;
     requireValue(within(join(cwd, check.path), cwd), "SCENARIO", "Artifact escapes task directory");
     try { const raw = await readFile(join(cwd, check.path), "utf8"); requireValue(Buffer.byteLength(raw) <= 1_000_000, "ARTIFACT", "Artifact exceeds observer bound"); artifacts[check.path] = JSON.parse(raw); }
-    catch { artifacts[check.path] = null; }
+    catch { unavailable.add(check.path); }
   }
   const eligible = prerequisites.length > 0 && prerequisites.every(p => p.status === "PROVEN");
-  const checks = observer.artifactChecks.map(check => eligible ? checkArtifact(check, artifacts[check.path]) : { check: `${check.path}${check.pointer}`, status: "UNPROVEN" as const, reason: "Required persisted source placement/restart/capacity prerequisites did not pass" });
+  const checks = observer.artifactChecks.map(check => unavailable.has(check.path) ? { check: `${check.path}${check.pointer}`, status: "DISPROVEN" as const, reason: "Artifact is missing, unreadable or invalid JSON" } : eligible ? checkArtifact(check, artifacts[check.path]) : { check: `${check.path}${check.pointer}`, status: "UNPROVEN" as const, reason: "Required persisted source placement/restart/capacity prerequisites did not pass" });
 
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview: CheckResult[] = observer.actionChecks.map(check => {

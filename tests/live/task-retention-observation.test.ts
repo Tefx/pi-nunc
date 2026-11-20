@@ -60,7 +60,7 @@ test("metrics oracle passes on valid solution.py with all operations and held-ou
     assert.equal(report.observed?.candidateTestCoverage, "UNPROVEN");
     assert(report.observed?.buildSuccess === true);
     assert(report.observed?.unittestSuccess === true);
-    assert(report.observed?.singleRecords === HELD_OUT_RECORDS.length);
+    assert.equal(report.observed?.singleRecords, HELD_OUT_RECORDS.length);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -380,7 +380,8 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
         const stream = createAssistantMessageEventStream();
         void (async () => {
           try {
-            await opts?.onPayload?.({ stream: true, model: m.id, max_tokens: 1000, reasoning: { effort: "low" } }, m as any);
+            assert.equal(opts.reasoningEffort, "low", "maintenance override must reach the raw provider option");
+            await opts.onPayload({ stream: true, model: m.id, max_tokens: 1000, reasoning: { effort: opts.reasoningEffort } }, m);
             const message: any = { role: "assistant", api: m.api, provider: m.provider, model: m.id, content: [], usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() };
             stream.push({ type: "done", reason: "stop", message });
             stream.end(message);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -34,8 +34,9 @@ test("payload-append override selects the tracked synthetic append extension", a
   ]);
 });
 
-test("live observer plus append callback injects synthetic last-user text without logging it", async () => {
+test("live observer plus append callback injects synthetic last-user text without logging it", async t => {
   const dir = await mkdtemp(join(tmpdir(), "nunc-append-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   const events = join(dir, "events.jsonl");
   const ledger = join(dir, "calls.jsonl");
   const binding = join(dir, "observer.json");

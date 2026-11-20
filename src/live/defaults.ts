@@ -60,7 +60,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   const resolvedModels = [{ provider, id }, ...(second ? [second] : [])].map(target => {
     const model = runtime.getModel(target.provider, target.id);
     requireValue(model, "MODEL", "Effective model is absent from native metadata; no fallback account is selected");
-    requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
+    requireValue(!model.headers && !model.samplingParams && !model.samplingParamsByThinkingLevel, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "MODEL", "Model endpoint is missing from native metadata");
     let url: URL | undefined;
     try { url = new URL(model.baseUrl); } catch { /* requireValue below names the missing field. */ }

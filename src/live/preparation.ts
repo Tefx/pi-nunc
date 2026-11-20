@@ -152,7 +152,7 @@ export async function prepareBoundary(input: {
     const calibrationConfig = pi.engineConfig({ ...config.nunc,
       rolling: { ...config.nunc.rolling, keepRecentFraction: initial.keepRecentFraction } }, model, config.compaction);
     const source = { binding: { sessionId: "observer-arithmetic", leafId: branch.at(-1)!.id, generation: "prepared" }, model,
-      fixed: input.fixed, memory: projected.memory, active: projected.active,
+      fixed: input.fixed, memory: projected.memory, active: projected.active, priorCleanup: projected.cleanup,
       eligibleKeptEntryIds: pi.eligibleStarts(branch, projected.active, projected.latestId),
       config: calibrationConfig, policy: await engine.loadPolicy({ ...config.nunc, configFile: join(input.repository, "nunc-config.json") }), signal: input.signal };
     try {

@@ -1,7 +1,23 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import ts from "typescript";
 import { requireValue } from "./contract.js";
+
+/** Freeze both build inputs and emitted runtime bytes; consumers recheck before loading. */
+export function buildReceipt(compiledSource: string): { compiledSource: string; digest: string } {
+  const entry = realpathSync(compiledSource);
+  const repository = resolve(dirname(entry), "../..");
+  requireValue(entry === join(repository, "dist/src/index.js"), "BUILD", "Compiled source must be the product dist/src/index.js entrypoint");
+  const hash = createHash("sha256");
+  const bind = (path: string): void => {
+    if (statSync(path).isDirectory()) for (const name of readdirSync(path).sort()) bind(join(path, name));
+    else { hash.update(relative(repository, path)); hash.update(readFileSync(path)); }
+  };
+  for (const name of ["src", "dist/src", "policies", "package.json", "package-lock.json", "tsconfig.json"]) bind(join(repository, name));
+  return { compiledSource: entry, digest: hash.digest("hex") };
+}
 
 /** Execution consumes dist. Compare the actual locked compiler emission, held in memory; never write build files in preflight. */
 export async function assertBuildParity(repository: string): Promise<void> {

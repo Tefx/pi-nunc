@@ -8,7 +8,7 @@ import type { ComparisonGroup, RunInput, Selection } from "../../src/live/contra
 import { runSegment } from "../../src/live/worker.js";
 import { readLedger, ledgerSummary } from "../../src/live/budget.js";
 import { repository } from "./fixtures.js";
-import { comparisonStock, compareCli } from "./comparison-native-fixture.js";
+import { comparisonStock, compareCli, comparisonBaseline } from "./comparison-native-fixture.js";
 import { matchedParity } from "../../src/live/comparison-observation.js";
 
 async function actualWorker(f: any, selection: Pick<Selection, "id" | "variant">, group: ComparisonGroup = "candidate", automatic = false, config?: Selection["config"]) {
@@ -17,7 +17,7 @@ async function actualWorker(f: any, selection: Pick<Selection, "id" | "variant">
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     limits: { maxCalls: 24, maxTotalTokens: 1920000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 60000 },
     scenarios: [{ ...selection, config: config ?? { compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 1024 } }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
-    comparison: { modes: ["defaults"], targets: { native: { repository }, current: { repository: join(repository, ".scratch/baseline-70dacad") }, candidate: { repository } } } };
+    comparison: { modes: ["defaults"], targets: { native: { repository }, current: { repository: await comparisonBaseline() }, candidate: { repository } } } };
   const overrides = { models: [model], controlledModels: { providers: { groq: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ ...model, provider: undefined, cost: undefined }] } } } };
   const job = { input, scenarioIndex: 0, deadline: Date.now() + 60000, resume: false, group };
   const first = await runSegment(job, overrides);

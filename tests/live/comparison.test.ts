@@ -9,14 +9,15 @@ import { parseInput, preflight, type RunInput } from "../../src/live/contract.js
 import { liveExtensionFlags } from "../../src/live/host.js";
 import { loadScenario, scoreArtifacts } from "../../src/live/scenarios.js";
 import { executeComparison, scopedUsage } from "../../src/live/comparison.js";
-import { fixture, repository } from "./fixtures.js";
+import { fixture, repository, temporaryBaseline, temporaryState } from "./fixtures.js";
 import type { LedgerRecord } from "../../src/live/budget.js";
 
 const compareScript = join(repository, "scripts/compare-extraction.mjs");
 const mockWorker = join(repository, "tests/live/comparison-mock-worker.mjs");
-const baseline = join(repository, ".scratch/baseline-70dacad");
+const baseline = await temporaryBaseline();
+const state = await temporaryState();
 const { NODE_OPTIONS: _node, ...environment } = process.env;
-const env = { ...environment, PATH: "/opt/homebrew/bin:/usr/bin:/bin", HOME: join(repository, ".scratch/offline-home"), PI_CODING_AGENT_DIR: join(repository, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" };
+const env = { ...environment, PATH: process.env.PATH, HOME: join(state, "home"), PI_CODING_AGENT_DIR: join(state, "host"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" };
 async function comparisonFixture(): Promise<RunInput> {
   const input = await fixture();
   input.models[0]!.baseUrl = input.resolvedModels![0]!.baseUrl = "http://127.0.0.1:8080/v1";

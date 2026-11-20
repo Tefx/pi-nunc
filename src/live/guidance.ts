@@ -95,7 +95,7 @@ export function scoreGuidance(
       if (!build || !tests) {
         return result("UNPROVEN", "No completed successful build and unittest pair in the task session", semantic().observed);
       }
-      const lastTest = runs.at(-1)!;
+      const lastTest = runs.filter(e => metricsCommand(e.call.event.input?.command ?? "") === "tests").at(-1)!;
       const laterEdit = successful.find(e => e.resultIndex > lastTest.callIndex && ["write", "edit"].includes(e.call.event.toolName) && ["solution.py", "test_solution.py"].some(path => pathIs(e.call, path)));
       if (laterEdit) {
         return result("DISPROVEN", "Solution or tests were modified after the last successful test run without subsequent reverification");

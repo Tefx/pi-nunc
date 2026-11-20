@@ -15,6 +15,7 @@ export function qualifyCapacity(
   model: string,
   hardLimit: number | null,
   growth?: { growthReserve: number; fixedTokens: number; memoryLimit: number; keptTokens: number; effectiveTrigger: number },
+  organizingTarget = 8192,
 ): CheckResult[] {
   const check = "capacity predicate bound to one frozen request and complete response";
   const advisory = result?.observations.accounting?.memoryLimit;
@@ -29,7 +30,9 @@ export function qualifyCapacity(
     const records = context.messages.flatMap(m => typeof m.content === "string" ? readSourceRecords(m.content) :
       m.content.flatMap(b => b.type === "text" ? readSourceRecords(b.text) : []));
     const fm = records.filter(r => r.source === "F/M");
-    if (!declared || Number(declared[2]) !== (declared[1] === "advisory" ? Math.min(advisory, hardLimit) : advisory) || !declaredHard || Number(declaredHard[1]) !== hardLimit ||
+    const accounting = result?.observations.accounting;
+    const targets = [organizingTarget, advisory, accounting?.memoryReserveTokens].filter((n): n is number => n !== undefined);
+    if (!declared || !targets.some(n => Number(declared[2]) === (declared[1] === "advisory" ? Math.min(n, hardLimit) : n)) || !declaredHard || Number(declaredHard[1]) !== hardLimit ||
         fm.length !== 1 || !isDeepStrictEqual(fm[0]!.M, memory.slots)) throw new Error("Frozen source differs");
     const a = result?.observations.accounting;
     const growthMatches = growth && a && ["fixedTokens", "memoryLimit", "keptTokens", "effectiveTrigger"].every(k => (growth as any)[k] === (a as any)[k]);

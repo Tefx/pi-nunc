@@ -1,6 +1,6 @@
 # Admission, Retention, and Diagnostic Hardening
 
-Status: **Accepted design specification (pre-reviewed; ready for Vectl planning and implementation).**
+Status: **Implemented contract. Current behavior is described in PI.md and ENGINE.md; live acceptance requires its own evidence.**
 
 This specification defines `pi-nunc`-only changes addressing three production telemetry issues observed on `v0.2.3`:
 
@@ -56,7 +56,7 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
 ### 5. Synchronized Documentation and Test Updates (`MUST`)
 
 - Update `docs/PI.md`, `docs/ENGINE.md`, `docs/CAPACITY.md`, `docs/TOOL-RESULT-CLEANUP.md`, and `docs/LARVA-PROMPT.md` to reflect the revised default ceiling, compaction mechanical cleanup under unchanged `M`, post-authorization `main` output-cap clamp, and `resolutionDetail`.
-- Update `tests/pi/config.test.ts` default full-window `keepTarget` expectation (`6000` when `triggerTokens = 24000`), and add behavioral regressions proving all new postconditions without weakening existing assertions.
+- Update `tests/pi/config.test.ts` default full-window `keepTarget` expectation to the effective host recent-token target (or the bounded synthetic fallback), and add behavioral regressions proving all new postconditions without weakening existing assertions.
 
 ## Implementation Notes & Hazard Map (`ADVISORY`)
 
@@ -66,4 +66,4 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
 - **Telemetry expectation on `272K` models**: Host-calibrated `keepRecentTargetTokens` reduces the default retained-history target to the configured host recent tokens (for example 20,000), but does not eliminate compactions driven by large `F + M` or single-turn multi-file reads; keep documentation and diagnostics explicit about this scope.
 
 
-Optional `settings.json: nunc` accepts `rolling`, `memory`, `extraction`, `budget`, and `policyFile` using the same validation as `--nunc-config`, alongside `memoryTools` and `toolResultCleanup`. Trusted project sections override global sections; declined or unknown project trust ignores project values. An explicit `--nunc-config` selects the configuration file instead of settings-based engine options. Relative settings `policyFile` paths resolve from the session cwd; file-config policy paths resolve from that configuration file's directory.
+Settings fields, trust and precedence follow [Pi configuration](PI.md#load-and-configure).

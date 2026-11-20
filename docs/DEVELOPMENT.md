@@ -37,44 +37,23 @@ The runner checks the selected Node/npm versions and installed direct developmen
 
 Real TUI tests require POSIX PTYs and `/usr/bin/python3` with its standard library. `scripts/pty-driver.py` creates an actual terminal for the pinned stock CLI, sends real input bytes, forwards termination and waits for child exit. Missing prerequisites fail explicitly; the runner never installs Python or substitutes an RPC/SDK test for the TUI.
 
-`all` is not complete after only the candidate `npm ci` / `npm run build`. Live comparison tests load `.scratch/baseline-70dacad` as the `current` group. Prepare that tree first.
+`all` prepares its historical comparison fixtures in temporary detached worktrees. The historical Git objects and each lock's dependencies must already be available locally; fixture installation is offline and never downloads packages.
 
 ## Comparison baseline for all
-Tracked comparison tests load `$PWD/.scratch/baseline-70dacad` as the historical `current` group (`tests/live/comparison.test.ts`, `tests/live/comparison-native.test.ts`, `tests/live/optional-quotas.test.ts`). `src/live/contract.ts` preflight requires:
+Tracked comparison tests create a temporary detached checkout as the historical `current` group (`tests/live/comparison.test.ts`, `tests/live/comparison-native.test.ts`, `tests/live/optional-quotas.test.ts`). `src/live/contract.ts` preflight requires:
 
 - `git rev-parse HEAD` starts with `70dacad` (product baseline `70dacad1f065a70b29f565b5bfcf02d31cec2bdc`)
 - `git status --porcelain` clean for `src`, `policies`, `package.json`, `package-lock.json`, and `tsconfig.json`
 - compiled `dist/src/index.js` built against the baseline's tracked source
 - that tree’s lock pins `@earendil-works/pi-coding-agent` **0.85.1**, with matching isolated `node_modules`
 
-The candidate checkout is the isolated native-compatibility worktree and has its own locked development Pi dependencies (currently **1.4.0**). Never copy those dependencies or candidate source into the baseline. Prepare a detached baseline with scripts disabled, under the candidate’s ignored `.scratch/` directory:
-
-```sh
-git rev-parse --verify 70dacad1f065a70b29f565b5bfcf02d31cec2bdc
-git worktree add --detach .scratch/baseline-70dacad 70dacad1f065a70b29f565b5bfcf02d31cec2bdc
-(
-  cd .scratch/baseline-70dacad
-  npm ci --ignore-scripts --no-audit --no-fund
-  npm run build
-  git rev-parse HEAD   # must start with 70dacad
-  test -f dist/src/index.js
-)
-```
-
-Reuse an existing baseline if its HEAD, clean tracked source, version and build still satisfy preflight. Do not point `current` at the candidate: preflight rejects another HEAD. `engine` checks do not load the baseline; `all` does. Missing baseline fails comparison preflight with `TARGET` / `BUILD` instead of skipping tests. The earlier baseline's maintenance response has three required fields; the candidate's required-item response adds `required`. The controlled comparison fixture follows each target's actual response contract.
+The candidate has its own locked development Pi dependencies (currently **1.4.0**). The fixture checks out the historical commit under the canonical system temporary directory, runs `npm ci --offline --ignore-scripts --no-audit --no-fund`, and builds using the installed TypeScript compiler. Teardown removes the detached worktree and its dependencies, including partial setup failures. Never copy candidate dependencies or source into the baseline. Missing Git objects or cached dependencies fail setup explicitly; tests do not skip or substitute the candidate. `engine` checks do not load historical fixtures; `all` does. The earlier baseline's maintenance response has three required fields; the candidate's required-item response adds `required`. The controlled comparison fixture follows each target's actual response contract.
 
 The portable `tests/live/fixtures/behavior-batch-01-calls.jsonl` retains the two original records from `.scratch/task-retention-evidence/retained-live/behavior-batch-01/nunc-live-retention-01/calls.jsonl` in the original pi-nunc checkout. `tests/live/budget.test.ts` checks their historical read/summary compatibility without depending on a previously removed observation-support worktree or creating another live run. Retain the original source ledger separately; this test fixture does not represent a current call.
 
 ### Scoped-task pre-change fixture
 
-`tests/live/task-retention-native.test.ts` also loads `.scratch/prechange` for its `current` arm, distinct from the 0.85.1 comparison baseline. Prepare it at the immutable main-history commit `1d4fc4a210b64f71871ab3f5c10093215a25990c`, whose lock pins Pi 0.86.1:
-
-```sh
-git worktree add --detach .scratch/prechange 1d4fc4a210b64f71871ab3f5c10093215a25990c
-(cd .scratch/prechange && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
-```
-
-Reuse a clean, built checkout at that commit when present. Keep both historical dependency trees isolated from the candidate and each other; neither baseline is a deployable runtime.
+Task-retention comparison tests prepare their `current` arm at immutable main-history commit `1d4fc4a210b64f71871ab3f5c10093215a25990c`, whose lock pins Pi 0.86.1, using the same temporary-worktree lifecycle. It stays separate from the Pi 0.85.1 baseline and the candidate. Neither historical fixture is a deployable runtime.
 
 ## Default inheritance and test isolation
 

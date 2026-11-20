@@ -1,11 +1,43 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { after } from "node:test";
+import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, realpath, readFile, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { parseInput, type RunInput } from "../../src/live/contract.js";
 export const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+export async function temporaryBaseline(ref = "70dacad"): Promise<string> {
+  const parent = await mkdtemp(join(await realpath(tmpdir()), "nunc-baseline-"));
+  const path = join(parent, "checkout");
+  const env = { ...process.env, NODE_OPTIONS: "", DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
+  let attached = false;
+  const cleanup = async () => {
+    try {
+      if (attached) {
+        execFileSync("/usr/bin/git", ["-C", repository, "worktree", "remove", "--force", path], { env, stdio: "pipe" });
+        attached = false;
+      }
+    } finally { await rm(parent, { recursive: true, force: true }); }
+  };
+  after(cleanup);
+  try {
+    execFileSync("/usr/bin/git", ["-C", repository, "worktree", "add", "--detach", path, ref], { env, stdio: "pipe" });
+    attached = true;
+    execFileSync("npm", ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: path, env, stdio: "pipe" });
+    execFileSync(process.execPath, [join(repository, "node_modules/typescript/bin/tsc"), "--project", join(path, "tsconfig.json")], { cwd: path, env, stdio: "pipe" });
+    return path;
+  } catch (error) { await cleanup(); throw error; }
+}
+export async function temporaryState(): Promise<string> {
+  const path = await mkdtemp(join(await realpath(tmpdir()), "nunc-test-state-"));
+  after(() => rm(path, { recursive: true, force: true }));
+  await mkdir(join(path, "host"), { recursive: true });
+  await mkdir(join(path, "tmp"), { recursive: true });
+  return path;
+}
 export async function nativeModels(...targets: Array<{ provider: string; id: string }>): Promise<Model<Api>[]> {
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), refreshOnCreate: false, allowModelNetwork: false });
   if (runtime.getError()) throw new Error(runtime.getError());
@@ -20,7 +52,10 @@ export function publicSelection(input: RunInput) {
 }
 export async function fixture(codex = false): Promise<RunInput> {
   const input = JSON.parse(await readFile(join(repository, codex ? "tests/live/preflight-codex-input.json" : "tests/live/preflight-input.json"), "utf8"));
-  input.target.repository = repository; input.target.stateRoot = join(repository, ".scratch", `nunc-live-${randomUUID()}`);
+  input.target.repository = repository;
+  input.target.stateRoot = join(repository, ".scratch", `nunc-live-${randomUUID()}`);
+  const stateRoot = input.target.stateRoot;
+  after(() => rm(stateRoot, { recursive: true, force: true }));
   await mkdir(join(repository, ".scratch", "tmp"), { recursive: true });
   const parsed = parseInput(input);
   parsed.resolvedModels = await nativeModels(...parsed.models);

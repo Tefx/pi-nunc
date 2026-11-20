@@ -31,7 +31,7 @@ export function metricsCommand(command: string): "build" | "tests" | "solution" 
   if (new RegExp(`^${py} (?:-m unittest(?: (?:-v )?(?:\\./)?test_solution(?:\\.py)?(?: -v)?| discover(?: -v)?| -v)?|(?:\\./)?test_solution\\.py(?: -v)?)$`).test(command)) return "tests";
   if (new RegExp(`^${py} (?:\\./)?solution\\.py$`).test(command)) return "solution";
   if (new RegExp(`^${py} (?:(?:\\./)?scripts/validate_records\\.py)$`).test(command)) return "validate";
-  const here = command.match(new RegExp(`^${py} (?:\\./)?solution\\.py <<['"]?JSON['"]?\\n([^]*?)\\nJSON$`));
+  const here = command.match(new RegExp(`^${py} (?:\\./)?solution\\.py <<'JSON'\\n([^]*?)\\nJSON$`));
   if (here) { try { JSON.parse(here[1]!); return "solution"; } catch {} }
   return undefined;
 }

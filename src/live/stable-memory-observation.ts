@@ -35,21 +35,30 @@ export function serializedEvidence(request: RequestObservation): { memory?: bool
     const expected = expectedResults[i]!;
     return m.tool_call_id === expected.toolCallId && text(m.content) === text(expected.content);
   });
-  const expectedCalls = request.context.messages.flatMap(m => m.role === "assistant" ? m.content.filter(b => b.type === "toolCall").map(b => b.id) : []);
-  const calls = actual.flatMap(m => m.role === "assistant" ? (m.tool_calls ?? []).map((c: any) => c.id) : []);
+  const expectedCalls = request.context.messages.flatMap(m => m.role === "assistant" ? m.content.filter(b => b.type === "toolCall").map(b => ({ id: b.id, name: b.name, arguments: b.arguments })) : []);
+  const calls = actual.flatMap(m => m.role === "assistant" ? (m.tool_calls ?? []).map((c: any) => {
+    try { return { id: c.id, name: c.function?.name, arguments: JSON.parse(c.function?.arguments) }; }
+    catch { return { invalid: true }; }
+  }) : []);
   // A changed result can be a legitimate later hook; it disproves preservation,
   // without assigning the cause to the serializer from a literal substring.
   const textual = results.every(m => text(m.content) !== undefined) && expectedResults.every(m => text(m.content) !== undefined);
   const synthetic = textual ? !(resultsMatch && isDeepStrictEqual(calls, expectedCalls)) : undefined;
   const admission = request.admission;
   if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
-  if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
+  const expectedMessages = request.context.messages.map(m => ({
+    role: m.role === "toolResult" ? "tool" : m.role,
+    content: m.role === "assistant" && Array.isArray(m.content) ? text(m.content.filter(b => b.type === "text")) ?? "" : text(m.content),
+  }));
+  const actualMessages = actual.map(m => ({ role: m.role, content: text(m.content) ?? (m.role === "assistant" && m.content == null ? "" : undefined) }));
+  const sameMessages = isDeepStrictEqual(actualMessages, expectedMessages);
+  if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: sameMessages && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
   const index = admission.memoryIndex;
   if (index === undefined) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: false };
   const users = actual.filter(m => m.role === "user");
   const contextUsers = request.context.messages.filter(m => m.role === "user");
   const ordinal = request.context.messages.slice(0, index).filter(m => m.role === "user").length;
-  return { ...(synthetic !== undefined ? { synthetic } : {}), memory: users.length === contextUsers.length && text(users[ordinal]?.content) === admission.memoryContent };
+  return { ...(synthetic !== undefined ? { synthetic } : {}), memory: sameMessages && users.length === contextUsers.length && text(users[ordinal]?.content) === admission.memoryContent };
 }
 // Native Responses serializes Pi's "call_id|item_id" as a separate call_id and
 // item id. Only safe native call IDs are comparable; unsupported/opaque shapes
@@ -91,7 +100,7 @@ function serializedResponsesEvidence(request: RequestObservation, payload: any):
   if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
   const users = actual.filter(item => item.role === "user" && (item.type === undefined || item.type === "message"));
   const contextUsers = request.context.messages.filter(message => message.role === "user");
-  const sameCount = users.length === contextUsers.length;
+  const sameCount = users.length === contextUsers.length && users.every((item, i) => text(item.content) === text(contextUsers[i]!.content));
   if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}),
     memory: sameCount && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
   const index = admission.memoryIndex;

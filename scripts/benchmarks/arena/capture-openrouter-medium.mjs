@@ -21,12 +21,13 @@ export default function(pi){
   try{const s=load();assert(!s.stopped,'Catalog admission already stopped');assert(!Object.keys(s.pending).length,'Previous request not reconciled');assert(Number.isInteger(output)&&output>0&&output<=128000,'Invalid outbound output ceiling');
    // Worst catalog input/cache-write rate within effective272K; native split compaction may issue two requests.
    const usd=calls*(272000*worstInput()+output*worstOutput())/1e6;assert(s.spentUsd+(s.heldUnknownUsd??0)+usd<s.allowanceUsd,`Cumulative OpenRouter admission >=${s.allowanceUsd}: ${s.spentUsd} + held ${s.heldUnknownUsd??0} + ${usd}`);
-   s.pending[kind]={usd,calls,output};s.admissions++;s.maxReservedTotalUsd=Math.max(s.maxReservedTotalUsd,s.spentUsd+(s.heldUnknownUsd??0)+usd);save(s);record({type:'catalog_reserved',kind,usd,calls,output,spentUsd:s.spentUsd});
+   s.pending[kind]={usd,calls,output,contextLimit:272000};s.admissions++;s.maxReservedTotalUsd=Math.max(s.maxReservedTotalUsd,s.spentUsd+(s.heldUnknownUsd??0)+usd);save(s);record({type:'catalog_reserved',kind,usd,calls,output,spentUsd:s.spentUsd});
   }catch(e){fail(ctx,e);}
  }
  function settle(ctx,kind,u){
   try{const s=load(),p=s.pending[kind];assert(p,`Missing ${kind} reservation`);assert(u&&[u.input,u.output,u.cacheRead,u.cacheWrite].every(n=>Number.isFinite(n)&&n>=0)&&u.input+u.output+u.cacheRead+u.cacheWrite>0,'Missing or zero usage; reservation remains unknown');
    const used=u.input+u.cacheRead+u.cacheWrite;
+   assert(used<=p.contextLimit*p.calls,'Observed input exceeds reservation');assert(u.output<=p.output*p.calls,'Observed output exceeds reservation');
    const actualRates=[...rateTable].reverse().find(r=>used>(r.inputTokensAbove??-1))??rates;
    const usd=(u.input*actualRates.input+u.output*actualRates.output+u.cacheRead*actualRates.cacheRead+u.cacheWrite*actualRates.cacheWrite)/1e6;assert(usd<=p.usd+1e-8,'Observed cost exceeds reservation');s.spentUsd+=usd;assert(s.spentUsd+(s.heldUnknownUsd??0)<s.allowanceUsd);delete s.pending[kind];s.receipts++;save(s);record({type:'catalog_settled',kind,computedCatalogUsd:usd,sdkCatalogUsd:u.cost?.total??null,spentUsd:s.spentUsd});
   }catch(e){fail(ctx,e);}

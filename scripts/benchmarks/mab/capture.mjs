@@ -17,11 +17,13 @@ export function reserveState(s,kind,output,calls=1){
  const out=Math.max(...rates.map(r=>r.output));
  const usd=calls*(s.contextWindow*input+output*out)/1e6;
  assert(s.spentUsd+s.heldUnknownUsd+usd<s.allowanceUsd,'Exclusive condition allowance exhausted');
- s.pending[kind]={usd,calls,output};s.admissions++;s.maxReservedTotalUsd=Math.max(s.maxReservedTotalUsd,s.spentUsd+s.heldUnknownUsd+usd);return usd;
+ s.pending[kind]={usd,calls,output,contextLimit:s.contextWindow};s.admissions++;s.maxReservedTotalUsd=Math.max(s.maxReservedTotalUsd,s.spentUsd+s.heldUnknownUsd+usd);return usd;
 }
 export function settleState(s,kind,u){
  const p=s.pending[kind];assert(p,'Missing reservation');assert(u&&['input','output','cacheRead','cacheWrite'].every(k=>Number.isFinite(u[k])&&u[k]>=0),'Missing usage');
  assert(u.input+u.output+u.cacheRead+u.cacheWrite>0,'Zero usage does not prove absence of billing');
+ assert(u.input+u.cacheRead+u.cacheWrite<=p.contextLimit*p.calls,'Observed input exceeds reservation');
+ assert(u.output<=p.output*p.calls,'Observed output exceeds reservation');
  assert(Number.isFinite(u.cost?.total)&&u.cost.total>=0,'Missing catalog USD');
  // Native aggregate usage contains exact per-subcall catalog USD already calculated by installed Pi.
  const usd=u.cost.total;assert(usd<=p.usd+1e-8,'Receipt exceeds reservation');

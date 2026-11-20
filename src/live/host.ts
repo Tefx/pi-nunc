@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, readFileSync, chmodSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { EventEmitter } from "node:events";
 import { isSupportedPiVersion } from "../pi/compat.js";
 import { nativeRpcError } from "./native-no-work.js";
@@ -60,7 +60,7 @@ export interface HostOptions {
 export function childEnvironment(state: string): NodeJS.ProcessEnv {
   return { HOME: join(state, "home"), PI_CODING_AGENT_DIR: join(state, "host"), TMPDIR: join(state, "tmp"),
     XDG_CONFIG_HOME: join(state, "xdg/config"), XDG_CACHE_HOME: join(state, "xdg/cache"), XDG_DATA_HOME: join(state, "xdg/data"),
-    PATH: "/opt/homebrew/bin:/usr/bin:/bin", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
+    PATH: `${dirname(process.execPath)}:/opt/homebrew/bin:/usr/bin:/bin`, PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
 }
 /** Native owner configuration/auth stays inherited, only task scratch is redirected. */
 export function nativeEnvironment(state: string): NodeJS.ProcessEnv {
@@ -98,7 +98,15 @@ export class NativeHost {
   private watch: NodeJS.Timeout | undefined;
   private failure: { code: string; message: string } | undefined;
   readonly commands: Array<{ type: string; message?: string }> = [];
-  private readonly abort = () => { this.child?.kill("SIGTERM"); this.killTimer ??= setTimeout(() => this.child?.kill("SIGKILL"), 1000); };
+  private kill(signal: NodeJS.Signals): void {
+    if (!this.pid) return;
+    try { process.kill(-this.pid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  }
+  private readonly abort = () => {
+    if (this.killTimer) return;
+    this.killTimer = setTimeout(() => this.kill("SIGKILL"), 1000);
+    this.kill("SIGTERM");
+  };
   private fail(code: string, message: string): void { this.failure ??= { code, message }; this.abort(); }
   private hostError(code = "HOST_EXIT", message = "Native host exited"): RunnerError { return new RunnerError(this.failure?.code ?? code, this.failure?.message ?? message); }
   constructor(readonly options: HostOptions) {}
@@ -164,11 +172,12 @@ export class NativeHost {
     const tools = groupHasMemoryTools ? "read,write,edit,bash,nunc_memory_read,nunc_memory_patch" : "read,write,edit,bash";
     const memoryToolsFlags = groupHasMemoryTools ? ["--nunc-memory-tools"] : [];
     const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", tools, "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...memoryToolsFlags, ...liveExtensionFlags(o.repository, o.input, o.group, o.targetRepos), ...(o.testExtensions ?? []).flatMap(path => ["-e", path]), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
-    this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), ...(larvaCompaction ? { LARVA_PI_COMPACTION_CONFIG_FILE: larvaCompaction.configFile } : {}), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
+    this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), ...(larvaCompaction ? { LARVA_PI_COMPACTION_CONFIG_FILE: larvaCompaction.configFile } : {}), NUNC_LIVE_OBSERVER: binding }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
     this.child.stdin.on("error", () => this.abort());
-    this.child.stdout.on("data", (buffer: Buffer) => {
-      this.bytes += buffer.length;
+    this.child.stdout.setEncoding("utf8");
+    this.child.stdout.on("data", (buffer: string) => {
+      this.bytes += Buffer.byteLength(buffer);
       if (this.bytes > 32_000_000) { this.fail("OUTPUT", "Native host output exceeded the bound"); return; }
       this.output += buffer.toString(); let end: number;
       while ((end = this.output.indexOf("\n")) >= 0) {
@@ -319,7 +328,7 @@ export class NativeHost {
     if (this.watch) clearInterval(this.watch);
     let grace: NodeJS.Timeout | undefined;
     if (!this.exited && this.child) { this.child.stdin.write(JSON.stringify({ type: "prompt", message: "/nunc-observer-quit" }) + "\n"); grace = setTimeout(this.abort, 1000); }
-    await this.closed; if (grace) clearTimeout(grace); if (this.killTimer) clearTimeout(this.killTimer); if (this.eventsFile) this.drain();
+    await this.closed; if (grace) clearTimeout(grace); if (this.killTimer) { this.kill("SIGKILL"); clearTimeout(this.killTimer); } if (this.eventsFile) this.drain();
   }
 }
 export async function openHost(options: HostOptions): Promise<NativeHost> { const host = new NativeHost(options); try { return await host.start(); } catch (error) { await host.close(); throw error; } }

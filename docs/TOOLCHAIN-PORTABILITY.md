@@ -1,6 +1,6 @@
 # Toolchain Version-Range and Baseline Portability
 
-Status: **Accepted design specification (authorized prerequisite for cross-machine verification of `nunc-admission-retention-hardening`).**
+Status: **Implemented toolchain contract. See DEVELOPMENT.md for current temporary-baseline setup and verification commands.**
 
 This specification replaces brittle patch-level equality pinning (`Node === 26.7.0`, `npm === 11.19.0`) and machine-local branch refs (`refs/nunc/task-retention-pre-change`) with SemVer range enforcement, observed-version recording, and clone-portable baseline commit OIDs, while keeping `package-lock.json` dependency pins exact.
 

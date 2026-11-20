@@ -72,7 +72,14 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     // Historical product builds ignore the history argument and expose no historyBase.
     const denominator = targetPlan.historyBase ?? available - memoryReserve;
     const organizingTarget = targetPlan.organizingTarget ?? memoryLimit;
-    const feasible = cuts.filter(cut => fixed + memoryReserve + suffix[cut]! + config.growthTokens <= trigger);
+    const feasible = cuts.filter(cut => fixed + memoryReserve + chooseCut(active, [cut], fixed, memoryReserve, 0, trigger, config, model, source.priorCleanup).keptTokens + config.growthTokens <= trigger);
+    // Enumerate exact phase boundaries as well as open intervals. Unfinished-turn
+    // alignment changes the selector independently of nearest-cut rounding.
+    const boundaries = [...new Set([range.minFraction, range.maxFraction, ...cuts.flatMap(c => [
+      (suffix[c]! - 1) / trigger, suffix[c]! / trigger,
+      (suffix[c]! - 1) / denominator, suffix[c]! / denominator,
+    ])])].filter(q => q >= range.minFraction && q <= range.maxFraction).sort((a, b) => a - b);
+    const candidates = [...boundaries, ...boundaries.slice(1).map((q, i) => (q + boundaries[i]!) / 2)];
     for (const [position, cut] of feasible.entries()) {
       if (target && active[cut]!.entryId !== target.firstKeptEntryId) continue;
       if (active.slice(cut).some(e => retired.has(e.entryId)) || active.slice(0, cut).some(e => retained.has(e.entryId))) continue;
@@ -82,12 +89,11 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       const lowerTarget = next === undefined ? 0 : nearest ? Math.ceil((suffix[cut]! + suffix[next]!) / 2) : suffix[cut]!;
       const exclusiveUpper = previous === undefined ? 1 : (nearest ? Math.ceil((suffix[previous]! + suffix[cut]!) / 2) : suffix[previous]!) / denominator;
       const lower = Math.max(range.minFraction, lowerTarget / denominator), upper = Math.min(range.maxFraction, exclusiveUpper);
-      if (lower > upper) continue;
-      const fraction = lower === upper ? lower : lower + (upper - lower) / 2;
+      for (const fraction of [...(lower <= upper ? [lower === upper ? lower : lower + (upper - lower) / 2] : []), ...candidates]) {
       if (fraction < range.minFraction || fraction > range.maxFraction || fraction <= 0 || fraction >= 1) continue;
       const selectedConfig = { ...config, keepRecentFraction: fraction };
       const keepTarget = currentAccounting.memoryPlan(source.fixed, model, selectedConfig, source.memory.slots, suffix[0]).keepTarget;
-      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, selectedConfig, model);
+      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, selectedConfig, model, source.priorCleanup);
       if (chosen.cut !== cut) continue; // Includes an empty intersection at an exclusive floating-point edge.
       const context = extractionContext(source, cut, organizingTarget, active, []);
       const fullExtraction = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
@@ -109,7 +115,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
           selectedSource = reduction.source; omissions = reduction.omissions;
           extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
         }
-        resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap));
+        resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap), selectedSource);
       } else {
         let undercount = fullFeedback!.calibratedUndercountTokens;
         const knownOverflow = fullFeedback!.full !== undefined || fullFeedback!.reduced !== undefined;
@@ -143,6 +149,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
         model: { provider: model.provider, id: model.id, contextWindow: model.contextWindow },
         accounting: { effectiveTrigger: trigger, fixedTokens: fixed, memoryLimit, keepTarget, keptTokens: chosen.keptTokens, mainInputLimit: mainInput, extractionInputLimit: resolved?.extractionInputLimit ?? extractionInput, fullExtractionTokens: fullExtraction, extractionTokens: extraction, normalExtractionAtTrigger: normalAtTrigger, growthReserve: config.growthTokens },
       };
+      }
     }
     if (isLegalTargetCut && !targetViolatesPlacement) {
       throw new RunnerError("INSUFFICIENT_CAPACITY", `No legal retained boundary within the authorized fraction range satisfies actual turn placement and growth: H=${trigger}, F=${fixed}, memoryLimit=${memoryLimit}, growth=${config.growthTokens}, requestedK=${suffix[wanted]}, legalCuts=${cuts.length}, feasibleCuts=${feasible.length}`);

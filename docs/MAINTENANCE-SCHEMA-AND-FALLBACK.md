@@ -1,6 +1,6 @@
 # Maintenance Constrained Schema Decoding, Mechanical Window Roll Fallback, and Calibration Deduplication
 
-Status: **Accepted design specification (ready for Vectl planning and implementation).**
+Status: **Implemented contract. Current fallback, schema authorization and calibration behavior is documented in ENGINE.md, PI.md and UI.md; live effectiveness remains separately qualified.**
 
 This specification defines `pi-nunc`-only changes addressing the maintenance compaction failure and session-bricking dead end observed on `v0.3.0` (`google-vertex/gemini-4-argon` session `01a1e3e0`):
 
@@ -82,5 +82,5 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
 ## Implementation Notes & Hazard Map (`ADVISORY`)
 
 - **`src/pi/admission.ts` & `src/pi/projection.ts` carrier identity**: When `memory.slots.length === 0` and `mechanicalFallback` is active, `withEffectiveMemory` injects a carrier containing `formatMechanicalFallbackNotice(mechanicalFallback)`. Ensure `Admission.bindProjection`, `carrierMatches`, `selectReceipt`, and `currentMemoryIndex` use the same rendered carrier string (`renderMemoryWithFallback(memory.slots, mechanicalFallback)`) and treat `hasM = memory.slots.length > 0 || mechanicalFallback !== undefined` so receipt accounting and carrier provenance remain consistent.
-- **`src/pi/context.ts` (`noteEngine` / `noteNative`)**: When `!result.ok` and `result.fallbackCandidate` is committed in `session_before_compact`, `current.engine` remains `"fail"` while `current.native` becomes `"saved"` and `current.fallback` / `current.after` records the preserved `M` and `K`. Ensure `tests/pi/reporting.test.ts:224-236` still sees `view.lastMaintenance?.stopReason === "length"` and `Response stop reason: length` in `detailsLines`.
+- **`src/pi/context.ts` (`noteEngine` / `noteNative`)**: When `!result.ok` and `result.fallbackCandidate` is committed in `session_before_compact`, `current.engine` remains `"fail"` while `current.native` becomes `"saved"` and `current.fallback` / `current.after` records the preserved `M` and `K`. Ensure `tests/pi/reporting.test.ts` still sees `view.lastMaintenance?.stopReason === "length"` and `Response stop reason: length` in `detailsLines`.
 - **`tests/pi/compat.test.ts`**: Keep all runtime imports inside the Pi extension loader virtual-module allowlist.

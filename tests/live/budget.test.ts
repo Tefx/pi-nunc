@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, type CallRecord, type CallEnd } from "../../src/live/budget.js";
@@ -109,7 +109,7 @@ test("unknown usage remains null while full reservations survive restart; cached
     first.finish(reserve, message);
     const second = new BudgetLedger(path, input.limits, Date.now() + 10000, new AbortController().signal);
     const next = second.reserve(model, context, 1000);
-    message.usage = { input: 10, output: 20, cacheRead: 500, cacheWrite: 100, totalTokens: 630, cost: { input: 1, output: 1, cacheRead: 1, cacheWrite: 1, total: 4 } };
+    message.usage = { input: 10, output: 20, cacheRead: 500, cacheWrite: 100, totalTokens: 630, cost: { input: 0.001, output: 0.001, cacheRead: 0.001, cacheWrite: 0.001, total: 0.004 } };
     second.finish(next, message);
     const records = readLedger(path), summary = ledgerSummary(records);
     assert.equal(summary.reservedTokens, 402000); assert.equal(summary.totalTokens, null); assert.equal(summary.costUsd, null);
@@ -348,7 +348,7 @@ test("duplicate or inconsistent terminal records cannot undercharge and keep wor
       usage: { input: 100000, output: 100000, cacheRead: 0, cacheWrite: 0, contextInput: 100000, reasoning: null, totalTokens: 200000, cost: 2.0 }
     };
     assert.equal(callChargedTokens(r, [tExceed]), 68192);
-    assert.equal(callChargedCost(r, [tExceed]), 0.68192);
+    assert.equal(callChargedCost(r, [tExceed]), 2.0, "actual cost above reserve must remain charged");
 
     // Incomplete or zero-default usage: { totalTokens: 0, contextInput: null, output: null }
     const tZeroDefault: import("../../src/live/budget.js").CallEnd = {
@@ -457,7 +457,7 @@ test("shared batch accounting across invocations/comparison preserves cumulative
     // Missing declared prior file must block with LEDGER error, not silently skip
     assert.throws(
       () => new BudgetLedger(runCPath, limits, Date.now() + 60000, new AbortController().signal, undefined, ["/path/does/not/exist.jsonl"]),
-      (err: any) => err.code === "LEDGER"
+      (err: any) => err.code === "LEDGER_RECONCILIATION"
     );
 
     // Shuffled prior files find earliest historical dispatch
@@ -666,4 +666,40 @@ test("requireThinkingLevel inspects trailing configuration_update effort on open
     const badTerm = readLedger(badLedger.path).find((r): r is CallEnd => r.kind === "terminal");
     assert.equal(badTerm?.diagnostic?.code, "THINKING_UNAPPLIED");
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("malformed reservation kinds, IDs and amounts reject before accounting; missing prior receipts never disappear", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  const path = join(input.target.stateRoot, "calls.jsonl");
+  const reserve: CallRecord = { kind: "reserve", id: 1, model: "fixture", at: 1, inputEstimate: 10, outputCeiling: 16, reservedTokens: 100, reservedCostUsd: 1 };
+  for (const change of [{ kind: "unknown" }, { id: 0 }, { id: 1.5 }, { inputEstimate: -1 }, { outputCeiling: null }, { reservedTokens: NaN }, { reservedCostUsd: -1 }]) {
+    assert.throws(() => ledgerSummary([{ ...reserve, ...change } as CallRecord]), (error: any) => error.code === "LEDGER_RECONCILIATION");
+  }
+  assert.throws(() => ledgerSummary([reserve, reserve]), /Duplicate reservation/);
+  await appendFile(path, `${JSON.stringify(reserve)}\n`);
+  const ledger = new BudgetLedger(join(input.target.stateRoot, "new.jsonl"), input.limits, Date.now() + 10000, new AbortController().signal, undefined, [path]);
+  await rm(path);
+  assert.throws(() => ledger.readQualifiedCalls(), (error: any) => error.code === "LEDGER_RECONCILIATION");
+  assert.throws(() => ledger.readAllRecords(), (error: any) => error.code === "LEDGER_RECONCILIATION");
+});
+
+test("over-reservation cost fails settlement once and still terminates the provider consumer", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "cost-overflow", contextWindow: 60000, maxTokens: 8192 }] });
+  const model = faux.getModel(); model.cost = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
+  const message = fauxAssistantMessage("ok");
+  message.usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, total: 1 } };
+  const source = { ...faux.provider, streamSimple() {
+    const stream = createAssistantMessageEventStream();
+    queueMicrotask(() => { stream.push({ type: "done", reason: "stop", message }); stream.end(message); });
+    return stream;
+  } };
+  const ledger = new BudgetLedger(join(input.target.stateRoot, "calls.jsonl"), { ...input.limits, maxCostUsd: 10 }, Date.now() + 10000, new AbortController().signal);
+  const finish = ledger.finish.bind(ledger); let attempts = 0;
+  ledger.finish = (...args) => { attempts++; finish(...args); };
+  const result = await boundedProvider(source, [model], ledger, { controlled: true }).streamSimple(model, context, { maxTokens: 1000 }).result();
+  assert.equal(result.stopReason, "error"); assert.match(result.errorMessage!, /USAGE_LIMIT/);
+  assert.equal(attempts, 1);
+  assert.deepEqual(ledgerSummary(readLedger(ledger.path)).unreconciledCallIds, [1]);
+  assert.equal(readLedger(ledger.path).filter(r => r.kind === "terminal").length, 0);
 });

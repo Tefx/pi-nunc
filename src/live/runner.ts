@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -25,11 +26,11 @@ export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal
     });
     let timedOut = false, hard: NodeJS.Timeout | undefined;
     const kill = (signal: NodeJS.Signals) => { if (child.pid) { try { process.kill(-child.pid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; } } };
-    const stop = () => { timedOut = true; kill("SIGTERM"); hard ??= setTimeout(() => kill("SIGKILL"), 2000); };
+    const stop = () => { if (hard) return; timedOut = true; hard = setTimeout(() => kill("SIGKILL"), 2000); kill("SIGTERM"); };
     const timer = setTimeout(stop, Math.max(1, job.deadline - Date.now()));
     signal.addEventListener("abort", stop, { once: true });
-    child.once("error", error => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); reject(error); });
-    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut, timing: elapsedInterval(startedAt), ...(diagnostic ? { diagnostic } : {}) }); });
+    child.once("error", error => { clearTimeout(timer); if (hard) { kill("SIGKILL"); clearTimeout(hard); } signal.removeEventListener("abort", stop); reject(error); });
+    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) { kill("SIGKILL"); clearTimeout(hard); } signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut, timing: elapsedInterval(startedAt), ...(diagnostic ? { diagnostic } : {}) }); });
     // The explicit stdin pipe above is guaranteed; the IPC overload loses that type refinement.
     const stdin = child.stdin!;
     stdin.on("error", () => { /* Early rejection is reported by child exit, never replayed. */ });
@@ -76,21 +77,21 @@ export interface RunReport {
 export async function execute(value: unknown, repository: string, script: string, signal: AbortSignal): Promise<RunReport> {
   const input = parseInput(value, true);
   const receipt = await preflight(input, repository);
+  const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
+  requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
   await mkdir(input.target.stateRoot, { mode: 0o700 });
   await mkdir(join(input.target.stateRoot, "tmp"), { mode: 0o700 });
   input.receipt = receipt;
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
-  const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
   const started = Date.now();
-  requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
   const root = input.target.stateRoot;
-  const readAll = () => readQualifiedLedgers([...priorLedgerPaths, join(root, "calls.jsonl")]);
+  const readAll = () => readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(join(root, "calls.jsonl")) ? [join(root, "calls.jsonl")] : [])]);
   // A newly created target is single-use; no silent rerun of possible prior effects.
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
   const report: RunReport = { version: 1, status: "STOPPED", selection: structuredClone(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
     "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
     "Semantic reasons, repeated failed attempts, restatement needs and unsupported claims require independent review of recorded actions/session evidence. No judge or additional model calls are authorized by this runner.",
-    "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Reservations are never refunded; missing usage stays null.",
+    "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Trustworthy terminal usage releases unused token reserves; missing or untrusted usage retains full reservations.",
     "A local abort/terminated process does not prove remote cancellation or final billing. Unresolved requests, cancellation, exhausted time/known-cost limits, and any configured call/token caps stop further effects and retain isolated evidence. A completed failed independent scenario keeps its reservation and is not replayed; later authorized isolated scenarios may continue within remaining shared time/known-cost limits and any still-configured call/token caps. Unknown usage stays null.",
   ] };
   try {
@@ -118,7 +119,7 @@ export async function execute(value: unknown, repository: string, script: string
     if (failed) report.reason = report.segments.find(s => s.status === "UNPROVEN" || s.status === "STOPPED" || (s.status === "PAUSED" && s.prerequisites.some(c => c.status !== "PROVEN")))?.reason ?? "OBSERVATION";
   } catch (error) { report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR"; }
   finally {
-    try { report.usage = ledgerSummary(readAll(), input.limits); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
+    try { report.usage = ledgerSummary(readAll(), input.limits); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; report.status = "UNPROVEN"; }
     report.elapsedMs = Date.now() - (firstDispatchAt ?? started);
     if (report.usage.unreconciledCallIds.length > 0) report.cleanup = "retained-for-reconciliation";
     await finalizeRun(input, receipt, report);
@@ -128,22 +129,27 @@ export async function execute(value: unknown, repository: string, script: string
 
 /** Controlled stock transports only. No catalog model is contacted by these observations. */
 async function runStock(input: RunInput, repository: string, deadline: number, signal: AbortSignal): Promise<unknown[]> {
-  const reports: unknown[] = []; let calls = 0;
+  const reports: unknown[] = [];
+  const { priorLedgerPaths } = resolveBatchContext(input);
   for (const mode of input.observations ?? []) {
     if (mode === "continuation") continue;
     signal.throwIfAborted();
-    const remainingCalls = input.limits.maxCalls === null ? null : input.limits.maxCalls - calls;
-    const remainingTokens = input.limits.maxTotalTokens === null ? null : input.limits.maxTotalTokens - calls * 80000;
+    const ledgerPath = join(input.target.stateRoot, "calls.jsonl");
+    const usage = ledgerSummary(readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(ledgerPath) ? [ledgerPath] : [])]), input.limits);
+    requireValue(usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Stock requests require settled prior receipts");
+    requireValue(input.limits.maxCostUsd === null || usage.chargedCostUsd !== null && usage.chargedCostUsd <= input.limits.maxCostUsd, "COST_LIMIT", "Stock requests require reconciled prior costs within the shared ceiling");
+    const remainingCalls = usage.remainingCalls;
+    const remainingTokens = usage.remainingTokens;
     const limits = { ...input.limits, maxCalls: remainingCalls, maxTotalTokens: remainingTokens, maxDurationMs: deadline - Date.now() };
     requireValue((remainingCalls === null || remainingCalls > 0) && limits.maxDurationMs > 0, "LIMIT", "Controlled stock observation exhausted its bound");
     const parent = join(input.target.stateRoot, "stock"); await mkdir(parent, { recursive: true });
     const result = await new Promise<string>((resolve, reject) => {
-      const child = spawn(process.execPath, [join(repository, "scripts/observe-stock.mjs"), mode === "stock_tui" ? "tui" : "rpc", parent], { cwd: input.target.stateRoot, detached: true, env: { ...childEnvironment(input.target.stateRoot), NUNC_STOCK_LIMITS: JSON.stringify(limits) }, stdio: ["ignore", "pipe", "ignore"] });
+      const child = spawn(process.execPath, [join(repository, "scripts/observe-stock.mjs"), mode === "stock_tui" ? "tui" : "rpc", parent], { cwd: input.target.stateRoot, detached: true, env: { ...childEnvironment(input.target.stateRoot), NUNC_STOCK_LIMITS: JSON.stringify(limits), NUNC_STOCK_LEDGER: ledgerPath }, stdio: ["ignore", "pipe", "ignore"] });
       let stdout = "", killed = false, hard: NodeJS.Timeout | undefined;
       const kill = (s: NodeJS.Signals) => { if (child.pid) { try { process.kill(-child.pid, s); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e; } } };
-      const stop = () => { killed = true; kill("SIGTERM"); hard ??= setTimeout(() => kill("SIGKILL"), 2000); };
+      const stop = () => { if (hard) return; killed = true; hard = setTimeout(() => kill("SIGKILL"), 2000); kill("SIGTERM"); };
       const timer = setTimeout(stop, limits.maxDurationMs); signal.addEventListener("abort", stop, { once: true });
-      const clear = () => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); };
+      const clear = () => { clearTimeout(timer); if (hard) { kill("SIGKILL"); clearTimeout(hard); } signal.removeEventListener("abort", stop); };
       child.stdout.on("data", (b: Buffer) => { stdout += b.toString(); if (stdout.length > 1_000_000) stop(); });
       child.once("error", e => { clear(); reject(e); });
       child.once("close", code => { clear(); if (code === 0 && !killed) resolve(stdout); else reject(new RunnerError("STOCK_OBSERVATION", "Stock observation stopped; retain isolated evidence")); });
@@ -158,20 +164,26 @@ async function runStock(input: RunInput, repository: string, deadline: number, s
       requireValue(data.length <= 64_000_000, "OUTPUT", "Stock evidence exceeded bound");
       evidence[name] = name.endsWith(".jsonl") ? data.trim().split("\n").filter(Boolean).map(s => JSON.parse(s)) : JSON.parse(data);
     }
-    reports.push({ ...row, evidence }); calls += row.requests;
+    reports.push({ ...row, evidence });
   }
   return reports;
 }
 export async function observeStock(value: unknown, repository: string, signal: AbortSignal): Promise<RunReport> {
   const input = parseInput(value), receipt = await preflight(input, repository);
   requireValue(input.mode === "controlled" && input.observations?.length && !input.observations.includes("continuation"), "AUTHORIZATION", "Controlled stock mode requires stock_rpc/stock_tui only");
+  const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
+  requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
   await mkdir(input.target.stateRoot, { mode: 0o700 });
   await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
   const start = Date.now();
   const report: RunReport = { version: 1, status: "UNPROVEN", selection: input, segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: ["Controlled loopback service proves actual stock CLI/RPC/TUI mechanics; real model memory quality and billing remain UNPROVEN."] };
-  try { report.stock = await runStock(input, repository, start + input.limits.maxDurationMs, signal); report.status = "OBSERVED"; }
+  try { report.stock = await runStock(input, repository, deadline, signal); report.status = "OBSERVED"; }
   catch (error) { report.reason = error instanceof RunnerError ? error.code : "STOCK_OBSERVATION"; }
-  finally { report.elapsedMs = Date.now() - start; await finalizeRun(input, receipt, report); }
+  finally {
+    try { report.usage = ledgerSummary(readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(join(input.target.stateRoot, "calls.jsonl")) ? [join(input.target.stateRoot, "calls.jsonl")] : [])]), input.limits); }
+    catch { report.status = "UNPROVEN"; report.reason = "LEDGER_RECONCILIATION"; report.cleanup = "retained-for-reconciliation"; }
+    report.elapsedMs = Date.now() - (firstDispatchAt ?? start); await finalizeRun(input, receipt, report);
+  }
   return report;
 }
 

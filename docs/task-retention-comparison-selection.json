@@ -20,7 +20,7 @@
     "modes": ["defaults", "matched"],
     "targets": {
       "native": { "repository": "__CHECKOUT__" },
-      "current": { "repository": "__ACTUAL_PRECHANGE_CHECKOUT__", "ref": "refs/nunc/task-retention-pre-change" },
+      "current": { "repository": "__ACTUAL_PRECHANGE_CHECKOUT__", "ref": "1d4fc4a210b64f71871ab3f5c10093215a25990c" },
       "candidate": { "repository": "__CHECKOUT__" }
     }
   },

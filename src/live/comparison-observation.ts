@@ -35,7 +35,7 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
   const summaryMessages = snap ? convertToLlm(sessionEntryToContextMessages(snap)) : null;
   const details = snap?.details as any;
   const slots = details?.nunc?.slots;
-  const mTokens = !snap ? null : native ? summaryMessages!.reduce((sum, m) => sum + messageTokens(m), 0) : Array.isArray(slots) ? messageTokens(memoryMessage(slots)) : null;
+  const mTokens = !snap ? null : native ? summaryMessages!.reduce((sum, m) => sum + messageTokens(m), 0) : Array.isArray(slots) ? messageTokens(memoryMessage(slots, details.mechanicalFallback)) : null;
   const summaryBodyTokens = snap ? textTokens(snap.summary) : null;
   const model = row.model;
   const calls = row.callIds.map(id => requests.find(r => r.callId === id)).filter((r): r is RequestObservation => Boolean(r));
@@ -65,7 +65,7 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
     finalContextTokens: next ? requestTokens(next.context) : null,
     remainingContextTokens: next ? model.contextWindow - requestTokens(next.context) : null,
     accounting: accounting ?? null,
-    overhead: { wrapperOverheadTokens: snap && mTokens !== null ? native ? mTokens - summaryBodyTokens! : mTokens - textTokens(slots.map((s: any) => s.text).join("")) : null,
+    overhead: { wrapperOverheadTokens: snap && mTokens !== null ? native ? mTokens - summaryBodyTokens! : memoryTokens(slots, undefined, details.mechanicalFallback) - textTokens(slots.map((s: any) => s.text).join("")) : null,
       fileLists, fileListCount: fileLists ? fileLists.read.length + fileLists.modified.length : null,
       splitTurnCalls: native && row.preparation.isSplitTurn ? calls.length : 0 },
     source: { active: row.active, kept, nativeHistory: row.preparation.messagesToSummarize, nativePrefix: row.preparation.turnPrefixMessages,

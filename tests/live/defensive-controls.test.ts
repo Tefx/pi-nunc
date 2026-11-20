@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxProvider, normalizeContext, type Context, type Provider, type TranscriptContext } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
@@ -86,11 +87,14 @@ test("native OpenAI adapter distinguishes network failure from 200 protocol fail
       assert.equal(response.stopReason, "error");
       leak(response); leak(readLedger(path));
       if (kind === "network") {
-        assert.match(response.errorMessage ?? "", /NETWORK|transport=started|errno=ECONNREFUSED/);
+        assert.match(response.errorMessage ?? "", /NETWORK/);
+        assert.match(response.errorMessage ?? "", /transport=started/);
+        assert.match(response.errorMessage ?? "", /errno=ECONNREFUSED/);
         assert.doesNotMatch(response.errorMessage ?? "", /status=/);
       } else {
         assert.match(response.errorMessage ?? "", /status=200/);
-        assert.match(response.errorMessage ?? "", /PROVIDER_PROTOCOL|protocol/);
+        assert.match(response.errorMessage ?? "", /PROVIDER_PROTOCOL/);
+        assert.match(response.errorMessage ?? "", /stage=protocol/);
       }
       const terminal = readLedger(path).find(r => r.kind === "terminal");
       assert(terminal && terminal.kind === "terminal");
@@ -109,7 +113,9 @@ test("local payload rejection terminals without transport; post-send gap stays u
     const local = boundedProvider(base, [model], localLedger, { fetch: async () => { localSends++; return new Response("no"); } });
     const blocked = await local.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key", onPayload: () => ({ stream: false, model: model.id }) }).result();
     assert.equal(blocked.stopReason, "error"); assert.equal(localSends, 0);
-    assert.match(blocked.errorMessage ?? "", /PAYLOAD/); assert.match(blocked.errorMessage ?? "", /transport=not-started|stage=payload/);
+    assert.match(blocked.errorMessage ?? "", /PAYLOAD/);
+    assert.match(blocked.errorMessage ?? "", /transport=not-observed/);
+    assert.match(blocked.errorMessage ?? "", /stage=payload/);
     const localRecords = readLedger(localPath);
     assert.equal(localRecords.filter(r => r.kind === "reserve").length, 1);
     assert.equal(localRecords.filter(r => r.kind === "terminal").length, 1);
@@ -291,12 +297,35 @@ test("host malformed RPC, output limit and observer drain keep distinct failure 
           const events = (await readdir(caseRoot)).find(name => name.startsWith("events-")); assert(events);
           await writeFile(join(caseRoot, events), "{not-an-observer-record\n");
           await new Promise(resolve => setTimeout(resolve, 80));
-          await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER" || error.code === "HOST_EXIT");
+          await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER");
           await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER");
         } finally { await host.close(); }
       } else {
         await assert.rejects(openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: input.resolvedModels!, deadline: Date.now() + (mode === "overflow" ? 20000 : 8000), signal: new AbortController().signal, testCommand: command }), (error: { code?: string }) => error.code === (mode === "malformed" ? "HOST_RPC" : "OUTPUT"));
       }
     } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+  }
+});
+
+test("native RPC decodes split multibyte UTF-8 and shutdown kills descendants after leader exit", { timeout: 15000 }, async () => {
+  for (const mode of ["utf8", "descendant"]) {
+    const { input, caseRoot } = await hostFixture();
+    let host: Awaited<ReturnType<typeof openHost>> | undefined;
+    let pid: number | undefined;
+    try {
+      host = await openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: input.resolvedModels!, deadline: Date.now() + 10000, signal: new AbortController().signal, testCommand: { command: process.execPath, args: [hostChild, mode] } });
+      if (mode === "utf8") assert.equal(host.sessionId, "fixture-汉字-🧠");
+      else pid = Number(await readFile(join(caseRoot, "task/descendant.pid"), "utf8"));
+      await host.close(); host = undefined;
+      if (pid) {
+        const state = spawnSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+        assert.equal(state.error, undefined);
+        if (state.status === 0) assert.match(state.stdout.trim(), /^Z/, "a remaining orphan must be a dead zombie, never a running process");
+        else { assert.equal(state.status, 1); assert.equal(state.stdout.trim(), ""); }
+      }
+    } finally {
+      if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
+      await host?.close();
+    }
   }
 });

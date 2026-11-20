@@ -29,9 +29,10 @@ for x in hotels:
 for a in CAT:a['identity']=(a['kind'],norm(a['name']),norm(a['city']))
 ATTRACTIONS={(norm(x['Name']),city_norm(x['City'])) for x in rows(UP/'database/attractions/attractions.csv')}
 FLIGHT_IDS={x['Flight Number'] for x in load(ROOT/'flight-inventory.json')['rows']}
-def invariant_catalog(base_day,actual_day):
+def invariant_catalog(base_day,actual_day,modified_slots=()):
  checks=[]
- for slot in ['transportation','attraction','current_city']:
+ for slot in ALL:
+  if slot in modified_slots:continue
   b=base_day.get(slot,'-');a=actual_day.get(slot,'')
   # New queries request no changes in these fields. Validate source entities and inherited identity separately.
   source_valid=True
@@ -99,7 +100,7 @@ def parse_plans(text):
  return out
 
 def evaluate_group(g,plans,answered_names=None):
- inp=load(ROOT/f'cases/{g}/input.json');gold=load(ROOT/f'cases/{g}/gold.json');base=inp['base_person'];full={base['name']:base['daily_plans'],**plans}
+ inp=load(ROOT/f'cases/{g}/input.json');gold=load(ROOT/f'cases/{g}/gold.json');base=inp['base_person'];full={**plans,base['name']:base['daily_plans']}
  gt={(g,a['round_idx']):a['daily_plans'] for a in gold['answers']};base_plans={g:base['daily_plans']}
  people=[]
  for q in inp['questions']:
@@ -115,13 +116,13 @@ def evaluate_group(g,plans,answered_names=None):
   catalog=[];invariants=[]
   for bd in base['daily_plans']:
    d=bd.get('day') or bd.get('days')
-   invariants.extend(invariant_catalog(bd,day(p,d)))
+   invariants.extend(invariant_catalog(bd,day(p,d),[r['slot'] for r in RULES[(g,n)] if r['day']==d]))
    for slot in ['breakfast','lunch','dinner','accommodation']:
     text=day(p,d).get(slot,'');bt=bd.get(slot,'-');city=bt.rsplit(',',1)[-1].strip() if ',' in bt else None
     ok=norm(text)=='-' if norm(bt)=='-' else entity(text,'accommodation' if slot=='accommodation' else 'restaurant',city) is not None
     catalog.append({'day':d,'slot':slot,'valid':ok})
   rules=[{'rule':r,'checks':check_rule(r,n,full,base['daily_plans'])} for r in RULES[(g,n)]]
-  people.append({'name':n,'round':q['round_idx'],'complete':complete,'catalogSlots':catalog,'invariantInventory':invariants,'officialPersonPass':bool(fuzzy),'officialConstraintRate':constraint_rate,'strictGoldSlots':strict,'goldSlots':len(expected)*len(SLOTS),'explicitRules':rules,'explicitPass':complete and all(x['valid'] for x in catalog+invariants) and all(all(x['checks'].values()) for x in rules)})
+  people.append({'name':n,'round':q['round_idx'],'complete':complete,'catalogSlots':catalog,'invariantInventory':invariants,'officialPersonPass':bool(fuzzy),'officialConstraintRate':constraint_rate,'strictGoldSlots':strict,'goldSlots':len(expected)*len(SLOTS),'explicitRules':rules,'explicitPass':base['name'] not in plans and complete and all(x['valid'] for x in catalog+invariants) and all(all(x['checks'].values()) for x in rules)})
  complete_observation=answered_names is None or len(people)==len(inp['questions'])
  return {'group':g,'people':people,'officialGroupPass':all(p['officialPersonPass'] for p in people) if complete_observation else None,'expectedPeople':len(inp['questions']),'missingPeople':[q['name'] for q in inp['questions'] if answered_names is not None and q['name'] not in answered_names]}
 

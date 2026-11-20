@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
@@ -87,8 +87,9 @@ test("association error helper names missing identity without crediting a report
   assert.match(compactionAssociationError(undefined)!, /no-new-compaction/);
 });
 
-test("public reanalysis CLI refuses missing prestate and emits no usable native references", async () => {
+test("public reanalysis CLI refuses missing prestate and emits no usable native references", async t => {
   const root = await mkdtemp(join(repository, ".scratch", "commit-association-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
   const out = join(root, "out");
   await writeFile(join(root, "execution.json"), JSON.stringify({ rawSegments: [{ group: "native", mode: "matched", scenario: "synthetic", rollovers: [{
     turn: "b", reason: "manual", model: { id: "synthetic", provider: "fixture", contextWindow: 60000 }, thinking: "off",
@@ -145,7 +146,7 @@ test("stock persist with dropped prestate refuses later provider transport and k
   } finally { await f.close(); }
 });
 
-test("stock equal-summary compactons keep distinct actual IDs through observer, join and native references", { timeout: 120000 }, async () => {
+test("stock equal-summary compactions keep distinct actual IDs through observer, join and native references", { timeout: 120000 }, async () => {
   const f = await comparisonStock({ sameMemory: true });
   try {
     const native = await groupRun(f, "native", "matched");

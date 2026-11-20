@@ -17,16 +17,34 @@ export interface CallRecord { kind: "reserve"; id: number; model: string; inputE
 export interface CallDiagnostic { code: string; stage: string; transport: "started" | "not-started" | "not-observed"; httpStatus?: number; networkCode?: string }
 export interface CallEnd { kind: "terminal"; id: number; at: number; latencyMs: number; stopReason: string; usage: UsageObservation; diagnostic?: CallDiagnostic; caseKey?: string; ledgerPath?: string }
 export type LedgerRecord = CallRecord | CallEnd;
+function validateLedger(records: LedgerRecord[]): void {
+  const reserves = new Set<string>();
+  for (const record of records) {
+    requireValue(object(record) && (record.kind === "reserve" || record.kind === "terminal") && Number.isSafeInteger(record.id) && record.id > 0, "LEDGER_RECONCILIATION", "Invalid ledger record kind or id");
+    if (record.kind !== "reserve") continue;
+    const key = canonical([record.ledgerPath ?? "", record.id]);
+    requireValue(!reserves.has(key), "LEDGER_RECONCILIATION", "Duplicate reservation id");
+    reserves.add(key);
+    requireValue([record.inputEstimate, record.outputCeiling, record.reservedTokens, record.at].every(n => typeof n === "number" && Number.isFinite(n) && n >= 0) &&
+      (record.reservedCostUsd === null || typeof record.reservedCostUsd === "number" && Number.isFinite(record.reservedCostUsd) && record.reservedCostUsd >= 0) &&
+      (record.catalogReservationUsd === undefined || Number.isFinite(record.catalogReservationUsd) && record.catalogReservationUsd >= 0), "LEDGER_RECONCILIATION", "Invalid ledger reservation values");
+  }
+}
 export function readLedger(path: string): LedgerRecord[] {
   if (!existsSync(path)) return [];
   const text = readFileSync(path, "utf8");
   requireValue(!text || text.endsWith("\n"), "RECONCILIATION", "Incomplete ledger write; do not retry");
   const canonicalPath = resolve(path);
-  return text.trim() ? text.trim().split("\n").map(line => {
-    const record = JSON.parse(line) as LedgerRecord;
-    record.ledgerPath = canonicalPath;
-    return record;
-  }) : [];
+  let records: LedgerRecord[];
+  try {
+    records = text.trim() ? text.trim().split("\n").map(line => {
+      const record: unknown = JSON.parse(line);
+      requireValue(object(record), "LEDGER_RECONCILIATION", "Invalid ledger record");
+      return { ...record, ledgerPath: canonicalPath } as unknown as LedgerRecord;
+    }) : [];
+  } catch { throw new RunnerError("LEDGER_RECONCILIATION", "Invalid ledger JSON record"); }
+  validateLedger(records);
+  return records;
 }
 const LOCAL_GATE = new Set(["PREPARATION", "PAYLOAD", "ENDPOINT", "CALL_LIMIT", "MODEL", "AUTHORIZATION", "OUTPUT_LIMIT", "INPUT_LIMIT", "COST_LIMIT", "TOKEN_LIMIT", "TIME_LIMIT", "CONCURRENCY", "TERMINAL_FAILURE", "BILLING", "THINKING_UNAPPLIED"]);
 const NETWORK_CODE = /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EPIPE|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ERR_SOCKET_CONNECTION_TIMEOUT|UND_ERR_[A-Z0-9_]{1,40}|AbortError|TimeoutError)$/;
@@ -124,12 +142,14 @@ export function callChargedCost(r: CallRecord, terminals: CallEnd[] | undefined)
     return Math.max(baseCost, ...terminals.map(t => typeof t.usage?.cost === "number" && Number.isFinite(t.usage.cost) ? t.usage.cost : baseCost));
   }
   const t = terminals[0]!;
+  const actual = t.usage?.cost;
+  if (typeof actual === "number" && Number.isFinite(actual) && actual > baseCost) return actual;
   if (t.stopReason !== "stop" && t.stopReason !== "toolUse") return baseCost;
   if (t.diagnostic && t.diagnostic.code !== "OK") return baseCost;
 
   const cost = t.usage?.cost;
   // Unknown cost (null or undefined) or non-positive cost cannot settle against positive reservation
-  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0 || cost > baseCost) {
+  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
     return baseCost;
   }
   return cost;
@@ -166,7 +186,7 @@ export function resolveBatchContext(input: RunInput): {
     const canonical = resolve(p);
     if (seen.has(canonical)) continue;
     seen.add(canonical);
-    requireValue(existsSync(p), "LEDGER", `Declared prior ledger file does not exist: ${p}`);
+    requireValue(existsSync(p), "LEDGER_RECONCILIATION", "Declared prior ledger file is missing");
     priorLedgerPaths.push(p);
   }
 
@@ -211,12 +231,12 @@ export class BudgetLedger {
   private active = false;
   constructor(readonly path: string, readonly limits: Limits, readonly deadline: number, readonly signal: AbortSignal, readonly caseKey?: string, readonly priorLedgerPaths: string[] = []) {
     for (const p of this.priorLedgerPaths) {
-      requireValue(existsSync(p), "LEDGER", `Declared prior ledger file does not exist: ${p}`);
+      requireValue(existsSync(p), "LEDGER_RECONCILIATION", "Declared prior ledger file is missing");
     }
   }
 
   readQualifiedCalls(): { calls: QualifiedCall[]; currentFileRecords: LedgerRecord[] } {
-    return { calls: readQualifiedLedgers([...this.priorLedgerPaths, this.path]), currentFileRecords: readLedger(this.path) };
+    return { calls: readQualifiedLedgers([...this.priorLedgerPaths, ...(existsSync(this.path) ? [this.path] : [])]), currentFileRecords: readLedger(this.path) };
   }
 
   readAllRecords(): LedgerRecord[] {
@@ -226,6 +246,7 @@ export class BudgetLedger {
       const canonical = resolve(p);
       if (seen.has(canonical)) continue;
       seen.add(canonical);
+      requireValue(p === this.path || existsSync(p), "LEDGER_RECONCILIATION", "Declared prior ledger file is missing");
       if (existsSync(p)) records.push(...readLedger(p));
     }
     return records;
@@ -282,6 +303,11 @@ export class BudgetLedger {
     const usage = observeUsage(message.usage);
     requireValue((usage.contextInput === null || usage.contextInput <= record.reservedTokens - record.outputCeiling) && (usage.output === null || usage.output <= record.outputCeiling) && (usage.totalTokens === null || usage.totalTokens <= record.reservedTokens), "USAGE_LIMIT", "Observed usage exceeds the reserved native model allowance; retain and reconcile");
     if (record.reservedCostUsd === null) usage.cost = null;
+    if (usage.cost !== null && record.reservedCostUsd !== null) {
+      const prior = this.readQualifiedCalls().calls.filter(c => !(c.ledgerPath === resolve(this.path) && c.record.id === record.id));
+      const charged = prior.reduce((sum, c) => sum + (callChargedCost(c.record, c.terminals) ?? 0), 0);
+      requireValue(usage.cost <= record.reservedCostUsd && (this.limits.maxCostUsd === null || charged + usage.cost <= this.limits.maxCostUsd), "USAGE_LIMIT", "Observed cost exceeds reserved or cumulative allowance; retain and reconcile");
+    }
     const terminal: CallEnd = { kind: "terminal", id: record.id, at: Date.now(), latencyMs: Date.now() - record.at, stopReason: message.stopReason, usage, ...(record.caseKey ? { caseKey: record.caseKey } : {}), ...(diagnostic ? { diagnostic } : {}) };
     appendFileSync(this.path, `${JSON.stringify(terminal)}\n`, { mode: 0o600, flush: true }); this.active = false;
   }
@@ -294,7 +320,7 @@ export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
     const canonical = resolve(p);
     if (seen.has(canonical)) continue;
     seen.add(canonical);
-    if (!existsSync(p)) continue;
+    requireValue(existsSync(p), "LEDGER_RECONCILIATION", "Declared prior ledger file is missing");
     const records = readLedger(p);
     const fileCalls = records.filter((r): r is CallRecord => r.kind === "reserve");
     const fileTerminals = records.filter((r): r is CallEnd => r.kind === "terminal");
@@ -320,6 +346,7 @@ export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
 export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?: Limits) {
   const qualified = records.length > 0 && "record" in records[0]! && "terminals" in records[0]!;
   const lRecords = qualified ? [] : records as LedgerRecord[];
+  validateLedger(qualified ? (records as QualifiedCall[]).flatMap(c => [c.record, ...c.terminals]) : lRecords);
   const rawCalls = lRecords.filter((r): r is CallRecord => r.kind === "reserve");
   const terminal = qualified ? (records as QualifiedCall[]).flatMap(c => c.terminals) : lRecords.filter((r): r is CallEnd => r.kind === "terminal");
   const callKey = (r: { ledgerPath?: string; id: number }) => r.ledgerPath ? `${r.ledgerPath}::${r.id}` : String(r.id);
@@ -407,13 +434,15 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
     const output = createAssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
     void (async () => {
-      let reservation: CallRecord | undefined, finished = false, ended = false;
+      let reservation: CallRecord | undefined, finished = false;
+      let finalMessage = errorMessage(model, "Provider did not settle");
       let wrapperEntries = 0, transportStarted = false, payloadChecked = false, localCode: string | undefined;
       let httpStatus: number | undefined, net: string | undefined;
       const snapshot = () => ({ wrapperEntries, transportStarted, ...(httpStatus !== undefined ? { httpStatus } : {}), ...(net ? { networkCode: net } : {}) });
       const complete = (message: AssistantMessage, diagnostic?: CallDiagnostic) => {
         if (finished || !reservation) return;
-        ledger.finish(reservation, message, diagnostic); finished = true;
+        finished = true; // A failed settlement must never be retried as a synthetic terminal.
+        ledger.finish(reservation, message, diagnostic);
         options.onResponse?.(model, message, kind);
       };
       try {
@@ -522,16 +551,19 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
           output.push(event);
         }
         requireValue(terminal, "RECONCILIATION", "Provider ended without a terminal event");
-        ended = true; output.end(terminal);
+        finalMessage = terminal;
       } catch (error) {
         const aborted = ledger.signal.aborted || (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"));
         const code = error instanceof RunnerError ? error.code : aborted ? "CANCELLED" : net ? "NETWORK" : "PROVIDER_ERROR";
         const info = describeFailure(code, snapshot());
         const message = errorMessage(model, info.message);
         const provenLocal = !transportStarted && (Boolean(localCode) || error instanceof RunnerError && LOCAL_GATE.has(error.code));
-        if ((provenLocal || (options.controlled && !transportStarted)) && !(error instanceof RunnerError && error.code === "USAGE_LIMIT")) complete(message, info);
-        if (!ended) { ended = true; output.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); output.end(message); }
-      }
+        finalMessage = message;
+        try {
+          if ((provenLocal || (options.controlled && !transportStarted)) && !(error instanceof RunnerError && error.code === "USAGE_LIMIT")) complete(message, info);
+        } catch { /* The reservation stays unresolved; the error stream must still settle. */ }
+        output.push({ type: "error", reason: aborted ? "aborted" : "error", error: message });
+      } finally { output.end(finalMessage); }
     })();
     return output;
   }

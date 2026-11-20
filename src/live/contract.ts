@@ -126,11 +126,11 @@ export interface RunInput {
 }
 export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: string; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
-export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>): Promise<unknown> {
+export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>, limit = MAX_STDIN_BYTES): Promise<unknown> {
   const chunks: Buffer[] = []; let length = 0;
   for await (const chunk of stream) {
     const bytes = Buffer.from(chunk); length += bytes.length;
-    requireValue(length <= MAX_STDIN_BYTES, "INPUT_SIZE", "stdin exceeds 65536 bytes"); chunks.push(bytes);
+    requireValue(length <= limit, "INPUT_SIZE", `stdin exceeds ${limit} bytes`); chunks.push(bytes);
   }
   requireValue(length > 0, "INPUT", "A bounded task selection JSON object is required on stdin");
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); } catch { throw new RunnerError("INPUT", "stdin must contain one JSON object"); }
@@ -169,7 +169,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
       for (const model of (value.models as any[] ?? [])) {
         let url: URL | undefined;
         try { url = new URL(model.baseUrl); } catch { /* handled */ }
-        const isLoopback = url && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+        const isLoopback = url && ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname);
         requireValue(isLoopback, "AUTHORIZATION", "Controlled execution requires an explicit loopback or synthetic endpoint; real service endpoints are forbidden in controlled mode");
       }
     }
@@ -206,7 +206,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
       const id = String(model.id).toLowerCase();
       const provider = String(model.provider).toLowerCase();
       const isForbidden = id.includes("astra") || provider === "openai-codex" || id.includes("codex") || provider.includes("astra");
-      const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden;
+      const isGemini = model.provider === "openrouter" && model.id === "google/gemini-3.8-flash";
       requireValue(!isForbidden && isGemini, "MODEL", "Legacy guidance scenarios authorize OpenRouter google/gemini-3.8-flash only; Astra and non-Gemini models are forbidden");
     }
     const isStableMemory = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("m"));
@@ -313,7 +313,7 @@ export function selectedModels(input: RunInput): Model<Api>[] {
     const model = input.resolvedModels!.find(m => m.id === target.id && m.provider === target.provider);
     requireValue(model, "MODEL", "Authorized model is absent from native-resolved metadata");
     requireValue(model.contextWindow === target.contextWindow && model.maxTokens === target.maxTokens && model.baseUrl === target.baseUrl, "MODEL", "Authorized model capacity/endpoint differs from native resolution");
-    requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
+    requireValue(!model.headers && !model.samplingParams && !model.samplingParamsByThinkingLevel, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     requireValue(input.limits.maxOutputTokens >= model.maxTokens, "LIMIT", "Authorize the stock main model's total default output ceiling, including thinking");
     // Legacy API is subscription-only. The shared openai API's billing type
     // is checked from public native auth metadata at runtime, before reservation.

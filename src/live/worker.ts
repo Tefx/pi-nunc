@@ -493,7 +493,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
                 report.contexts.slice(capacityContextStart).filter(c => c.kind === "maintenance").map(c => c.context),
                 maintenanceResponses.slice(capacityResponseStart), capacityModel, runConfig.nunc.memory?.hardMaxTokens ?? null,
-                report.rollovers!.at(-1)?.prepared?.calibration?.accounting)
+                report.rollovers!.at(-1)?.prepared?.calibration?.accounting, runConfig.nunc.memory?.targetTokens ?? 8192)
                 .filter(c => selection.id !== "g8" || c.check !== "at least one necessary candidate is larger than an optional candidate"));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
