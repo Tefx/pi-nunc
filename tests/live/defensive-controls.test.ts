@@ -335,7 +335,7 @@ async function assertDead(pid: number): Promise<void> {
     if (state.status === 1) { assert.equal(state.stdout.trim(), ""); return; }
     assert.equal(state.status, 0);
     if (/^Z/.test(state.stdout.trim())) return;
-    assert(Date.now() < deadline, "descendant must be absent or a dead zombie, never running");
+    assert(Date.now() < deadline, "process must be absent or a dead zombie, never running");
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
@@ -373,7 +373,11 @@ test("PTY cleanup settles inherited-pipe and normal closed-pipe leader exits", {
       }
       // An inherited PTY writer prevents EOF; exercise explicit termination too.
       // The closed-pipe arm must terminate solely from the normal leader exit.
-      if (mode === "pty-descendant") driver.kill("SIGTERM");
+      if (mode === "pty-descendant") {
+        const leaderPid = Number(await readFile(join(input.target.stateRoot, "leader.pid"), "utf8"));
+        await assertDead(leaderPid);
+        driver.kill("SIGTERM");
+      }
       const [code, signal] = await closed;
       assert.equal(signal, null); assert.equal(code, 0);
       await assertDead(pid);

@@ -19,6 +19,8 @@ if (mode === "--worker") {
 if (mode.includes("descendant")) {
   const child = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); process.on("SIGHUP", () => {}); process.send("ready"); process.disconnect(); setInterval(() => {}, 1000);'], { stdio: ["ignore", mode.endsWith("-closed") ? "ignore" : "inherit", mode.endsWith("-closed") ? "ignore" : "inherit", "ipc"] });
   await new Promise((resolve, reject) => { child.once("message", resolve); child.once("error", reject); });
+  // Publish the leader first so PTY callers can wait for its normal exit.
+  if (mode.startsWith("pty-")) writeFileSync(join(descendantRoot, "leader.pid"), String(process.pid));
   writeFileSync(join(descendantRoot, "descendant.pid"), String(child.pid));
   if (mode.startsWith("worker-") || mode.startsWith("pty-")) process.exit(0);
 }
