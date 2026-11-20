@@ -6,6 +6,7 @@ import { loadScenario, seedScenario } from "../../src/live/scenarios.js";
 import { parseInput } from "../../src/live/contract.js";
 import {
   layoutsFromRequests,
+  serializedEvidence,
   movingUsesTail,
   noSyntheticMissing,
   positionStable,
@@ -161,7 +162,7 @@ test("legal-tail evidence checks parallel pending/completed tool Contexts indepe
   const afterStop = await observe([...completed, stopped], 5, 5);
   assert.equal(afterStop.legalTailIndex, 5);
   assert.equal(afterStop.memoryBoundaryLegal, true);
-  const system: Context["messages"][number] = { role: "system", content: "Use the authorized local tools.", timestamp: 0 };
+  const system: Context["messages"][number] = { role: "system", content: "Use the authorized local tools.", sections: { instructions: "Preserve task obligations.", removed: null }, timestamp: 0 };
   const withSystem = await observe([system, ...completed], 2, 7);
   assert.equal(withSystem.legalTailIndex, 2, "the real native leading system message participates in legal boundaries");
   assert.equal(withSystem.memoryBoundaryLegal, true);
@@ -202,6 +203,41 @@ test("legal-tail evidence checks parallel pending/completed tool Contexts indepe
   assert.equal(warmup(epochs.map(row => { const missing = { ...row }; delete missing.legalTailIndex; return missing; })), "UNPROVEN");
   assert.equal(warmup(epochs.map(row => ({ ...row, input: 16999 }))), "UNPROVEN", "17000 threshold remains binding");
   assert.equal(warmup([first, first, changed, changed]), "UNPROVEN", "two samples per epoch do not supply three warmup opportunities");
+});
+
+test("serialized chat evidence rejects changed calls, unrelated messages and an injected absent-memory carrier", () => {
+  const model = { provider: "openrouter", id: "google/gemini-3.8-flash", api: "openai-completions" } as Model<"openai-completions">;
+  const request: RequestObservation = {
+    callId: 1, turn: "a", kind: "main", model, thinking: null, reasoning: null, outputPlanning: null,
+    context: { messages: [
+      { role: "user", content: "Read the task file.", timestamp: 1 },
+      { role: "assistant", content: [{ type: "toolCall", id: "call-a", name: "read", arguments: { path: "task.txt" } }], api: model.api, provider: model.provider, model: model.id, timestamp: 2, stopReason: "toolUse", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } },
+      { role: "toolResult", toolCallId: "call-a", toolName: "read", content: [{ type: "text", text: "Task obligations" }], isError: false, timestamp: 3 },
+    ] },
+    admission: { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" },
+    finalPayload: { messages: [
+      { role: "user", content: "Read the task file." },
+      { role: "assistant", content: null, tool_calls: [{ id: "call-a", type: "function", function: { name: "read", arguments: '{"path":"task.txt"}' } }] },
+      { role: "tool", tool_call_id: "call-a", content: "Task obligations" },
+    ] },
+  };
+  assert.deepEqual(serializedEvidence(request), { memory: true, synthetic: false });
+  for (const mutate of [
+    (messages: any[]) => { messages[1].tool_calls[0].function.name = "write"; },
+    (messages: any[]) => { messages[1].tool_calls[0].function.arguments = '{"path":"other.txt"}'; },
+    (messages: any[]) => { messages[1].tool_calls[0].function.arguments = "{"; },
+  ]) {
+    const changed = structuredClone(request); mutate((changed.finalPayload as any).messages);
+    assert.equal(serializedEvidence(changed).synthetic, true);
+  }
+  for (const mutate of [
+    (messages: any[]) => { messages[0].content = "Unrelated substituted instructions"; },
+    (messages: any[]) => { messages.push({ role: "user", content: "Nunc working memory: injected" }); },
+    (messages: any[]) => { messages.reverse(); },
+  ]) {
+    const changed = structuredClone(request); mutate((changed.finalPayload as any).messages);
+    assert.equal(serializedEvidence(changed).memory, false);
+  }
 });
 
 test("public parseInput admits m* with explicit fractions and refuses Astra or calibrated m4", async () => {
