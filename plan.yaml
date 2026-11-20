@@ -10693,3 +10693,556 @@ phases:
       changed_files=tests/live/task-retention-branches.test.ts; accounting={source_loss:{full:10688,reduced:9958,limit:10326},source_unavailable:{full:10701,reduced:9969,limit:10326}};
       checks=build:pass,task_retention_branches:7/7,check_all:1082/1084_pass_0_fail_2_skip(/tmp/nunc-repair-check-all-clean.log),larva_integration:9/9(/tmp/nunc-repair-larva.log);
       worktree_removed_reclaimed_1.11GiB
+- id: nunc-third-audit-closure
+  name: 第三轮全量契约与精简审查（3-Pass Contract & Simplicity）收敛账本闭环与回归验收
+  status: pending
+  gate: 'nunc-third-audit-closure.gate 由 gate-reviewer 对 3 个严格不相交并行子系统实现步骤（engine-projection-and-cleanup、admission-context-and-ui-closure、live-runner-benchmarks-and-docs-closure）的最终整合提交与确定性离线测试证据（npm
+    run build、文档化完整离线套件运行器 node scripts/check.mjs all、node --test dist/tests/pi/larva.integration.js；受保护
+    package.json、package-lock.json、.node-version 保持未改动）做唯一阶段验收判断（PHASE_GATE, mode:
+    FULL），确认基于提交 383f2155addd13e54deffd80b69a0b4ef2266831 收敛的第三轮 3-pass contract-and-simplicity
+    Admitted Finding Ledger 全部准入义务 100% 闭环且无阻断缺陷。'
+  depends_on:
+  - nunc-post-remediation-closure
+  steps:
+  - id: engine-projection-and-cleanup
+    name: '引擎清理、投影对齐、校准与手动记忆守护闭环（#1–#7, #8-engine, #13–#17, #19, #21-manual, #38/#43/#44/#53-step1）'
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/engine/**\", \"src/pi/projection.ts\", \"src/pi/manual.ts\"\
+      , \"src/pi/calibration.ts\", \"src/pi/compat.ts\", \"src/pi/config.ts\", \"\
+      tests/engine/**\", \"tests/pi/branch-history.test.ts\", \"tests/pi/cleanup-dedup-binding.test.ts\"\
+      , \"tests/pi/cleanup-integration.test.ts\", \"tests/pi/cleanup-source-binding.test.ts\"\
+      , \"tests/pi/manual-memory.test.ts\", \"tests/pi/active-memory.test.ts\", \"\
+      tests/pi/slot-provenance.test.ts\", \"tests/pi/tool-result-cleanup.test.ts\"\
+      , \"tests/pi/projection.test.ts\", \"tests/pi/projection-binding.test.ts\",\
+      \ \"tests/pi/projection-matching.test.ts\", \"tests/pi/maintenance-calibration.test.ts\"\
+      , \"tests/pi/config.test.ts\", \"tests/pi/config-closure.test.ts\"]\n  blocked_paths:\
+      \ [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \".git/**\", \".pi/**\"\
+      , \".agents/**\", \".env\", \".env.*\", \"**/auth.json\", \"package.json\",\
+      \ \"package-lock.json\", \".node-version\", \"src/index.ts\", \"src/pi/admission.ts\"\
+      , \"src/pi/payload.ts\", \"src/pi/context.ts\", \"src/pi/index.ts\", \"src/ui/**\"\
+      , \"src/live/**\", \"tests/live/**\", \"README.md\", \"docs/**\", \"examples/**\"\
+      ]\n\n[REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver: 在严格与 Step 2（`src/index.ts`、`src/pi/{admission,payload,context,index}.ts`、`src/ui/**`）和\
+      \ Step 3（`src/live/**`、`tests/live/**`、`docs/**`、`README.md`、`examples/**`）不相交的\
+      \ `engine` / `projection` / `manual` / `calibration` / `config` 可写边界内，独立基于提交\
+      \ `383f2155addd13e54deffd80b69a0b4ef2266831` 完成编译（`npm run build`）与定向测试闭环，保持既有跨模块导出签名兼容（$\\\
+      delta s|_{\\partial} = 0$），完整解决以下准入义务：\n\n1. **`#1 [FIX]` 原生 `context_edit`\
+      \ 与 `excludeFromContext` 在 `project()`、`sourceUnits()`、`originalResults()` 与\
+      \ `branchHistoryCandidates()` 中的统一对齐（`src/pi/projection.ts:219–236, 346–352,\
+      \ 475–493, 605–614`）**：\n   - 在 `src/pi/projection.ts` 中提取匹配 Pi `projectContextEntry`\
+      \ 的共享辅助函数 `effectiveEntryMessages(entry, edit)`（`edit?.replacement === null`\
+      \ 省略条目；`edit?.replacement?.content` 替换 `user`/`assistant`/`toolResult`/`custom`\
+      \ 的内容同时保留 role/metadata，并在 `project()` 中将编辑过的 assistant 条目标记为 `outputUsageUnavailable:\
+      \ true`）。\n   - 在 `sourceUnits()`（`src/pi/projection.ts:605–614`）中一致过滤 `excludeFromContext`\
+      \ 的 `bashExecution`（通过 `convertToLlm`）与 `isManualMemoryEntry`，确保 `eligibleCleanupScope()`\
+      \ 的前缀匹配（`!prefixEntryIds.every(...)`）在 `!!` 排除型 bash 命令后绝不中断。\n   - 在 `originalResults()`（`src/pi/projection.ts:475–493`）中尊重活动/退役\
+      \ `context_edit` 的省略与替换，并针对编辑后的可见消息检查纯文本状态。\n\n2. **`#2 [FIX]` 在 `completedCleanupScope`\
+      \ 与 `manual.patch` 中保护既有已保存清理决策的 `sourceRefs`（`src/pi/projection.ts:273–304;\
+      \ src/pi/manual.ts:252–279`）**：\n   - 在 `completedCleanupScope()`（`src/pi/projection.ts:298`）中，从合格清理候选中同时排除\
+      \ `saved` 目标键（`d.entryId:d.messageIndex`）以及全部 `d.sourceRefs` 键（`ref.entryId:ref.messageIndex`），与\
+      \ `maintain()`（`src/engine/engine.ts:107–112`）保持一致。\n   - 在 `manual.patch()`（`src/pi/manual.ts:259–271`）中，拒绝目标\
+      \ `decision.entryId:decision.messageIndex` 被 `before.cleanup` 的 `sourceRefs`\
+      \ 引用的任何新清理决策。\n\n3. **`#3 [FIX]` 将 `priorCleanup` 应用于 `maintain()` 提取源与 `activeUsageObservation`\
+      \ 规划基线（`src/engine/engine.ts:127–130; src/engine/calibration.ts:105`）**：\n \
+      \  - 在 `src/engine/engine.ts:127` 中，将提取源初始化为 `applyToolResultCleanup(frozen.active,\
+      \ priorCleanup)`，使后续维护请求消费带 `[Nunc ...]` 标记的有效已清理投影而不再重发已隐藏的原始工具输出（`docs/TOOL-RESULT-CLEANUP.md`\
+      \ §7），同时保持 `candidate.kept` 与 `maintenanceCalibrationRecord` 绑定于原始 `frozen.active.slice(cut)`。\n\
+      \   - 在 `activeUsageObservation()`（`src/engine/calibration.ts:105`）中，在 `input.config.toolResultCleanup\
+      \ !== false` 时基于有效已清理前缀（`applyToolResultCleanup(prefixEntries(input.active),\
+      \ input.priorCleanup ?? [])`）计算 `fullPlan`。\n\n4. **`#4 [FIX]` 在 `maintain()`\
+      \ 的 `fallbackCandidate` 上过滤 `cleanedSources`（`missing_source_dependency`）（`src/engine/engine.ts:112–123\
+      \ vs 267–274`）**：\n   - 在 `unshift(...retainedToolResultCleanup(fallbackCandidate.kept,\
+      \ priorCleanup))` 之前，对 `fallbackCandidate.toolResultCleanup` 应用相同的 `cleanedSources`（`survivingCleanup`）依赖过滤，确保机械回退绝不持久化其\
+      \ keeper 已在 `survivingCleanup` 中被清理的 `deduplicate` 决策。\n\n5. **`#5 [FIX]` 禁止激活未确认手动保存中的新\
+      \ `toolResultCleanup` 决策（`src/pi/manual.ts:275–280; src/pi/projection.ts:208–214`）**：\n\
+      \   - 保持 `view.memory` 反映内存中的 `SessionManager` 分支并标记 `status.unconfirmed = true`（`tests/pi/manual-memory.test.ts:404`），但不激活来自未确认\
+      \ `nunc.memory` 条目的新追加 `toolResultCleanup` 决策（`docs/TOOL-RESULT-CLEANUP.md`\
+      \ §7：“保存未确认时不启用新决定”）。\n\n6. **`#6 [FIX]` 在 `messageTextContent()` 与 `sourceDigest()`\
+      \ 中保留多文本块边界（`src/engine/cleanup.ts:235–247, 545–621, 867–872; src/pi/projection.ts:29–42,\
+      \ 239–245`）**：\n   - 严禁在机械清理/去重或 `sourceDigest` 中无分隔符展平（`join(\"\")`）多文本块 `toolResult`\
+      \ 消息：将单字符串机械变换（`deduplicate`、`compact_json`、`clean_terminal`、`strip_boilerplate`、`compact_toc`）限制为单文本块\
+      \ `toolResult` 消息（或仅在 `sourceDigest` / `deduplicate` 键同时对块结构做指纹化时使用 `\"\\n\"\
+      ` 连接，使 `[\"item 1\", \"00\"]` 与 `[\"item 100\"]` 或 `['{\"v\":\"a', 'b\"}']`\
+      \ 绝不发生哈希碰撞）。\n\n7. **`#7 [FIX]` 在 `readDecisions()` 中将非数组 `data.toolResultCleanup`\
+      \ 记录为无效，并在早期无操作 `manual.patch()` 上报告 `m_unchanged`（`src/pi/projection.ts:45–46;\
+      \ src/pi/manual.ts:236–244`）**：\n   - 在 `readDecisions(data)` 中，若 `record(data)\
+      \ && data.toolResultCleanup !== undefined && !Array.isArray(data.toolResultCleanup)`，返回\
+      \ `{ valid: [], invalid: [\"invalid saved cleanup decision\"] }`。\n   - 在 `createMemorySurface().patch()`（`src/pi/manual.ts:236–244`）中，当\
+      \ `isDeepStrictEqual(nextMemory, current.memory)` 且 `params.toolResultEdits\
+      \ !== undefined && params.suppressCleanup !== true` 时，在返回的 `{ ok: true, ...\
+      \ }` 对象上包含 `cleanup: decideToolResultCleanup({ active: [], retainedEntries:\
+      \ [], initialMemory: current.memory, finalMemory: nextMemory, semanticEdits:\
+      \ params.toolResultEdits })`，使 `nunc_memory_patch` 报告 `reason: \"m_unchanged\"\
+      `。\n\n8. **`#8-engine` & `#13 [FIX]` 守卫 `samplingParamsByThinkingLevel`、在 `rateLimited`\
+      \ 中匹配括号 `(429)`，并在 `terminalStatus` 中排除带单位修饰的数字（`src/engine/engine.ts:53; src/engine/pi-model.ts:26,\
+      \ 46–65, 70–77`）**：\n   - 在 `src/engine/engine.ts:53` 与 `src/engine/pi-model.ts:26`\
+      \ 中同时检查 `hasRawSamplingParams(model.samplingParams)` 与 `hasRawSamplingParams(model.samplingParamsByThinkingLevel)`。\n\
+      \   - 在 `rateLimited()`（`src/engine/pi-model.ts:46–50`）中匹配带括号的 HTTP 429 错误（如\
+      \ `OpenAI API error (429): {\"message\":\"Too many tokens\"}`），使 429 速率限制绝不被\
+      \ `isContextOverflow` 误判为持久性 `providerOverflow`。\n   - 在 `terminalStatus()`（`src/engine/pi-model.ts:51–58`）中要求\
+      \ `4\\d\\d` 出现在 HTTP/status 上下文中（或排除后跟 `ms`、`s`、`sec`、`seconds`、`tokens`、`requests`、`chars`、`bytes`、`min`、`minute`\
+      \ 等单位词的数字），使 `\"HTTP 503: ... 400 ms\"` 与 `\"HTTP 429: ... 400 tokens per minute\"\
+      ` 保持为可重试瞬态错误。\n\n9. **`#14 [FIX]` 修复 `reduceToolBodies()` 对非 BMP 字符的净节省守卫（`src/engine/request.ts:208`）**：\n\
+      \   - 将 `if (omittedCodePoints <= marker.length) continue;` 替换为一致单位的比较（`const\
+      \ nextText = points.slice(0, chars).join(\"\") + marker + points.slice(-chars).join(\"\
+      \"); if (nextText.length >= block.text.length) continue;`），使含代理对的工具输出（如 `\"\U0001F989\
+      \".repeat(580)`、`chars = 200`）在 `nextText.length < block.text.length` 时正常缩减。\n\
+      \n10. **`#15 [FIX]` 在 `eligibleUsageEntryIds()` 中于手动记忆编辑后使旧保存前的 usage 锚点失效（`src/pi/projection.ts:736–744`）**：\n\
+      \    - 在 `eligibleUsageEntryIds(entries, active)` 中，当 `M` 发生变化时，不将最新 `isManualMemoryEntry(entry)`\
+      \ 之前记录的 assistant usage 条目视为对 `activeUsageObservation()` 合格，防止缩小或删除 `M` 后伪造出巨大的正\
+      \ `undercountTokens` 并以 `CAPACITY` 阻塞 `maintain()`。\n\n11. **`#16 [FIX]` 在对非\
+      \ `stop` 响应抛出异常之前记录 `inputExceededPlan` 与 `outputExceededPlan`（`src/engine/engine.ts:233–236`）**：\n\
+      \    - 将 `observations.accounting.inputExceededPlan = ...` 与 `observations.accounting.outputExceededPlan\
+      \ = ...` 移至 `src/engine/engine.ts:233` 的 `requireThat(response.stopReason ===\
+      \ \"stop\", ...)` 之前。\n\n12. **`#17-engine/config [FIX]` 禁止将原始 V8 `SyntaxError`\
+      \ 作为导出的 `EngineError.cause` 附加（`src/engine/memory.ts:238; src/pi/config.ts:54–57`）**：\n\
+      \    - 在抛出 `EngineError(\"RESPONSE\", \"Maintenance response is not valid JSON\"\
+      )` 与 `EngineError(\"CONFIG\", \"Invalid Nunc settings JSON\")` 时省略 `{ cause\
+      \ }`（或对 cause 脱敏）。\n\n13. **`#19 [FIX]` 替换 `manual.ts` 中无标签的 `ignoreFailed`\
+      \ 计数器（`src/pi/manual.ts:69, 96–102`）**：\n    - 确保 `endFreeze()` 不会清除来自早期被拒绝重叠压缩的待处理外部失败忽略状态，使其延迟到达的\
+      \ `session_compact_failed` 事件绝不会过早解冻较新的活动压缩。\n\n14. **`#21-manual [FIX]` 隔离\
+      \ `options.onCommitted()` 异常并在 `\"overbudget\"` 拒绝时保留已保存的 `current.budget`（`src/pi/manual.ts:232,\
+      \ 282–283`）**：\n    - 在 `appendEntry` 成功后将 `options.onCommitted()` 包裹在 `try\
+      \ { options.onCommitted(); } catch {}` 中。\n    - 在 `src/pi/manual.ts:232` 处，向\
+      \ `fail(\"overbudget\", ..., current)` 传入 `current`（保留实际已保存的记忆预算 `current.budget`）而非\
+      \ `{ ...current, budget }`。\n\n15. **Step 1 测试与精简闭环（`#38-step1`, `#43`, `#44-step1`,\
+      \ `#53-step1`）**：\n    - 修复 `tests/engine/calibration.test.ts:480–490`，在 `hasEquivalentCalibrationRecord`\
+      \ 负向断言中使用合法的 64 位十六进制摘要（`\"f\".repeat(64)`）。\n    - 修复 `tests/pi/active-memory.test.ts:254–298`，真实覆盖\
+      \ `unknown-budget`（`model = undefined`）与 `overbudget` 缩减恢复（当 `usedTokens > limitTokens`\
+      \ 时缩小既有槽位）。\n    - 修复 `tests/engine/consolidation-context.test.ts:78, 98` 脆弱的尾部\
+      \ `endsWith` 断言以及 `tests/engine/cleanup.test.ts:829–859` 不一致的 `originalLength`/`cleanedLength`/`netSavings`\
+      \ 夹具数值。\n    - 移除未使用的导入 `convertToLlm`（`src/engine/memory.ts:1`）以及 `isDeepStrictEqual`、`renderMemory`（`src/pi/projection.ts:1,\
+      \ 5`），并在 `applyToolBoundary`（`src/pi/projection.ts:562–581`）中要求 `toolName` 相等、在\
+      \ `extractToolCallAssociationMap`（`src/engine/cleanup.ts:253–275`）中要求 `canonical(block.arguments)`。\n\
+      \nBoundary: owner 为 `node-typescript-engineer`；严格限制在本步骤 `allowed_paths` 内，严禁触碰\
+      \ `package.json`、`package-lock.json`、`.node-version` 或 Step 2 / Step 3 所属文件；不得改动\
+      \ Step 2 / Step 3 依赖的既有导出函数签名（如 `revisionApplies`、`memoryRevision`、`messageTokenParts`、`outputFloor`、`omitsSerializedOutputCap`、`omitsRouteOutputCap`、`memoryMessage`、`memoryTokens`、`resolveExtractionRequest`、`chooseCut`）。\n\
+      \nAdmit: 基于 `383f2155addd13e54deffd80b69a0b4ef2266831`；与 Step 2、Step 3 并行执行，汇入\
+      \ `nunc-third-audit-closure.gate`。\n\nRecovery: 在本步骤隔离工作树内定位并修复构建或定向测试失败；不跨界修改其他并行步骤文件。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-engine-and-projection\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, node, --test, dist/tests/engine/calibration.test.js, dist/tests/engine/cleanup.test.js,\
+      \ dist/tests/engine/cleanup-hardening.test.js, dist/tests/engine/consolidation-context.test.js,\
+      \ dist/tests/engine/memory.test.js, dist/tests/engine/pi-model.test.js, dist/tests/engine/source.test.js,\
+      \ dist/tests/pi/branch-history.test.js, dist/tests/pi/cleanup-dedup-binding.test.js,\
+      \ dist/tests/pi/cleanup-integration.test.js, dist/tests/pi/cleanup-source-binding.test.js,\
+      \ dist/tests/pi/manual-memory.test.js, dist/tests/pi/active-memory.test.js,\
+      \ dist/tests/pi/slot-provenance.test.js, dist/tests/pi/projection.test.js, dist/tests/pi/maintenance-calibration.test.js,\
+      \ dist/tests/pi/config.test.js]\n    exit_code: 0\n```\n验证 Step 1 全部引擎、投影、清理、校准与手动记忆测试通过，且仅修改\
+      \ Step 1 `allowed_paths` 内的文件。"
+    refs:
+    - src/engine/engine.ts
+    - src/engine/calibration.ts
+    - src/engine/cleanup.ts
+    - src/engine/memory.ts
+    - src/engine/pi-model.ts
+    - src/engine/request.ts
+    - src/pi/projection.ts
+    - src/pi/manual.ts
+    - src/pi/calibration.ts
+    - src/pi/compat.ts
+    - src/pi/config.ts
+    - tests/engine/calibration.test.ts
+    - tests/engine/cleanup.test.ts
+    - tests/engine/consolidation-context.test.ts
+    - tests/engine/pi-model.test.ts
+    - tests/pi/branch-history.test.ts
+    - tests/pi/cleanup-dedup-binding.test.ts
+    - tests/pi/cleanup-integration.test.ts
+    - tests/pi/cleanup-source-binding.test.ts
+    - tests/pi/manual-memory.test.ts
+    - tests/pi/active-memory.test.ts
+    - tests/pi/slot-provenance.test.ts
+    agent: node-typescript-engineer
+  - id: admission-context-and-ui-closure
+    name: '准入载荷、上下文切点、压缩生命周期与 TUI 浮层状态闭环（#8-admission, #9–#12, #17-context, #18, #20,
+      #21-index, #22–#24, #37–#40/#42/#45/#46/#52/#53-step2）'
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/index.ts\", \"src/pi/admission.ts\", \"src/pi/payload.ts\"\
+      , \"src/pi/context.ts\", \"src/pi/index.ts\", \"src/ui/**\", \"tests/pi/admission.test.ts\"\
+      , \"tests/pi/admission-hardening.test.ts\", \"tests/pi/admission-ownership.test.ts\"\
+      , \"tests/pi/compact-for.test.ts\", \"tests/pi/compact-for-lifecycle.test.ts\"\
+      , \"tests/pi/compaction-owner.test.ts\", \"tests/pi/context-view.test.ts\",\
+      \ \"tests/pi/footer.test.ts\", \"tests/pi/larva-prompt.test.ts\", \"tests/pi/larva.integration.ts\"\
+      , \"tests/pi/lifecycle.test.ts\", \"tests/pi/lifecycle-closure.test.ts\", \"\
+      tests/pi/openai-native-migration.test.ts\", \"tests/pi/overlay.test.ts\", \"\
+      tests/pi/overlay-contract.test.ts\", \"tests/pi/payload.test.ts\", \"tests/pi/payload-append.test.ts\"\
+      , \"tests/pi/payload-google.test.ts\", \"tests/pi/payload-instructions.test.ts\"\
+      , \"tests/pi/queue.test.ts\", \"tests/pi/reporting.test.ts\", \"tests/pi/stable-memory-path.test.ts\"\
+      , \"tests/pi/tool-call-repair.test.ts\", \"tests/pi/ui-cleanup-update.test.ts\"\
+      , \"tests/pi/ui-panel.test.ts\", \"tests/pi/carrier-fixture.ts\", \"tests/pi/fixtures.ts\"\
+      , \"scripts/check.mjs\", \"scripts/observe-ui.mjs\", \"scripts/observe-lifecycle.mjs\"\
+      , \"scripts/ime-fixture.mjs\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\"\
+      , \"**/auth.json\", \"package.json\", \"package-lock.json\", \".node-version\"\
+      , \"src/engine/**\", \"src/pi/projection.ts\", \"src/pi/manual.ts\", \"src/pi/calibration.ts\"\
+      , \"src/pi/compat.ts\", \"src/pi/config.ts\", \"src/live/**\", \"tests/engine/**\"\
+      , \"tests/live/**\", \"README.md\", \"docs/**\", \"examples/**\"]\n\n[REQUIRES_SKILL:\
+      \ contract-and-simplicity]\n\nDeliver: 在严格与 Step 1（`src/engine/**`、`src/pi/{projection,manual,calibration,compat,config}.ts`）和\
+      \ Step 3（`src/live/**`、`tests/live/**`、`docs/**`、`README.md`、`examples/**`）不相交的\
+      \ `src/index.ts`、`src/pi/{admission,payload,context,index}.ts`、`src/ui/**` 及对应测试/脚本可写边界内，独立基于提交\
+      \ `383f2155addd13e54deffd80b69a0b4ef2266831` 完成编译（`npm run build`）与定向测试闭环，仅消费\
+      \ `383f2155addd13e54deffd80b69a0b4ef2266831` 上 `src/engine/*` 与 `src/pi/projection.ts`\
+      \ 已导出的符号（如 `revisionApplies`、`memoryRevision`、`messageTokenParts`、`outputFloor`、`omitsSerializedOutputCap`）且不破坏既有导出签名（$\\\
+      delta s|_{\\partial} = 0$），完整解决以下准入义务：\n\n1. **`#8-admission [FIX]` 在 `Admission.enter()`\
+      \ 中检查 `model.samplingParamsByThinkingLevel`（`src/pi/admission.ts:618`）**：\n\
+      \   - 与 `model.samplingParams` 一道拒绝 `model.samplingParamsByThinkingLevel` 中的原始采样参数。\n\
+      \n2. **`#9 [FIX]` 在 `authorizePayload()` 中允许映射后的 Azure OpenAI 部署名（`src/pi/payload.ts:339–341;\
+      \ tests/pi/admission.test.ts:70–85`）**：\n   - 接受 `body.model === args.model.id\
+      \ || body.model === priorRec.model`（前提为 `typeof body.model === \"string\" &&\
+      \ body.model.length > 0`），使合法的 `AZURE_OPENAI_DEPLOYMENT_NAME_MAP` 部署名不被以 `CONFIG`\
+      \ 拒绝，并在 `tests/pi/admission.test.ts:70–85` 中绑定受控 `fetch` 与映射后的部署名。\n\n3. **`#10\
+      \ [FIX]` 在 `cloneWithOutputCap()` 中保留非 JSON SDK 字段（如 Google `config.abortSignal`）（`src/pi/admission.ts:797,\
+      \ 155–170`）**：\n   - 将 `final`（实时 SDK payload 对象而非 `after = jsonView(final)`）传入\
+      \ `cloneWithOutputCap(final, authorized.cap, cap)`，并仅浅拷贝在钳制输出上限时修改的路径容器，保留 `payload.config.abortSignal`。\n\
+      \n4. **`#11 [FIX]` 将 `src/pi/payload.ts` 中的媒体 `census()` 限定在协议消息内容树内（`src/pi/payload.ts:129–137,\
+      \ 172–182`）**：\n   - 将媒体块计数（`images`、`unsupportedMedia`）限制在协议消息/指令内容位置（`messages`、`input`、`contents`、`system`、`instructions`），排除\
+      \ `metadata` 与工具声明 schema，使 `metadata: { type: \"image\" | \"document\" | \"\
+      file\" }` 纯粹归类为 `metadata`。\n\n5. **`#12 [FIX]` 结算 `Admission.onPayload` 早期错误、在\
+      \ `await onPayload` 后复核所有权，且仅在授权后发出 `delegate`（`src/pi/admission.ts:615–617,\
+      \ 756–815`）**：\n   - 将整个 `onPayload` 主体（第 `756–802` 行，含 `jsonView(raw)`、`await\
+      \ options?.onPayload?.(raw, model)`、`throwIfAborted` 与 `classifyPayloadChange`）包裹在\
+      \ `try/catch` 块内；在 `await options?.onPayload` 后重新校验 `this.generation === generation\
+      \ && this.current.get(id) === state`；并确保当 `onPayload` 抛出或拒绝时，`nunc:admission`\
+      \ / `lastMain` 绝不保留虚假的 `outcome: \"delegate\"`。\n\n6. **`#17-context [FIX]`\
+      \ 在 `captureSentCut()` 中跳过 `role === \"system\"` 消息（`src/pi/context.ts:482–497`）**：\n\
+      \   - 在 `captureSentCut()` 中仅检查 `message.role === \"user\"` 的消息，使系统提示词 / 策略\
+      \ / customInstructions 内部的 `{\"region\":\"K\",\"entryId\":...}` JSON 示例绝不污染\
+      \ `current.cut` 或 `after.keptEntryIds`。\n\n7. **`#18 [FIX]` 在 `session_compact`\
+      \ 的 `owned` 检查中核验 `summary`、`toolResultCleanup` 与 `maintenanceCalibration`，且不以无条件\
+      \ `ui.recover()` 擦除 `!owned` 或提交前的 headroom/runway 告警（`src/index.ts:357–368,\
+      \ 536, 540, 587–591`）**：\n   - 在 `pendingCompaction` 上存储 `summary`、`toolResultCleanup`\
+      \ 与 `maintenanceCalibration`，并在 `session_compact` 的 `owned` 检查中予以核验。\n   - 仅当\
+      \ `owned === true` 且刚刚完成的压缩未发出 headroom/runway 告警时才在 `session_compact` 中调用 `ui.recover()`；当\
+      \ `!owned` 时发出 warning 诊断而非清除既有告警。\n\n8. **`#20 [FIX]` 在 `prepareUiCleanup()`\
+      \ 中附加 `calibration` 并竞速 60s 超时中止（`src/index.ts:280–305, 334–336`）**：\n   - 在\
+      \ `prepareUiCleanup`（`src/index.ts:293–297`）中包含 `calibration: projectMaintenanceCalibration(ctx.sessionManager.getBranch(),\
+      \ input)`，并将 `admission.complete(...)(...)` 与 `controller.signal` 中止事件竞速（使挂起的流在超时或按\
+      \ `Esc` 时立即结算）。\n\n9. **`#21-index [FIX]` 在 `model_select` 与 `context` 钩子中将\
+      \ `admission.ensure(ctx)` 包裹在 `try/catch` 内，并在 `nunc_memory_read` 中过滤非文本 `cleanupCandidates`（`src/index.ts:165–169,\
+      \ 420, 438`）**：\n   - 在 `model_select` 与 `context` 中均将 `admission.ensure(ctx)`\
+      \ 移入 `try` 块内（在 `model_select` 的 `catch`/`finally` 中刷新 UI），并在 `nunc_memory_read`\
+      \ 构造 `cleanupCandidates` 时过滤 `messageTextContent(message) !== null`。\n\n10.\
+      \ **`#22`, `#23`, `#24 [FIX]` TUI 浮层与状态修复（`src/ui/overlay.ts:171–175, 271–279,\
+      \ 321–327, 431–451, 539–542, 668–670, 780–787; src/ui/status.ts:58–61, 146;\
+      \ src/ui/index.ts:39–43`）**：\n    - 在 `NuncOverlay.sync()`、`deleteSelected()`\
+      \ 与 `save()` 中使用 `revisionApplies`（通过 `sessionManager`）替代 `revision !==`，并在\
+      \ `save()` 调用异步 `prepareSave` 之前预先检查 `occupied`、`unconfirmed`、修订兼容性、目标槽位存在性以及手动增长预算（`nextTokens\
+      \ > limit`）。\n    - 在 `renderEditor()`（`src/ui/overlay.ts:668–670`）中，当高度允许时渲染\
+      \ `UNLOAD_LIMIT` 与 `this.error` 的全部折行（移除 `.slice(0, 1)`）；在 `hintLine()`（第 `780–787`\
+      \ 行）中，当 `this.modal.kind === \"saving\"` 时渲染 `Saving… · Esc cancel entire save`；在\
+      \ `handleBrowse()`（第 `321–327` 行）中，在搜索框光标移动键（`Left`/`Right`/`Home`/`End`）上调用\
+      \ `requestRender()`。\n    - 在 `src/ui/status.ts:58–61` 中按 `/[\\r\\n]+/` 切分 `firstLine()`；在第\
+      \ `146` 行以 `a.outputLimitedBy !== undefined` 守卫 `· limit ${a.outputLimitedBy}`。\n\
+      \n11. **Step 2 测试、脚本与精简闭环（`#37-step2`, `#38-step2`, `#39`, `#40-step2`, `#42-step2`,\
+      \ `#45`, `#46`, `#52-step2`, `#53-step2`）**：\n    - 合并 `src/pi/payload.ts:57–76`\
+      \ 中的 `takeOutputCap`/`outputCapPaths`；在 `src/pi/context.ts` 中复用 `messageTokenParts`；在\
+      \ `NuncOverlay.handleBrowse()`（`src/ui/overlay.ts:271–279`）按 `Esc` 弹出时清空 `this.search.setValue(\"\
+      \")`，移除 `overlay.ts:726` 的死分支，去重 `slotItems()`/`rebuildList()`，在 `status.ts:176–178`\
+      \ 中使用 `thousands()` 格式化 `lastMainLines` 输出上限，并在 `NuncUi.noteDiagnostic`（`src/ui/index.ts:39–43`）中跳过\
+      \ `\"info\"`。\n    - 确保 `tests/pi/fixtures.ts:86–141` 在 `diskSettings` 初始化抛出异常时清理\
+      \ `dir` 并恢复 `PI_CODING_AGENT_DIR`；在 `tests/pi/queue.test.ts:15` 与 `tests/pi/larva-prompt.test.ts:154–226`\
+      \ 中清理 `.scratch/`（为 7 个无效回复用例复用 1 个夹具）；将 `tests/pi/larva.integration.ts` 转换为无顶层\
+      \ `process.exit(1)` 且不泄漏 `process.env.LARVA_CONFIG` 的标准 `node:test` 测试并纳入 `scripts/check.mjs`；收紧\
+      \ `tests/pi/{admission-ownership,tool-call-repair,larva-prompt,stable-memory-path,lifecycle,overlay,overlay-contract,footer}.test.ts`\
+      \ 与 `scripts/observe-{ui,lifecycle}.mjs` 中的断言。\n\nBoundary: owner 为 `node-typescript-engineer`；严格限制在本步骤\
+      \ `allowed_paths` 内，严禁触碰 `package.json`、`package-lock.json`、`.node-version`\
+      \ 或 Step 1 / Step 3 所属文件；跨步骤仅消费 `383f2155addd13e54deffd80b69a0b4ef2266831` 已导出的接口。\n\
+      \nAdmit: 基于 `383f2155addd13e54deffd80b69a0b4ef2266831`；与 Step 1、Step 3 并行执行，汇入\
+      \ `nunc-third-audit-closure.gate`。\n\nRecovery: 在本步骤隔离工作树内定位并修复构建或定向测试失败；不跨界修改其他并行步骤文件。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-admission-context-and-ui\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1,\
+      \ PI_TELEMETRY=0, node, --test, dist/tests/pi/admission.test.js, dist/tests/pi/admission-hardening.test.js,\
+      \ dist/tests/pi/admission-ownership.test.js, dist/tests/pi/compact-for.test.js,\
+      \ dist/tests/pi/compaction-owner.test.js, dist/tests/pi/context-view.test.js,\
+      \ dist/tests/pi/footer.test.js, dist/tests/pi/larva-prompt.test.js, dist/tests/pi/lifecycle.test.js,\
+      \ dist/tests/pi/lifecycle-closure.test.js, dist/tests/pi/openai-native-migration.test.js,\
+      \ dist/tests/pi/overlay.test.js, dist/tests/pi/overlay-contract.test.js, dist/tests/pi/payload.test.js,\
+      \ dist/tests/pi/payload-google.test.js, dist/tests/pi/queue.test.js, dist/tests/pi/reporting.test.js,\
+      \ dist/tests/pi/stable-memory-path.test.js, dist/tests/pi/tool-call-repair.test.js,\
+      \ dist/tests/pi/ui-cleanup-update.test.js, dist/tests/pi/ui-panel.test.js]\n\
+      \    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\n```\n\
+      验证 Step 2 全部准入、载荷、上下文、生命周期、TUI 浮层与 Larva 集成测试通过，且仅修改 Step 2 `allowed_paths`\
+      \ 内的文件。"
+    refs:
+    - src/index.ts
+    - src/pi/admission.ts
+    - src/pi/payload.ts
+    - src/pi/context.ts
+    - src/pi/index.ts
+    - src/ui/overlay.ts
+    - src/ui/status.ts
+    - src/ui/index.ts
+    - tests/pi/admission.test.ts
+    - tests/pi/admission-ownership.test.ts
+    - tests/pi/compact-for.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/footer.test.ts
+    - tests/pi/larva-prompt.test.ts
+    - tests/pi/larva.integration.ts
+    - tests/pi/lifecycle.test.ts
+    - tests/pi/openai-native-migration.test.ts
+    - tests/pi/overlay.test.ts
+    - tests/pi/overlay-contract.test.ts
+    - tests/pi/queue.test.ts
+    - tests/pi/reporting.test.ts
+    - tests/pi/stable-memory-path.test.ts
+    - tests/pi/tool-call-repair.test.ts
+    - tests/pi/carrier-fixture.ts
+    - tests/pi/fixtures.ts
+    - scripts/check.mjs
+    - scripts/observe-ui.mjs
+    - scripts/observe-lifecycle.mjs
+    - scripts/ime-fixture.mjs
+    agent: node-typescript-engineer
+  - id: live-runner-benchmarks-and-docs-closure
+    name: 'Live 运行器账本、进程组清理、观察器、基准测试评分与文档测试卫生闭环（#8-live, #25–#36, #37/#38/#41/#47/#49–#52/#54-step3）'
+    status: pending
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
+      \  allowed_paths: [\"src/live/**\", \"tests/live/**\", \"tests/pi/native-lifecycle.test.ts\"\
+      , \"scripts/verify-live.mjs\", \"scripts/compare-extraction.mjs\", \"scripts/live-cli.mjs\"\
+      , \"scripts/observe-stock.mjs\", \"scripts/stock-driver.mjs\", \"scripts/pty-driver.py\"\
+      , \"scripts/observe-apis.mjs\", \"scripts/observe-capacity-defaults.mjs\", \"\
+      scripts/observe-capacity-recurrence.mjs\", \"scripts/observe-grok-budget.mjs\"\
+      , \"scripts/observe-independent-cases.mjs\", \"scripts/observe-payload.mjs\"\
+      , \"scripts/observe-required-capacity.mjs\", \"scripts/observe-runner.mjs\"\
+      , \"scripts/observe-segment.mjs\", \"scripts/reanalyze-commit-association.mjs\"\
+      , \"scripts/benchmarks/**\", \"README.md\", \"docs/**\", \"examples/**\"]\n\
+      \  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\", \".vectl/**\", \"\
+      .git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\", \"**/auth.json\"\
+      , \"package.json\", \"package-lock.json\", \".node-version\", \"src/index.ts\"\
+      , \"src/engine/**\", \"src/pi/**\", \"src/ui/**\", \"tests/engine/**\"]\n\n\
+      [REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver: 在严格与 Step 1（`src/engine/**`、`src/pi/{projection,manual,calibration,compat,config}.ts`）和\
+      \ Step 2（`src/index.ts`、`src/pi/{admission,payload,context,index}.ts`、`src/ui/**`、`scripts/{check,observe-ui,observe-lifecycle,ime-fixture}.mjs`）不相交的\
+      \ `src/live/**`、`tests/live/**`、`tests/pi/native-lifecycle.test.ts`、观测与基准测试脚本及\
+      \ `README.md`/`docs/**`/`examples/**` 可写边界内，独立基于提交 `383f2155addd13e54deffd80b69a0b4ef2266831`\
+      \ 完成编译（`npm run build`）与定向测试闭环，仅消费 `383f2155addd13e54deffd80b69a0b4ef2266831`\
+      \ 上 `src/engine/*` 与 `src/pi/*` 已导出的符号（如 `outputFloor`、`omitsRouteOutputCap`、`memoryMessage(slots,\
+      \ fallback)`、`memoryTokens(slots, imageTokens, fallback)`、`resolveExtractionRequest(source,\
+      \ build, selectedSource)`、`chooseCut(..., priorCleanup)`），完整解决以下准入义务：\n\n1.\
+      \ **`#8-live` & `#29 [FIX]` Live 契约守卫：`samplingParamsByThinkingLevel`、IPv6 `\"\
+      [::1]\"` 回环、精确 `google/gemini-3.8-flash` 传统引导模型与独立 worker stdin 上限（`src/live/contract.ts:128–136,\
+      \ 168–173, 204–210, 218; src/live/defaults.ts:61; src/live/runner.ts:36`）**：\n\
+      \   - 在 `src/live/contract.ts:218` 与 `src/live/defaults.ts:61` 中检查 `samplingParamsByThinkingLevel`。\n\
+      \   - 在 `src/live/contract.ts:170` 中接受 `\"[::1]\"`（`[\"127.0.0.1\", \"localhost\"\
+      , \"::1\", \"[::1]\"].includes(url.hostname)`）。\n   - 在 `src/live/contract.ts:207`\
+      \ 中对传统 `g1`–`g8` 要求 `m.provider === \"openrouter\" && m.id === \"google/gemini-3.8-flash\"\
+      `。\n   - 在公开 `resolveCliInput` 上保持 `MAX_STDIN_BYTES = 65536`，同时在 `parseWorkerInput`（`src/live/contract.ts:128–136`）中使用更大的内部信封上限（如\
+      \ `524288`），使合法接近 64KB 的公开输入在 `resolveInput` 展开后不会因 `INPUT_SIZE` 失败。\n\n2. **`#25\
+      \ [FIX]` 在 `metricsCommand` 中要求单引号 `<<'JSON'` 定界符（`src/live/tool-path.ts:34–35;\
+      \ src/live/observer.ts:240–253`）**：\n   - 将 `src/live/tool-path.ts:34` 中的 here-doc\
+      \ 正则从 `<<['\"]?JSON['\"]?` 收紧为 `<<'JSON'`，使带 `$(...)` 或反引号命令替换的无引号/双引号 `<<JSON`\
+      \ 被拒绝。\n\n3. **`#26` & `#27 [FIX]` 预算账本校验、超预留成本强制执行、`boundedProvider` 单次 finish\
+      \ 结算、`LEDGER_RECONCILIATION` 状态降级与 `runStock` 配额核算（`src/live/budget.ts:20–28,\
+      \ 119–135, 271–351, 409–418, 525–534; src/live/runner.ts:121, 130–174; src/live/comparison.ts:165–171`）**：\n\
+      \   - 在 `readLedger`/`ledgerSummary` 中校验 `kind === \"reserve\" | \"terminal\"\
+      `、唯一正整数 `id` 及非负有限预留数值；若声明的 `priorLedgers` 文件缺失，在 `readQualifiedLedgers` 中抛出\
+      \ `LEDGER_RECONCILIATION`。\n   - 在 `callChargedCost`（`src/live/budget.ts:132`）中即使\
+      \ `cost > baseCost` 也计入实际 `cost`，并在 `BudgetLedger.finish()`（第 `271–286` 行）中当实际\
+      \ `costUsd` 超过 `reservedCostUsd` 或累计 `maxCostUsd` 时予以拒绝。\n   - 在 `boundedProvider`（`src/live/budget.ts:409–418,\
+      \ 525–534`）中确保每次预留最多调用一次 `ledger.finish()`，并始终在 `finally` 中结算 `output.end(...)`。\n\
+      \   - 在 `execute`（`src/live/runner.ts:121`）与 `executeComparison`（`src/live/comparison.ts:165–171`）中，当\
+      \ `finally` 设置 `report.reason = \"LEDGER_RECONCILIATION\"` 时同步设置 `report.status\
+      \ = \"UNPROVEN\"`；将 `runStock`（`src/live/runner.ts:130–174`）接入 `resolveBatchContext`\
+      \ / `report.usage`。\n\n4. **`#28 [FIX]` 进程组超时清理、`pty-driver.py` 信号转发、`StockFixture`\
+      \ 错误/初始化清理与 `NativeHost` UTF-8 解码（`src/live/runner.ts:27–32, 142–149; src/live/host.ts:101,\
+      \ 170–174, 314–321; scripts/pty-driver.py:15, 23–27, 68–70; scripts/stock-driver.mjs:37–60,\
+      \ 153–179; scripts/observe-stock.mjs:11–17`）**：\n   - 在 `NativeHost.start`（`src/live/host.ts:170–174`）中调用\
+      \ `this.child.stdout.setEncoding(\"utf8\")`。\n   - 在 `scripts/pty-driver.py`\
+      \ 中向 `-child.pid` 转发 `SIGTERM`/`SIGINT` 并升级至 `SIGKILL`，且确保 `runner.ts`/`host.ts`\
+      \ 在超时时即使进程组长先于后代进程退出仍向 `-pid` 发送清理信号。\n   - 在 `scripts/stock-driver.mjs` 中于\
+      \ `child.on(\"error\")` 时设置 `p.exit = -1`，并将 `StockFixture.setup()` 包裹在 `try/catch`\
+      \ 中于部分失败时调用 `await this.close()`。\n\n5. **`#30`, `#31`, `#32`, `#33 [FIX]` Live\
+      \ 校准、容量资格判定、稳定记忆/对照/引导观察器与产物评分（`src/live/{calibration,preparation,capacity-observation,stable-memory-observation,comparison-observation,guidance,scenarios}.ts`）**：\n\
+      \   - 在 `calibrateRetention`（`src/live/calibration.ts:65–91, 112`）与 `prepareBoundary`（`src/live/preparation.ts:144,\
+      \ 154–160`）中纳入精确切点边界分数 `(rawSuffix(c) - 1) / trigger` 与 `rawSuffix(c) / trigger`\
+      \ 以覆盖 `chooseCut` 的 `turnUnfinished` 阶段切换，透传 `priorCleanup`，并将 `selectedSource`\
+      \ 作为第 3 个参数传给 `resolveExtractionRequest`。\n   - 在 `qualifyCapacity`（`src/live/capacity-observation.ts:20–32`）中接受软目标匹配所配置\
+      \ `organizingTarget`（或 `accounting.memoryLimit` / `accounting.memoryReserveTokens`）的提示词。\n\
+      \   - 在 `stable-memory-observation.ts` 中检查 `openai-completions` 上 `tool_calls`\
+      \ 的 `function.name`/`arguments` 以及 `memoryPresent === false` 时的缺席状态，并校验完整消息数组稳定性；在\
+      \ `rolloverFacts`（`src/live/comparison-observation.ts:35–38, 68–75`）中将 `details.mechanicalFallback`\
+      \ 传入 `memoryMessage(slots, fallback)` 与 `memoryTokens(slots, undefined, fallback)`；在\
+      \ `src/live/guidance.ts:93` 中设置 `const lastTest = runs.filter(c => c.kind ===\
+      \ \"test\").at(-1)!`。\n   - 在 `scoreArtifacts`（`src/live/scenarios.ts:260–271,\
+      \ 284–293`）中区分缺失/不可读/无效 JSON 文件与解码后的 JSON `null`，确保缺失文件始终返回 `status: \"DISPROVEN\"\
+      `。\n\n6. **`#34` & `#35 [FIX]` 基准测试评分与结算修复（`scripts/benchmarks/**`）**：\n   -\
+      \ 在 `scripts/benchmarks/arena/score_travel.py:32–34, 123` 中合并 `full = {**plans,\
+      \ base['name']: base['daily_plans']}`（若候选输出重定义了 `base['name']` 则令 `explicitPass`\
+      \ 失败），并将未修改的 `breakfast`/`lunch`/`dinner`/`accommodation` 槽位纳入 `invariant_catalog`。\n\
+      \   - 在 `scripts/benchmarks/beam/score.mjs:31–36` 中，在接受 `0 | 0.5 | 1` 之前要求 `typeof\
+      \ result.score === \"number\"`。\n   - 在 `scripts/benchmarks/mab/capture.mjs:10–28`\
+      \ 与 `scripts/benchmarks/arena/capture-openrouter-medium.mjs:20–34` 中，对照存储的 `pending`\
+      \ token 预留上下界校验已结算的输入/输出 token 用量（与 `beam/guard.mjs` 对齐）。\n   - 在 `scripts/benchmarks/{selection,remaining-selection}.mjs`\
+      \ 与 `scripts/benchmarks/beam/query-recovery.mjs` 中为 `compiledSource` 绑定并校验 `buildReceipt`（`src/live/build.ts`）。\n\
+      \n7. **`#36`, `#37-step3`, `#38-step3` 与 Step 3 Tier 2 闭环（`#41-step3`, `#47`,\
+      \ `#49`–`#52`, `#54`）**：\n   - 在 `examples/guidance-selection.json:36, 42` 与\
+      \ `docs/LIVE.md:122` 中为 `g8/fits-required` 和 `g8/required-too-large` 添加 `hardMaxTokens:\
+      \ 512` 与 `hardMaxTokens: 128`；在 `docs/task-retention-comparison-selection.json:23`、`docs/EXTRACTION.md:62`\
+      \ 与 `docs/LIVE.md:179` 中将 `refs/nunc/task-retention-pre-change` 替换为 `1d4fc4a210b64f71871ab3f5c10093215a25990c`；同步更新\
+      \ `README.md` 与 `docs/*.md` 中过时的公式、默认值、行锚点、重复的 `Optional settings.json` 块、状态头及拼写错误。\n\
+      \   - 将 `tests/live/{comparison.test,optional-quotas.test,comparison-native-fixture,comparison-native.test,task-retention-comparison.test,task-retention-native.test,same-task-history.test}.ts`\
+      \ 中硬编码的 `.scratch/baseline-70dacad`、`.scratch/prechange` 与 `.scratch/offline-*`\
+      \ 路径替换为动态创建并经 `t.after` 清理的临时 git 工作树/目录；清理 `tests/live/*`、`scripts/observe-segment.mjs`\
+      \ 与 `scripts/stock-driver.mjs` 中泄漏的 `.scratch/` 与 `os.tmpdir()` 目录；收紧 `tests/live/{defensive-controls,task-retention-observation}.test.ts`\
+      \ 并修复 `tests/pi/native-lifecycle.test.ts:28`（及同文件其余 `spawnSync`）的可移植 `PATH`。\n\
+      \nBoundary: owner 为 `node-typescript-engineer`；严格限制在本步骤 `allowed_paths` 内，严禁触碰\
+      \ `package.json`、`package-lock.json`、`.node-version` 或 Step 1 / Step 2 所属文件；不发起任何外部付费\
+      \ live-LLM 调用。\n\nAdmit: 基于 `383f2155addd13e54deffd80b69a0b4ef2266831`；与 Step\
+      \ 1、Step 2 并行执行，汇入 `nunc-third-audit-closure.gate`。\n\nRecovery: 在本步骤隔离工作树内定位并修复构建或\
+      \ `tests/live/*` 测试失败；不跨界修改其他并行步骤文件。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: targeted-live\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ NODE_DISABLE_COMPILE_CACHE=1, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0,\
+      \ node, --test, --test-concurrency=2, dist/tests/live/budget.test.js, dist/tests/live/calibration.test.js,\
+      \ dist/tests/live/capacity-observation.test.js, dist/tests/live/closure-regressions.test.js,\
+      \ dist/tests/live/comparison.test.js, dist/tests/live/contract.test.js, dist/tests/live/defaults.test.js,\
+      \ dist/tests/live/defensive-controls.test.js, dist/tests/live/host.test.js,\
+      \ dist/tests/live/optional-quotas.test.js, dist/tests/live/preparation-readiness.test.js,\
+      \ dist/tests/live/same-task-history.test.js, dist/tests/live/scenarios.test.js,\
+      \ dist/tests/live/stable-memory-observation.test.js, dist/tests/live/task-retention-branches.test.js,\
+      \ dist/tests/live/task-retention-observation.test.js, dist/tests/live/verification.test.js,\
+      \ dist/tests/live/benchmark-repair.test.js, dist/tests/live/beam-guard-serialization.test.js]\n\
+      \    exit_code: 0\n```\n验证 Step 3 全部 `tests/live/*` 定向测试与类型编译通过，且仅修改 Step 3\
+      \ `allowed_paths` 内的文件。"
+    refs:
+    - src/live/contract.ts
+    - src/live/defaults.ts
+    - src/live/runner.ts
+    - src/live/tool-path.ts
+    - src/live/observer.ts
+    - src/live/budget.ts
+    - src/live/comparison.ts
+    - src/live/host.ts
+    - src/live/calibration.ts
+    - src/live/preparation.ts
+    - src/live/capacity-observation.ts
+    - src/live/stable-memory-observation.ts
+    - src/live/comparison-observation.ts
+    - src/live/guidance.ts
+    - src/live/scenarios.ts
+    - scripts/pty-driver.py
+    - scripts/stock-driver.mjs
+    - scripts/observe-stock.mjs
+    - scripts/observe-segment.mjs
+    - scripts/benchmarks/arena/score_travel.py
+    - scripts/benchmarks/arena/capture-openrouter-medium.mjs
+    - scripts/benchmarks/beam/score.mjs
+    - scripts/benchmarks/beam/query-recovery.mjs
+    - scripts/benchmarks/mab/capture.mjs
+    - scripts/benchmarks/selection.mjs
+    - scripts/benchmarks/remaining-selection.mjs
+    - examples/guidance-selection.json
+    - docs/task-retention-comparison-selection.json
+    - docs/EXTRACTION.md
+    - docs/LIVE.md
+    - README.md
+    - tests/live/budget.test.ts
+    - tests/live/calibration.test.ts
+    - tests/live/capacity-observation.test.ts
+    - tests/live/comparison.test.ts
+    - tests/live/contract.test.ts
+    - tests/live/defensive-controls.test.ts
+    - tests/live/host.test.ts
+    - tests/live/optional-quotas.test.ts
+    - tests/live/same-task-history.test.ts
+    - tests/live/scenarios.test.ts
+    - tests/live/stable-memory-observation.test.ts
+    - tests/live/task-retention-observation.test.ts
+    - tests/pi/native-lifecycle.test.ts
+    agent: node-typescript-engineer
+  - id: gate
+    name: 第三轮全量契约与精简审查阶段整合验收（PHASE_GATE）
+    status: pending
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\nscope:\n  allowed_paths:\
+      \ [\"src/**\", \"policies/**\", \"docs/**\", \"examples/**\", \"README.md\"\
+      , \"tests/**\", \"scripts/**\", \"package.json\", \"package-lock.json\", \"\
+      .node-version\", \"tsconfig.json\"]\n  blocked_paths: [\"plan.yaml\", \"plan-dashboard.html\"\
+      , \".vectl/**\", \".git/**\", \".pi/**\", \".agents/**\", \".env\", \".env.*\"\
+      , \"**/auth.json\"]\n\nDeliver: 对 `nunc-third-audit-closure` 阶段 3 个严格不相交并行实现步骤（`engine-projection-and-cleanup`、`admission-context-and-ui-closure`、`live-runner-benchmarks-and-docs-closure`）合并后的最终整合提交做唯一阶段验收判断（`PHASE_GATE`,\
+      \ `mode: FULL`）。注意受保护清单 `package.json`（`0.3.1`）、`package-lock.json` 与 `.node-version`\
+      \ 保持未改动且 `package.json` 不含 `test` 脚本，仓库文档化的完整离线测试运行器为 `node scripts/check.mjs\
+      \ all`（配合 `npm run build` 与 `node --test dist/tests/pi/larva.integration.js`）。`gate-reviewer`\
+      \ 独立执行一次全量重型回归验证并逐项核实第三轮收敛账本全部准入义务 100% 闭环：\n\n1. **Step 1（`engine-projection-and-cleanup`）闭环核验**：\n\
+      \   - `#1`–`#7`：`effectiveEntryMessages` 在 `project()`/`sourceUnits()`/`originalResults()`/`branchHistoryCandidates()`\
+      \ 中的 `context_edit` 与 `excludeFromContext` 对齐；`completedCleanupScope()` 与 `manual.patch()`\
+      \ 对 `sourceRefs` 的保护；`maintain()` 提取源与 `activeUsageObservation` 应用 `priorCleanup`；`fallbackCandidate`\
+      \ 的 `cleanedSources` 依赖过滤；未确认手动保存不激活新 `toolResultCleanup` 决策；多文本块 `toolResult`\
+      \ 在 `messageTextContent()` 与 `sourceDigest()` 中的边界保护；非数组 `data.toolResultCleanup`\
+      \ 校验与无操作 `manual.patch()` 的 `m_unchanged` 报告。\n   - `#8-engine`, `#13`–`#17`,\
+      \ `#19`, `#21-manual` 及测试/精简闭环：`samplingParamsByThinkingLevel` 守卫、`(429)` 速率限制识别、`terminalStatus`\
+      \ 单位词排除、`reduceToolBodies` 非 BMP 长度比较、手动记忆变更后旧 usage 锚点失效、非 `stop` 响应前记录 `inputExceededPlan`/`outputExceededPlan`、移除原始\
+      \ `SyntaxError` `cause`、有标签重叠压缩失败冻结保护、`onCommitted` 异常隔离与 `\"overbudget\"` 保存预算保留，以及对应测试与代码精简项。\n\
+      \n2. **Step 2（`admission-context-and-ui-closure`）闭环核验**：\n   - `#8-admission`,\
+      \ `#9`–`#12`, `#17-context`, `#18`, `#20`, `#21-index`, `#22`–`#24` 及测试/脚本/精简闭环：`Admission.enter`\
+      \ 的 `samplingParamsByThinkingLevel` 检查、Azure OpenAI 映射部署名准入、`cloneWithOutputCap`\
+      \ 保留非 JSON SDK 字段（`abortSignal`）、媒体 `census()` 限定于协议消息内容树、`Admission.onPayload`\
+      \ 早期异常结算与 `await` 后所有权复核、`captureSentCut()` 跳过 `role === \"system\"`、`session_compact`\
+      \ 的 `owned` 完整字段核验与告警保留、`prepareUiCleanup` 校准绑定与 60s 超时中止竞速、`model_select`/`context`\
+      \ 中 `admission.ensure` 的异常捕获与 `nunc_memory_read` 非文本候选过滤、TUI `NuncOverlay`/`status`/`NuncUi`\
+      \ 修复，以及 `larva.integration.ts` 标准化与 `.scratch/` 清理。\n\n3. **Step 3（`live-runner-benchmarks-and-docs-closure`）闭环核验**：\n\
+      \   - `#8-live`, `#25`–`#36` 及文档/测试卫生闭环：`contract.ts`/`defaults.ts` 守卫（`samplingParamsByThinkingLevel`、`[::1]`、`google/gemini-3.8-flash`、独立\
+      \ worker stdin 上限）、`metricsCommand` 单引号 `<<'JSON'`、预算账本严格校验与超预留拒绝及 `LEDGER_RECONCILIATION`\
+      \ 降级、`NativeHost` UTF-8 解码与进程组超时清理、校准切点边界分数与 `priorCleanup`/`selectedSource`\
+      \ 透传、容量/稳定记忆/对照/引导/产物评分修复、Arena/BEAM/MAB 基准测试评分与 `buildReceipt`/预留核算修复，以及文档同步与临时工作树/目录自动清理。\n\
+      \nBoundary: exact owner 为 `gate-reviewer`；只读阶段验收判断（`no_repo_change`），不修改源码、配置、文档或\
+      \ `plan.yaml`，不运行外部付费 live-LLM 调用。\n\nAdmit: 依赖 3 个并行实现步骤全部完成并合并至不可变整合候选提交；消费整合提交自\
+      \ `383f2155addd13e54deffd80b69a0b4ef2266831` 以来的代码差异与确定性全量离线测试证据（`npm run build`、`node\
+      \ scripts/check.mjs all`、`node --test dist/tests/pi/larva.integration.js`）。\n\
+      \nRecovery: 若发现任何未闭环的准入项、跨模块回归、受保护文件改动或测试失败，返回明确阻断发现列表；全部解决前不予通过。"
+    verification: "```yaml\nchecks:\n  - id: build\n    argv: [npm, run, build]\n\
+      \    exit_code: 0\n  - id: offline-check-all\n    argv: [/usr/bin/env, -u, NODE_OPTIONS,\
+      \ PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, node, scripts/check.mjs,\
+      \ all]\n    exit_code: 0\n  - id: actual-larva-integration\n    argv: [/usr/bin/env,\
+      \ -u, NODE_OPTIONS, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0, HOME=.scratch/offline-home,\
+      \ PI_CODING_AGENT_DIR=.scratch/offline-agent, NUNC_LARVA_EXTENSION=/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts,\
+      \ node, --test, dist/tests/pi/larva.integration.js]\n    exit_code: 0\nreview:\n\
+      \  kind: PHASE_GATE\n  mode: FULL\n  phases: [nunc-third-audit-closure]\n```\n\
+      验证自基线 `383f2155addd13e54deffd80b69a0b4ef2266831` 以来的整合提交满足第三轮收敛账本全部准入义务，`package.json`（`0.3.1`）、`package-lock.json`\
+      \ 与 `.node-version` 零修改，且 `npm run build`、`node scripts/check.mjs all` 与 `node\
+      \ --test dist/tests/pi/larva.integration.js` 100% 通过。"
+    refs:
+    - src/index.ts
+    - src/engine/engine.ts
+    - src/engine/calibration.ts
+    - src/engine/cleanup.ts
+    - src/engine/memory.ts
+    - src/engine/pi-model.ts
+    - src/engine/request.ts
+    - src/pi/projection.ts
+    - src/pi/manual.ts
+    - src/pi/config.ts
+    - src/pi/admission.ts
+    - src/pi/payload.ts
+    - src/pi/context.ts
+    - src/ui/overlay.ts
+    - src/ui/status.ts
+    - src/ui/index.ts
+    - src/live/contract.ts
+    - src/live/budget.ts
+    - src/live/runner.ts
+    - src/live/comparison.ts
+    - src/live/host.ts
+    - src/live/calibration.ts
+    - src/live/preparation.ts
+    - src/live/scenarios.ts
+    - scripts/check.mjs
+    - tests/pi/larva.integration.ts
+    - README.md
+    - docs/LIVE.md
+    - docs/EXTRACTION.md
+    - docs/TOOL-RESULT-CLEANUP.md
+    - package.json
+    - package-lock.json
+    - .node-version
+    depends_on:
+    - engine-projection-and-cleanup
+    - admission-context-and-ui-closure
+    - live-runner-benchmarks-and-docs-closure
+    agent: gate-reviewer
