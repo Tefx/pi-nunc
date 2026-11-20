@@ -13,7 +13,6 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { appendFileSync, watch, readFileSync, existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, realpath, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,7 +24,7 @@ export class StockFixture {
   async setup({ config = {}, compaction = {}, timeoutMs = 90000, artifactParent, api = 'openai-completions' } = {}) {
     try {
     this.removeArtifacts = artifactParent === undefined;
-    artifactParent ??= tmpdir();
+    artifactParent ??= join(root, '.scratch', 'stock');
     this.api = api; this.codex = api === 'openai-codex-responses';
     this.provider = this.codex ? 'openai-codex' : 'groq'; this.modelId = this.codex ? 'gpt-6-astra' : 'nunc-native';
     this.oauth = this.codex ? oauthFixture() : undefined;

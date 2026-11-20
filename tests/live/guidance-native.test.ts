@@ -13,7 +13,7 @@ import { readSourceRecords } from "../../src/engine/request.js";
 async function guidanceNative(lowUsage = false) {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 280000 });
-  const provider = "openrouter", model = "google/gemini-guidance-fixture";
+  const provider = "openrouter", model = "google/gemini-3.8-flash";
   await writeFile(join(f.state, "agent/models.json"), JSON.stringify({ providers: { [provider]: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ id: model, api: "openai-completions", reasoning: false, input: ["text"], contextWindow: 60000, maxTokens: 20000 }] } } }));
   f.limits = { ...f.limits, maxCalls: 160, maxTotalTokens: 24000000 };
   const selections: Array<{ id: string; variant?: string; assets?: { inputs: string; observer: string } }> = lowUsage ? [{ id: "g6" }] : [{ id: "g1" }, { id: "g2" }, { id: "g3" }, { id: "g4" }, { id: "g5" }, { id: "g6" }, { id: "g7", variant: "conflict" }, { id: "g7", variant: "unconfirmed" }, { id: "g8", variant: "fits-required" }, { id: "g8", variant: "required-too-large" }];

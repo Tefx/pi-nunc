@@ -72,7 +72,16 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     // Historical product builds ignore the history argument and expose no historyBase.
     const denominator = targetPlan.historyBase ?? available - memoryReserve;
     const organizingTarget = targetPlan.organizingTarget ?? memoryLimit;
-    const feasible = cuts.filter(cut => fixed + memoryReserve + chooseCut(active, [cut], fixed, memoryReserve, 0, trigger, config, model, source.priorCleanup).keptTokens + config.growthTokens <= trigger);
+    const feasible = cuts.filter(cut => {
+      try {
+        return fixed + memoryReserve + chooseCut(active, [cut], fixed, memoryReserve, 0, trigger, config, model, source.priorCleanup).keptTokens + config.growthTokens <= trigger;
+      } catch (error) {
+        // Historical selectors reject infeasible singleton cuts rather than
+        // returning their size. Keep enumerating, preserving other failures.
+        if (error && typeof error === "object" && "code" in error && error.code === "CAPACITY") return false;
+        throw error;
+      }
+    });
     // Enumerate exact phase boundaries as well as open intervals. Unfinished-turn
     // alignment changes the selector independently of nearest-cut rounding.
     const boundaries = [...new Set([range.minFraction, range.maxFraction, ...cuts.flatMap(c => [

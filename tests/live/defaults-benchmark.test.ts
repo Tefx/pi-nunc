@@ -5,12 +5,13 @@ import { spawnSync } from "node:child_process";
 import { repository } from "./fixtures.js";
 import { extractionContext } from "../../src/engine/request.js";
 import { input } from "../engine/fixtures.js";
+import { buildReceipt } from "../../src/live/build.js";
 
 const scripts = join(repository, "scripts/benchmarks");
 test("tracked selection freezes Fact40 and exactly one protocol-relevant ordinary case; matrix/legacy overrides refused", async () => {
   const { assertFactProtocol, assertArenaProtocol, ordinarySelection, allocation, assertAllocation } = await import(join(scripts, "selection.mjs"));
   const cases = ["factconsolidation_sh_64k", "factconsolidation_mh_64k"].map(caseId => ({ caseId, chunks: Array(17).fill("material"), questions: Array(20).fill({ prompt: "hidden" }), checkpointAfterChunks: [8, 17] }));
-  const fact = { arm: "nunc", condition: "luna-nunc", readerThinking: "medium", model: { api: "openai-completions", contextWindow: 272000 }, cases, nunc: { configuration: "defaults", compiledSource: "tracked/dist/src/index.js" }, allowanceUsd: 3 };
+  const fact = { arm: "nunc", condition: "luna-nunc", readerThinking: "medium", model: { api: "openai-completions", contextWindow: 272000 }, cases, nunc: { configuration: "defaults", compiledSource: join(repository, "dist/src/index.js"), buildReceipt: buildReceipt(join(repository, "dist/src/index.js")) }, allowanceUsd: 3 };
   assertFactProtocol(fact); assert.throws(() => assertFactProtocol({ ...fact, cases: [...cases, { caseId: "event" }] }));
   assert.throws(() => assertFactProtocol({ ...fact, nunc: { ...fact.nunc, configuration: "explicit8192/full" } }));
   const arena = { arm: "nunc", groups: [4], order: [[4, "nunc"]], model: { id: ordinarySelection.modelId }, thinking: "medium", compaction: { effectiveContext: 272000, reserveTokens: 255616, keepRecentTokens: 8000 }, nunc: fact.nunc, flightCsvBytes: 304807007, catalogAllowanceUsd: 3 };

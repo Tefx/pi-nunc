@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { getSystemMessageText, renderSystemMessageUpdate } from "@earendil-works/pi-ai";
 import type { CheckResult } from "./scenarios.js";
 import type { NuncConfig } from "../pi/config.js";
 import type { RequestObservation } from "./comparison-observation.js";
@@ -46,9 +47,9 @@ export function serializedEvidence(request: RequestObservation): { memory?: bool
   const synthetic = textual ? !(resultsMatch && isDeepStrictEqual(calls, expectedCalls)) : undefined;
   const admission = request.admission;
   if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
-  const expectedMessages = request.context.messages.map(m => ({
+  const expectedMessages = request.context.messages.map((m, i) => ({
     role: m.role === "toolResult" ? "tool" : m.role,
-    content: m.role === "assistant" && Array.isArray(m.content) ? text(m.content.filter(b => b.type === "text")) ?? "" : text(m.content),
+    content: m.role === "system" ? (i === 0 ? getSystemMessageText(m) : renderSystemMessageUpdate(m)) : m.role === "assistant" && Array.isArray(m.content) ? text(m.content.filter(b => b.type === "text")) ?? "" : text(m.content),
   }));
   const actualMessages = actual.map(m => ({ role: m.role, content: text(m.content) ?? (m.role === "assistant" && m.content == null ? "" : undefined) }));
   const sameMessages = isDeepStrictEqual(actualMessages, expectedMessages);
