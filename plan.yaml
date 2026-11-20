@@ -11565,7 +11565,7 @@ phases:
       files untouched.'
   - id: delta-stock-observation-receipts-repair
     name: 'Stock 观测驱动与脚本收据清理状态诚实性闭环（Finding #14）'
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"scripts/stock-driver.mjs\", \"scripts/observe-apis.mjs\"\
       , \"scripts/observe-capacity-defaults.mjs\", \"scripts/observe-capacity-recurrence.mjs\"\
@@ -11626,3 +11626,11 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T17:40:10.259147Z'
+    done_at: '2026-11-20T18:10:52.556661+00:00'
+    evidence: 'Integrated rebased commit 3eb343b (original 07f55db3e1b3516b88f285171a03db772ba65e7a
+      retained at refs/vectl/retained/nunc-third-audit-closure.delta-stock-observation-receipts-repair)
+      onto main across 14 authorized files. Finding #14 closed: unified StockFixture.artifactReceipt()
+      across all 10 observe-*.mjs scripts so default temporary runs emit cleanup="removed"
+      without dangling evidence/dir paths while explicit artifactParent runs retain
+      and emit valid evidence dirs. npm run build, node --check, 3-file test suite
+      (29 passed, 0 failed), and 10 smoke receipts passed. Protected files untouched.'
