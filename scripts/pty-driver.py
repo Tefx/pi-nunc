@@ -81,11 +81,19 @@ try:
                 inputs.remove(fd)
 finally:
     os.close(fd)
-    if kill_at is not None:
-        # The group can outlive its leader and the PTY's last writer.
-        remaining = kill_at - time.monotonic()
-        if remaining > 0:
-            time.sleep(remaining)
-        escalate()
-    _, status = os.waitpid(pid, 0)
+    # Reap a normal leader first so a clean group needs no grace delay.
+    reaped, status = os.waitpid(pid, os.WNOHANG)
+    try:
+        os.killpg(pid, signal.SIGTERM)
+        deadline = time.monotonic() + 0.1
+        while True:
+            os.killpg(pid, 0)
+            if time.monotonic() >= deadline:
+                os.killpg(pid, signal.SIGKILL)
+                break
+            time.sleep(0.01)
+    except ProcessLookupError:
+        pass
+    if not reaped:
+        _, status = os.waitpid(pid, 0)
 sys.exit(os.waitstatus_to_exitcode(status) if hasattr(os, "waitstatus_to_exitcode") else (status >> 8))

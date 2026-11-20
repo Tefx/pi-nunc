@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { object, canResumeScenario, canonical, parseInput, preflight, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
 import { ledgerSummary, readQualifiedLedgers, resolveBatchContext, type QualifiedCall } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
-import { childEnvironment, nativeEnvironment } from "./host.js";
+import { childEnvironment, nativeEnvironment, settleProcessGroup } from "./host.js";
 export { childEnvironment } from "./host.js";
 import { elapsedInterval, type WallClockInterval } from "./timing.js";
 
@@ -29,8 +29,15 @@ export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal
     const stop = () => { if (hard) return; timedOut = true; hard = setTimeout(() => kill("SIGKILL"), 2000); kill("SIGTERM"); };
     const timer = setTimeout(stop, Math.max(1, job.deadline - Date.now()));
     signal.addEventListener("abort", stop, { once: true });
-    child.once("error", error => { clearTimeout(timer); if (hard) { kill("SIGKILL"); clearTimeout(hard); } signal.removeEventListener("abort", stop); reject(error); });
-    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) { kill("SIGKILL"); clearTimeout(hard); } signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut, timing: elapsedInterval(startedAt), ...(diagnostic ? { diagnostic } : {}) }); });
+    let cleanup: Promise<void> | undefined;
+    const settle = () => {
+      clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop);
+      return cleanup ??= settleProcessGroup(child.pid);
+    };
+    // Inherited pipes can keep `close` pending after the leader's exit.
+    child.once("exit", () => { void settle().catch(reject); });
+    child.once("error", error => { void settle().then(() => reject(error), reject); });
+    child.once("close", (exitCode, exitSignal) => { void settle().then(() => resolve({ exitCode, signal: exitSignal, timedOut, timing: elapsedInterval(startedAt), ...(diagnostic ? { diagnostic } : {}) }), reject); });
     // The explicit stdin pipe above is guaranteed; the IPC overload loses that type refinement.
     const stdin = child.stdin!;
     stdin.on("error", () => { /* Early rejection is reported by child exit, never replayed. */ });
@@ -149,10 +156,15 @@ async function runStock(input: RunInput, repository: string, deadline: number, s
       const kill = (s: NodeJS.Signals) => { if (child.pid) { try { process.kill(-child.pid, s); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e; } } };
       const stop = () => { if (hard) return; killed = true; hard = setTimeout(() => kill("SIGKILL"), 2000); kill("SIGTERM"); };
       const timer = setTimeout(stop, limits.maxDurationMs); signal.addEventListener("abort", stop, { once: true });
-      const clear = () => { clearTimeout(timer); if (hard) { kill("SIGKILL"); clearTimeout(hard); } signal.removeEventListener("abort", stop); };
+      let cleanup: Promise<void> | undefined;
+      const settle = () => {
+        clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop);
+        return cleanup ??= settleProcessGroup(child.pid);
+      };
+      child.once("exit", () => { void settle().catch(reject); });
       child.stdout.on("data", (b: Buffer) => { stdout += b.toString(); if (stdout.length > 1_000_000) stop(); });
-      child.once("error", e => { clear(); reject(e); });
-      child.once("close", code => { clear(); if (code === 0 && !killed) resolve(stdout); else reject(new RunnerError("STOCK_OBSERVATION", "Stock observation stopped; retain isolated evidence")); });
+      child.once("error", e => { void settle().then(() => reject(e), reject); });
+      child.once("close", code => { void settle().then(() => { if (code === 0 && !killed) resolve(stdout); else reject(new RunnerError("STOCK_OBSERVATION", "Stock observation stopped; retain isolated evidence")); }, reject); });
       if (signal.aborted) stop();
     });
     const row = JSON.parse(result.trim()) as { status: string; requests: number; evidence: string };

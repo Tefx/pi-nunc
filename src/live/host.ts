@@ -70,6 +70,20 @@ export function nativeEnvironment(state: string): NodeJS.ProcessEnv {
   for (const key of Object.keys(env)) if (key.startsWith("LARVA_")) delete env[key];
   return { ...env, TMPDIR: join(state, "tmp"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
 }
+/** Settle the owned group even after its leader exits with all stdio closed. */
+export async function settleProcessGroup(pid: number | undefined): Promise<void> {
+  if (!pid) return;
+  const send = (signal: NodeJS.Signals | 0): boolean => {
+    try { process.kill(-pid, signal); return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; }
+  };
+  if (!send("SIGTERM")) return;
+  const deadline = Date.now() + 100;
+  while (send(0)) {
+    if (Date.now() >= deadline) { send("SIGKILL"); return; }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
 /** A protocol client and read-only native session view. Stock Pi owns every write/run/retry. */
 export class NativeHost {
   readonly session = this;
@@ -328,7 +342,11 @@ export class NativeHost {
     if (this.watch) clearInterval(this.watch);
     let grace: NodeJS.Timeout | undefined;
     if (!this.exited && this.child) { this.child.stdin.write(JSON.stringify({ type: "prompt", message: "/nunc-observer-quit" }) + "\n"); grace = setTimeout(this.abort, 1000); }
-    await this.closed; if (grace) clearTimeout(grace); if (this.killTimer) { this.kill("SIGKILL"); clearTimeout(this.killTimer); } if (this.eventsFile) this.drain();
+    await this.closed;
+    if (grace) clearTimeout(grace);
+    if (this.killTimer) clearTimeout(this.killTimer);
+    await settleProcessGroup(this.pid);
+    if (this.eventsFile) this.drain();
   }
 }
 export async function openHost(options: HostOptions): Promise<NativeHost> { const host = new NativeHost(options); try { return await host.start(); } catch (error) { await host.close(); throw error; } }

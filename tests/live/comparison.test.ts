@@ -87,6 +87,20 @@ test("controlled comparison refuses non-loopback targets before state or dispatc
   assert.throws(() => parseInput(input, true)); await assert.rejects(executeComparison(input, repository, mockWorker, new AbortController().signal));
   assert.equal(existsSync(input.target.stateRoot), false);
 });
+test("comparison rejects missing/corrupt prior ledgers and expired deadlines before creating its target", async () => {
+  const prior = await mkdtemp(join(tmpdir(), "nunc-prior-ledger-"));
+  try {
+    for (const kind of ["missing", "corrupt", "truncated", "expired"] as const) {
+      const input = await comparisonFixture();
+      const path = join(prior, `${kind}.jsonl`);
+      if (kind === "corrupt") await writeFile(path, '{"kind":"invalid"}\n');
+      if (kind === "truncated") await writeFile(path, '{"kind":');
+      input.batch = kind === "expired" ? { firstDispatchAt: Date.now() - input.limits.maxDurationMs - 1000 } : { priorLedgers: [path] };
+      await assert.rejects(executeComparison(input, repository, mockWorker, new AbortController().signal), (error: { code?: string }) => error.code === (kind === "expired" ? "TIME_LIMIT" : kind === "truncated" ? "RECONCILIATION" : "LEDGER_RECONCILIATION"));
+      await assert.rejects(lstat(input.target.stateRoot), { code: "ENOENT" });
+    }
+  } finally { await rm(prior, { recursive: true, force: true }); }
+});
 test("aggregator never proves parity from empty mock contexts or relabels defaults as matched", async () => {
   const input = await comparisonFixture(); input.limits.maxDurationMs = 10000;
   try {

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxProvider, normalizeContext, type Context, type Provider, type TranscriptContext } from "@earendil-works/pi-ai";
@@ -11,7 +12,7 @@ import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../
 import observer from "../../src/live/observer.js";
 import { openHost } from "../../src/live/host.js";
 import { NativeRpcError } from "../../src/live/native-no-work.js";
-import { execute } from "../../src/live/runner.js";
+import { execute, launchWorker } from "../../src/live/runner.js";
 import { fixture, repository } from "./fixtures.js";
 
 const SECRET = "fake-secret-s3ntinel";
@@ -308,7 +309,7 @@ test("host malformed RPC, output limit and observer drain keep distinct failure 
 });
 
 test("native RPC decodes split multibyte UTF-8 and shutdown kills descendants after leader exit", { timeout: 15000 }, async () => {
-  for (const mode of ["utf8", "descendant"]) {
+  for (const mode of ["utf8", "descendant", "descendant-closed"]) {
     const { input, caseRoot } = await hostFixture();
     let host: Awaited<ReturnType<typeof openHost>> | undefined;
     let pid: number | undefined;
@@ -317,15 +318,70 @@ test("native RPC decodes split multibyte UTF-8 and shutdown kills descendants af
       if (mode === "utf8") assert.equal(host.sessionId, "fixture-汉字-🧠");
       else pid = Number(await readFile(join(caseRoot, "task/descendant.pid"), "utf8"));
       await host.close(); host = undefined;
-      if (pid) {
-        const state = spawnSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
-        assert.equal(state.error, undefined);
-        if (state.status === 0) assert.match(state.stdout.trim(), /^Z/, "a remaining orphan must be a dead zombie, never a running process");
-        else { assert.equal(state.status, 1); assert.equal(state.stdout.trim(), ""); }
-      }
+      if (pid) await assertDead(pid);
     } finally {
       if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
       await host?.close();
+      await rm(input.target.stateRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+async function assertDead(pid: number): Promise<void> {
+  const deadline = Date.now() + 1000;
+  while (true) {
+    const state = spawnSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+    assert.equal(state.error, undefined);
+    if (state.status === 1) { assert.equal(state.stdout.trim(), ""); return; }
+    assert.equal(state.status, 0);
+    if (/^Z/.test(state.stdout.trim())) return;
+    assert(Date.now() < deadline, "descendant must be absent or a dead zombie, never running");
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+
+test("worker normal leader exit settles inherited and closed-pipe descendants without a deadline stop", { timeout: 15000 }, async () => {
+  for (const mode of ["worker-descendant", "worker-descendant-closed"]) {
+    const input = await fixture(); await mkdir(input.target.stateRoot);
+    input.overrides = [{ requirement: mode }];
+    let pid: number | undefined;
+    try {
+      const result = await launchWorker(hostChild, { input, scenarioIndex: 0, deadline: Date.now() + 10000, resume: false }, new AbortController().signal);
+      pid = Number(await readFile(join(input.target.stateRoot, "descendant.pid"), "utf8"));
+      assert.equal(result.exitCode, 0); assert.equal(result.timedOut, false);
+      await assertDead(pid);
+    } finally {
+      if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
+      await rm(input.target.stateRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+test("PTY cleanup settles inherited-pipe and normal closed-pipe leader exits", { timeout: 15000 }, async () => {
+  for (const mode of ["pty-descendant", "pty-descendant-closed"]) {
+    const input = await fixture(); await mkdir(input.target.stateRoot);
+    const driver = spawn("python3", [join(repository, "scripts/pty-driver.py"), process.execPath, hostChild, mode], { cwd: input.target.stateRoot, stdio: ["pipe", "ignore", "pipe"] });
+    const closed = once(driver, "close");
+    const timeout = setTimeout(() => driver.kill("SIGKILL"), 10000);
+    let pid: number | undefined;
+    try {
+      const deadline = Date.now() + 5000;
+      while (true) {
+        try { pid = Number(await readFile(join(input.target.stateRoot, "descendant.pid"), "utf8")); break; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT" || Date.now() >= deadline) throw error; }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      // An inherited PTY writer prevents EOF; exercise explicit termination too.
+      // The closed-pipe arm must terminate solely from the normal leader exit.
+      if (mode === "pty-descendant") driver.kill("SIGTERM");
+      const [code, signal] = await closed;
+      assert.equal(signal, null); assert.equal(code, 0);
+      await assertDead(pid);
+    } finally {
+      clearTimeout(timeout); driver.kill("SIGKILL"); driver.stdin.destroy();
+      if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
+      await closed;
+      await rm(input.target.stateRoot, { recursive: true, force: true });
     }
   }
 });

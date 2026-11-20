@@ -54,16 +54,16 @@ export async function executeComparison(value: unknown, repository: string, scri
   requireValue(input.comparison, "COMPARISON", "comparison configuration is required");
   const receipt = await preflight(input, repository); input.receipt = receipt;
   const root = input.target.stateRoot;
-  await mkdir(root, { mode: 0o700 }); await mkdir(join(root, "tmp"), { mode: 0o700 });
   const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
-  const started = Date.now();
   requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
+  await mkdir(root, { mode: 0o700 }); await mkdir(join(root, "tmp"), { mode: 0o700 });
+  const started = Date.now();
   const readAll = () => readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(join(root, "calls.jsonl")) ? [join(root, "calls.jsonl")] : [])]);
   await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600, flag: "wx" });
   await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
   const report: ComparisonReport = { version: 1, status: "STOPPED", selection: structuredClone(input), comparison: { modes: [] }, matrix: [], rawSegments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
     "Controlled HTTP responses prove stock-host scheduling, accounting and scorer mechanics only; semantic policy and continuation quality require independent observation.",
-    "All setup, maintenance and continuation calls share the finite ledger. Unknown usage/cost remains null; reservations are never refunded.",
+    "All setup, maintenance and continuation calls share the finite ledger. Trustworthy terminal actual usage settles and releases unused token reservations; unknown or untrusted token usage retains the full reserve. Unknown costs remain null and retain cost reservations, never refunded to zero.",
     "Matched runs prepare each actual rollover independently. Native summaries have provider output limits but no enforced rendered-memory ceiling after wrapper/file-list append; realized-size matching alone leaves budget parity UNPROVEN.",
     "E3 uses awaited public turn_end, task settings reload and native automatic compaction. Each actual tool batch must satisfy exposure, cut and capacity inequalities before further transport.",
     "Semantic claims, restatements and excluded actions require independent review of retained contexts, actions, artifacts and native sessions. No model judge or repair replay is run.",
