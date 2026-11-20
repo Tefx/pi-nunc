@@ -11721,7 +11721,7 @@ phases:
       (11 passed, 0 failed). Worktree removed and protected files untouched.
   - id: delta-worker-organizing-target-repair
     name: Live Worker 容量资格判定 organizingTarget 权威预算绑定与原生回归修复
-    status: claimed
+    status: done
     description: "step_type: implementation\nrepo_change_policy: modifies_repo\nscope:\n\
       \  allowed_paths: [\"src/live/worker.ts\", \"tests/live/guidance-native.test.ts\"\
       , \"tests/live/comparison-native.test.ts\"]\n  blocked_paths: [\"plan.yaml\"\
@@ -11778,3 +11778,13 @@ phases:
     agent: node-typescript-engineer
     claimed_by: node-typescript-engineer
     claimed_at: '2026-11-20T18:42:40.250168Z'
+    done_at: '2026-11-20T18:54:31.413021+00:00'
+    evidence: Integrated commit f900334f9adae83553ebbed09c6402f2aad8ee74 (retained
+      at refs/vectl/retained/nunc-third-audit-closure.delta-worker-organizing-target-repair)
+      onto main across 3 authorized files (src/live/worker.ts, tests/live/comparison-native.test.ts,
+      tests/live/guidance-native.test.ts). Worker now computes authoritative organizingTarget
+      via memoryPlan(session.fixed, session.model, engineConfig(...)) before compaction
+      for E4/G8 qualifyCapacity() binding, matching maintain(). npm run build passed;
+      guidance-native.test.js + comparison-native.test.js passed (15 passed, 0 failed)
+      and capacity-observation.test.js passed (9 passed, 0 failed). Worktree removed
+      and protected files untouched.
