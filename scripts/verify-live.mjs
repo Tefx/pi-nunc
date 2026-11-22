@@ -8,7 +8,7 @@ const flags = process.argv.slice(2);
 try {
   if (flags.length > 1 || (flags.length === 1 && !["--preflight", "--worker", "--observe-stock"].includes(flags[0]))) throw new Error("ARGUMENTS");
   const { parseInput, preflight } = await import("../dist/src/live/contract.js");
-  let value = await readInput();
+  let value = await readInput(flags[0] === "--worker");
   if (flags[0] !== "--worker") {
     const { resolveInput } = await import("../dist/src/live/defaults.js");
     value = await resolveInput(value);

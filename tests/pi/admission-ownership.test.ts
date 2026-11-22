@@ -4,6 +4,7 @@ import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, 
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Admission } from "../../src/pi/admission.js";
 import { engineConfig } from "../../src/pi/config.js";
+import { admissionEstimate, usableAssistantUsageTokens } from "../../src/engine/accounting.js";
 import { piComplete } from "../../src/engine/pi-model.js";
 
 async function env() {
@@ -43,6 +44,51 @@ async function env() {
   };
   return { faux, runtime, registry, model, ctx, admission, held, options, context, huge, observations, rewrap };
 }
+
+for (const terminal of ["stop", "error", "aborted", "late-cancel", "reject"] as const) test(`no-payload completion settles ${terminal} from the real terminal outcome`, async t => {
+  const e = await env(); t.after(() => e.admission.close(e.ctx));
+  const controller = new AbortController();
+  Object.assign(e.ctx, { signal: controller.signal });
+  const completed = Promise.withResolvers<AssistantMessage>();
+  e.registry.registerProvider({ ...e.faux.provider, streamSimple() {
+    const stream = createAssistantMessageEventStream();
+    stream.result = () => completed.promise;
+    return stream;
+  } });
+  e.admission.ensure(e.ctx);
+  e.admission.bindProjection({ ...e.options, signal: controller.signal, model: e.model, messages: e.context.messages, memory: { version: 1, nextId: 1, slots: [] } });
+  const stream = e.registry.getProvider(e.model.provider)!.streamSimple(e.model, e.context, { ...e.options, signal: controller.signal });
+  assert.equal(e.observations.filter(o => o.kind === "main").length, 0, "no speculative recovery before completion");
+  if (terminal === "late-cancel") controller.abort();
+  if (terminal === "reject") completed.reject(new Error("pre-payload transport rejection"));
+  else completed.resolve({ ...fauxAssistantMessage("late completion"), stopReason: terminal === "late-cancel" ? "stop" : terminal });
+  await stream.result().catch(() => {});
+  await Promise.resolve();
+  assert.deepEqual(e.observations.filter(o => o.kind === "main").map(o => [o.outcome, o.code]),
+    [[terminal === "stop" ? "delegate" : "reject", terminal === "stop" ? undefined : terminal === "aborted" || terminal === "late-cancel" ? "CANCELLED" : "RESPONSE"]]);
+});
+
+test("provider replacement prevents an in-flight completion from restoring an old receipt", async t => {
+  const e = await env(); t.after(() => e.admission.close(e.ctx));
+  const completed = Promise.withResolvers<AssistantMessage>();
+  e.registry.registerProvider({ ...e.faux.provider, streamSimple() {
+    const stream = createAssistantMessageEventStream();
+    stream.result = () => completed.promise;
+    return stream;
+  } });
+  e.admission.ensure(e.ctx);
+  e.admission.bindProjection({ ...e.options, model: e.model, messages: e.context.messages, memory: { version: 1, nextId: 1, slots: [] } });
+  const pending = e.registry.getProvider(e.model.provider)!.streamSimple(e.model, e.context, e.options);
+  e.registry.registerProvider(e.faux.provider);
+  e.admission.ensure(e.ctx);
+  const first = { ...fauxAssistantMessage("old completion"), api: e.model.api, provider: e.model.provider, model: e.model.id };
+  completed.resolve(first);
+  await pending.result();
+  const follow = normalizeContext({ messages: [...e.context.messages, first, { role: "user", content: "next", timestamp: 2 }] });
+  e.admission.bindProjection({ ...e.options, model: e.model, messages: follow.messages, memory: { version: 1, nextId: 1, slots: [] } });
+  await e.registry.getProvider(e.model.provider)!.streamSimple(e.model, follow, e.options).result();
+  assert.equal((e.observations.at(-1) as { estimateReason?: string }).estimateReason, "no-receipt");
+});
 
 test("maintenance admission carries its measured correction through native input checks without charging main requests", async t => {
   const e = await env(); t.after(() => e.admission.close(e.ctx));
@@ -105,7 +151,7 @@ test("prepareRequest header await wrap does not skip admission on the captured w
   }).result();
   assert.equal(escaped.stopReason, "error", escaped.errorMessage ?? "");
   assert.equal(e.faux.state.callCount, before);
-  assert(e.observations.some(o => o.outcome === "reject"));
+  assert.deepEqual(e.observations.filter(o => o.kind === "main").map(o => [o.outcome, o.code]), [["reject", "CONFIG"]]);
 });
 
 test("maintenance same-Context replay via a held older wrapper cannot consume a second extraction", async () => {
@@ -221,6 +267,18 @@ test("receipt U sums real input/cache/output components instead of inconsistent 
   e.admission.close(e.ctx);
 });
 
+test("shared assistant usage validation and both accounting anchor paths use component sums", async t => {
+  const e = await env(); t.after(() => e.admission.close(e.ctx));
+  const message = { ...fauxAssistantMessage("usage"), api: e.model.api, provider: e.model.provider, model: e.model.id,
+    usage: { ...fauxAssistantMessage("").usage, input: 100, cacheRead: 20, cacheWrite: 5, output: 10, totalTokens: 1 } };
+  assert.equal(usableAssistantUsageTokens(message), 135);
+  const context = normalizeContext({ messages: [message] });
+  for (const index of [undefined, 0]) assert.equal(admissionEstimate(context, e.model, undefined, true, 0, index).tokens, 135);
+  for (const stopReason of ["error", "aborted"] as const) assert.equal(usableAssistantUsageTokens({ ...message, stopReason }), undefined);
+  for (const input of [-1, NaN, Infinity, 0.5, "100"]) assert.equal(usableAssistantUsageTokens({ ...message, usage: { ...message.usage, input } }), undefined);
+  assert.equal(usableAssistantUsageTokens({ ...message, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 100 } }), undefined);
+});
+
 test("ambiguous projection witnesses and missing bindings cannot establish pure-R receipts", async () => {
   const e = await env();
   const first = e.context.messages[0]!;
@@ -230,6 +288,7 @@ test("ambiguous projection witnesses and missing bindings cannot establish pure-
   bind(context.messages);
   bind([second, first]);
   const response = await e.held.streamSimple(e.model, context, e.options).result();
+  assert.equal(e.faux.state.callCount, 1);
   assert.equal(response.stopReason, "stop");
   assert.equal((e.observations.filter(o => o.kind === "main").at(-1) as any).estimateReason, "messages-mismatch");
   e.admission.invalidateUsage();

@@ -6,6 +6,7 @@ import { loadScenario, seedScenario } from "../../src/live/scenarios.js";
 import { parseInput } from "../../src/live/contract.js";
 import {
   layoutsFromRequests,
+  serializedEvidence,
   movingUsesTail,
   noSyntheticMissing,
   positionStable,
@@ -19,6 +20,7 @@ import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, repository } from "./fixtures.js";
 import { normalizeContext, type Context, type Model } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { streamSimple as streamChat } from "@earendil-works/pi-ai/api/openai-completions";
 
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 
@@ -141,7 +143,8 @@ test("legal-tail evidence checks parallel pending/completed tool Contexts indepe
   for (const row of [pending, complete]) {
     assert.equal(row.legalTailIndex, 1, "parallel group cannot advance the legal tail past its calling assistant");
     assert.equal(row.memoryBoundaryLegal, true);
-    assert.equal(row.deliveredMemoryMatches, true);
+    assert.equal(row.deliveredMemoryMatches, row === complete,
+      "Responses requires the complete input sequence; a synthesized pending result contradicts preservation");
     assert.notEqual(row.memoryIndex, row.messageCount - 1, "legal tail is distinct from the physical end");
   }
   assert.equal(pending.payloadSyntheticMissing, true, "pending sibling remains independently visible in serializer evidence");
@@ -161,7 +164,7 @@ test("legal-tail evidence checks parallel pending/completed tool Contexts indepe
   const afterStop = await observe([...completed, stopped], 5, 5);
   assert.equal(afterStop.legalTailIndex, 5);
   assert.equal(afterStop.memoryBoundaryLegal, true);
-  const system: Context["messages"][number] = { role: "system", content: "Use the authorized local tools.", timestamp: 0 };
+  const system: Context["messages"][number] = { role: "system", content: "Use the authorized local tools.", sections: { instructions: "Preserve task obligations.", removed: null }, timestamp: 0 };
   const withSystem = await observe([system, ...completed], 2, 7);
   assert.equal(withSystem.legalTailIndex, 2, "the real native leading system message participates in legal boundaries");
   assert.equal(withSystem.memoryBoundaryLegal, true);
@@ -202,6 +205,148 @@ test("legal-tail evidence checks parallel pending/completed tool Contexts indepe
   assert.equal(warmup(epochs.map(row => { const missing = { ...row }; delete missing.legalTailIndex; return missing; })), "UNPROVEN");
   assert.equal(warmup(epochs.map(row => ({ ...row, input: 16999 }))), "UNPROVEN", "17000 threshold remains binding");
   assert.equal(warmup([first, first, changed, changed]), "UNPROVEN", "two samples per epoch do not supply three warmup opportunities");
+});
+
+test("serialized chat evidence rejects changed calls, unrelated messages and an injected absent-memory carrier", () => {
+  const model = { provider: "openrouter", id: "google/gemini-3.8-flash", api: "openai-completions" } as Model<"openai-completions">;
+  const request: RequestObservation = {
+    callId: 1, turn: "a", kind: "main", model, thinking: null, reasoning: null, outputPlanning: null,
+    context: { messages: [
+      { role: "user", content: "Read the task file.", timestamp: 1 },
+      { role: "assistant", content: [{ type: "toolCall", id: "call-a", name: "read", arguments: { path: "task.txt" } }], api: model.api, provider: model.provider, model: model.id, timestamp: 2, stopReason: "toolUse", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } },
+      { role: "toolResult", toolCallId: "call-a", toolName: "read", content: [{ type: "text", text: "Task obligations" }], isError: false, timestamp: 3 },
+    ] },
+    admission: { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" },
+    finalPayload: { messages: [
+      { role: "user", content: "Read the task file." },
+      { role: "assistant", content: null, tool_calls: [{ id: "call-a", type: "function", function: { name: "read", arguments: '{"path":"task.txt"}' } }] },
+      { role: "tool", tool_call_id: "call-a", content: "Task obligations" },
+    ] },
+  };
+  assert.deepEqual(serializedEvidence(request), { memory: true, synthetic: false });
+  for (const mutate of [
+    (messages: any[]) => { messages[1].tool_calls[0].function.name = "write"; },
+    (messages: any[]) => { messages[1].tool_calls[0].function.arguments = '{"path":"other.txt"}'; },
+    (messages: any[]) => { messages[1].tool_calls[0].function.arguments = "{"; },
+  ]) {
+    const changed = structuredClone(request); mutate((changed.finalPayload as any).messages);
+    assert.equal(serializedEvidence(changed).synthetic, true);
+  }
+  for (const mutate of [
+    (messages: any[]) => { messages[0].content = "Unrelated substituted instructions"; },
+    (messages: any[]) => { messages.push({ role: "user", content: "Nunc working memory: injected" }); },
+    (messages: any[]) => { messages.reverse(); },
+  ]) {
+    const changed = structuredClone(request); mutate((changed.finalPayload as any).messages);
+    assert.equal(serializedEvidence(changed).memory, false);
+  }
+});
+
+test("Responses configuration updates preserve evidence only when the complete message sequence survives", () => {
+  for (const api of ["openai-responses", "openai-codex-responses"] as const) {
+    const model = { api, provider: "fixture", id: "native" } as Model<typeof api>;
+    const request: RequestObservation = {
+      callId: 1, turn: "a", kind: "main", model, thinking: "medium", reasoning: "medium", outputPlanning: null,
+      context: { messages: [
+        { role: "user", content: "Read the task file.", timestamp: 1 },
+        { role: "assistant", content: [
+          { type: "text", text: "Reading the task." },
+          { type: "toolCall", id: "call-1|fc-1", name: "read", arguments: { path: "task.txt" } },
+        ], api, provider: model.provider, model: model.id, timestamp: 2, stopReason: "toolUse",
+          usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } },
+        { role: "toolResult", toolCallId: "call-1|fc-1", toolName: "read", content: [{ type: "text", text: "Task obligations" }], isError: false, timestamp: 3 },
+        { role: "user", content: "Saved M", timestamp: 4 },
+      ] },
+      admission: { kind: "main", outcome: "delegate", memoryPresent: true, memoryCarrierCount: 1, memoryIndex: 3, memoryContent: "Saved M" },
+      finalPayload: { input: [
+        { role: "user", content: "Read the task file." },
+        { type: "configuration_update", reasoning: { effort: "low" } },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Reading the task." }] },
+        { type: "function_call", call_id: "call-1", name: "read", arguments: '{"path":"task.txt"}' },
+        { type: "function_call_output", call_id: "call-1", output: "Task obligations" },
+        { role: "user", content: "Saved M" },
+        { type: "configuration_update", reasoning: { effort: "medium" } },
+      ] },
+    };
+    const change = (mutate: (items: any[]) => void) => {
+      const changed = structuredClone(request);
+      mutate((changed.finalPayload as any).input);
+      return serializedEvidence(changed);
+    };
+    assert.deepEqual(serializedEvidence(request), { memory: true, synthetic: false }, api);
+    assert.deepEqual(change(items => { items[1] = { type: "additional_tools", role: "developer", tools: [] }; }), { memory: true, synthetic: false });
+    assert.deepEqual(change(items => { items[1] = { type: "unrecognized" }; }), {}, "unknown input items remain unproven");
+    for (const mutate of [
+      (items: any[]) => { items[2].content[0].text = "Substituted assistant text"; },
+      (items: any[]) => { items.splice(2, 1); },
+      (items: any[]) => { [items[0], items[2]] = [items[2], items[0]]; },
+      (items: any[]) => { items[0].content = "Substituted user text"; },
+      (items: any[]) => { items[5].content = "Changed M"; },
+    ]) {
+      assert.deepEqual(change(mutate), { memory: false, synthetic: false }, "controls cannot mask message changes");
+    }
+    for (const mutate of [
+      (items: any[]) => { items[3].name = "write"; },
+      (items: any[]) => { items[4].output = "Fabricated result"; },
+    ]) {
+      assert.deepEqual(change(mutate), { memory: false, synthetic: true }, "controls cannot mask tool changes");
+    }
+    assert.deepEqual(change(items => { items.push({ type: "custom_tool_call", call_id: "extra" }); }), {});
+    const empty = structuredClone(request);
+    empty.context.messages.pop();
+    (empty.finalPayload as any).input.splice(5, 1);
+    empty.admission = { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" };
+    assert.deepEqual(serializedEvidence(empty), { memory: true, synthetic: false }, "explicit empty M remains supported");
+  }
+});
+
+test("ordered chat messages bind calls, images and leading developer instructions", async () => {
+  const provider = openaiProvider(), catalogModel = provider.getModels().find(m => m.id === "gpt-4.1");
+  assert(catalogModel);
+  const model: Model<"openai-completions"> = { ...catalogModel, api: "openai-completions", reasoning: true };
+  const assistant = (id: string): Context["messages"][number] => ({ role: "assistant", api: model.api, provider: model.provider, model: model.id,
+    content: [{ type: "toolCall", id, name: "read", arguments: {} }], stopReason: "toolUse", timestamp: 0,
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
+  const result = (id: string): Context["messages"][number] => ({ role: "toolResult", toolCallId: id, toolName: "read", timestamp: 0, isError: false, content: [{ type: "text", text: "No result provided" }] });
+  const row: RequestObservation = { callId: 1, turn: "a", kind: "main", model, thinking: null, reasoning: null, outputPlanning: null,
+    admission: { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" },
+    context: { messages: [{ role: "system", content: "Follow the task", timestamp: 0 },
+      { role: "user", content: [{ type: "text", text: "Inspect" }, { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }], timestamp: 0 },
+      assistant("one"), result("one"), assistant("two"), result("two")] } };
+  let sends = 0;
+  await streamChat(model, normalizeContext(row.context), { apiKey: "isolated-offline-key", maxRetries: 0, fetch: async (resource, init) => {
+    sends++;
+    row.finalPayload = await new Request(resource, init).json();
+    return new Response('{"error":{"message":"controlled serializer-only stop"}}', { status: 400, headers: { "content-type": "application/json" } });
+  } }).result();
+  assert.equal(sends, 1, "real native chat serializer reached only the controlled transport");
+  assert.deepEqual(serializedEvidence(row), { memory: true, synthetic: false }, "genuine No result provided text is preserved");
+  const swapped = structuredClone(row), messages = (swapped.finalPayload as any).messages;
+  [messages[2].tool_calls, messages[4].tool_calls] = [messages[4].tool_calls, messages[2].tool_calls];
+  assert.deepEqual(serializedEvidence(swapped), { memory: false, synthetic: true });
+  for (const content of [
+    [{ type: "text", text: "Inspect" }, { type: "image_url", image_url: { url: "data:image/png;base64,Y2hhbmdlZA==" } }],
+    [{ type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2U=" } }, { type: "text", text: "Inspect" }],
+  ]) {
+    const changed = structuredClone(row); (changed.finalPayload as any).messages[1].content = content;
+    assert.equal(serializedEvidence(changed).memory, false);
+  }
+});
+
+test("Responses binds signed thinking replay to its ordered reasoning item", () => {
+  const model = { api: "openai-responses", provider: "fixture", id: "reasoning", reasoning: true } as Model<"openai-responses">;
+  const reasoning = { type: "reasoning", id: "rs_one", summary: [{ type: "summary_text", text: "Consider the task" }], encrypted_content: "opaque-replay" };
+  const row: RequestObservation = { callId: 1, turn: "a", kind: "main", model, thinking: "low", reasoning: "low", outputPlanning: null,
+    admission: { kind: "main", outcome: "delegate", memoryPresent: false, memoryCarrierCount: 0, memoryContent: "" },
+    context: { messages: [{ role: "assistant", api: model.api, provider: model.provider, model: model.id, timestamp: 0, stopReason: "stop",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      content: [{ type: "thinking", thinking: "Consider the task", thinkingSignature: JSON.stringify(reasoning) }, { type: "thinking", thinking: "Unsigned omitted" }, { type: "text", text: "Done" }] }] },
+    finalPayload: { input: [reasoning, { type: "message", role: "assistant", content: [{ type: "output_text", text: "Done" }] }] } };
+  assert.deepEqual(serializedEvidence(row), { memory: true, synthetic: false });
+  for (const mutate of [(items: any[]) => items.reverse(), (items: any[]) => items.shift(), (items: any[]) => { items[0].encrypted_content = "changed"; }]) {
+    const changed = structuredClone(row); mutate((changed.finalPayload as any).input);
+    assert.equal(serializedEvidence(changed).memory, false);
+  }
 });
 
 test("public parseInput admits m* with explicit fractions and refuses Astra or calibrated m4", async () => {

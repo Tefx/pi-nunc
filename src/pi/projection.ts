@@ -1,14 +1,30 @@
-import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import { convertToLlm, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { MaintenanceInput } from "../engine/types.js";
+import { selectMaintenanceCalibration } from "../engine/calibration.js";
 import type { ActiveEntry, Memory, MechanicalFallbackInfo, Slot, SlotProvenance, ToolResultDecision, ToolResultRef } from "../engine/index.js";
-import { applyToolResultCleanup, renderMemoryWithFallback, emptyMemory, renderMemory, legacyRenderMemory } from "../engine/index.js";
+import { applyToolResultCleanup, renderMemoryWithFallback, emptyMemory, legacyRenderMemory } from "../engine/index.js";
 import { messageTextContent } from "../engine/cleanup.js";
-import { isSystemMessage } from "../engine/accounting.js";
 import { canonical, EngineError, integer, record, requireThat, validateMemory } from "../engine/validation.js";
 
 /** Private CustomEntry type. Replaceable encoding; not a public SDK. */
 export const MANUAL_MEMORY_TYPE = "nunc.memory";
+
+/** Non-context CustomEntry, never a memory record or a checkpoint. */
+export const MAINTENANCE_CALIBRATION_TYPE = "nunc.maintenance-calibration";
+
+/** Read only the selected getBranch() path. buildContextEntries() can omit older measurement records. */
+export function projectMaintenanceCalibration(branch: readonly SessionEntry[], input: Omit<MaintenanceInput, "signal">) {
+  return selectMaintenanceCalibration(input, branchCalibrationRecords(branch));
+}
+
+export function branchCalibrationRecords(branch: readonly SessionEntry[]): unknown[] {
+  return branch.flatMap(entry => {
+    if (entry.type === "custom" && entry.customType === MAINTENANCE_CALIBRATION_TYPE) return [entry.data];
+    if (entry.type === "compaction" && record(entry.details) && entry.details.maintenanceCalibration !== undefined) return [entry.details.maintenanceCalibration];
+    return [];
+  });
+}
 
 export function isManualMemoryEntry(entry: SessionEntry): entry is Extract<SessionEntry, { type: "custom" }> {
   return entry.type === "custom" && entry.customType === MANUAL_MEMORY_TYPE;
@@ -25,7 +41,38 @@ function dependencyDigest(active: readonly ActiveEntry[], ref: ToolResultRef): s
   return sourceDigest(JSON.stringify({ role: message.role, content: message.content,
     ...(message.role === "toolResult" ? { toolCallId: message.toolCallId, toolName: message.toolName } : {}) }));
 }
-const sourceDigest = (text: string) => createHash("sha256").update(JSON.stringify(text)).digest("hex");
+const sourceDigest = (value: string | readonly unknown[]) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+function toolSourceDigest(active: readonly ActiveEntry[], ref: ToolResultRef, text: string): string {
+  const message = active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
+  return message && Array.isArray(message.content) && message.content.length > 1
+    ? sourceDigest(message.content) : sourceDigest(text);
+}
+
+// Shared with the manual save owner; only confirmed records may activate cleanup.
+const UNCONFIRMED_CLEANUP = Symbol.for("nunc.memory.unconfirmed-cleanup");
+function unconfirmedCleanup(): WeakSet<SessionEntry> {
+  const global = globalThis as typeof globalThis & { [UNCONFIRMED_CLEANUP]?: WeakSet<SessionEntry> };
+  return global[UNCONFIRMED_CLEANUP] ??= new WeakSet();
+}
+export function setCleanupUnconfirmed(entry: SessionEntry | undefined, unconfirmed: boolean): void {
+  if (!entry) return;
+  if (unconfirmed) unconfirmedCleanup().add(entry); else unconfirmedCleanup().delete(entry);
+}
+
+type ContextEdit = Extract<SessionEntry, { type: "context_edit" }>;
+/** Match Pi's role-preserving projectContextEntry before any LLM conversion. */
+export function effectiveEntryMessages(entry: SessionEntry, edit?: ContextEdit): ReturnType<typeof sessionEntryToContextMessages> {
+  if (edit?.replacement === null || isManualMemoryEntry(entry)) return [];
+  return sessionEntryToContextMessages(entry).filter(message => message.role !== "compactionSummary" &&
+    message.role !== "system" && !(message.role === "assistant" && ["error", "aborted"].includes(message.stopReason)))
+    .map(message => {
+      if (!edit?.replacement || !["user", "assistant", "toolResult", "custom"].includes(message.role)) return message;
+      const body = edit.replacement.content;
+      const content = (message.role === "assistant" || message.role === "toolResult") && typeof body === "string"
+        ? [{ type: "text" as const, text: body }] : body;
+      return { ...message, content } as typeof message;
+    });
+}
 const sourceText = (active: readonly ActiveEntry[], ref: ToolResultRef): string | undefined => {
   const message = active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
   return message?.role === "toolResult" ? messageTextContent(message) ?? undefined : undefined;
@@ -39,11 +86,12 @@ export function sealDecisions(active: readonly ActiveEntry[], decisions: readonl
       if (digest === undefined) throw new EngineError("INPUT", "Cleanup dependency changed before native save");
       return digest;
     });
-    return { ...decision, sourceDigest: sourceDigest(text), ...(sourceRefDigests ? { sourceRefDigests } : {}) };
+    return { ...decision, sourceDigest: toolSourceDigest(active, decision, text), ...(sourceRefDigests ? { sourceRefDigests } : {}) };
   });
 }
 function readDecisions(data: unknown): { valid: StoredDecision[]; invalid: string[] } {
-  if (!record(data) || !Array.isArray(data.toolResultCleanup)) return { valid: [], invalid: [] };
+  if (!record(data) || data.toolResultCleanup === undefined) return { valid: [], invalid: [] };
+  if (!Array.isArray(data.toolResultCleanup)) return { valid: [], invalid: ["invalid saved cleanup decisions"] };
   const valid: StoredDecision[] = [], invalid: string[] = [];
   for (const value of data.toolResultCleanup) {
     if (record(value) && typeof value.entryId === "string" && integer(value.messageIndex) &&
@@ -118,7 +166,7 @@ function checkpointMemory(latest: Extract<SessionEntry, { type: "compaction" }>)
 
 /** Derive unchanged-body continuity from commits on the selected branch, never persisted age. */
 export function deriveSlotProvenance(branch: readonly SessionEntry[], active: readonly ActiveEntry[], memory: Memory): Record<string, SlotProvenance> {
-  const result: Record<string, SlotProvenance> = Object.create(null);
+  const result: Record<string, SlotProvenance> = {};
   if (!memory.slots.length || !branch.length) return result;
   const commits: { branchIndex: number; entry: SessionEntry; slots: Slot[] | null }[] = [];
   for (let idx = 0; idx < branch.length; idx++) {
@@ -156,10 +204,7 @@ export function deriveSlotProvenance(branch: readonly SessionEntry[], active: re
       if (entry.type === "compaction") unmodifiedCompactions++;
     }
     const originInActiveWindow = originCommit.entry.type !== "compaction" && originBranchIndex >= firstActiveIndex;
-    Object.defineProperty(result, slot.id, {
-      value: { unmodifiedTurns, unmodifiedCompactions, originInActiveWindow },
-      enumerable: true, writable: true, configurable: true,
-    });
+    result[slot.id] = { unmodifiedTurns, unmodifiedCompactions, originInActiveWindow };
   }
   return result;
 }
@@ -206,24 +251,20 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
   if (latest?.type === "compaction") {
     memory = checkpointMemory(latest);
     mechanicalFallback = checkpointFallback(latest.details);
-    saved = readDecisions(latest.details);
+    if (!unconfirmedCleanup().has(latest)) saved = readDecisions(latest.details);
   }
   for (const entry of entriesAfterLatestCheckpoint(entries, latest?.id)) {
     if (isManualMemoryEntry(entry)) {
       memory = decodeManualMemory(entry.data);
       mechanicalFallback = undefined;
-      saved = readDecisions(entry.data);
+      if (!unconfirmedCleanup().has(entry)) saved = readDecisions(entry.data);
     }
   }
   const active: ActiveEntry[] = [];
-  const edited = new Set(entries.flatMap(entry => entry.type === "context_edit" ? [entry.targetId] : []));
+  const edits = new Map(entries.flatMap(entry => entry.type === "context_edit" ? [[entry.targetId, entry] as const] : []));
   for (const entry of entries) {
     if (entry.type === "compaction") continue;
-    if (entry.type === "message" && isSystemMessage(entry.message)) continue;
-    // Native transports omit failed assistants; overflow also removes the final
-    // failed assistant from live state before retry. They cannot be a K boundary.
-    if (entry.type === "message" && entry.message.role === "assistant" && ["error", "aborted"].includes(entry.message.stopReason)) continue;
-    const raw = sessionEntryToContextMessages(entry).filter(m => m.role !== "compactionSummary");
+    const raw = effectiveEntryMessages(entry, edits.get(entry.id));
     const messages = convertToLlm(raw);
     if (!messages.length) continue;
     const sourceRole = raw[0]?.role;
@@ -231,16 +272,17 @@ export function project(entries: readonly SessionEntry[]): { memory: Memory; act
       throw new EngineError("UNSUPPORTED_INPUT", `Unsupported visible entry ${entry.id}`);
     }
     active.push({ entryId: entry.id, sourceRole: sourceRole as ActiveEntry["sourceRole"], messages: structuredClone(messages),
-      ...(edited.has(entry.id) ? { outputUsageUnavailable: true } : {}) });
+      ...(edits.has(entry.id) ? { outputUsageUnavailable: true } : {}) });
   }
   const byId = new Map(active.map(entry => [entry.entryId, entry]));
   const unavailable: string[] = [...saved.invalid];
   const valid: StoredDecision[] = [];
   for (const decision of saved.valid) {
-    const source = byId.get(decision.entryId)?.messages[decision.messageIndex];
+    const entry = byId.get(decision.entryId);
+    const source = entry?.messages[decision.messageIndex];
     const text = sourceText(active, decision);
-    if (source?.role !== "toolResult" || source.toolCallId !== decision.toolCallId || source.toolName !== decision.toolName ||
-        text?.length !== decision.originalLength || text === undefined || sourceDigest(text) !== decision.sourceDigest) {
+    if (entry?.outputUsageUnavailable || source?.role !== "toolResult" || source.toolCallId !== decision.toolCallId || source.toolName !== decision.toolName ||
+        text?.length !== decision.originalLength || text === undefined || toolSourceDigest(active, decision, text) !== decision.sourceDigest) {
       unavailable.push(`${decision.entryId}:${decision.messageIndex}`);
     } else valid.push(decision);
   }
@@ -295,12 +337,12 @@ function completedCleanupScope(active: ActiveEntry[], startIndex: number, saved:
     }
   }
   const newestBusiness = groups.findLast(group => group.business && group.pending.size === 0);
-  const savedKeys = new Set(saved.map(d => `${d.entryId}:${d.messageIndex}`));
+  const savedKeys = new Set(saved.flatMap(d => [d, ...(d.sourceRefs ?? [])]).map(ref => `${ref.entryId}:${ref.messageIndex}`));
   const allowed = new Set(groups.filter(group => group.business && group.pending.size === 0 && group !== newestBusiness)
     .flatMap(group => group.results).map(ref => `${ref.entryId}:${ref.messageIndex}`));
   return active.slice(startIndex).flatMap(entry => entry.messages.flatMap((message, messageIndex) => {
     const key = `${entry.entryId}:${messageIndex}`;
-    return message.role === "toolResult" && allowed.has(key) && !savedKeys.has(key) ? [{ entryId: entry.entryId, messageIndex }] : [];
+    return !entry.outputUsageUnavailable && message.role === "toolResult" && allowed.has(key) && !savedKeys.has(key) ? [{ entryId: entry.entryId, messageIndex }] : [];
   }));
 }
 
@@ -324,7 +366,7 @@ export interface BranchHistoryResult {
 /** Only visible bodies are searchable: never system state, thinking, arguments or hidden entry data. */
 function historyBody(message: { content: string | readonly { type: string; text?: string }[] }): string {
   return typeof message.content === "string" ? message.content
-    : message.content.filter(block => block.type === "text").map(block => block.text ?? "").join("");
+    : message.content.filter(block => block.type === "text").map(block => block.text ?? "").join("\n");
 }
 
 function branchHistoryCandidates(branch: readonly SessionEntry[], active: readonly ActiveEntry[]): HistoryMessage[] {
@@ -339,20 +381,8 @@ function branchHistoryCandidates(branch: readonly SessionEntry[], active: readon
     const current = activeById.get(entry.id);
     if (index >= boundary && !current) continue;
     const edit = edits.get(entry.id);
-    if (edit?.replacement === null) continue;
-    const raw = sessionEntryToContextMessages(entry).filter(message =>
-      message.role !== "system" && message.role !== "compactionSummary" &&
-      !(message.role === "assistant" && ["error", "aborted"].includes(message.stopReason)));
-    const sourceRole = raw[0]?.role;
-    // Match the host's role-preserving context edit semantics before looking at visible text.
-    const visible = raw.map(message => {
-      if (!edit?.replacement || !["user", "assistant", "toolResult", "custom"].includes(message.role)) return message;
-      const body = edit.replacement.content;
-      const content = (message.role === "assistant" || message.role === "toolResult") && typeof body === "string"
-        ? [{ type: "text" as const, text: body }] : body;
-      // The host validates replacements for the target role; TS cannot correlate this union with the role check.
-      return { ...message, content } as typeof message;
-    });
+    const visible = effectiveEntryMessages(entry, edit);
+    const sourceRole = visible[0]?.role;
     for (const [messageIndex, message] of convertToLlm(visible).entries()) {
       if (message.role === "system") continue;
       const text = historyBody(message);
@@ -478,13 +508,15 @@ export function originalResults(projected: ReturnType<typeof project>, refs: Too
       const original = retired.find(entry => entry.entryId === ref.entryId && entry.messageIndex === ref.messageIndex && entry.role === "toolResult");
       const raw = branch.find(entry => entry.id === ref.entryId);
       if (original && raw?.type === "message" && raw.message.role === "toolResult") {
-        if (!Array.isArray(raw.message.content) || !raw.message.content.every(block => block.type === "text")) return { ref, error: "Original contains non-text blocks" };
-        return { ref, text: original.text, toolName: raw.message.toolName, isError: raw.message.isError };
+        const edit = branch.findLast(entry => entry.type === "context_edit" && entry.targetId === ref.entryId);
+        const visible = effectiveEntryMessages(raw, edit?.type === "context_edit" ? edit : undefined)[ref.messageIndex];
+        if (visible?.role !== "toolResult" || !Array.isArray(visible.content) || !visible.content.every(block => block.type === "text")) return { ref, error: "Original contains non-text blocks" };
+        return { ref, text: visible.content.map(block => block.text).join("\n"), toolName: visible.toolName, isError: visible.isError };
       }
     }
     if (message?.role !== "toolResult") return { ref, error: "Original unavailable on selected path" };
     if (!Array.isArray(message.content) || !message.content.every(b => b.type === "text")) return { ref, error: "Original contains non-text blocks" };
-    return { ref, text: message.content.map(b => b.text).join(""), toolName: message.toolName, isError: message.isError };
+    return { ref, text: message.content.map(b => b.text).join("\n"), toolName: message.toolName, isError: message.isError };
   });
 }
 
@@ -555,25 +587,23 @@ export function injectedCarrierIndex(messages: readonly LayoutMessage[]): number
   const hits = messages.flatMap((message, index) => carriers.has(message) ? [index] : []);
   return hits.length === 1 ? hits[0] : undefined;
 }
-function recordToolId(block: unknown): string[] {
-  if (!block || typeof block !== "object" || !("type" in block) || block.type !== "toolCall") return [];
-  return [String("id" in block ? block.id ?? "" : "")];
-}
-function applyToolBoundary(pending: Set<string>, message: LayoutMessage): void {
+function applyToolBoundary(pending: Map<string, string>, message: LayoutMessage): void {
   if (message.role === "assistant" && Array.isArray(message.content)) {
-    for (const id of message.content.flatMap(block => recordToolId(block))) if (id) pending.add(id);
-  } else if (message.role === "toolResult" && message.toolCallId) {
-    pending.delete(String(message.toolCallId));
+    for (const block of message.content) {
+      if (record(block) && block.type === "toolCall" && typeof block.id === "string" && typeof block.name === "string") pending.set(block.id, block.name);
+    }
+  } else if (message.role === "toolResult" && message.toolCallId && pending.get(message.toolCallId) === message.toolName) {
+    pending.delete(message.toolCallId);
   }
 }
 function hasPendingTools(messages: readonly LayoutMessage[], end: number): boolean {
-  const pending = new Set<string>();
+  const pending = new Map<string, string>();
   for (let i = 0; i < end; i++) applyToolBoundary(pending, messages[i]!);
   return pending.size > 0;
 }
 function legalTail(messages: readonly LayoutMessage[]): number {
   let last = 0;
-  const pending = new Set<string>();
+  const pending = new Map<string, string>();
   for (let i = 0; i < messages.length; i++) {
     applyToolBoundary(pending, messages[i]!);
     if (pending.size === 0 && messages[i]!.role !== "toolResult") last = i + 1;
@@ -604,12 +634,11 @@ function sameMessage(left: unknown, right: unknown, key: MessageKey): boolean {
 }
 function sourceUnits(entries: readonly SessionEntry[]): { entryId: string; messages: ReturnType<typeof sessionEntryToContextMessages> }[] {
   const units: { entryId: string; messages: ReturnType<typeof sessionEntryToContextMessages> }[] = [];
+  const edits = new Map(entries.flatMap(entry => entry.type === "context_edit" ? [[entry.targetId, entry] as const] : []));
   for (const entry of entries) {
     if (entry.type === "compaction") continue;
-    if (entry.type === "message" && isSystemMessage(entry.message)) continue;
-    if (entry.type === "message" && entry.message.role === "assistant" && ["error", "aborted"].includes(entry.message.stopReason)) continue;
-    const raw = sessionEntryToContextMessages(entry).filter(message => message.role !== "compactionSummary" && !(message.role === "custom" && message.customType === "nunc.memory"));
-    if (!raw.length) continue;
+    const raw = effectiveEntryMessages(entry, edits.get(entry.id));
+    if (!raw.length || !convertToLlm(raw).length) continue;
     units.push({ entryId: entry.id, messages: raw });
   }
   return units;
@@ -675,7 +704,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
   const ownUnits = units.map(unit => ({ entryId: unit.entryId, messages: unit.messages.map((message, i) => {
     const d = decisions.get(`${unit.entryId}:${i}`);
     return d && message.role === "toolResult" && message.toolCallId === d.toolCallId && message.toolName === d.toolName &&
-      Array.isArray(message.content) && message.content.every(b => b.type === "text") && message.content.map(b => b.text).join("").length === d.originalLength
+      Array.isArray(message.content) && message.content.every(b => b.type === "text") && message.content.map(b => b.text).join("\n").length === d.originalLength
       ? { ...structuredClone(message), content: [{ type: "text" as const, text: d.text }] } : message;
   }) }));
   const patched = [...stripped];
@@ -698,7 +727,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
       if (start < 0 || !decision || message.role !== "toolResult" ||
           message.toolCallId !== decision.toolCallId || message.toolName !== decision.toolName ||
           !Array.isArray(message.content) || !message.content.every(b => b.type === "text") ||
-          message.content.map(b => b.text).join("").length !== decision.originalLength) return message;
+          message.content.map(b => b.text).join("\n").length !== decision.originalLength) return message;
       const replaced = { ...structuredClone(message), content: [{ type: "text" as const, text: decision.text }] };
       patched[start + messageIndex] = replaced as unknown as T;
       return replaced;
@@ -737,9 +766,10 @@ export function eligibleUsageEntryIds(entries: readonly SessionEntry[], active: 
   const activeIds = new Set(active.map(entry => entry.entryId));
   const latest = entries.find(entry => entry.type === "compaction");
   const afterCheckpoint = entriesAfterLatestCheckpoint(entries, latest?.id);
+  const windowIds = new Set(afterCheckpoint.map(entry => entry.id));
   let startIndex = 0;
   for (const [index, entry] of afterCheckpoint.entries()) {
-    if (entry.type === "context_edit" && activeIds.has(entry.targetId)) startIndex = index + 1;
+    if (isManualMemoryEntry(entry) || entry.type === "context_edit" && windowIds.has(entry.targetId)) startIndex = index + 1;
   }
   return afterCheckpoint.slice(startIndex).filter(entry => activeIds.has(entry.id)).map(entry => entry.id);
 }

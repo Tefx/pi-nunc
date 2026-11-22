@@ -1,22 +1,31 @@
 import { appendFileSync, chmodSync, existsSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Control, ToolTrigger } from "./scenarios.js";
 import { memorySurface } from "../pi/manual.js";
 import { setObserverMemoryLayout } from "../pi/projection.js";
-import { subscriptionBilling } from "../engine/pi-model.js";
+import { userText, textOf } from "./guidance.js";
+import { payloadThinking, subscriptionBilling } from "../engine/pi-model.js";
+import { SYNTHETIC_LAST_USER_APPEND, SYNTHETIC_LAST_USER_APPEND_B, createAppendExtension } from "../pi/payload.js";
 
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.
-export interface ObserverState { compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; occurrence: number; triggerId?: string; savedTriggerId?: string; boundaryDeferred?: boolean; held?: () => void; boundaryDone?: boolean; boundaryIndex?: number; expectedFirst?: string; boundaryCommitted?: boolean; restorePending?: boolean; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; unconfirmedMode?: number; unconfirmedCallId?: string; conflictInjected?: boolean; memoryToolsExposed?: boolean }
+export type BoundaryState = { occurrence: number; boundaryIndex?: number | undefined; held?: (() => void) | undefined } & (
+  | { phase: "idle"; triggerId?: string }
+  | { phase: "deferred"; triggerId: string }
+  | { phase: "held"; triggerId: string }
+  | { phase: "armed"; expectedFirst: string }
+  | { phase: "committed" }
+);
+export interface ObserverState { boundary: BoundaryState; compacting?: boolean; ctx?: ExtensionContext; bases: WeakMap<Provider, Provider>; stop?: string; preBranchIds?: string[]; identityCut?: string; identityResultCut?: string; unconfirmedInjected?: boolean; unconfirmedFile?: string; unconfirmedMode?: number; unconfirmedCallId?: string; conflictInjected?: boolean }
 const stateKey = Symbol.for("nunc.live.observer.reload-state");
 const states: Map<string, ObserverState> = (process as any)[stateKey] ??= new Map();
-export function observerState(source: string): ObserverState | undefined { return states.get(source); }
 import { boundedProvider, BudgetLedger } from "./budget.js";
-import { compactionAssociationStop, resolveCompactionIdentity, type CompactionIdentityReason } from "./compaction-identity.js";
-import { identityPrestateProbeEnabled, taskRetentionSelection, taskRetentionRun, object, RunnerError, requireValue, type RunInput, type Selection } from "./contract.js";
-import { authorizeVerification, metricsCommand, toolPath } from "./tool-path.js";
+import { compactionAssociationStop, resolveCompactionIdentity, type CompactionIdentityReason } from "./scenarios.js";
+import { payloadAppendEnabled, payloadAppendBEnabled, providerWrapEnabled, taskRetentionSelection, taskRetentionRun, object, RunnerError, requireValue, type RunInput, type Selection } from "./contract.js";
+import { authorizeVerification, metricsCommand, toolPath, resolveScenarioPath, VERIFY_COMMANDS } from "./tool-path.js";
 
 export function toolBlockReason(error: unknown, aborted: boolean, context?: { isTaskRetention?: boolean; hasVerification?: boolean }): string {
   if (aborted || (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) return "Tool action after deadline";
@@ -37,23 +46,23 @@ export function toolBlockReason(error: unknown, aborted: boolean, context?: { is
 }
 
 /** Explicit verification extension; loaded by the stock CLI, never a host factory. */
-export default function observer(pi: ExtensionAPI): void {
+export default async function observer(pi: ExtensionAPI): Promise<void> {
   const source = process.env.NUNC_LIVE_OBSERVER;
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; selection?: Selection; taskFiles?: Record<string, string>; larvaCompaction?: { owner: "nunc"; configFile: string }; boundary?: { control: Control; requestText: string; fixtureContent: string }; boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }>; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving"; priorLedgers?: string[] };
-  const boundaries = binding.boundaries ?? (binding.boundary ? [binding.boundary] : []);
-  const activeBoundary = () => boundaries[state.boundaryIndex ?? 0];
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { productExtension?: string; input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; selection?: Selection; taskFiles?: Record<string, string>; larvaCompaction?: { owner: "nunc"; configFile: string }; boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }>; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving"; priorLedgers?: string[] };
+  const boundaries = binding.boundaries ?? [];
+  const activeBoundary = () => boundaries[state.boundary.boundaryIndex ?? 0];
   const controlFor = (action: "revision_conflict" | "unconfirmed_save", ctx: ExtensionContext) => {
     const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
-    const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
+    const text = user ? userText(user) : undefined;
     return binding.guidanceControls?.find(c => c.action === action && c.requestText === text);
   };
   const signal = AbortSignal.timeout(Math.max(1, binding.deadline - Date.now()));
   const log = (type: string, data: unknown) => appendFileSync(binding.events, JSON.stringify({ type, data }) + "\n", { mode: 0o600 });
   const ledger = new BudgetLedger(binding.ledger, binding.input.limits, binding.deadline, signal, binding.caseKey, binding.priorLedgers ?? []);
-  const state = states.get(source) ?? { bases: new WeakMap<Provider, Provider>(), occurrence: 0, boundaryDone: binding.boundaryCompleted === true, boundaryCommitted: binding.boundaryCompleted === true };
+  const state = states.get(source) ?? { bases: new WeakMap<Provider, Provider>(), boundary: { occurrence: 0, phase: binding.boundaryCompleted ? "committed" : "idle" } };
   states.set(source, state);
   pi.on("session_start", (_event, ctx) => {
     setObserverMemoryLayout(binding.memoryLayout === "moving" ? "moving" : "stable");
@@ -68,7 +77,6 @@ export default function observer(pi: ExtensionAPI): void {
     }
     const activeTools = pi.getActiveTools();
     const memoryToolsExposed = activeTools.includes("nunc_memory_read") && activeTools.includes("nunc_memory_patch");
-    state.memoryToolsExposed = memoryToolsExposed;
     log("lifecycle", { phase: "session-tools", activeTools, memoryToolsExposed });
     const isTaskRetention = taskRetentionRun(binding.input);
     const maintenanceOverride = binding.input.overrides?.find(o => o.requirement === "maintenance-thinking" || (o as any).maintenanceThinking !== undefined);
@@ -93,7 +101,7 @@ export default function observer(pi: ExtensionAPI): void {
           requireValue(!state.stop, "PREPARATION", state.stop ?? "Boundary preparation failed");
         },
         onRequest: data => log("request", { ...data, thinking: state.ctx?.thinkingLevel ?? null }),
-        onPayload: data => log("request-cap", data),
+        onPayload: data => log("request-cap", { ...data, appliedThinking: payloadThinking(data.finalPayload) }),
         checkAuth: model => {
           const registry = state.ctx!.modelRegistry;
           if (model.provider === "openai-codex") requireValue(registry.isUsingOAuth(model), "AUTHORIZATION", "Selected Codex route requires native OAuth in the isolated host");
@@ -103,7 +111,7 @@ export default function observer(pi: ExtensionAPI): void {
         onContext: (model, context, kind) => log("context", { model, context, kind }),
         onResponse: (model, message, kind) => {
           if (kind === "maintenance") {
-            const text = Array.isArray(message.content) ? message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("") : "";
+            const text = textOf(message.content);
             let patch: unknown;
             try { patch = JSON.parse(text); } catch {}
             log("maintenance_response", { model: `${model.provider}/${model.id}`, stopReason: message.stopReason, patch, text });
@@ -137,6 +145,28 @@ export default function observer(pi: ExtensionAPI): void {
   pi.events.on("nunc:admission", event => log("admission", event));
   pi.events.on("nunc:diagnostic", event => log("diagnostic", event));
   pi.events.on("nunc:live-provider-wrap", event => log("lifecycle", event));
+  if (payloadAppendEnabled(binding.input)) createAppendExtension(SYNTHETIC_LAST_USER_APPEND)(pi);
+  if (payloadAppendBEnabled(binding.input)) createAppendExtension(SYNTHETIC_LAST_USER_APPEND_B)(pi);
+  if (providerWrapEnabled(binding.input)) {
+    let settled = false, wrapped = false;
+    pi.on("agent_settled", () => { settled = true; });
+    pi.on("context", (_event, ctx) => {
+      if (!settled || wrapped || !ctx.model) return;
+      const previous = ctx.modelRegistry.getProvider(ctx.model.provider);
+      if (!previous) return;
+      wrapped = true;
+      pi.registerProvider({ ...previous,
+        stream: (model, context, options) => {
+          pi.events.emit("nunc:live-provider-wrap", { phase: "provider-wrap-delegated", provider: model.provider, model: model.id, method: "stream" });
+          return previous.stream(model, context, options);
+        },
+        streamSimple: (model, context, options) => {
+          pi.events.emit("nunc:live-provider-wrap", { phase: "provider-wrap-delegated", provider: model.provider, model: model.id, method: "streamSimple" });
+          return previous.streamSimple(model, context, options);
+        },
+      });
+    });
+  }
   pi.on("before_provider_request", event => {
     const payload = event.payload;
     log("payload", { mode: "observe", keys: payload && typeof payload === "object" && !Array.isArray(payload) ? Object.keys(payload) : [] });
@@ -151,15 +181,14 @@ export default function observer(pi: ExtensionAPI): void {
       log("preparation", { reason: event.reason, model: ctx.model, thinking: ctx.thinkingLevel,
         preparation: { ...event.preparation, fileOps: Object.fromEntries(Object.entries(event.preparation.fileOps).map(([k, v]) => [k, [...v]])) },
         branch: event.branchEntries, active: ctx.sessionManager.buildContextEntries() });
-      const autonomousTask = binding.selection?.id === "g4" && binding.selection.variant === "task-file";
-      if (binding.boundary && !autonomousTask && (state.boundaryCommitted || !activeBoundary())) state.stop ??= "Requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
-      if (binding.boundary && (!autonomousTask || state.expectedFirst) && (!state.boundaryDone || !state.expectedFirst || state.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select an armed eligible tool boundary";
-      log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryDone: state.boundaryDone, expectedFirst: state.expectedFirst, stopped: state.stop });
+      const autonomousTask = binding.selection?.id === "g4" && ["task-file", "same-task-history"].includes(String(binding.selection.variant)) && !activeBoundary();
+      if (boundaries.length && !autonomousTask && (state.boundary.phase === "committed" || !activeBoundary())) state.stop ??= "Requested another automatic maintenance after the boundary; restored configuration cannot complete this suffix within one boundary transaction";
+      if (boundaries.length && (!autonomousTask || state.boundary.phase === "armed") && (state.boundary.phase !== "armed" || state.boundary.expectedFirst !== event.preparation.firstKeptEntryId)) state.stop ??= "Native preparation did not select an armed eligible tool boundary";
+      log("lifecycle", { phase: "maintenance-start", reason: event.reason, willRetry: event.willRetry, boundaryPhase: state.boundary.phase, expectedFirst: state.boundary.phase === "armed" ? state.boundary.expectedFirst : undefined, stopped: state.stop });
       if (state.stop) {
         delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
         return { cancel: true };
       }
-      if (identityPrestateProbeEnabled(binding.input)) { delete state.preBranchIds; delete state.identityCut; }
     } catch {
       // Freeze already captured. A later projection throw must not cancel persist.
     }
@@ -185,14 +214,13 @@ export default function observer(pi: ExtensionAPI): void {
     } catch {
       refuse("inconsistent-cut-or-result");
     }
-    if (state.expectedFirst) { state.boundaryCommitted = true; state.restorePending = true; }
-    delete state.expectedFirst;
+    if (state.boundary.phase === "armed") state.boundary = { occurrence: state.boundary.occurrence, boundaryIndex: state.boundary.boundaryIndex, phase: "committed" };
     log("lifecycle", { phase: "maintenance-end", reason: event.reason, willRetry: event.willRetry });
   });
   pi.on("session_compact_failed", event => {
     state.compacting = false;
     delete state.preBranchIds; delete state.identityCut; delete state.identityResultCut;
-    if (binding.boundary) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
+    if (boundaries.length) state.stop ??= "Automatic boundary maintenance failed; suffix is unproven";
     log("lifecycle", { phase: "maintenance-failed", reason: event.reason, aborted: event.aborted, willRetry: event.willRetry,
       errorMessage: event.errorMessage, fromExtension: event.fromExtension });
   });
@@ -204,27 +232,27 @@ export default function observer(pi: ExtensionAPI): void {
   });
   pi.on("turn_end", async (event, ctx) => {
     const currentBnd = activeBoundary();
-    if (!currentBnd || state.boundaryDone) return;
-    const isTriggerTurn = Boolean(state.triggerId && event.toolResults.some(r => r.toolCallId === state.triggerId));
-    const isDeferredTurn = Boolean(state.boundaryDeferred && state.savedTriggerId && event.toolResults.length > 0);
-    if (!isTriggerTurn && !isDeferredTurn) return;
-    const triggerId = state.triggerId ?? state.savedTriggerId!;
-    state.boundaryDone = true;
-    const held = new Promise<void>(resolve => { state.held = resolve; });
+    const boundary = state.boundary;
+    if (!currentBnd || (boundary.phase !== "idle" && boundary.phase !== "deferred")) return;
+    const isTriggerTurn = Boolean(boundary.triggerId && event.toolResults.some(r => r.toolCallId === boundary.triggerId));
+    const isDeferredTurn = boundary.phase === "deferred" && event.toolResults.length > 0;
+    if ((!isTriggerTurn && !isDeferredTurn) || !boundary.triggerId) return;
+    const triggerId = boundary.triggerId;
+    state.boundary = { occurrence: boundary.occurrence, boundaryIndex: boundary.boundaryIndex, phase: "held", triggerId };
+    const held = new Promise<void>(resolve => { state.boundary.held = resolve; });
     log("tool-boundary", { branch: ctx.sessionManager.getBranch(), active: ctx.sessionManager.buildContextEntries(),
-      model: ctx.model, thinking: ctx.thinkingLevel, usage: ctx.getContextUsage(), triggerId, boundaryIndex: state.boundaryIndex ?? 0 });
+      model: ctx.model, thinking: ctx.thinkingLevel, usage: ctx.getContextUsage(), triggerId, boundaryIndex: state.boundary.boundaryIndex ?? 0 });
     // The command/reload path releases plain state. Do not touch ctx/pi after await.
     await held;
   });
   pi.on("tool_call", async (event, ctx) => {
     const currentBnd = activeBoundary();
-    if (currentBnd && !state.boundaryDone && (event.toolName === currentBnd.control.trigger?.toolName || event.toolName === currentBnd.control.trigger?.alternateToolName) &&
-        typeof (event.input as any).path === "string" && currentBnd.control.trigger?.pathArgument && resolve(binding.cwd, (event.input as any).path.replace(/^@/, "")) === resolve(binding.cwd, currentBnd.control.trigger.pathArgument)) {
+    if (currentBnd && (state.boundary.phase === "idle" || state.boundary.phase === "deferred") && (event.toolName === currentBnd.control.trigger?.toolName || event.toolName === currentBnd.control.trigger?.alternateToolName) &&
+        typeof (event.input as any).path === "string" && currentBnd.control.trigger?.pathArgument && resolveScenarioPath(binding.cwd, (event.input as any).path) === resolveScenarioPath(binding.cwd, currentBnd.control.trigger.pathArgument)) {
       const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
-      const text = user?.type === "message" && user.message.role === "user" ? (typeof user.message.content === "string" ? user.message.content : user.message.content.filter(b => b.type === "text").map(b => b.text).join("")) : undefined;
-      if (text === currentBnd.requestText && ++state.occurrence === currentBnd.control.trigger.occurrence) {
-        state.triggerId = event.toolCallId;
-        state.savedTriggerId = event.toolCallId;
+      const text = user ? userText(user) : undefined;
+      if (text === currentBnd.requestText && ++state.boundary.occurrence === currentBnd.control.trigger.occurrence) {
+        state.boundary.triggerId = event.toolCallId;
       }
     }
     try {
@@ -233,7 +261,8 @@ export default function observer(pi: ExtensionAPI): void {
         const cmd = typeof (event.input as any)?.command === "string" ? (event.input as any).command.trim() : "";
         const isTaskRetention = Boolean(binding.selection?.id === "g4" && taskRetentionSelection(binding.selection));
         const hasVerification = Boolean(binding.verification !== undefined);
-        const isVerify = !isTaskRetention && (cmd === "python3 verify.py" || cmd === "/usr/bin/python3 verify.py" || cmd === "python verify.py");
+        const isVerify = hasVerification && !isTaskRetention && VERIFY_COMMANDS.includes(cmd);
+        if (!hasVerification && !isTaskRetention && VERIFY_COMMANDS.includes(cmd)) throw new RunnerError("SCRIPT_UNPROVIDED", "No fixture verification script was provided");
         const taskCommand = isTaskRetention ? metricsCommand(cmd) : undefined;
         const isTaskCommand = taskCommand !== undefined;
         requireValue(
@@ -351,28 +380,32 @@ export default function observer(pi: ExtensionAPI): void {
     const decision = JSON.parse(args) as { firstKeptEntryId?: string; stop?: string; restored?: boolean; deferred?: boolean };
     if (decision.stop) state.stop ??= decision.stop;
     if (decision.firstKeptEntryId) {
-      state.expectedFirst = decision.firstKeptEntryId;
-      state.boundaryDeferred = false;
+      state.boundary = { occurrence: state.boundary.occurrence, boundaryIndex: state.boundary.boundaryIndex, held: state.boundary.held, phase: "armed", expectedFirst: decision.firstKeptEntryId };
     }
     if (decision.restored) {
-      state.restorePending = false;
-      state.boundaryIndex = (state.boundaryIndex ?? 0) + 1;
-      state.boundaryDone = false;
-      state.boundaryCommitted = false;
-      state.boundaryDeferred = false;
-      delete state.expectedFirst;
-      delete state.triggerId;
-      delete state.savedTriggerId;
-      state.occurrence = 0;
-      log("lifecycle", { phase: "boundary-config-restored", nextBoundaryIndex: state.boundaryIndex });
+      const held = state.boundary.held;
+      state.boundary = { occurrence: 0, phase: "idle", boundaryIndex: (state.boundary.boundaryIndex ?? 0) + 1, ...(held ? { held } : {}) };
+      log("lifecycle", { phase: "boundary-config-restored", nextBoundaryIndex: state.boundary.boundaryIndex });
     }
     if (decision.deferred) {
-      state.boundaryDeferred = true;
-      state.boundaryDone = false;
-      delete state.triggerId;
-      log("lifecycle", { phase: "boundary-deferred", boundaryIndex: state.boundaryIndex ?? 0 });
+      requireValue(state.boundary.phase === "held", "PREPARATION", "Only a held tool boundary can defer");
+      state.boundary = { ...state.boundary, phase: "deferred" };
+      log("lifecycle", { phase: "boundary-deferred", boundaryIndex: state.boundary.boundaryIndex ?? 0 });
     }
-    state.held?.(); delete state.held;
+    state.boundary.held?.(); delete state.boundary.held;
   } });
   pi.registerCommand("nunc-observer-quit", { handler: async (_args, ctx) => ctx.shutdown() });
+  // Compose the public product factory between observation and restoration.
+  // The bounded provider and frozen prestate must precede Nunc; its commit
+  // handlers must finish before the restore hold reloads resources.
+  if (binding.productExtension) {
+    const product = await import(pathToFileURL(binding.productExtension).href) as { default: (api: ExtensionAPI) => void | Promise<void> };
+    await product.default(pi);
+  }
+  pi.on("session_compact", async () => {
+    if (state.boundary.phase !== "committed" || !boundaries.length || !activeBoundary()) return;
+    const held = new Promise<void>(resolve => { state.boundary.held = resolve; });
+    log("boundary-restore", {});
+    await held;
+  });
 }

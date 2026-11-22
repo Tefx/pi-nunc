@@ -1,4 +1,5 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { estimateContextTokens, estimateTextTokens, omitsSerializedOutputCap, outputFloor, textTokens } from "../engine/accounting.js";
 import { PATCH_RESPONSE_JSON_SCHEMA } from "../engine/memory.js";
 import { canonical, EngineError, record } from "../engine/validation.js";
@@ -7,6 +8,7 @@ export type PayloadMode = "noop" | "identity" | "in-place" | "replacement";
 export type PayloadCategory = "output" | "input" | "tools" | "model" | "stream" | "media" | "thinking" | "control" | "metadata" | "unsupported";
 export interface PayloadObservation { mode: PayloadMode; categories: PayloadCategory[]; transform?: "last-user-text-append" | "codex-system-instructions" }
 export interface PayloadDelta {
+  googleMaintenanceJsonSchema?: true;
   mode: PayloadMode;
   categories: PayloadCategory[];
   grewTokens: number;
@@ -22,7 +24,7 @@ export type OutputCapState =
   | { kind: "conflict" }
   | { kind: "value"; value: number };
 
-const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens", "generationConfig"]);
+const OUTPUT_KEYS = new Set(["max_tokens", "max_output_tokens", "max_completion_tokens"]);
 const INPUT_KEYS = new Set(["messages", "input", "contents", "system", "instructions", "prompt", "system_instruction", "systemInstruction"]);
 const TOOL_KEYS = new Set(["tools", "functions", "tool_choice", "toolChoice", "toolConfig"]);
 const STREAM_KEYS = new Set(["stream", "background"]);
@@ -33,8 +35,6 @@ const METADATA_KEYS = new Set(["temperature", "top_p", "topP", "top_k", "topK", 
 const IMAGE_TYPES = new Set(["image", "input_image", "image_url"]);
 const UNSUPPORTED_TYPES = new Set(["audio", "input_audio", "pdf", "document", "video", "file", "input_file"]);
 const UNVALIDATED = new Set<PayloadCategory>(["input", "tools", "media", "thinking", "control", "unsupported"]);
-const CAP_KEYS = ["max_tokens", "max_output_tokens", "max_completion_tokens"] as const;
-
 /** JSON-enumerable view. Drops prototypes, undefined, functions; matches HTTP JSON bytes. */
 export function jsonView(value: unknown): unknown {
   try { return JSON.parse(JSON.stringify(value)); }
@@ -53,18 +53,15 @@ function subtreeSize(view: unknown, keys: Set<string>): number {
   return size;
 }
 
-function takeOutputCap(body: Record<string, unknown>, take: (value: unknown) => void): void {
-  for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) take(body[key]);
-  if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) take(body.generationConfig.maxOutputTokens);
-  if (record(body.config) && Object.hasOwn(body.config, "maxOutputTokens")) take(body.config.maxOutputTokens);
-}
-
 export function outputCapPaths(body: unknown): string[] {
   if (!record(body)) return [];
   const paths: string[] = [];
-  for (const key of CAP_KEYS) if (Object.hasOwn(body, key)) paths.push(key);
+  for (const key of OUTPUT_KEYS) if (Object.hasOwn(body, key)) paths.push(key);
   if (record(body.generationConfig) && Object.hasOwn(body.generationConfig, "maxOutputTokens")) paths.push("generationConfig.maxOutputTokens");
-  if (record(body.config) && Object.hasOwn(body.config, "maxOutputTokens")) paths.push("config.maxOutputTokens");
+  if (record(body.config)) {
+    if (Object.hasOwn(body.config, "maxOutputTokens")) paths.push("config.maxOutputTokens");
+    if (record(body.config.generationConfig) && Object.hasOwn(body.config.generationConfig, "maxOutputTokens")) paths.push("config.generationConfig.maxOutputTokens");
+  }
   return paths.sort();
 }
 
@@ -76,7 +73,10 @@ export function outputCapState(body: unknown): OutputCapState {
     if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) invalid = true;
     else found.push(value);
   };
-  takeOutputCap(body, take);
+  for (const path of outputCapPaths(body)) {
+    const value = path.split(".").reduce<unknown>((value, key) => record(value) ? value[key] : undefined, body);
+    take(value);
+  }
   if (invalid) return { kind: "invalid" };
   if (found.length === 0) return { kind: "missing" };
   if (found.some(n => n !== found[0])) return { kind: "conflict" };
@@ -111,7 +111,8 @@ function classifyGoogleConfig(beforeVal: unknown, afterVal: unknown, categories:
   for (const key of new Set([...Object.keys(beforeRec), ...Object.keys(afterRec)])) {
     if (canonical(beforeRec[key]) === canonical(afterRec[key])) continue;
     nested = true;
-    categories.add(key === "maxOutputTokens" ? "output" : categorize(key));
+    if (key === "generationConfig" || key === "config") classifyGoogleConfig(beforeRec[key], afterRec[key], categories);
+    else categories.add(key === "maxOutputTokens" ? "output" : categorize(key));
   }
   if (!nested && canonical(beforeVal) !== canonical(afterVal)) categories.add("metadata");
 }
@@ -125,7 +126,9 @@ function census(value: unknown, acc: { images: number; unsupported: Set<string> 
     if (IMAGE_TYPES.has(value.type)) acc.images++;
     if (UNSUPPORTED_TYPES.has(value.type)) acc.unsupported.add(value.type);
   }
-  for (const child of Object.values(value)) census(child, acc);
+  // Protocol messages and nested tool-result blocks carry content/parts.
+  // Other object fields (metadata, tool-call arguments and schemas) are data.
+  for (const key of ["content", "parts"]) if (Object.hasOwn(value, key)) census(value[key], acc);
   return { images: acc.images, unsupported: [...acc.unsupported] };
 }
 
@@ -155,16 +158,22 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
   const afterRec = record(afterView) ? afterView : {};
   for (const key of new Set([...Object.keys(beforeRec), ...Object.keys(afterRec)])) {
     if (canonical(beforeRec[key]) === canonical(afterRec[key])) continue;
-    if (key === "config") classifyGoogleConfig(beforeRec[key], afterRec[key], categories);
+    if (key === "config" || key === "generationConfig") classifyGoogleConfig(beforeRec[key], afterRec[key], categories);
     else categories.add(categorize(key));
   }
   if (!record(beforeView) || !record(afterView)) {
     if (canonical(beforeView) !== canonical(afterView)) categories.add("metadata");
   }
-  const beforeBlocks = census(beforeView), afterBlocks = census(afterView);
+  // Only protocol content can introduce media; metadata and tool schemas are opaque.
+  const mediaContent = (body: Record<string, unknown>) => [
+    ...["messages", "input", "contents", "system", "instructions", "system_instruction", "systemInstruction"].map(key => body[key]),
+    ...(record(body.config) ? [body.config.systemInstruction] : []),
+  ];
+  const beforeBlocks = census(mediaContent(beforeRec)), afterBlocks = census(mediaContent(afterRec));
   if (beforeBlocks.images !== afterBlocks.images || afterBlocks.unsupported.some(t => !beforeBlocks.unsupported.includes(t))) categories.add("media");
   const outputState = outputCapState(afterView);
   return {
+    ...(allowGoogleMaintenanceJsonSchema ? { googleMaintenanceJsonSchema: true as const } : {}),
     mode,
     categories: [...categories],
     grewTokens: Math.max(0, textTokens(canonical(afterView)) - textTokens(canonical(beforeView))),
@@ -173,6 +182,20 @@ export function classifyPayloadChange(beforeView: unknown, afterView: unknown, m
     unsupportedAdded: afterBlocks.unsupported.filter(t => !beforeBlocks.unsupported.includes(t)),
     outputBefore: payloadOutputCeiling(beforeView),
     outputAfter: outputState.kind === "value" ? outputState.value : undefined,
+  };
+}
+
+/** Synthetic last-user text only. Never ambient or personal content. */
+export const SYNTHETIC_LAST_USER_APPEND = "nunc-synthetic-last-user-append";
+export const SYNTHETIC_LAST_USER_APPEND_B = "nunc-synthetic-last-user-append-b";
+
+/** Verification-only public callback for stock CLI payload-append extensions. */
+export function createAppendExtension(text: string): (pi: ExtensionAPI) => void {
+  return pi => {
+    pi.on("before_provider_request", event => {
+      const result = applyLastUserTextAppend(event.payload, text);
+      return result.changed ? result.payload : undefined;
+    });
   };
 }
 
@@ -309,13 +332,14 @@ export function authorizePayload(args: {
   inputLimit: number;
   /** False only for main requests without an explicitly configured input limit. */
   enforceInputLimit?: boolean;
+  uncapped?: boolean;
   authorizedOutput: number;
   context: Context;
   /** Explicit main-session authorization; maintenance keeps its fixed instructions. */
   allowSystemInstructionRewrite?: boolean;
   allowGoogleMaintenanceJsonSchema?: boolean;
 }): void {
-  if (args.allowGoogleMaintenanceJsonSchema === true && ["google-vertex", "google-generative-ai"].includes(args.model.api)) {
+  if (args.allowGoogleMaintenanceJsonSchema === true && !args.delta.googleMaintenanceJsonSchema && ["google-vertex", "google-generative-ai"].includes(args.model.api)) {
     args = { ...args, delta: classifyPayloadChange(args.before, args.after, args.delta.mode, true) };
   }
   const prior = jsonView(args.before);
@@ -327,14 +351,14 @@ export function authorizePayload(args: {
   } else if (body.stream === false) throw new EngineError("CONFIG", "Nunc: non-streaming payload is unsupported; request was not sent");
   if (body.background === true) throw new EngineError("CONFIG", "Nunc: background payload is unsupported; request was not sent");
   if (Object.hasOwn(priorRec, "model")) {
-    if (!Object.hasOwn(body, "model") || body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload removed or changed its native model field; request was not sent");
+    if (typeof body.model !== "string" || body.model.length === 0 || body.model !== priorRec.model) throw new EngineError("CONFIG", "Nunc: payload removed or changed its native model field; request was not sent");
   } else if (Object.hasOwn(body, "model") && body.model !== args.model.id) throw new EngineError("CONFIG", "Nunc: payload model differs from the selected model; request was not sent");
   const beforePaths = outputCapPaths(prior), afterPaths = outputCapPaths(body);
   if (beforePaths.length > 0 && beforePaths.join("\0") !== afterPaths.join("\0")) throw new EngineError("CONFIG", "Nunc: payload output cap field was replaced or removed; request was not sent");
   const caps = outputCapState(body);
   if (caps.kind === "invalid") throw new EngineError("CONFIG", "Nunc: payload output cap is not a positive integer; request was not sent");
   if (caps.kind === "conflict") throw new EngineError("CONFIG", "Nunc: payload output cap fields disagree; request was not sent");
-  const uncapped = omitsSerializedOutputCap(args.model);
+  const uncapped = args.uncapped ?? omitsSerializedOutputCap(args.model);
   const floor = outputFloor(args.model);
   if (uncapped) {
     if (caps.kind === "value") throw new EngineError("CONFIG", "Nunc: payload invented an output cap on an uncapped API; request was not sent");

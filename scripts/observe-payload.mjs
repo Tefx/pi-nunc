@@ -82,4 +82,4 @@ try {
     memoryQuality: 'UNPROVEN: controlled service',
   };
 } catch (error) { outcome.error = { message: error.message, stack: error.stack }; console.error(error); process.exitCode = 1; }
-finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }
+finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt() })); }

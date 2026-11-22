@@ -1,19 +1,19 @@
 import { performance } from "node:perf_hooks";
-import { retryMaintenanceComplete } from "./pi-model.js";
+import { hasRawSamplingParams, rateLimited, retryMaintenanceComplete } from "./pi-model.js";
 import { isContextOverflow, type AssistantMessage } from "@earendil-works/pi-ai";
-import { maintenanceFeedback, sameRejectedRequest } from "./calibration.js";
+import { sameRejectedRequest } from "./calibration.js";
 import type { Complete, MaintenanceCandidate, MaintenanceInput, MaintenanceResult, Observations, RequiredObservation } from "./types.js";
 import { applyPatch, renderMemory } from "./memory.js";
-import { decideToolResultCleanup, applyToolResultCleanup } from "./cleanup.js";
-import { mainAdmissionLimit, chooseCut, extractionOutputPlan, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, requestTokens, unknownUsage } from "./accounting.js";
-import { extractionContext, reduceToolBodies, resolveExtractionRequest } from "./request.js";
+import { decideToolResultCleanup, applyToolResultCleanup, retainedToolResultCleanup } from "./cleanup.js";
+import { mainAdmissionLimit, chooseCut, extractionOutputPlan, hardMemoryLimit, historyPlanningEstimate, mainPlanningEstimate, memoryPlan, memoryTokens, observeUsage, unknownUsage } from "./accounting.js";
+import { extractionContext, planExtractionRequest, resolveExtractionRequest } from "./request.js";
 import { EngineError, freezeCopy, integer, legalCuts, nonempty, record, requireThat, validateConfig, validateMemory } from "./validation.js";
 
 function cancelled(signal: AbortSignal): void {
   requireThat(!signal.aborted, "CANCELLED", "Maintenance cancelled before candidate handoff");
 }
 /** Abort promptly even if the provider's wait fails to cooperate; never retry detached work. */
-async function withCancellation<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
+export async function withCancellation<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
   cancelled(signal);
   let onAbort: () => void = () => {};
   const abort = new Promise<never>((_resolve, reject) => {
@@ -50,7 +50,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     }
     requireThat(record(frozen.policy) && nonempty(frozen.policy.builtin) && typeof frozen.policy.user === "string", "CONFIG", "Expected a loaded policy snapshot");
     requireThat(record(frozen.model) && nonempty(frozen.model.id) && nonempty(frozen.model.provider) && nonempty(frozen.model.api) && Array.isArray(frozen.model.input) && frozen.model.input.includes("text"), "UNSUPPORTED_INPUT", "Current model cannot accept text maintenance input");
-    requireThat(!frozen.model.samplingParams || Object.keys(frozen.model.samplingParams).length === 0, "CONFIG", "Raw model samplingParams can override request/budget fields; use a model without raw payload overrides");
+    requireThat(!hasRawSamplingParams(frozen.model.samplingParams) && !hasRawSamplingParams(frozen.model.samplingParamsByThinkingLevel), "CONFIG", "Raw model samplingParams can override request/budget fields; use a model without raw payload overrides");
     let cuts = legalCuts(frozen.active);
     if (frozen.eligibleKeptEntryIds !== undefined) {
       const eligible = frozen.eligibleKeptEntryIds;
@@ -62,11 +62,16 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       requireThat(Array.isArray(eligible) && eligible.every(id => typeof id === "string" && frozen.active.some(e => e.entryId === id)) && new Set(eligible).size === eligible.length, "INPUT", "Invalid host usage-anchor restriction");
     }
     const config = frozen.config;
+    const priorCleanup = config.toolResultCleanup === false ? [] : frozen.priorCleanup ?? [];
+    const effectiveSuffix = (cut: number) => {
+      const kept = frozen.active.slice(cut);
+      return applyToolResultCleanup(kept, retainedToolResultCleanup(kept, priorCleanup));
+    };
     for (const e of frozen.active) for (const m of e.messages) if (typeof m.content !== "string" && m.content.some(b => b.type === "image")) {
       requireThat(frozen.model.input.includes("image"), "UNSUPPORTED_INPUT", "Current model does not accept native images; refusing silent removal");
     }
     const executionPlan = memoryPlan(frozen.fixed, frozen.model, config, frozen.memory.slots,
-      historyPlanningEstimate(frozen.active, frozen.model, config.imageTokens).tokens);
+      historyPlanningEstimate(effectiveSuffix(0), frozen.model, config.imageTokens).tokens);
     const target = frozen.target;
     if (target) {
       requireThat(record(target) && record(target.model) && nonempty(target.model.id) && nonempty(target.model.provider) &&
@@ -77,7 +82,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     }
     const planningModel = target?.model ?? frozen.model, planningConfig = target?.config ?? config;
     const retentionPlan = target ? memoryPlan(frozen.fixed, planningModel, planningConfig, frozen.memory.slots,
-      historyPlanningEstimate(frozen.active, planningModel, planningConfig.imageTokens).tokens) : executionPlan;
+      historyPlanningEstimate(effectiveSuffix(0), planningModel, planningConfig.imageTokens).tokens) : executionPlan;
     const { mainInputLimit, extractionInputLimit, effectiveTrigger, fixedTokens } = executionPlan;
     const { memoryLimit, memoryReserveTokens, organizingTarget, keepTarget } = retentionPlan;
     if (target) {
@@ -86,7 +91,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
         growthReserve: target.config.growthTokens, estimatedInputTokens: null, fits: false };
       // No post-response recut. Reject a structurally impossible suffix before paying for extraction.
       cuts = cuts.filter(cut => {
-        const suffix = frozen.active.slice(cut);
+        const suffix = effectiveSuffix(cut);
         const mediaFits = target.model.input.includes("image") || !suffix.some(e => e.messages.some(m =>
           Array.isArray(m.content) && m.content.some(b => b.type === "image")));
         return mediaFits && mainPlanningEstimate(frozen.fixed, [], suffix, target.model, target.config.imageTokens,
@@ -95,7 +100,8 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       requireThat(cuts.length > 0, "CAPACITY", "No legal retained suffix fits the target projection and growth reserve");
     }
     const { cut } = chooseCut(frozen.active, cuts, retentionPlan.fixedTokens, memoryReserveTokens, keepTarget,
-      retentionPlan.effectiveTrigger, planningConfig, planningModel);
+      retentionPlan.effectiveTrigger, planningConfig, planningModel, priorCleanup);
+    const survivingCleanup = retainedToolResultCleanup(frozen.active.slice(cut), priorCleanup);
     if (!target) {
       const kept = structuredClone(frozen.active.slice(cut));
       fallbackCandidate = {
@@ -103,22 +109,24 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
         firstKeptEntryId: kept[0]!.entryId, kept,
         retiredEntryIds: frozen.active.slice(0, cut).map(e => e.entryId),
         toolResultCleanup: decideToolResultCleanup({
-          active: frozen.active, initialMemory: frozen.memory, finalMemory: frozen.memory,
-          candidateScope: frozen.cleanupCandidateScope, retainedEntries: kept, omissions: [],
+          active: applyToolResultCleanup(frozen.active, survivingCleanup), initialMemory: frozen.memory, finalMemory: frozen.memory,
+          candidateScope: frozen.cleanupCandidateScope, priorCleanup: survivingCleanup, retainedEntries: kept, omissions: [],
           disabled: config.toolResultCleanup === false, mechanicalWhenMemoryUnchanged: true,
         }),
       };
     }
-    const keptTokens = historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens).tokens;
-    const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, frozen.active, frozen.model, config.imageTokens, config.main.extraInputTokens);
+    if (fallbackCandidate?.toolResultCleanup) {
+      fallbackCandidate.toolResultCleanup.applied.unshift(...retainedToolResultCleanup(fallbackCandidate.kept, priorCleanup));
+    }
+    const keptTokens = historyPlanningEstimate(effectiveSuffix(cut), frozen.model, config.imageTokens).tokens;
+    const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, effectiveSuffix(0), frozen.model, config.imageTokens, config.main.extraInputTokens);
     const mainBeforeTokens = beforePlan.tokens;
     const mainBeforeVisibleTokens = beforePlan.visibleTokens;
-    let selectedSource = frozen.active;
-    let includeCleanupCandidates = true;
-    let context = extractionContext(frozen, cut, organizingTarget, selectedSource, [], undefined, includeCleanupCandidates);
-    const fullExtractionTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
-    const feedback = maintenanceFeedback(frozen, selectedSource, fullExtractionTokens);
-    let calibratedUndercountTokens = feedback.calibratedUndercountTokens;
+    const extraction = planExtractionRequest(frozen, cut, organizingTarget,
+      priorCleanup.length ? applyToolResultCleanup(frozen.active, priorCleanup) : frozen.active, extractionInputLimit);
+    const { selectedSource, includeCleanupCandidates, fullExtractionTokens, fullFeedback: feedback } = extraction;
+    const calibratedUndercountTokens = extraction.feedback.calibratedUndercountTokens;
+    observations.omissions = extraction.omissions;
     // The trigger already uses provider tokens; shared main/extraction error cancels here.
     const triggerExtraUndercount = Math.max(0, feedback.maintenanceUndercountTokens - feedback.activeUndercountTokens);
     // Sustainable-trigger advice must never veto an executable current request.
@@ -132,52 +140,17 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       inputExceededPlan: false, outputExceededPlan: false,
       fixedTokens, mainBeforeTokens, mainInputLimit, extractionInputLimit,
       effectiveTrigger, memoryLimit, memoryReserveTokens, memoryHardLimit: hardMemoryLimit(config), memoryTargetExceeded: false, keepTarget, keptTokens,
-      planning: { before: beforePlan, kept: historyPlanningEstimate(frozen.active.slice(cut), frozen.model, config.imageTokens), after: null },
-      fullExtractionTokens, extractionTokens: fullExtractionTokens,
-      calibratedUndercountTokens, extractionPlanningTokens: fullExtractionTokens + calibratedUndercountTokens,
+      planning: { before: beforePlan, kept: historyPlanningEstimate(effectiveSuffix(cut), frozen.model, config.imageTokens), after: null },
+      fullExtractionTokens, extractionTokens: extraction.extractionTokens,
+      calibratedUndercountTokens, extractionPlanningTokens: extraction.extractionPlanningTokens,
       extractionUncertainties: calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [],
       normalExtractionAtTrigger, mainAfterTokens: null, memoryTokens: null, growthTokens: null,
     };
-    const knownOverflow = feedback.full !== undefined || feedback.reduced !== undefined;
-    if (!knownOverflow && observations.accounting.extractionPlanningTokens! > extractionInputLimit) {
-      const withoutCandidatesContext = extractionContext(frozen, cut, organizingTarget, selectedSource, [], undefined, false);
-      const withoutCandidatesTokens = requestTokens(withoutCandidatesContext, config.imageTokens) + config.extraction.extraInputTokens;
-      const withoutCandidatesUndercount = maintenanceFeedback(frozen, selectedSource, withoutCandidatesTokens).calibratedUndercountTokens;
-      if (withoutCandidatesTokens + withoutCandidatesUndercount <= extractionInputLimit) {
-        includeCleanupCandidates = false;
-        context = withoutCandidatesContext;
-        calibratedUndercountTokens = withoutCandidatesUndercount;
-        Object.assign(observations.accounting, { calibratedUndercountTokens,
-          extractionUncertainties: calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [],
-          extractionTokens: withoutCandidatesTokens, extractionPlanningTokens: withoutCandidatesTokens + calibratedUndercountTokens });
-      }
-    }
-    if ((observations.accounting.extractionPlanningTokens! > extractionInputLimit || knownOverflow) && config.extraction.toolResults === "auto") {
-      const reduced = reduceToolBodies(frozen.active, config.extraction.headTailChars);
-      observations.omissions = reduced.omissions;
-      selectedSource = reduced.source;
-      includeCleanupCandidates = true;
-      context = extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, undefined, true);
-      const reducedTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
-      calibratedUndercountTokens = maintenanceFeedback(frozen, selectedSource, reducedTokens).calibratedUndercountTokens;
-      observations.accounting.calibratedUndercountTokens = calibratedUndercountTokens;
-      observations.accounting.extractionUncertainties = calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [];
-      observations.accounting.extractionTokens = reducedTokens;
-      observations.accounting.extractionPlanningTokens = observations.accounting.extractionTokens + calibratedUndercountTokens;
-      requireThat(!knownOverflow || reduced.omissions.length > 0, "CAPACITY", "Provider already rejected this source; the single tool-body reduction made no omissions. Change source or capacity before explicit maintenance");
-      if (observations.accounting.extractionPlanningTokens! > extractionInputLimit) {
-        includeCleanupCandidates = false;
-        context = extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, undefined, false);
-        const reducedNoCandTokens = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
-        calibratedUndercountTokens = maintenanceFeedback(frozen, selectedSource, reducedNoCandTokens).calibratedUndercountTokens;
-        Object.assign(observations.accounting, { calibratedUndercountTokens,
-          extractionUncertainties: calibratedUndercountTokens > 0 ? ["maintenance-usage-undercount"] : [],
-          extractionTokens: reducedNoCandTokens, extractionPlanningTokens: reducedNoCandTokens + calibratedUndercountTokens });
-      }
-    }
+    requireThat(!extraction.knownOverflow || config.extraction.toolResults !== "auto" || observations.omissions.length > 0,
+      "CAPACITY", "Provider already rejected this source; the single tool-body reduction made no omissions. Change source or capacity before explicit maintenance");
     requireThat(observations.accounting.extractionPlanningTokens! <= extractionInputLimit, "CAPACITY", "Full extraction cannot fit; selected bounded handling is disabled or insufficient. No candidate is handed off");
     const resolved = resolveExtractionRequest(frozen, cap => extractionContext(frozen, cut, organizingTarget, selectedSource, observations.omissions, cap, includeCleanupCandidates), selectedSource);
-    context = resolved.context;
+    const context = resolved.context;
     Object.assign(observations.accounting, { outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens,
       outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy,
       extractionTokens: resolved.extractionTokens, extractionInputLimit: resolved.extractionInputLimit,
@@ -210,18 +183,18 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     // cancelled responses and HTTP 429 must never become a capacity refusal.
     const usableOverflowResponse = response.stopReason === "error" || record(response.usage) &&
       integer(response.usage.input) && integer(response.usage.cacheRead) && integer(response.usage.output);
-    const rateLimited = typeof response.errorMessage === "string" && /(?:^|\b(?:http(?:\/[\d.]+)?|status(?: code)?|error(?: code)?)[\s:]+)429\b/i.test(response.errorMessage);
-    if (response.stopReason !== "aborted" && !rateLimited && usableOverflowResponse && isContextOverflow(response as unknown as AssistantMessage, frozen.model.contextWindow)) {
+    const throttled = typeof response.errorMessage === "string" && rateLimited(response.errorMessage);
+    if (response.stopReason !== "aborted" && !throttled && usableOverflowResponse && isContextOverflow(response as unknown as AssistantMessage, frozen.model.contextWindow)) {
       observations.providerOverflow = { provider: frozen.model.provider, api: frozen.model.api, modelId: frozen.model.id, mode,
         sourceEntryIds: frozen.active.map(entry => entry.entryId), estimatedInputTokens: resolved.extractionTokens,
         extractionInputLimit: resolved.extractionInputLimit, outputReserveTokens: resolved.outputTokens,
         reportedInputTokens: observations.usage.contextInput, errorMessage: typeof response.errorMessage === "string" ? response.errorMessage : undefined };
     }
     const responseError = typeof response.errorMessage === "string" && response.errorMessage ? `: ${response.errorMessage}` : "";
-    requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}${responseError}`);
     const usage = observations.usage;
     observations.accounting.inputExceededPlan = usage.contextInput !== null && usage.contextInput > resolved.extractionInputLimit;
     observations.accounting.outputExceededPlan = usage.output !== null && usage.output > resolved.outputTokens;
+    requireThat(response.stopReason === "stop" && response.endTurn !== false && !response.deferred && !response.errorMessage, "RESPONSE", `Non-complete maintenance response: ${String(response.stopReason)}${responseError}`);
     // A complete stop already produced the candidate. Reported occupancy vs the
     // catalog window is observational; vetoing here cancels native compaction and retries forever.
     if (config.extraction.inputLimit !== undefined && usage.contextInput !== null) {
@@ -240,8 +213,9 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
     const kept = frozen.active.slice(cut);
 
     const cleanupResult = decideToolResultCleanup({
-      active: frozen.active,
+      active: applyToolResultCleanup(frozen.active, survivingCleanup),
       candidateScope: includeCleanupCandidates ? frozen.cleanupCandidateScope : [],
+      priorCleanup: survivingCleanup,
       retainedEntries: kept,
       initialMemory: frozen.memory,
       finalMemory: applied.memory,
@@ -252,6 +226,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       disabled: config.toolResultCleanup === false,
       mechanicalWhenMemoryUnchanged: true,
     });
+    cleanupResult.applied.unshift(...survivingCleanup);
     observations.toolResultCleanup = cleanupResult;
 
     const effectiveKept = applyToolResultCleanup(kept, cleanupResult.applied);

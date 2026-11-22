@@ -99,7 +99,13 @@ test("native same-session recovery has no reusable anchor and establishes a new 
   await f.runtime.session.prompt("after recovery");
   const index = observations.filter(o => o.kind === "main").at(-1)?.memoryIndex;
   assert.equal(index, f.calls.at(-1)!.messages.length - 1);
+  assert.equal(typeof index, "number");
   assert(index! > 1);
+  assert.equal(observations.filter(o => o.kind === "main").at(-1)?.estimator, "pi-heuristic");
+  const rendered = renderMemory(surface.read(ctx).memory.slots);
+  assert.equal(f.calls.at(-1)!.messages.filter(m => typeof m.content === "string" ? m.content === rendered : m.content.some(b => b.type === "text" && b.text === rendered)).length, 1);
   await f.runtime.session.prompt("stable again");
   assert.equal(observations.filter(o => o.kind === "main").at(-1)?.memoryIndex, index);
+  assert.equal(observations.filter(o => o.kind === "main").at(-1)?.estimateReason, "matching-receipt");
+  assert.equal(f.faux.state.callCount, 4);
 });

@@ -6,7 +6,7 @@ import { object, parseInput, requireValue, type RunInput } from "./contract.js";
 
 /** Public stdin boundary. Native configuration is read-only; no auth API is called. */
 export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): Promise<RunInput> {
-  requireValue(object(value) && Object.keys(value).every(k => ["target", "limits", "scenarios", "overrides", "observations", "comparison", "assets"].includes(k)), "INPUT", "Supply target, limits, scenarios and optional named overrides");
+  requireValue(object(value) && Object.keys(value).every(k => ["target", "limits", "scenarios", "overrides", "observations", "comparison", "assets", "batch"].includes(k)), "INPUT", "Supply target, limits, scenarios and optional named overrides");
   requireValue(object(value.target) && object(value.limits) && Array.isArray(value.scenarios), "INPUT", "Actual target, limits and scenarios are required");
   const global = SettingsManager.create(cwd, getAgentDir(), { projectTrusted: false });
   const trusted = new ProjectTrustStore(getAgentDir()).get(cwd) ?? global.getDefaultProjectTrust() === "always";
@@ -60,7 +60,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
   const resolvedModels = [{ provider, id }, ...(second ? [second] : [])].map(target => {
     const model = runtime.getModel(target.provider, target.id);
     requireValue(model, "MODEL", "Effective model is absent from native metadata; no fallback account is selected");
-    requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
+    requireValue(!model.headers && !model.samplingParams && !model.samplingParamsByThinkingLevel, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     requireValue(typeof model.baseUrl === "string" && model.baseUrl.trim().length > 0, "MODEL", "Model endpoint is missing from native metadata");
     let url: URL | undefined;
     try { url = new URL(model.baseUrl); } catch { /* requireValue below names the missing field. */ }
@@ -103,6 +103,7 @@ export async function resolveInput(value: unknown, env: NodeJS.ProcessEnv = proc
       return { ...s, config: selectedConfig, ...(s.assets ? { assets: s.assets } : {}) };
     }),
     observations,
+    ...(value.batch === undefined ? {} : { batch: value.batch }),
     ...(value.comparison ? { comparison: value.comparison } : {}),
     ...(value.assets ? { assets: value.assets } : {}),
   });

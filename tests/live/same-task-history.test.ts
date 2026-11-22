@@ -1,15 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createAgentSessionFromServices, createAgentSessionServices, createEventBus, ModelRuntime, SessionManager, SettingsManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, createEventBus, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { mainContext, requestTokens } from "../../src/engine/accounting.js";
 import { bindHostSettings } from "../../src/pi/index.js";
 import { repository } from "./fixtures.js";
 import { loadScenario, type ScenarioInput } from "../../src/live/scenarios.js";
+import { scoreGuidance } from "../../src/live/guidance.js";
 import { sameTaskHistoryChecks, sameTaskHistoryEffects, deriveExpectedRecords, taskRead } from "../../src/live/task-retention.js";
-import { diagnosePreparationFeasibility } from "../../src/live/preparation.js";
 import { parseInput, type RunInput } from "../../src/live/contract.js";
 import { runSegment } from "../../src/live/worker.js";
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
@@ -247,113 +247,8 @@ test("sameTaskHistoryChecks verifies 3-compaction series, first read in K, and r
   assert.equal(checksBadRead[0]!.status, "UNPROVEN");
 });
 
-test("diagnosePreparationFeasibility delegates to actual prepareBoundary and correctly assesses feasibility", async () => {
-  const { input: scenario } = await loadScenario(repository, { id: "g4", variant: "same-task-history", config });
-  const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Luna", provider: "openrouter", api: "openai-completions", baseUrl: "http://localhost:8080", reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
-  const fixed = { systemPrompt: "Carry out the user's tasks using the available file tools.", tools: [] };
-
-  // 1. Negative: Sole-user-request short history (B = 12 tokens, H = 1775, F = 1855, cannot pay suffix / fixed overhead)
-  const shortBranch: SessionEntry[] = [
-    { id: "e0", parentId: null, type: "message", message: { role: "user", content: "Read TASK.md and complete the work it specifies.", timestamp: 1 }, timestamp: "1" },
-    { id: "e1", parentId: "e0", type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "call_task", name: "read", arguments: { path: "TASK.md" } }], timestamp: 2, api: "openai-completions", provider: "openrouter", model: "openai/gpt-5.6-luna", usage: { input: 1, output: 1, totalTokens: 2 }, stopReason: "toolUse" }, timestamp: "2" },
-    { id: "e2", parentId: "e1", type: "message", message: { role: "toolResult", toolCallId: "call_task", toolName: "read", content: [{ type: "text", text: scenario.files["TASK.md"]! }], isError: false, timestamp: 3 }, timestamp: "3" },
-  ] as any;
-  const shortControl = {
-    duringTurn: "a",
-    action: "rollover_at_tool_boundary" as const,
-    trigger: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", when: "after_result_before_continuation" as const },
-    placement: { retireRequestOfTurn: "a", retainToolExchange: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", turn: "a" } }
-  };
-  const shortDiag = await diagnosePreparationFeasibility({
-    branch: shortBranch,
-    control: shortControl,
-    turns: { a: ["e0", "e1", "e2"] },
-    turnOrder: ["a"],
-    config,
-    model,
-    fixed,
-    repository,
-    trigger: { callId: "call_task", requestText: "Read TASK.md and complete the work it specifies.", path: "TASK.md", cwd: "/task", fixtureContent: scenario.files["TASK.md"]!, contextTokens: 1776 }
-  });
-  assert.equal(shortDiag.feasible, false);
-  assert.equal(shortDiag.status, "INSUFFICIENT_PREFIX");
-  assert.match(shortDiag.explanation, /cannot pay fixed\/memory\/growth costs/);
-
-  // 2. Negative: Invalid turn mapping fails feasibility directly
-  const badMappingDiag = await diagnosePreparationFeasibility({
-    branch: shortBranch,
-    control: shortControl,
-    turns: {},
-    turnOrder: ["a"],
-    config,
-    model,
-    fixed,
-    repository,
-    trigger: { callId: "call_task", requestText: "Read TASK.md and complete the work it specifies.", path: "TASK.md", cwd: "/task", fixtureContent: scenario.files["TASK.md"]!, contextTokens: 1776 }
-  });
-  assert.equal(badMappingDiag.feasible, false);
-
-  // 3. Negative: Incomplete sibling tool batch fails feasibility directly
-  const incompleteSiblingBranch: any[] = [
-    { id: "s0", parentId: null, type: "message", message: { role: "user", content: "Read TASK.md and complete the work it specifies.", timestamp: 1 }, timestamp: "1" },
-    { id: "s1", parentId: "s0", type: "message", message: { role: "assistant", content: [
-      { type: "toolCall", id: "call_task", name: "read", arguments: { path: "TASK.md" } },
-      { type: "toolCall", id: "call_other", name: "read", arguments: { path: "other.md" } }
-    ], timestamp: 2, api: "openai-completions", provider: "openrouter", model: "openai/gpt-5.6-luna", usage: { input: 1, output: 1, totalTokens: 2 }, stopReason: "toolUse" }, timestamp: "2" },
-    { id: "s2", parentId: "s1", type: "message", message: { role: "toolResult", toolCallId: "call_task", toolName: "read", content: [{ type: "text", text: scenario.files["TASK.md"]! }], isError: false, timestamp: 3 }, timestamp: "3" },
-  ];
-  const siblingDiag = await diagnosePreparationFeasibility({
-    branch: incompleteSiblingBranch,
-    control: shortControl,
-    turns: { a: ["s0", "s1", "s2"] },
-    turnOrder: ["a"],
-    config,
-    model,
-    fixed,
-    repository,
-    trigger: { callId: "call_task", requestText: "Read TASK.md and complete the work it specifies.", path: "TASK.md", cwd: "/task", fixtureContent: scenario.files["TASK.md"]!, contextTokens: 5000 }
-  });
-  assert.equal(siblingDiag.feasible, false);
-  assert.match(siblingDiag.explanation, /Incomplete persisted sibling tool batch/);
-
-  // 4. Positive: a genuine retiring prefix and a budget that requires the split-tool cut.
-  // H=1999 pays F=81 + M=191 + K=669 + growth=1024, but cannot retain the task request.
-  const prefixText = "x".repeat(12000); // 12000 chars ~ 3000 tokens of preliminary ingest reads
-  const longBranch: SessionEntry[] = [
-    { id: "e-u1", parentId: null, type: "message", message: { role: "user", content: scenario.turns[0]!.text, timestamp: 1 }, timestamp: "1" },
-    { id: "e-a1", parentId: "e-u1", type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "call_ingest", name: "read", arguments: { path: "inputs/north.json" } }], timestamp: 2, api: "openai-completions", provider: "openrouter", model: "openai/gpt-5.6-luna", usage: { input: 1, output: 1, totalTokens: 2 }, stopReason: "toolUse" }, timestamp: "2" },
-    { id: "e-r1", parentId: "e-a1", type: "message", message: { role: "toolResult", toolCallId: "call_ingest", toolName: "read", content: [{ type: "text", text: prefixText }], isError: false, timestamp: 3 }, timestamp: "3" },
-    { id: "e-u2", parentId: "e-r1", type: "message", message: { role: "user", content: scenario.turns[1]!.text, timestamp: 4 }, timestamp: "4" },
-    { id: "e-u3", parentId: "e-u2", type: "message", message: { role: "user", content: scenario.turns[2]!.text, timestamp: 5 }, timestamp: "5" },
-    { id: "e-a3", parentId: "e-u3", type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "call_task3", name: "read", arguments: { path: "TASK.md" } }], timestamp: 6, api: "openai-completions", provider: "openrouter", model: "openai/gpt-5.6-luna", usage: { input: 1, output: 1, totalTokens: 2 }, stopReason: "toolUse" }, timestamp: "6" },
-    { id: "e-r3", parentId: "e-a3", type: "message", message: { role: "toolResult", toolCallId: "call_task3", toolName: "read", content: [{ type: "text", text: scenario.files["TASK.md"]! }], isError: false, timestamp: 7 }, timestamp: "7" },
-  ] as any;
-  const longControl = {
-    duringTurn: "task",
-    action: "rollover_at_tool_boundary" as const,
-    trigger: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", when: "after_result_before_continuation" as const },
-    placement: { retireThroughTurn: "preflight", retireRequestOfTurn: "task", retainToolExchange: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", turn: "task" } }
-  };
-  const longDiag = await diagnosePreparationFeasibility({
-    branch: longBranch,
-    control: longControl,
-    turns: { setup: ["e-u1", "e-a1", "e-r1"], preflight: ["e-u2"], task: ["e-u3", "e-a3", "e-r3"] },
-    turnOrder: ["setup", "preflight", "task"],
-    config,
-    model,
-    fixed,
-    repository,
-    trigger: { callId: "call_task3", requestText: scenario.turns[2]!.text, path: "TASK.md", cwd: "/task", fixtureContent: scenario.files["TASK.md"]!, contextTokens: 2000 }
-  });
-  assert.equal(longDiag.feasible, true, JSON.stringify(longDiag));
-  assert.equal(longDiag.status, "FEASIBLE");
-  assert.equal(longDiag.firstKeptEntryId, "e-a3");
-  assert(longDiag.retiringPrefixTokens! > 2000, `Retiring prefix must be substantial, got ${longDiag.retiringPrefixTokens}`);
-  assert.match(longDiag.explanation, /Compaction boundary is feasible/);
-});
-
 // Full native controlled multi-turn flow with real StockFixture
-async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, lowUsage = false) {
+async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, lowUsage = false, tamper?: string) {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 160000 });
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
@@ -397,7 +292,6 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
   }
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
-    comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" } } },
     overrides: [{ requirement: "maintenance-thinking", maintenanceThinking: "low", reason: "Controlled low-effort native serializer proof" }, ...(tools ? [] : [{ requirement: "memory-tools-off", memoryTools: false, reason: "Actual tools-off comparison" }])],
     limits: { maxCalls: 50, maxTotalTokens: 4000000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
     scenarios: [{ id: "g4", variant: "same-task-history", config: { compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
@@ -439,6 +333,7 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
     { text: "Controlled same-task completed.", input: lowUsage ? 100 : 18000 }
   ];
 
+  if (tamper) turnTask.splice(turnTask.length - 1, 0, tool("write", { path: tamper, content: "changed after preliminary validation" }));
   const fullSequence = [...turnSetup, ...turnPreflight, ...turnTask];
   let step = 0, maintenance = 0;
   f.response = (row: any, source: any) => {
@@ -469,6 +364,14 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
       return;
     }
 
+    if (tamper) {
+      assert.equal(report.status, "UNPROVEN");
+      const artifact = report.score!.actionReview.find(c => c.check === "metrics-artifact")!;
+      assert.equal(artifact.status, "DISPROVEN");
+      assert.match(artifact.reason!, /frozen fixture|Frozen task fixture/);
+      assert(artifact.reason!.includes(tamper));
+      return;
+    }
     assert.equal(report.status, "OBSERVED", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic }));
     assert.equal(report.nextTurn, 3, "All 3 turns executed");
     assert.equal(step, fullSequence.length);
@@ -496,4 +399,35 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
 test("same-task-history candidate tools=true: entire multi-turn flow with preliminary ingestion, 3 rollovers, restored configs and final oracle", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", true));
 test("same-task-history candidate tools=false: entire multi-turn flow without nunc memory tools", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", false));
 test("same-task-history native tools=false: entire multi-turn flow under native Pi", { timeout: 180000 }, () => sameTaskHistoryHost("native", false));
+test("same-task-history frozen regional input tampering reaches the worker scorer", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", true, false, "inputs/north.json"));
+
+test("final on-disk records override historical writes, and candidate execution cannot mutate ingestion output", async () => {
+  const { input: scenario } = await loadScenario(repository, { id: "g4", variant: "same-task-history", config });
+  const cwd = await mkdtemp(join(repository, ".scratch", "records-integrity-"));
+  try {
+    const actions = makeValidActions(scenario);
+    const correct = JSON.stringify(deriveExpectedRecords(scenario));
+    await writeFile(join(cwd, "records.json"), correct);
+    assert.equal(sameTaskHistoryEffects(scenario, actions, cwd).status, "PROVEN");
+    for (const corrupt of ["{}", "invalid json"]) {
+      await writeFile(join(cwd, "records.json"), corrupt);
+      assert.equal(sameTaskHistoryEffects(scenario, actions, cwd).status, "UNPROVEN", "historical write args cannot replace contradictory final disk evidence");
+      assert.equal(scoreGuidance("g4", "metrics-artifact", actions, [], cwd, scenario.files).status, "DISPROVEN");
+    }
+    for (const [path, source] of Object.entries(scenario.files)) {
+      await mkdir(join(cwd, path, ".."), { recursive: true });
+      await writeFile(join(cwd, path), source);
+    }
+    await writeFile(join(cwd, "records.json"), correct);
+    await writeFile(join(cwd, "solution.py"), metricsSolution);
+    await writeFile(join(cwd, "test_solution.py"), metricsTests);
+    const fixtures = Object.fromEntries(Object.entries(scenario.files).filter(([path]) => path !== "solution.py"));
+    assert.equal(scoreGuidance("g4", "metrics-artifact", actions, [], cwd, fixtures).status, "PROVEN");
+    await writeFile(join(cwd, "test_solution.py"), `import pathlib\npathlib.Path('records.json').write_text('{}')\n${metricsTests}`);
+    const changed = scoreGuidance("g4", "metrics-artifact", actions, [], cwd, fixtures);
+    assert.equal(changed.status, "DISPROVEN");
+    assert.match(changed.reason!, /modified its input: records.json/);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("same-task-history low usage: stops honestly before infeasible maintenance without synthetic padding", { timeout: 45000 }, () => sameTaskHistoryHost("candidate", true, true));

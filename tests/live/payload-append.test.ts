@@ -1,11 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import append, { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
-import appendB, { SYNTHETIC_LAST_USER_APPEND_B } from "../../src/live/append-b.js";
+import { SYNTHETIC_LAST_USER_APPEND, SYNTHETIC_LAST_USER_APPEND_B } from "../../src/pi/payload.js";
 import { payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled } from "../../src/live/contract.js";
 import { liveExtensionFlags } from "../../src/live/host.js";
 import observer from "../../src/live/observer.js";
@@ -16,33 +15,29 @@ test("payload-append override selects the tracked synthetic append extension", a
   assert.equal(payloadAppendEnabled(input), false);
   assert.equal(payloadAppendBEnabled(input), false);
   assert.equal(providerWrapEnabled(input), false);
-  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js", "-e", "/repo/dist/src/index.js"]);
+  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js"]);
   input.overrides = [{ requirement: "payload-append", reason: "Exercise last-user text append on the selected native route" }];
   assert.equal(payloadAppendEnabled(input), true);
-  assert.deepEqual(liveExtensionFlags("/repo", input), [
-    "-e", "/repo/dist/src/live/observer.js", "-e", "/repo/dist/src/live/append.js", "-e", "/repo/dist/src/index.js",
-  ]);
+  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js"]);
   input.overrides.push(
     { requirement: "payload-append-b", reason: "Second synthetic last-user suffix" },
     { requirement: "provider-wrap", reason: "Transparent Provider wrap after first settled turn" },
   );
   assert.equal(payloadAppendBEnabled(input), true);
   assert.equal(providerWrapEnabled(input), true);
-  assert.deepEqual(liveExtensionFlags("/repo", input), [
-    "-e", "/repo/dist/src/live/observer.js", "-e", "/repo/dist/src/live/append.js", "-e", "/repo/dist/src/live/append-b.js",
-    "-e", "/repo/dist/src/live/wrap.js", "-e", "/repo/dist/src/index.js",
-  ]);
+  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js"]);
 });
 
-test("live observer plus append callback injects synthetic last-user text without logging it", async () => {
+test("live observer plus append callback injects synthetic last-user text without logging it", async t => {
   const dir = await mkdtemp(join(tmpdir(), "nunc-append-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   const events = join(dir, "events.jsonl");
   const ledger = join(dir, "calls.jsonl");
   const binding = join(dir, "observer.json");
   await writeFile(events, "");
   await writeFile(ledger, "");
   await writeFile(binding, JSON.stringify({
-    input: { overrides: [{ requirement: "payload-append", reason: "synthetic" }] },
+    input: { overrides: [{ requirement: "payload-append", reason: "synthetic" }, { requirement: "payload-append-b", reason: "synthetic" }] },
     models: [{ provider: "engine-test", id: "engine-test" }],
     deadline: Date.now() + 10_000,
     events,
@@ -59,9 +54,7 @@ test("live observer plus append callback injects synthetic last-user text withou
       registerProvider() {},
       registerCommand() {},
     };
-    observer(pi as unknown as ExtensionAPI);
-    append(pi as unknown as ExtensionAPI);
-    appendB(pi as unknown as ExtensionAPI);
+    await observer(pi as unknown as ExtensionAPI);
     let payload: unknown = { model: "engine-test", stream: true, messages: [{ role: "user", content: "hello" }] };
     for (const handler of handlers.get("before_provider_request") ?? []) {
       const next = handler({ payload });

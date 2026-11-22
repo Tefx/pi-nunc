@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { satisfiesStableCaret } from "../../src/live/toolchain.js";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { satisfiesStableCaret } from "../../src/pi/compat.js";
 
 test("toolchain ranges admit stable floor and rolling upgrades only", () => {
   const { engines } = JSON.parse(readFileSync("package.json", "utf8"));
@@ -18,6 +21,18 @@ test("toolchain ranges admit stable floor and rolling upgrades only", () => {
   for (const range of ["26.7.0", "^26.7", "^0.7.0", "^26.7.0-rc.1"]) {
     assert.equal(satisfiesStableCaret("26.7.0", range), false, range);
   }
+});
+
+test("check CLI reports missing local TypeScript before installing source hooks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nunc-check-bootstrap-"));
+  try {
+    await mkdir(join(root, "scripts"));
+    await copyFile("scripts/check.mjs", join(root, "scripts/check.mjs"));
+    await writeFile(join(root, "package.json"), JSON.stringify({ engines: { node: "^26.7.0" } }));
+    const result = spawnSync(process.execPath, [join(root, "scripts/check.mjs"), "engine"], { encoding: "utf8" });
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr.trim(), "check: Missing local typescript; install from package-lock.json separately");
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("check CLI rejects missing/unknown/multiple selections and injected Node options with nonzero exit", () => {

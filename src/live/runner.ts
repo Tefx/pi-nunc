@@ -1,42 +1,57 @@
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { object, canonical, parseInput, preflight, requireValue, RunnerError, within, type Receipt, type RunInput } from "./contract.js";
-import { ledgerSummary, readLedger, readQualifiedLedgers, resolveBatchContext } from "./budget.js";
+import { canonical } from "../engine/validation.js";
+import { object, canResumeScenario, parseInput, preflight, requireValue, RunnerError, within, elapsedInterval, type WallClockInterval, type Receipt, type RunInput } from "./contract.js";
+import { ledgerSummary, readQualifiedLedgers, resolveBatchContext, type QualifiedCall } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";
-import { childEnvironment, nativeEnvironment } from "./host.js";
-export { childEnvironment } from "./host.js";
-import { elapsedInterval, type WallClockInterval } from "./timing.js";
+import { childEnvironment, nativeEnvironment, superviseProcess } from "./host.js";
 
 export interface ChildReceipt { timing?: WallClockInterval; exitCode: number | null; signal: string | null; timedOut: boolean; diagnostic?: { code: string; message: string } }
-export function launchWorker(script: string, job: WorkerJob, signal: AbortSignal): Promise<ChildReceipt> {
+export async function launchWorker(script: string, job: WorkerJob, signal: AbortSignal): Promise<ChildReceipt> {
   const startedAt = Date.now();
-  return new Promise((resolve, reject) => {
-    // Orchestration keeps the checked repository cwd and supervisor's temp root.
-    // Only the native task host uses task cwd/TMPDIR. Compiler validation also
-    // needs the repository cwd to resolve the locked toolchain consistently.
-    const env = { ...nativeEnvironment(job.input.target.stateRoot), TMPDIR: process.env.TMPDIR };
-    const child = spawn(process.execPath, [script, "--worker"], { cwd: job.input.target.repository, env, detached: true, stdio: ["pipe", "ignore", "ignore", "ipc"] });
-    let diagnostic: ChildReceipt["diagnostic"];
+  // Orchestration uses the checked repository cwd and supervisor's temp root.
+  const env = { ...nativeEnvironment(job.input.target.stateRoot), TMPDIR: process.env.TMPDIR };
+  let diagnostic: ChildReceipt["diagnostic"];
+  const result = await superviseProcess(process.execPath, [script, "--worker"], { cwd: job.input.target.repository, env, stdio: ["pipe", "ignore", "ignore", "ipc"] }, job.deadline, signal, child => {
     child.on("message", (value: unknown) => {
       if (!diagnostic && object(value) && value.type === "nunc-worker-rejection" && typeof value.code === "string" && /^[A-Z_]{1,64}$/.test(value.code) && typeof value.message === "string" && /^[\x20-\x7e]{1,256}$/.test(value.message)) {
         diagnostic = { code: value.code, message: value.message };
       }
     });
-    let timedOut = false, hard: NodeJS.Timeout | undefined;
-    const kill = (signal: NodeJS.Signals) => { if (child.pid) { try { process.kill(-child.pid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; } } };
-    const stop = () => { timedOut = true; kill("SIGTERM"); hard ??= setTimeout(() => kill("SIGKILL"), 2000); };
-    const timer = setTimeout(stop, Math.max(1, job.deadline - Date.now()));
-    signal.addEventListener("abort", stop, { once: true });
-    child.once("error", error => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); reject(error); });
-    child.once("close", (exitCode, exitSignal) => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); resolve({ exitCode, signal: exitSignal, timedOut, timing: elapsedInterval(startedAt), ...(diagnostic ? { diagnostic } : {}) }); });
-    // The explicit stdin pipe above is guaranteed; the IPC overload loses that type refinement.
-    const stdin = child.stdin!;
-    stdin.on("error", () => { /* Early rejection is reported by child exit, never replayed. */ });
-    stdin.end(JSON.stringify(job));
-    if (signal.aborted) stop();
+    child.stdin!.on("error", () => { /* Early rejection is reported by child exit, never replayed. */ });
+    child.stdin!.end(JSON.stringify(job));
   });
+  return { ...result, timing: elapsedInterval(startedAt), ...(diagnostic ? { diagnostic } : {}) };
+}
+/** Both supervisors admit a fresh segment against the same cumulative ledger. */
+export function assertDispatchQuota(input: RunInput, usage: ReturnType<typeof ledgerSummary>): void {
+  requireValue(usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+  if (input.limits.maxCalls !== null) requireValue(usage.calls < input.limits.maxCalls, "CALL_LIMIT", "Shared call ceiling exhausted; no further child/session effects");
+  if (input.limits.maxTotalTokens !== null) {
+    const smallestReservation = Math.min(...input.models.map(m => m.contextWindow + m.maxTokens));
+    requireValue(usage.chargedTokens + smallestReservation <= input.limits.maxTotalTokens, "TOKEN_LIMIT", "Shared token ceiling cannot reserve another task request");
+  }
+  if (input.limits.maxCostUsd !== null) requireValue(usage.chargedCostUsd !== null && usage.chargedCostUsd < input.limits.maxCostUsd, "COST_LIMIT", "Shared known-cost ceiling exhausted");
+}
+export async function dispatchWorker(script: string, job: WorkerJob, signal: AbortSignal,
+  report: { children: ChildReceipt[]; usage: ReturnType<typeof ledgerSummary> }, readAll: () => QualifiedCall[]) {
+  signal.throwIfAborted();
+  requireValue(Date.now() < job.deadline, "TIME_LIMIT", "Run deadline reached");
+  report.usage = ledgerSummary(readAll(), job.input.limits);
+  assertDispatchQuota(job.input, report.usage);
+  const child = await launchWorker(script, job, signal);
+  report.children.push(child);
+  report.usage = ledgerSummary(readAll(), job.input.limits);
+  requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete; inspect saved state before any new run");
+  const selection = job.input.scenarios[job.scenarioIndex]!;
+  const caseRoot = job.caseRoot ?? join(job.input.target.stateRoot, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
+  const segment = JSON.parse(await readFile(join(caseRoot, job.resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
+  return { child, segment };
+}
+export function assertSegmentSettled(segment: SegmentReport, usage: ReturnType<typeof ledgerSummary>): void {
+  requireValue(usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+  requireValue(segment.status !== "STOPPED" && segment.reason !== "CLEANUP", segment.reason === "CLEANUP" ? "CLEANUP" : segment.reason ?? "WORKER", segment.diagnostic ?? "Worker stopped; inspect saved state before any new run");
 }
 export interface RunReport {
   version: 1; status: "OBSERVED" | "UNPROVEN" | "STOPPED";
@@ -48,43 +63,32 @@ export interface RunReport {
 export async function execute(value: unknown, repository: string, script: string, signal: AbortSignal): Promise<RunReport> {
   const input = parseInput(value, true);
   const receipt = await preflight(input, repository);
-  await mkdir(input.target.stateRoot, { mode: 0o700 });
-  await mkdir(join(input.target.stateRoot, "tmp"), { mode: 0o700 });
-  input.receipt = receipt;
-  await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
   const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
-  const started = Date.now();
   requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
+  input.receipt = receipt;
+  await initializeRun(input, receipt, deadline);
+  const started = Date.now();
   const root = input.target.stateRoot;
-  const readAll = () => readQualifiedLedgers([...priorLedgerPaths, join(root, "calls.jsonl")]);
-  // A newly created target is single-use; no silent rerun of possible prior effects.
-  await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
+  const readAll = () => readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(join(root, "calls.jsonl")) ? [join(root, "calls.jsonl")] : [])]);
   const report: RunReport = { version: 1, status: "STOPPED", selection: structuredClone(input), segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [
     "Provider responses are real only for separately authorized execution. Offline controlled-provider checks prove host/runner mechanics, not model policy behavior.",
     "Semantic reasons, repeated failed attempts, restatement needs and unsupported claims require independent review of recorded actions/session evidence. No judge or additional model calls are authorized by this runner.",
-    "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Reservations are never refunded; missing usage stays null.",
+    "Token/call reservations always cover the entire model window plus output. USD bounds apply only to explicit catalog-reservation mode; token-call-reservation reports unknown billing as null, with available worst-tier catalog estimates separately labeled. Native subscription session cost placeholders are not billing receipts. Trustworthy terminal usage releases unused token reserves; missing or untrusted usage retains full reservations.",
     "A local abort/terminated process does not prove remote cancellation or final billing. Unresolved requests, cancellation, exhausted time/known-cost limits, and any configured call/token caps stop further effects and retain isolated evidence. A completed failed independent scenario keeps its reservation and is not replayed; later authorized isolated scenarios may continue within remaining shared time/known-cost limits and any still-configured call/token caps. Unknown usage stays null.",
   ] };
   try {
-    await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600 });
     if (input.observations?.some(m => m !== "continuation")) report.stock = await runStock(input, repository, deadline, signal);
     let failed = false;
     for (let scenarioIndex = 0; scenarioIndex < (input.observations && !input.observations.includes("continuation") ? 0 : input.scenarios.length); scenarioIndex++) {
       const selection = input.scenarios[scenarioIndex]!;
-      const caseRoot = join(root, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
       let resume = false;
       do {
-        signal.throwIfAborted(); requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
-        const child = await launchWorker(script, { input, scenarioIndex, deadline, resume, priorLedgers: priorLedgerPaths }, signal); report.children.push(child);
-        report.usage = ledgerSummary(readAll(), input.limits);
-        requireValue(!child.signal && !child.timedOut && child.exitCode === 0, child.diagnostic?.code ?? "WORKER", child.diagnostic?.message ?? "Worker did not complete; inspect saved state before any new run");
-        const segment = JSON.parse(await readFile(join(caseRoot, resume ? "resumed-observation.json" : "observation.json"), "utf8")) as SegmentReport;
+        const { segment } = await dispatchWorker(script, { input, scenarioIndex, deadline, resume, priorLedgers: priorLedgerPaths }, signal, report, readAll);
         report.segments.push(segment);
-        requireValue(report.usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Possible started request has no terminal receipt");
+        assertSegmentSettled(segment, report.usage);
         const failedPlacement = segment.prerequisites.some(c => c.status !== "PROVEN");
-        requireValue(segment.status !== "STOPPED" && segment.reason !== "CLEANUP", segment.reason === "CLEANUP" ? "CLEANUP" : segment.reason ?? "WORKER", segment.diagnostic ?? "Worker stopped; inspect saved state before any new run");
         if (segment.status === "PAUSED") {
-          requireValue(!resume && selection.id === "c3", "RESTART", "Unexpected repeated pause");
+          requireValue(canResumeScenario(selection.id, resume), "RESTART", "Unexpected repeated pause");
           if (failedPlacement) { failed = true; break; }
           resume = true; continue;
         }
@@ -96,38 +100,34 @@ export async function execute(value: unknown, repository: string, script: string
     if (failed) report.reason = report.segments.find(s => s.status === "UNPROVEN" || s.status === "STOPPED" || (s.status === "PAUSED" && s.prerequisites.some(c => c.status !== "PROVEN")))?.reason ?? "OBSERVATION";
   } catch (error) { report.status = "UNPROVEN"; report.reason = error instanceof RunnerError ? error.code : signal.aborted ? "CANCELLED" : "RUNNER_ERROR"; }
   finally {
-    try { report.usage = ledgerSummary(readAll(), input.limits); } catch { report.cleanup = "retained-for-reconciliation"; report.reason = "LEDGER_RECONCILIATION"; }
-    report.elapsedMs = Date.now() - (firstDispatchAt ?? started);
-    if (report.usage.unreconciledCallIds.length > 0) report.cleanup = "retained-for-reconciliation";
-    await finalizeRun(input, receipt, report);
+    await settleRun(input, receipt, report, readAll, firstDispatchAt ?? started);
   }
   return report;
 }
 
 /** Controlled stock transports only. No catalog model is contacted by these observations. */
 async function runStock(input: RunInput, repository: string, deadline: number, signal: AbortSignal): Promise<unknown[]> {
-  const reports: unknown[] = []; let calls = 0;
+  const reports: unknown[] = [];
+  const { priorLedgerPaths } = resolveBatchContext(input);
   for (const mode of input.observations ?? []) {
     if (mode === "continuation") continue;
     signal.throwIfAborted();
-    const remainingCalls = input.limits.maxCalls === null ? null : input.limits.maxCalls - calls;
-    const remainingTokens = input.limits.maxTotalTokens === null ? null : input.limits.maxTotalTokens - calls * 80000;
+    const ledgerPath = join(input.target.stateRoot, "calls.jsonl");
+    const usage = ledgerSummary(readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(ledgerPath) ? [ledgerPath] : [])]), input.limits);
+    requireValue(usage.unreconciledCallIds.length === 0, "RECONCILIATION", "Stock requests require settled prior receipts");
+    requireValue(input.limits.maxCostUsd === null || usage.chargedCostUsd !== null && usage.chargedCostUsd <= input.limits.maxCostUsd, "COST_LIMIT", "Stock requests require reconciled prior costs within the shared ceiling");
+    const remainingCalls = usage.remainingCalls;
+    const remainingTokens = usage.remainingTokens;
     const limits = { ...input.limits, maxCalls: remainingCalls, maxTotalTokens: remainingTokens, maxDurationMs: deadline - Date.now() };
     requireValue((remainingCalls === null || remainingCalls > 0) && limits.maxDurationMs > 0, "LIMIT", "Controlled stock observation exhausted its bound");
     const parent = join(input.target.stateRoot, "stock"); await mkdir(parent, { recursive: true });
-    const result = await new Promise<string>((resolve, reject) => {
-      const child = spawn(process.execPath, [join(repository, "scripts/observe-stock.mjs"), mode === "stock_tui" ? "tui" : "rpc", parent], { cwd: input.target.stateRoot, detached: true, env: { ...childEnvironment(input.target.stateRoot), NUNC_STOCK_LIMITS: JSON.stringify(limits) }, stdio: ["ignore", "pipe", "ignore"] });
-      let stdout = "", killed = false, hard: NodeJS.Timeout | undefined;
-      const kill = (s: NodeJS.Signals) => { if (child.pid) { try { process.kill(-child.pid, s); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e; } } };
-      const stop = () => { killed = true; kill("SIGTERM"); hard ??= setTimeout(() => kill("SIGKILL"), 2000); };
-      const timer = setTimeout(stop, limits.maxDurationMs); signal.addEventListener("abort", stop, { once: true });
-      const clear = () => { clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop); };
-      child.stdout.on("data", (b: Buffer) => { stdout += b.toString(); if (stdout.length > 1_000_000) stop(); });
-      child.once("error", e => { clear(); reject(e); });
-      child.once("close", code => { clear(); if (code === 0 && !killed) resolve(stdout); else reject(new RunnerError("STOCK_OBSERVATION", "Stock observation stopped; retain isolated evidence")); });
-      if (signal.aborted) stop();
+    let stdout = "";
+    const overflow = new AbortController();
+    const result = await superviseProcess(process.execPath, [join(repository, "scripts/observe-stock.mjs"), mode === "stock_tui" ? "tui" : "rpc", parent], { cwd: input.target.stateRoot, env: { ...childEnvironment(input.target.stateRoot), NUNC_STOCK_LIMITS: JSON.stringify(limits), NUNC_STOCK_LEDGER: ledgerPath }, stdio: ["ignore", "pipe", "ignore"] }, deadline, AbortSignal.any([signal, overflow.signal]), child => {
+      child.stdout!.on("data", (b: Buffer) => { stdout += b.toString(); if (stdout.length > 1_000_000) overflow.abort(); });
     });
-    const row = JSON.parse(result.trim()) as { status: string; requests: number; evidence: string };
+    requireValue(result.exitCode === 0 && !result.timedOut, "STOCK_OBSERVATION", "Stock observation stopped; retain isolated evidence");
+    const row = JSON.parse(stdout.trim()) as { status: string; requests: number; evidence: string };
     requireValue(row.status === "PROVEN_CONTROLLED" && Number.isSafeInteger(row.requests) && row.requests > 0 && (remainingCalls === null || row.requests <= remainingCalls) && within(row.evidence, parent), "STOCK_OBSERVATION", "Invalid stock observation receipt");
     const evidence: Record<string, unknown> = {};
     for (const name of await readdir(row.evidence)) {
@@ -136,21 +136,40 @@ async function runStock(input: RunInput, repository: string, deadline: number, s
       requireValue(data.length <= 64_000_000, "OUTPUT", "Stock evidence exceeded bound");
       evidence[name] = name.endsWith(".jsonl") ? data.trim().split("\n").filter(Boolean).map(s => JSON.parse(s)) : JSON.parse(data);
     }
-    reports.push({ ...row, evidence }); calls += row.requests;
+    reports.push({ ...row, evidence });
   }
   return reports;
 }
 export async function observeStock(value: unknown, repository: string, signal: AbortSignal): Promise<RunReport> {
   const input = parseInput(value), receipt = await preflight(input, repository);
   requireValue(input.mode === "controlled" && input.observations?.length && !input.observations.includes("continuation"), "AUTHORIZATION", "Controlled stock mode requires stock_rpc/stock_tui only");
-  await mkdir(input.target.stateRoot, { mode: 0o700 });
-  await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt }), { mode: 0o600, flag: "wx" });
+  const { priorLedgerPaths, firstDispatchAt, deadline } = resolveBatchContext(input);
+  requireValue(Date.now() < deadline, "TIME_LIMIT", "Run deadline reached");
+  await initializeRun(input, receipt, deadline);
   const start = Date.now();
   const report: RunReport = { version: 1, status: "UNPROVEN", selection: input, segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: ["Controlled loopback service proves actual stock CLI/RPC/TUI mechanics; real model memory quality and billing remain UNPROVEN."] };
-  try { report.stock = await runStock(input, repository, start + input.limits.maxDurationMs, signal); report.status = "OBSERVED"; }
+  try { report.stock = await runStock(input, repository, deadline, signal); report.status = "OBSERVED"; }
   catch (error) { report.reason = error instanceof RunnerError ? error.code : "STOCK_OBSERVATION"; }
-  finally { report.elapsedMs = Date.now() - start; await finalizeRun(input, receipt, report); }
+  finally {
+    await settleRun(input, receipt, report, () => readQualifiedLedgers([...priorLedgerPaths, ...(existsSync(join(input.target.stateRoot, "calls.jsonl")) ? [join(input.target.stateRoot, "calls.jsonl")] : [])]), firstDispatchAt ?? start);
+  }
   return report;
+}
+
+/** All supervisors create the same single-use ownership boundary before dispatch. */
+export async function initializeRun(input: RunInput, receipt: Receipt, deadline: number): Promise<void> {
+  const root = input.target.stateRoot;
+  await mkdir(root, { mode: 0o700 });
+  await mkdir(join(root, "tmp"), { mode: 0o700 });
+  await writeFile(join(root, "owner.json"), JSON.stringify({ receipt, deadline, status: "running" }), { mode: 0o600, flag: "wx" });
+  await writeFile(join(root, "execution-started.json"), JSON.stringify({ deadline }), { mode: 0o600, flag: "wx" });
+}
+export async function settleRun(input: RunInput, receipt: Receipt, report: RunReport | import("./comparison.js").ComparisonReport,
+  readAll: () => QualifiedCall[], started: number): Promise<void> {
+  try { report.usage = ledgerSummary(readAll(), input.limits); }
+  catch { report.status = "UNPROVEN"; report.reason = "LEDGER_RECONCILIATION"; report.cleanup = "retained-for-reconciliation"; }
+  report.elapsedMs = Date.now() - started;
+  await finalizeRun(input, receipt, report);
 }
 
 /** Called only after every child has exited. Failed/uncertain runs retain their evidence and are never replayed. */

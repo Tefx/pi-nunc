@@ -215,7 +215,7 @@ memoryLimit = min(原有建议目标, memory.targetTokens ?? 8192)
 | 220,000 | 22,000 | 0.67 | 132,660 |
 | 220,000 | 22,000 | 0.5 | 99,000 |
 
-表中假定当前历史已达到可用历史预算，且软目标未收紧结果。默认比例下历史软目标为 100000 tokens，防止大窗口把默认保留目标推到近 500k；显式 `rolling.keepRecentFraction` 不隐含该上限，显式正整数 `rolling.targetTokens` 可另行设置。此值选择约 100k 的近期工作量作为默认工程折中，不保证任意小模型适配或最佳语义质量。原生触发阈值不变，维护前历史仍可能增长很大。
+The table assumes history fills the available history budget and no soft target tightens the result. When both rolling settings are omitted, the retained-history soft target follows host `keepRecentTokens` when greater than one; synthetic floors of one or less use `min(32768, max(1, floor(triggerTokens * 0.15)))`. An explicit fraction does not imply that target, and a positive `rolling.targetTokens` overrides it. The target provides no cross-model fit or semantic-quality guarantee. Pi's trigger remains unchanged.
 
 低水位维护按当前历史计算比例，避免在大窗口上手动 `/compact` 仅因未用满容量而几乎不收缩。宿主保留下限、合法完整消息单元和冻结切点规则继续生效，不保证每次恰好缩减一半。
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
 import { applyToolResultCleanup } from "./cleanup.js";
-import { mainPlanningEstimate, messagePlanningEstimate } from "./accounting.js";
+import type { ActiveEntry, MaintenanceCalibrationRecord, MaintenanceCandidate, MaintenanceInput, MaintenanceResult, ProviderOverflow } from "./types.js";
+import { mainPlanningEstimate, messagePlanningEstimate, usableAssistantUsageTokens } from "./accounting.js";
 import { integer, nonempty, record } from "./validation.js";
 
 type Snapshot = Omit<MaintenanceInput, "signal" | "binding" | "eligibleKeptEntryIds">;
@@ -89,11 +89,10 @@ export function activeUsageObservation(input: Snapshot, selectedSource: readonly
   for (const [entryIndex, entry] of input.active.entries()) {
     for (const [messageIndex, message] of entry.messages.entries()) {
       if (message.role === "assistant" && (!eligible || eligible.has(entry.entryId)) && !entry.outputUsageUnavailable &&
-          message.timestamp >= latestPrefixTimestamp && message.stopReason !== "aborted" && message.stopReason !== "error" &&
-          message.model === input.model.id && message.provider === input.model.provider && message.api === input.model.api &&
-          record(message.usage) && [message.usage.input, message.usage.output, message.usage.cacheRead, message.usage.cacheWrite, message.usage.totalTokens].every(n => integer(n))) {
-        const usageTokens = message.usage.input + message.usage.output + message.usage.cacheRead + message.usage.cacheWrite;
-        if (usageTokens >= 1) anchor = { entryIndex, messageIndex, usageTokens };
+          message.timestamp >= latestPrefixTimestamp &&
+          message.model === input.model.id && message.provider === input.model.provider && message.api === input.model.api) {
+        const usageTokens = usableAssistantUsageTokens(message);
+        if (usageTokens !== undefined) anchor = { entryIndex, messageIndex, usageTokens };
       }
       latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
     }
@@ -103,7 +102,9 @@ export function activeUsageObservation(input: Snapshot, selectedSource: readonly
     ...source.slice(0, anchor.entryIndex),
     { ...source[anchor.entryIndex]!, messages: source[anchor.entryIndex]!.messages.slice(0, anchor.messageIndex + 1) },
   ];
-  const fullPlan = mainPlanningEstimate(input.fixed, input.memory.slots, prefixEntries(input.active),
+  const fullPrefix = prefixEntries(input.active);
+  const fullPlan = mainPlanningEstimate(input.fixed, input.memory.slots,
+    input.config.toolResultCleanup === false ? fullPrefix : applyToolResultCleanup(fullPrefix, input.priorCleanup ?? []),
     input.model, input.config.imageTokens, input.config.main.extraInputTokens);
   const anchorEntry = input.active[anchor.entryIndex]!;
   const anchorMessage = anchorEntry.messages[anchor.messageIndex]!;
@@ -118,10 +119,6 @@ export function activeUsageObservation(input: Snapshot, selectedSource: readonly
     : Math.ceil(rawUndercount * Math.min(1, mainPlanningEstimate(input.fixed, input.memory.slots, prefixEntries(selectedSource),
       input.model, input.config.imageTokens, input.config.main.extraInputTokens).visibleTokens / fullPrefixTokens));
   return { entryIndex: anchor.entryIndex, messageIndex: anchor.messageIndex, rawUndercountTokens: rawUndercount, undercountTokens };
-}
-
-export function activeUsageUndercount(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active): number {
-  return activeUsageObservation(input, selectedSource)?.undercountTokens ?? 0;
 }
 
 export function maintenanceFeedback(input: Snapshot, selectedSource: readonly ActiveEntry[] = input.active, candidateExtractionTokens?: number) {
@@ -167,12 +164,12 @@ export function sameRejectedRequest(overflow: ProviderOverflow | undefined, acti
 
 /** Failed attempts save evidence only. Successful native handoffs rebind the measured correction to original K,
  * whose source is still active after compaction, while retaining the measured request's original provenance. */
-export function maintenanceCalibrationRecord(input: Snapshot, result: MaintenanceResult): MaintenanceCalibrationRecord | undefined {
+export function maintenanceCalibrationRecord(input: Snapshot, result: MaintenanceResult, committed: MaintenanceCandidate | undefined = result.ok ? result.candidate : undefined): MaintenanceCalibrationRecord | undefined {
   if (result.observations.requests < 1) return;
-  const providerOverflow = result.ok ? undefined : result.observations.providerOverflow;
-  const measurement = result.observations.maintenanceCalibration ?? (result.ok ? maintenanceFeedback(input).measurement : undefined);
+  const providerOverflow = committed ? undefined : result.ok ? undefined : result.observations.providerOverflow;
+  const measurement = result.observations.maintenanceCalibration ?? (committed ? maintenanceFeedback(input).measurement : undefined);
   if (!providerOverflow && !measurement) return;
-  const active = result.ok ? applyToolResultCleanup(result.candidate.kept, result.candidate.toolResultCleanup?.applied ?? []) : input.active;
+  const active = committed ? committed.kept : input.active;
   return { version: 1, provider: input.model.provider, api: input.model.api, modelId: input.model.id,
     sourceEntryIds: active.map(entry => entry.entryId), sourceDigest: digest(active), limitsDigest: limitsDigest(input),
     ...(providerOverflow ? { providerOverflow, contextDigest: contextDigest(input),

@@ -1,7 +1,7 @@
-export async function readInput() {
+export async function readInput(worker = false) {
   const { readBoundedJson } = await import("../dist/src/live/contract.js");
   const timer = setTimeout(() => process.stdin.destroy(new Error("STDIN_TIMEOUT")), 10000);
-  try { return await readBoundedJson(process.stdin); } finally { clearTimeout(timer); }
+  try { return await readBoundedJson(process.stdin, worker ? 524288 : 65536); } finally { clearTimeout(timer); }
 }
 
 export async function runWorker(value, repository) {

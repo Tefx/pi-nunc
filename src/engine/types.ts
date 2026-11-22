@@ -69,6 +69,8 @@ export interface MaintenanceInput {
   fixed: FixedContext;
   memory: Memory;
   active: ActiveEntry[];
+  /** Saved cleanup over raw active sources; source-dependent decisions expire at the B/K cut. */
+  priorCleanup?: ToolResultDecision[];
   /** Optional host-path restrictions (e.g. avoid a kept range crossing an older compaction). */
   eligibleKeptEntryIds?: string[];
   /** Host prefix usage anchors after checkpoint/context-edit invalidation. */
@@ -239,7 +241,6 @@ export type CleanupSkippedReason =
   | "has_omissions"
   | "invalid_shape"
   | "duplicate_edit"
-  | "batch_conflict"
   | "missing_memory_dependency"
   | "missing_source_dependency"
   | "no_net_savings"
@@ -262,7 +263,7 @@ export interface ToolResultCleanupResult {
 }
 
 export interface MechanicalFallbackInfo {
-  code: FailureCode;
+  code: "RESPONSE";
   message: string;
   retiredEntryCount: number;
   firstKeptEntryId: string;

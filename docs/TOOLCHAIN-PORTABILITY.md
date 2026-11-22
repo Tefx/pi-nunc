@@ -1,6 +1,6 @@
 # Toolchain Version-Range and Baseline Portability
 
-Status: **Accepted design specification (authorized prerequisite for cross-machine verification of `nunc-admission-retention-hardening`).**
+Status: **Implemented toolchain contract. See DEVELOPMENT.md for current temporary-baseline setup and verification commands.**
 
 This specification replaces brittle patch-level equality pinning (`Node === 26.7.0`, `npm === 11.19.0`) and machine-local branch refs (`refs/nunc/task-retention-pre-change`) with SemVer range enforcement, observed-version recording, and clone-portable baseline commit OIDs, while keeping `package-lock.json` dependency pins exact.
 
@@ -24,15 +24,15 @@ This specification replaces brittle patch-level equality pinning (`Node === 26.7
 
 ### 3. Clone-Portable Comparison Baseline References (`MUST`)
 
-- Replace references to the MBA-local ref `refs/nunc/task-retention-pre-change` in `tests/live/task-retention-native.test.ts`, `tests/live/task-retention-comparison.test.ts`, `tests/live/same-task-history.test.ts`, and `docs/DEVELOPMENT.md` with the immutable `main`-history commit OID `1d4fc4a210b64f71871ab3f5c10093215a25990c` (keeping `70dacad1f065a70b29f565b5bfcf02d31cec2bdc` for `.scratch/baseline-70dacad` and `0.86.1` dependency verification in `src/live/contract.ts`).
+- Replace references to the MBA-local ref `refs/nunc/task-retention-pre-change` in `tests/live/task-retention-native.test.ts`, `tests/live/task-retention-comparison.test.ts`, `tests/live/same-task-history.test.ts`, and `docs/DEVELOPMENT.md` with the immutable `main`-history commit OID `1d4fc4a210b64f71871ab3f5c10093215a25990c` (keeping `70dacad1f065a70b29f565b5bfcf02d31cec2bdc` for the historical default baseline and `0.86.1` dependency verification in `src/live/contract.ts`).
 
 ### 4. Synchronized Documentation and Regression Tests (`MUST`)
 
-- Update `docs/DEVELOPMENT.md` and `README.md` to state the `^26.7.0` / `^11.19.0` range policy, recorded observed versions, and `1d4fc4a210b64f71871ab3f5c10093215a25990c` setup for `.scratch/prechange`.
+- Update `docs/DEVELOPMENT.md` and `README.md` to state the `^26.7.0` / `^11.19.0` range policy, recorded observed versions, and automatic temporary detached baseline setup at `1d4fc4a210b64f71871ab3f5c10093215a25990c`.
 - Add focused unit tests in `tests/engine/runner.test.ts` and `tests/live/contract.test.ts` (or a shared range-check test) verifying acceptance of `26.7.0` / `26.13.0` and `11.19.0` / `11.20.0`, and explicit rejection of older patches, cross-major versions, and prerelease tags.
 
 ## Implementation Notes & Hazard Map (`ADVISORY`)
 
 - **`package.json` (`packageManager`)**: `packageManager: "npm@11.19.0"` can trigger Corepack strict errors on machines running `npm 11.20.0`; omit `packageManager` or avoid checking it in `scripts/check.mjs` so Homebrew rolling `npm` upgrades stay unblocked.
-- **Detached baselines (`70dacad` and `1d4fc4a`)**: `src/live/comparison.ts` only invokes `preflight()` on the candidate repository (`repository`), while `.scratch/baseline-70dacad` and `.scratch/prechange` are checked only for HEAD, clean tree, build parity (`dist/src/index.js`), and Pi version. Therefore historical baselines do not re-run old exact-version `.node-version` checks when prepared on Node `26.13.0`.
-- **Cross-machine execution order**: Integrate `nunc-toolchain-portability` onto `main` first (or before `nunc-admission-retention-hardening` final verification), rebase `nunc-admission-retention-hardening.implement-hardening` onto updated `main`, prepare `.scratch/{baseline-70dacad,prechange}`, and run the full `node scripts/check.mjs all` + `dist/tests/pi/larva.integration.js` + `gate-reviewer` phase acceptance on `Tefx-MBP-Personal`.
+- **Detached baselines (`70dacad` and `1d4fc4a`)**: `src/live/comparison.ts` only invokes `preflight()` on the candidate repository (`repository`), while temporary detached historical targets are checked only for HEAD, clean tree, build parity (`dist/src/index.js`), and Pi version. Therefore historical baselines do not re-run old exact-version `.node-version` checks when prepared on Node `26.13.0`.
+- **Cross-machine verification**: Run the checks in DEVELOPMENT.md using an installed compatible Node/npm toolchain. Comparison fixtures create detached historical targets, install each tracked lock offline with lifecycle scripts disabled, compile with the installed TypeScript, and remove those targets on teardown or setup failure. No pre-existing `.scratch` baseline is required. Host integration and phase acceptance remain separately reported evidence.

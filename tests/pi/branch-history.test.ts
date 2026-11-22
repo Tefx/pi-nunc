@@ -207,6 +207,17 @@ test("active originals are searchable only when effective cleanup changes the bo
   assert.equal(originalResults(projected, [{ entryId: id, messageIndex: 0 }], branch)[0]?.text, original);
 });
 
+test("multi-block history and original reads preserve text boundaries", () => {
+  const manager = SessionManager.inMemory();
+  const id = manager.appendMessage({ ...tool(""), content: [{ type: "text", text: "alpha" }, { type: "text", text: "beta" }] });
+  const projected = retire(manager), branch = manager.getBranch();
+  assert.deepEqual(searchBranchHistory(branch, projected.active, { query: "alphabeta" }).matches, []);
+  const history = searchBranchHistory(branch, projected.active, { query: "alpha beta", entryIds: [id] });
+  assert.equal(history.matches[0]?.snippet, "alpha\nbeta");
+  assert.equal(history.entries[0]?.messages[0]?.text, "alpha\nbeta");
+  assert.equal(originalResults(projected, [{ entryId: id, messageIndex: 0 }], branch)[0]?.text, "alpha\nbeta");
+});
+
 test("retired originals reject non-text results and invalid message indices, while retain-none history remains readable", () => {
   const manager = SessionManager.inMemory();
   const id = manager.appendMessage(tool("Plain result"));

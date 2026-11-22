@@ -18,7 +18,7 @@
 | `/nunc details` | 任意模式输出同一完整文字报告：slots、M 占用、occupied/unconfirmed、当前 warning、全部当前预算（含维护输入规划）、最近维护与有界诊断。 |
 | `F7` | 仅 TUI 打开 overlay，不提交主编辑器草稿。行为不变。 |
 
-原生参数补全只有 `details`。未知参数（包括 `status`）显示 `Usage: /nunc [details]`，不打开面板、不发模型。只读命令不追加 session 记录；人工保存与可选模型工具（`--nunc-memory-tools`）是仅有的 M 持久化操作。自定义组件仅在 `ctx.mode === "tui"` 使用；RPC 的 `hasUI` 为真不表示有终端 overlay。不提供非 TUI 人工写入命令。
+Native argument completion offers `details` and `compact-for`; `/nunc compact-for <provider/model-id>` completes fully qualified identities from the current model registry. Unknown arguments (including `status`) show `Usage: /nunc [details | compact-for <provider/model-id>]` without opening the overlay or sending a model request.只读命令不追加 session 记录；人工保存与可选模型工具（`--nunc-memory-tools`）是仅有的 M 持久化操作。自定义组件仅在 `ctx.mode === "tui"` 使用；RPC 的 `hasUI` 为真不表示有终端 overlay。不提供非 TUI 人工写入命令。
 
 范围为状态、Slots 浏览/搜索/单条编辑/删除、Context 分层浏览、根级 Diagnostics 及最近观察。不加入批量修改、回收站、永久 pin、AI 自动修订、跨 session 记忆、配置编辑器或维护调度器。
 
@@ -105,7 +105,7 @@ Context 与 Slots 使用一致的带版本 view。默认显示当前投影的 F/
 
 消息数与内容块数分别统计，例如 `26 messages / 41 blocks`，不将 slot、消息、工具定义混成一个 block 数。工具调用和结果按实际关联展示，不移动、复制或隐藏真实请求中的关联单元。用户可查看长正文；不为浏览打开已退役历史或外部日志附件。
 
-图片块显示与请求预算一致的规划估算：显式 `budget.imageTokens` 优先，否则使用 Pi 图片启发值（Pi 0.99.0 当前为每张 1200 tokens），另计内容块开销。缺少配置不再显示未知；有数值仅代表可估算，不代表精确计费或 token 上界。未知内容类型仍保留未知标记。
+图片块显示与请求预算一致的规划估算：显式 `budget.imageTokens` 优先，否则使用 Pi 图片启发值（Pi 1.4.0 当前为每张 1372 tokens），另计内容块开销。缺少配置不再显示未知；有数值仅代表可估算，不代表精确计费或 token 上界。未知内容类型仍保留未知标记。
 
 ### 4.2 三种观察范围
 
@@ -123,7 +123,7 @@ Context 根级另有可浏览的 recent Diagnostics 节点，与文字报告共�
 
 遵守 [ENGINE.md](ENGINE.md) 的当前口径：
 
-- 分项使用 `pi-heuristic`：Pi `estimateTextTokens` 的 UTF-16 字符/4 估算，加现有 framing 与已配置的图片估算。它不是 tokenizer 或硬上界；不恢复 `utf8-upper-estimate-v1`。
+- 分项使用 `pi-heuristic`：Pi `estimateTextTokens` 的 UTF-16 字符/3.5 估算，加现有 framing 与已配置的图片估算。它不是 tokenizer 或硬上界；不恢复 `utf8-upper-estimate-v1`。
 - M 与维护/候选使用当前 carrier 计量。主请求总量在原有模型、有效 F、tools 和已交付 R 仍适用时标为 `pi-usage-backed`；M 的提交（人工或模型）不再全量清空 receipt，而是按保守公式保留旧 M 实际贡献并计入当前完整 M 估算。
 - 分项新估算的总和与 usage-backed 总量可能不同，分别标注，不按比例伪造逐块实测。请求/消息包装及不可归属的开销单列，避免重复计算 F/M envelope。
 - 图片无可用估算时显示 `unknown`，总量说明不完整；浏览未知数据不取消发送时的媒体/容量保护。
@@ -199,7 +199,7 @@ UI 的只读观察不应阻止合法调用，未知数据留空并标注。保�
 
 - 原生 TUI 的 footer 共存、两个 tab、搜索/预览/编辑/确认、合理选择恢复；窄/短终端、长文本、CJK/IME、paste、theme、resize、嵌套 focus 与 Escape。IME 候选窗口等自动化无法充分证明的行为明确补人工观察，不用输入文本断言冒充证明。
 - 当前和最近请求/维护的范围、F/R/M、消息/内容块计数、tool 关联、包装、fresh 与 usage-backed 差异、未知图片、无记录、本地拒绝、多扩展追加及尚未交付 D。主请求观察不回填维护来源。
-- 原生命令补全仅 `details`；`status` 为未知参数；非 TUI bare `/nunc` 与任意模式 `/nunc details` 为同一完整报告；仅浏览无模型/compaction/session-write 效果，人工保存仅产生预期原生记录。报告不得写入诊断历史。stock TUI 覆盖命令、Diagnostics 导航与短布局。
+- Native completion covers `details`, `compact-for`, and dynamic fully qualified target model identities; `status` 为未知参数；非 TUI bare `/nunc` 与任意模式 `/nunc details` 为同一完整报告；仅浏览无模型/compaction/session-write 效果，人工保存仅产生预期原生记录。报告不得写入诊断历史。stock TUI 覆盖命令、Diagnostics 导航与短布局。
 - 实际保存后首次新请求中的唯一有效 M，K/队列/主编辑器/在途请求不变；原生 session 重启、reload、新建、分支/恢复、后续 compaction 吸收与旧记录不重放。
 - engine 候选完成至 Pi 提交终态的竞态、revision 冲突、模型/预算改变、逐步减少超额 M、空文本、取消、持久化错误与草稿保留。不把候选观察当持久化凭据。
 - 受影响的 native Provider/append/usage 归因与原有媒体、tool、容量、取消回归；整合后的现有完整检查 inventory 通过。历史测试数不作为固定目标。
@@ -209,5 +209,5 @@ UI 的只读观察不应阻止合法调用，未知数据留空并标注。保�
 ## 8. 依据
 
 - 当前产品：`src/index.ts` 的命令与维护生命周期，`src/pi/projection.ts` 的 active-path/M 投影，`src/pi/admission.ts` / `payload.ts` 的原生组合观察，以及 `src/engine/{types,memory,accounting}.ts`。
-- 支持目标：锁定 Pi/pi-ai 0.99.0 的公开 Extension API、`appendEntry()`、`context`、原生 compaction 事件及 TUI 组件。已核对 `compact()` 的先 abort/准备失败边界。安装目录的文档若与锁定源码不同，以所选公开类型和实际源码为准。
+- 支持目标：锁定 Pi/pi-ai 1.4.0 (`^1.0.3`) 的公开 Extension API、`appendEntry()`、`context`、原生 compaction 事件及 TUI 组件。已核对 `compact()` 的先 abort/准备失败边界。安装目录的文档若与锁定源码不同，以所选公开类型和实际源码为准。
 - 只读风格参考：`/Users/tefx/Projects/larva/contrib/pi-extension/larva.ts`，`/Users/tefx/dotfiles/agent/pi/extensions/conversation-md-export/index.ts`，`/Users/tefx/dotfiles/agent/pi/extensions/sticky-reader/index.ts`。这些路径记录设计来源，不是构建依赖、写入目标或新的兼容承诺。

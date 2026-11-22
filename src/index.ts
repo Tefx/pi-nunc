@@ -1,21 +1,21 @@
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earendil-works/pi-ai";
-import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionSettings } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceInput, MaintenanceResult, MechanicalFallbackInfo, Memory } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch, renderMemoryWithFallback } from "./engine/index.js";
 import { subscriptionBilling, omitsRouteOutputCap } from "./engine/pi-model.js";
 import { messageTextContent } from "./engine/cleanup.js";
+import { withCancellation } from "./engine/engine.js";
 import { extractionContext, resolveExtractionRequest } from "./engine/request.js";
 import { maintenanceCalibrationRecord, hasEquivalentCalibrationRecord } from "./engine/calibration.js";
-import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration } from "./pi/calibration.js";
 import { MEMORY_WRITING_GUIDANCE } from "./engine/policy.js";
 import { EngineError, record } from "./engine/validation.js";
 import { mainAdmissionLimit, mainContext, requestTokens } from "./engine/accounting.js";
 import { engineConfig, readConfig, resolveMemoryTools, resolveToolResultCleanup, validateNuncSettings } from "./pi/config.js";
-import { deriveSlotProvenance, carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, eligibleUsageEntryIds, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
+import { MAINTENANCE_CALIBRATION_TYPE, projectMaintenanceCalibration, branchCalibrationRecords, deriveSlotProvenance, carrierIndexIn, clearMemoryAnchors, effectiveActive, eligibleCleanupScope, compactionCleanupScope, eligibleStarts, eligibleUsageEntryIds, originalResults, searchBranchHistory, project, sealDecisions, withEffectiveMemory, memoryRevision, revisionApplies } from "./pi/projection.js";
 import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/compat.js";
-import { createMemorySurface } from "./pi/manual.js";
+import { createMemorySurface, entryOnDisk, markUnconfirmed } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
 import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
 import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines } from "./ui/index.js";
@@ -49,6 +49,7 @@ export default function nunc(pi: ExtensionAPI): void {
     target: NonNullable<MaintenanceInput["target"]>; claimed: boolean;
     outcome?: NonNullable<MaintenanceResult["observations"]["target"]> };
   let compactFor: CompactForIntent | undefined;
+  let pendingCompaction: { priorBranchIds: Set<string>; firstKeptEntryId: string; memory: Memory; summary: string; toolResultCleanup: ReturnType<typeof sealDecisions>; maintenanceCalibration: ReturnType<typeof maintenanceCalibrationRecord>; warned: boolean; mechanicalFallback?: MechanicalFallbackInfo } | undefined;
   const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; runwayWarned = false; };
   const dropAnchors = () => { clearMemoryAnchors(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
@@ -80,6 +81,7 @@ export default function nunc(pi: ExtensionAPI): void {
       projectTrusted: manager.isProjectTrusted(),
     };
   };
+  const selectedConfig = (ctx: ExtensionContext) => readConfig(pi.getFlag("nunc-config"), ctx.cwd, getHostSettings(ctx));
   let lastCleanupSetting: boolean | undefined;
   const cleanupEnabled = (ctx: ExtensionContext) => {
     const host = getHostSettings(ctx);
@@ -111,7 +113,7 @@ export default function nunc(pi: ExtensionAPI): void {
   const admission = new Admission(pi, (ctx, model) => {
     supported(ctx);
     project(ctx.sessionManager.buildContextEntries());
-    return engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
+    return engineConfig(selectedConfig(ctx).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
   }, event => observeLayout(event));
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
@@ -127,7 +129,7 @@ export default function nunc(pi: ExtensionAPI): void {
     });
     return { systemPrompt, tools, ...(hasSystemState ? {} : { toolState: "partial" as const }) };
   };
-  const memory = createMemorySurface({ pi, fixed, settings, cleanup: cleanupOpportunity, onCommitted: () => { ui.refresh(); } });
+  const memory = createMemorySurface({ pi, config: ctx => selectedConfig(ctx).config, cleanup: cleanupOpportunity, onCommitted: () => { ui.refresh(); } });
   let toolsRegistered = false;
   const registerMemoryTools = () => {
     if (toolsRegistered) return;
@@ -162,10 +164,11 @@ export default function nunc(pi: ExtensionAPI): void {
               hardLimitTokens: view.budget.hardLimit,
             },
             writable: !view.status.occupied && !view.status.unconfirmed,
-            ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.map(ref => {
+            ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.flatMap(ref => {
               const message = projected.active.find(e => e.entryId === ref.entryId)?.messages[ref.messageIndex];
-              return { ...ref, toolName: message?.role === "toolResult" ? message.toolName : "", toolCallId: message?.role === "toolResult" ? message.toolCallId : "",
-                textLength: message?.role === "toolResult" ? messageTextContent(message)?.length ?? 0 : 0 };
+              if (message?.role !== "toolResult") return [];
+              const text = messageTextContent(message);
+              return text === null ? [] : [{ ...ref, toolName: message.toolName, toolCallId: message.toolCallId, textLength: text.length }];
             }) } : {}),
             ...(originals === undefined ? {} : { originals }),
             ...(history === undefined ? {} : { history }),
@@ -251,7 +254,7 @@ export default function nunc(pi: ExtensionAPI): void {
   }
   const contextView = createContextSurface({
     pi, memory, fixed,
-    config: (ctx, model) => engineConfig(readConfig(pi.getFlag("nunc-config"), ctx.cwd).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry)),
+    config: (ctx, model) => engineConfig(selectedConfig(ctx).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry)),
   });
   const prepareUiCleanup = async (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal): Promise<{ edits?: unknown; warning?: string; stale?: boolean }> => {
     if (signal.aborted) return { stale: true };
@@ -266,42 +269,45 @@ export default function nunc(pi: ExtensionAPI): void {
     if (!ctx.model) return { warning: "Cleanup skipped: current model unavailable; memory can still be saved" };
     const frozen = { generation, sessionId: ctx.sessionManager.getSessionId(), leafId: ctx.sessionManager.getLeafId(),
       revision: memory.read(ctx).revision, model: structuredClone(ctx.model), thinking: ctx.thinkingLevel, host: structuredClone(getHostSettings(ctx)),
-      selected: readConfig(pi.getFlag("nunc-config"), ctx.cwd), fixed: structuredClone(fixed(ctx)) };
+      selected: selectedConfig(ctx), fixed: structuredClone(fixed(ctx)) };
     const stale = () => {
       try {
         return signal.aborted || frozen.generation !== generation || frozen.sessionId !== ctx.sessionManager.getSessionId() ||
           frozen.leafId !== ctx.sessionManager.getLeafId() || frozen.revision !== memory.read(ctx).revision ||
           !isDeepStrictEqual(ctx.model, frozen.model) || ctx.thinkingLevel !== frozen.thinking || !isDeepStrictEqual(getHostSettings(ctx), frozen.host) ||
-          !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), frozen.selected) || !isDeepStrictEqual(fixed(ctx), frozen.fixed);
+          !isDeepStrictEqual(selectedConfig(ctx), frozen.selected) || !isDeepStrictEqual(fixed(ctx), frozen.fixed);
       } catch { return true; }
     };
     const controller = new AbortController();
     uiRunning = controller;
-    const timeout = AbortSignal.timeout(60_000);
-    const combined = AbortSignal.any([signal, controller.signal, timeout]);
     let callStartedAt: number | undefined;
     let observedResponse = false;
     try {
       const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction, omitsRouteOutputCap(frozen.model, ctx.modelRegistry));
       config.toolResultCleanup = true;
       const policy = await loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) });
-      if (stale()) return { stale: true };
+      if (controller.signal.aborted || stale()) return { stale: true };
       const active = effectiveActive(projected, true);
       const slotProvenance = deriveSlotProvenance(ctx.sessionManager.getBranch(), projected.active, proposal);
       const input = { slotProvenance, binding: { sessionId: frozen.sessionId, leafId: frozen.leafId ?? "", generation: String(generation) },
-        model: frozen.model, fixed: frozen.fixed, memory: proposal, active, eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), cleanupCandidateScope: semanticScope,
+        model: frozen.model, fixed: frozen.fixed, memory: proposal, active: projected.active, priorCleanup: projected.cleanup,
+        eligibleUsageEntryIds: eligibleUsageEntryIds(entries, projected.active), cleanupCandidateScope: semanticScope,
         policy, config };
       const plan = memoryPlan(frozen.fixed, frozen.model, config, input.memory.slots);
-      const resolved = resolveExtractionRequest(input, cap => {
-        const context = extractionContext(input, 0, plan.organizingTarget, active, [], cap);
+      const calibratedInput = { ...input, calibration: projectMaintenanceCalibration(ctx.sessionManager.getBranch(), input) };
+      const resolved = resolveExtractionRequest(calibratedInput, cap => {
+        const context = extractionContext(calibratedInput, 0, plan.organizingTarget, active, [], cap);
         const request = context.messages[0];
         if (request && Array.isArray(request.content)) request.content.push({ type: "text", text:
           `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], update: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });
         return context;
-      });
+      }, active);
+      const timeout = AbortSignal.timeout(60_000);
+      const combined = AbortSignal.any([signal, controller.signal, timeout]);
       callStartedAt = Date.now();
-      const response = await admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens,
-        ...(resolved.calibratedUndercountTokens > 0 ? { calibratedUndercountTokens: resolved.calibratedUndercountTokens } : {}), signal: combined });
+      const response = await withCancellation(() =>
+        admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens,
+          ...(resolved.calibratedUndercountTokens > 0 ? { calibratedUndercountTokens: resolved.calibratedUndercountTokens } : {}), signal: combined }), combined);
       observedResponse = true;
       try { pi.events.emit("nunc:ui-cleanup-usage", { status: "response", model: { provider: frozen.model.provider, id: frozen.model.id },
         elapsedMs: Date.now() - callStartedAt, outputReserveTokens: resolved.outputTokens, outputCapTokens: resolved.outputCapTokens, outputDesiredTokens: resolved.outputDesiredTokens, outputLimitedBy: resolved.outputLimitedBy, stopReason: record(response) ? response.stopReason : null,
@@ -344,19 +350,44 @@ export default function nunc(pi: ExtensionAPI): void {
         ? ` (${event.observation.resolution}${event.observation.resolutionDetail ? `: ${event.observation.resolutionDetail}` : ""})`
         : "";
       ui.noteDiagnostic("warning", `Admission ${event.observation.code ?? "reject"}${detail}`);
-    } else if (event.observation.kind === "main" && event.observation.outcome === "delegate") {
+    } else if (event.observation.kind === "main" && event.observation.outcome === "delegate" && !headroomWarned && !runwayWarned) {
       ui.recover();
     }
     ui.refresh(event.ctx);
   };
-  pi.on("session_compact", (_event, ctx) => { admission.invalidateUsage(); memory.endFreeze(); contextView.noteNative("saved"); ui.recover(); ui.refresh(ctx); });
-  pi.on("session_compact_failed", (_event, ctx) => { if (!memory.noteForeignFailure()) { memory.endFreeze(); contextView.noteNative("failed"); } ui.refresh(ctx); });
+  pi.on("session_compact", (_event, ctx) => {
+    const pending = pendingCompaction;
+    pendingCompaction = undefined;
+    // Pi 1.4 reports the first summary match, which may be an older unchanged M.
+    // Confirm a checkpoint appended after our frozen branch rather than trusting that match.
+    const entry = ctx.sessionManager.getBranch().findLast(entry => entry.type === "compaction");
+    const owned = pending !== undefined && entry !== undefined && !pending.priorBranchIds.has(entry.id) && entry.fromHook === true && entry.firstKeptEntryId === pending.firstKeptEntryId &&
+      record(entry.details) && isDeepStrictEqual(entry.details.nunc, pending.memory) &&
+      isDeepStrictEqual(entry.details.mechanicalFallback, pending.mechanicalFallback) && entry.summary === pending.summary &&
+      isDeepStrictEqual(entry.details.toolResultCleanup, pending.toolResultCleanup) &&
+      isDeepStrictEqual(entry.details.maintenanceCalibration, pending.maintenanceCalibration);
+    admission.invalidateUsage(); memory.endFreeze();
+    contextView.noteNative(owned ? "saved" : "failed");
+    if (!owned && compactFor) delete compactFor.outcome;
+    if (!owned) notify(ctx, "Native compaction did not match Nunc's prepared checkpoint; save ownership is unconfirmed");
+    else if (!pending.warned) { ui.recover(); headroomWarned = false; runwayWarned = false; }
+    ui.refresh(ctx);
+  });
+  pi.on("session_compact_failed", (_event, ctx) => {
+    const manager = ctx.sessionManager;
+    const leaf = manager.getLeafId();
+    if (leaf && manager.getEntry(leaf)?.type === "compaction" && !entryOnDisk(manager.getSessionFile(), leaf)) {
+      markUnconfirmed(manager, leaf);
+    }
+    if (!memory.noteForeignFailure()) { pendingCompaction = undefined; memory.endFreeze(); contextView.noteNative("failed"); }
+    ui.refresh(ctx);
+  });
   const modelDiagnostics = (ctx: ExtensionContext) => {
     const model = ctx.model;
     if (!model) return;
     const key = `${model.provider}/${model.id}`;
     if (diagnosedModels.has(key)) return;
-    const selected = readConfig(pi.getFlag("nunc-config"), ctx.cwd).config;
+    const selected = selectedConfig(ctx).config;
     const config = engineConfig(selected, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
     diagnosedModels.add(key);
     if (selected.memory?.hardMaxTokens !== undefined) {
@@ -376,6 +407,7 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     completionRegistry = ctx.modelRegistry;
     diagnosedModels.clear();
+    headroomWarned = false; runwayWarned = false;
     invalidate(); dropAnchors(); contextView.resetPath();
     try {
       supported(ctx);
@@ -399,11 +431,12 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("session_tree", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("session_shutdown", (_event, ctx) => { completionRegistry = undefined; memory.endFreeze(); invalidate(); dropAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
   pi.on("model_select", (_event, ctx) => {
-    invalidate(); admission.ensure(ctx); ui.refresh(ctx);
-    if (!ctx.model) return;
+    invalidate();
     try {
+      admission.ensure(ctx);
       modelDiagnostics(ctx);
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Cannot estimate selected model capacity"); }
+    finally { ui.refresh(ctx); }
   });
   pi.on("thinking_level_select", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
   pi.on("agent_settled", (_event, ctx) => { admission.settled(); ui.refresh(ctx); });
@@ -417,8 +450,8 @@ export default function nunc(pi: ExtensionAPI): void {
   pi.on("context", (event, ctx) => {
     // Pi puts the newest native checkpoint first, even when its kept range
     // includes earlier checkpoints. Keep that carrier once and every real K.
-    admission.ensure(ctx);
     try {
+      admission.ensure(ctx);
       const sessionId = ctx.sessionManager.getSessionId();
       const entries = ctx.sessionManager.buildContextEntries();
       const projected = project(entries);
@@ -455,6 +488,8 @@ export default function nunc(pi: ExtensionAPI): void {
   });
   pi.on("session_before_compact", async (event, ctx) => {
     if (!memory.beginFreeze()) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
+    pendingCompaction = undefined;
+    let warned = false;
     const controller = new AbortController(); running = controller;
     const abort = () => controller.abort();
     event.signal.addEventListener("abort", abort, { once: true });
@@ -466,7 +501,7 @@ export default function nunc(pi: ExtensionAPI): void {
       if (!ctx.model) throw new EngineError("CONFIG", "No current model");
       const binding = { sessionId: manager.getSessionId(), leafId: manager.getLeafId() ?? "", generation: String(generation) };
       const file = manager.getSessionFile();
-      const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd), host = settings(ctx);
+      const selection = selectedConfig(ctx), host = settings(ctx);
       if (!isDeepStrictEqual(host.compaction, event.preparation.settings)) throw new EngineError("CONFIG", "Host settings differ from preparation; reload settings before maintenance");
       const model = structuredClone(ctx.model), thinking = ctx.thinkingLevel, f = structuredClone(fixed(ctx));
       const config = engineConfig(selection.config, model, event.preparation.settings, omitsRouteOutputCap(model, ctx.modelRegistry));
@@ -486,11 +521,10 @@ export default function nunc(pi: ExtensionAPI): void {
       const slotProvenance = deriveSlotProvenance(sourceBranch, projected.active, projected.memory);
       const sourceRevision = memoryRevision(binding.sessionId, manager.getLeafId(), entries);
       const sourceEntryIds = new Set(entries.map(entry => entry.id));
-      const frozenProjection = structuredClone(projected);
       const eligible = eligibleStarts(event.branchEntries, projected.active, projected.latestId);
       const enabled = cleanupEnabled(ctx);
       const opportunity = { enabled, scope: enabled ? compactionCleanupScope(projected.active, projected.cleanup) : [] };
-      const active = effectiveActive(projected, opportunity.enabled);
+      const active = structuredClone(projected.active);
       // Freeze delivered R only. Pending/future D is neither observed nor consumed.
       const loaded = await loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) });
       const policy = { ...loaded, user: loaded.user + (!intent && event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
@@ -498,7 +532,7 @@ export default function nunc(pi: ExtensionAPI): void {
       config.toolResultCleanup = opportunity.enabled;
       contextView.beginMaintenance({ ctx, model, fixed: f, memory: projected.memory, active, reason: event.reason, config, slotProvenance });
       ui.refresh(ctx);
-      const input = { binding, model, slotProvenance, ...(target ? { target } : {}), fixed: f, memory: projected.memory, active,
+      const input = { binding, model, priorCleanup: enabled ? projected.cleanup : [], slotProvenance, ...(target ? { target } : {}), fixed: f, memory: projected.memory, active,
         eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
       const calibration = projectMaintenanceCalibration(manager.getBranch(), input);
       const maintenanceInput = { ...input, calibration };
@@ -510,11 +544,15 @@ export default function nunc(pi: ExtensionAPI): void {
       if (subscriptionBilling(model, ctx.modelRegistry)) result.observations.usage.cost = null;
       try { pi.events.emit("nunc:maintenance", { reason: event.reason, willRetry: event.willRetry, result: structuredClone(result.ok ? result : { ok: false, code: result.code, message: result.message, observations: result.observations }) } satisfies MaintenanceEvent); } catch { /* Notification only. */ }
       const accounting = result.observations.accounting;
-      if (accounting && !accounting.normalHeadroomSufficient && !headroomWarned) {
+      const headroomWarning = accounting != null && !accounting.normalHeadroomSufficient;
+      const runwayWarning = accounting?.mainAfterTokens != null && accounting.growthTokens != null && accounting.growthTokens < 0.35 * accounting.effectiveTrigger;
+      const futureGrowthRunwaySufficient = accounting?.mainAfterTokens != null && accounting.growthTokens != null && !runwayWarning;
+      warned = !accounting?.normalHeadroomSufficient || !futureGrowthRunwaySufficient;
+      if (headroomWarning && !headroomWarned) {
         headroomWarned = true;
         notify(ctx, `Normal-trigger extraction estimate ${accounting.normalExtractionAtTrigger} exceeds the extraction input limit planned with the minimum maintenance output reserve; consider Pi reserveTokens >= ${accounting.suggestedReserveTokens} (and compatible keepRecentTokens). Current maintenance resolved reserve ${accounting.outputReserveTokens} is checked separately; settings were not changed.`);
       }
-      if (accounting?.mainAfterTokens != null && accounting.growthTokens != null && accounting.growthTokens < 0.35 * accounting.effectiveTrigger && !runwayWarned) {
+      if (runwayWarning && !runwayWarned) {
         runwayWarned = true;
         notify(ctx, `Candidate post-compaction growth runway ${accounting.growthTokens} is narrow after projected input ${accounting.mainAfterTokens} against trigger ${accounting.effectiveTrigger}. Reduce retained history or fixed/memory input, or choose a larger context window. Settings were not changed; candidate success is not a native save.`);
       }
@@ -527,30 +565,26 @@ export default function nunc(pi: ExtensionAPI): void {
       const editedSource = branch.slice(branch.findIndex(entry => entry.id === binding.leafId) + 1)
         .some(entry => entry.type === "context_edit" && sourceEntryIds.has(entry.targetId));
       const sourceUnchanged = !editedSource && revisionApplies(sourceRevision, manager.getSessionId(), manager.getLeafId(), currentEntries, branch) &&
-        isDeepStrictEqual(current.active.slice(0, frozenProjection.active.length), frozenProjection.active) &&
-        isDeepStrictEqual({ ...current, active: [] }, { ...frozenProjection, active: [] });
+        isDeepStrictEqual(current.active.slice(0, projected.active.length), projected.active) &&
+        isDeepStrictEqual({ ...current, active: [] }, { ...projected, active: [] });
       if (controller.signal.aborted || event.signal.aborted || String(generation) !== binding.generation ||
           manager.getSessionId() !== binding.sessionId || manager.getSessionFile() !== file || !sourceUnchanged ||
           !isDeepStrictEqual(ctx.model, model) || ctx.thinkingLevel !== thinking || !isDeepStrictEqual(fixed(ctx), f) ||
-          !isDeepStrictEqual(readConfig(pi.getFlag("nunc-config"), ctx.cwd), selection) || !isDeepStrictEqual(settings(ctx), host) ||
+          !isDeepStrictEqual(selectedConfig(ctx), selection) || !isDeepStrictEqual(settings(ctx), host) ||
           cleanupEnabled(ctx) !== opportunity.enabled) {
         throw new EngineError("CANCELLED", "Session, path, model, tools or configuration changed during maintenance; candidate discarded");
       }
       if (target && (!isDeepStrictEqual(ctx.modelRegistry.find(target.model.provider, target.model.id), target.model) ||
           !isDeepStrictEqual(engineConfig({ ...selection.config, extraction: { ...selection.config.extraction, outputTokens: "auto" } }, target.model,
-            getHostSettings(ctx, target.model).compaction), target.config))) {
+            getHostSettings(ctx, target.model).compaction, omitsRouteOutputCap(target.model, ctx.modelRegistry)), target.config))) {
         throw new EngineError("CANCELLED", "Target model or target settings changed during maintenance");
       }
-      const savedCalibration = maintenanceCalibrationRecord(maintenanceInput, result);
       let mechanicalFallback: MechanicalFallbackInfo | undefined;
       const candidate = result.ok ? result.candidate : !intent ? result.fallbackCandidate : undefined;
       if (!candidate || !eligibleStarts(branch, current.active, current.latestId).includes(candidate.firstKeptEntryId)) {
         if (!result.ok) {
-          if (savedCalibration && !hasEquivalentCalibrationRecord(branch.flatMap(entry => {
-            if (entry.type === "custom" && entry.customType === MAINTENANCE_CALIBRATION_TYPE) return [entry.data];
-            if (entry.type === "compaction" && record(entry.details)) return [entry.details.maintenanceCalibration];
-            return [];
-          }), savedCalibration))
+          const savedCalibration = maintenanceCalibrationRecord(maintenanceInput, result);
+          if (savedCalibration && !hasEquivalentCalibrationRecord(branchCalibrationRecords(branch), savedCalibration))
             pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE, savedCalibration);
           notify(ctx, `${result.code}: ${result.message}`);
           return { cancel: true };
@@ -558,19 +592,23 @@ export default function nunc(pi: ExtensionAPI): void {
         throw new EngineError("INPUT", "Candidate boundary is no longer host-visible");
       }
       if (!result.ok) {
-        mechanicalFallback = { code: result.code, message: result.message,
+        mechanicalFallback = { code: "RESPONSE", message: result.message,
           retiredEntryCount: candidate.retiredEntryIds.length, firstKeptEntryId: candidate.firstKeptEntryId };
         contextView.noteFallback(mechanicalFallback, candidate);
         notify(ctx, `${result.code}: ${result.message}; rolled window mechanically preserving current M (${candidate.memory.slots.length} slots) and recent K (@ ${candidate.firstKeptEntryId}) so session can continue`, "warning");
       }
       if (intent && result.observations.target) intent.outcome = result.observations.target;
-      const retained = new Set(candidate.kept.map(e => e.entryId));
-      const nextDecisions = [...projected.cleanup, ...(candidate.toolResultCleanup?.applied ?? [])].filter(d => retained.has(d.entryId) &&
-        !d.sourceRefs?.some(ref => !retained.has(ref.entryId)));
-      return { compaction: { summary: renderMemoryWithFallback(candidate.memory.slots, mechanicalFallback), firstKeptEntryId: candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
-        details: { nunc: candidate.memory, toolResultCleanup: sealDecisions(projected.active, nextDecisions),
+      const committedCalibration = maintenanceCalibrationRecord(maintenanceInput, result, candidate);
+      const nextDecisions = candidate.toolResultCleanup?.applied ?? [];
+      const summary = renderMemoryWithFallback(candidate.memory.slots, mechanicalFallback);
+      const toolResultCleanup = sealDecisions(projected.active, nextDecisions);
+      pendingCompaction = { priorBranchIds: new Set(branch.map(entry => entry.id)), firstKeptEntryId: candidate.firstKeptEntryId, memory: structuredClone(candidate.memory),
+        summary, toolResultCleanup: structuredClone(toolResultCleanup), maintenanceCalibration: structuredClone(committedCalibration), warned: warned || mechanicalFallback !== undefined,
+        ...(mechanicalFallback ? { mechanicalFallback: structuredClone(mechanicalFallback) } : {}) };
+      return { compaction: { summary, firstKeptEntryId: candidate.firstKeptEntryId, tokensBefore: result.observations.accounting!.mainBeforeTokens,
+        details: { nunc: candidate.memory, toolResultCleanup,
           ...(mechanicalFallback ? { mechanicalFallback } : {}),
-          ...(savedCalibration ? { maintenanceCalibration: savedCalibration } : {}) } } };
+          ...(committedCalibration ? { maintenanceCalibration: committedCalibration } : {}) } } };
     } catch (error) {
       contextView.noteInvalidated();
       notify(ctx, `${error instanceof EngineError ? error.code + ": " : ""}${error instanceof Error ? error.message : "Maintenance failed"}`);
@@ -603,9 +641,9 @@ export default function nunc(pi: ExtensionAPI): void {
         const matches = exact ? [exact] : catalog.filter(m => m.id === name);
         if (matches.length !== 1) throw new EngineError("CONFIG", matches.length ? "Ambiguous target; use provider/model-id" : `Unknown target model: ${name}`);
         const targetModel = structuredClone(matches[0]!);
-        const selection = readConfig(pi.getFlag("nunc-config"), ctx.cwd);
+        const selection = selectedConfig(ctx);
         const targetConfig = engineConfig({ ...selection.config, extraction: { ...selection.config.extraction, outputTokens: "auto" } }, targetModel,
-          getHostSettings(ctx, targetModel).compaction);
+          getHostSettings(ctx, targetModel).compaction, omitsRouteOutputCap(targetModel, ctx.modelRegistry));
         const intent: CompactForIntent = { marker: `nunc-compact-for:${randomUUID()}`, sessionId: ctx.sessionManager.getSessionId(),
           leafId: ctx.sessionManager.getLeafId(), generation, target: { model: targetModel, config: targetConfig }, claimed: false };
         compactFor = intent;

@@ -1,6 +1,6 @@
 # Admission, Retention, and Diagnostic Hardening
 
-Status: **Accepted design specification (pre-reviewed; ready for Vectl planning and implementation).**
+Status: **Implemented contract. Current behavior is described in PI.md and ENGINE.md; live acceptance requires its own evidence.**
 
 This specification defines `pi-nunc`-only changes addressing three production telemetry issues observed on `v0.2.3`:
 
@@ -35,8 +35,8 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
 ### 3. Proportional Default Retention, Compaction Mechanical Cleanup, and Runway Diagnostics (Issue B, `MUST`)
 
 - **Proportional default `keepRecentTargetTokens`**:
-  - In `src/pi/config.ts` (`engineConfig()`), when both `rolling.targetTokens` and `rolling.keepRecentFraction` are omitted, set `keepRecentTargetTokens` to `Math.min(100000, Math.max(1, settings.keepRecentTokens, Math.floor(triggerTokens * 0.25)))`.
-  - Preserve exact existing semantics whenever `rolling.targetTokens` or `rolling.keepRecentFraction` is explicitly configured, and retain `100,000` as the upper bound for `>= 400K` / `1M` windows.
+  - In `src/pi/config.ts` (`engineConfig()`), when both `rolling.targetTokens` and `rolling.keepRecentFraction` are omitted, set `keepRecentTargetTokens` to `settings.keepRecentTokens > 1 ? Math.max(1, settings.keepRecentTokens) : Math.min(32768, Math.max(1, Math.floor(triggerTokens * 0.15)))`.
+  - Preserve exact existing semantics whenever `rolling.targetTokens` or `rolling.keepRecentFraction` is explicitly configured, Real host settings such as 20,000 or 8,000 govern the default; synthetic keepRecentTokens <= 1 uses a 15%-of-trigger target capped at 32,768.
 - **Compaction-scoped mechanical cleanup when `M` is unchanged**:
   - Do **not** rewrite active `R` automatically in `context` projection between compactions (preserving provider prompt-cache prefixes and `MainReceipt` prefix matching), and keep manual `nunc_memory_patch` (`src/pi/manual.ts`) returning no-op without cleanup-only commits when `M` is unchanged.
   - Extend `decideToolResultCleanup` (`src/engine/cleanup.ts`) with an explicit opt-in option enabled by native compaction (`maintain`), allowing deterministic lossless mechanical rules (`strip_boilerplate`, `deduplicate`, `compact_toc`, `compact_json`, `clean_terminal`) to run across `candidateScope` intersected with `retainedEntries` even when `!mChanged`.
@@ -56,11 +56,14 @@ Pi core and `@earendil-works/pi-ai` remain untouched.
 ### 5. Synchronized Documentation and Test Updates (`MUST`)
 
 - Update `docs/PI.md`, `docs/ENGINE.md`, `docs/CAPACITY.md`, `docs/TOOL-RESULT-CLEANUP.md`, and `docs/LARVA-PROMPT.md` to reflect the revised default ceiling, compaction mechanical cleanup under unchanged `M`, post-authorization `main` output-cap clamp, and `resolutionDetail`.
-- Update `tests/pi/config.test.ts` default full-window `keepTarget` expectation (`6000` when `triggerTokens = 24000`), and add behavioral regressions proving all new postconditions without weakening existing assertions.
+- Update `tests/pi/config.test.ts` default full-window `keepTarget` expectation to the effective host recent-token target (or the bounded synthetic fallback), and add behavioral regressions proving all new postconditions without weakening existing assertions.
 
 ## Implementation Notes & Hazard Map (`ADVISORY`)
 
 - **`src/pi/admission.ts` (`Admission.enter`, `onPayload`)**: `config = this.config(ctx, model)` is already resolved before `onPayload`; reuse `model.contextWindow - config.triggerTokens` for `reserveTokens` instead of adding new constructor callbacks. Ensure clamping clones the payload container + nested `config`/`generationConfig` object along `outputCapPaths()` without mutating caller-owned references in place if `replacement === undefined`.
 - **`tests/pi/payload-google.test.ts` & `scripts/observe-grok-budget.mjs`**: Verify that receipt-matched `observedU + delta` does not trigger false clamping on `gemini-2.5-flash` (`observedU = 988,041`, `cap = 56,436`) and that `<= 1 token/char` unmeasured sizing on Turn 1 preserves `firstCap > 400,000` on `grok-4.6`.
 - **`src/engine/cleanup.ts` (`decideToolResultCleanup`)**: Verify `tests/engine/cleanup.test.ts` still reports `"m_unchanged"` (not `"not_in_candidate_scope"`) when `cleanupCandidateScope` is empty and `M` did not change.
-- **Telemetry expectation on `272K` models**: Proportional `keepRecentTargetTokens` reduces full-window retained `R` from `100,000` to `63,904` heuristic tokens (~36K recovered when `R` was pinned at the ceiling), but does not eliminate compactions driven by large `F + M` or single-turn multi-file reads; keep documentation and diagnostics explicit about this scope.
+- **Telemetry expectation on `272K` models**: Host-calibrated `keepRecentTargetTokens` reduces the default retained-history target to the configured host recent tokens (for example 20,000), but does not eliminate compactions driven by large `F + M` or single-turn multi-file reads; keep documentation and diagnostics explicit about this scope.
+
+
+Settings fields, trust and precedence follow [Pi configuration](PI.md#load-and-configure).

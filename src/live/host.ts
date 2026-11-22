@@ -1,35 +1,62 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, execFileSync, type ChildProcess, type ChildProcessWithoutNullStreams, type SpawnOptions } from "node:child_process";
 import { existsSync, readFileSync, chmodSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { EventEmitter } from "node:events";
-import { nativeRpcError } from "./native-no-work.js";
+import { isSupportedPiVersion } from "../pi/compat.js";
+import { isDeepStrictEqual } from "node:util";
+import { projectedNativeCut } from "./preparation.js";
+import { isSystemMessage } from "../engine/accounting.js";
 import { getCurrentSystemPrompt, getCurrentTools, type Api, type Context, type Model } from "@earendil-works/pi-ai";
-import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { object, payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled, requireValue, within, RunnerError, type RunInput, type Selection } from "./contract.js";
-export { toolPath } from "./tool-path.js";
-export function liveExtensionFlags(repository: string, input: RunInput, group?: "native" | "current" | "candidate", targetRepos?: { current?: string | undefined; candidate?: string | undefined } | undefined): string[] {
+import { SessionManager, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { object, requireValue, within, RunnerError, type RunConfig, type RunInput, type Selection } from "./contract.js";
+export function liveExtensionFlags(repository: string, input: RunInput): string[] {
   const flags = ["-e", join(repository, "dist/src/live/observer.js")];
-  if (payloadAppendEnabled(input)) flags.push("-e", join(repository, "dist/src/live/append.js"));
-  if (payloadAppendBEnabled(input)) flags.push("-e", join(repository, "dist/src/live/append-b.js"));
-  if (providerWrapEnabled(input)) flags.push("-e", join(repository, "dist/src/live/wrap.js"));
-  if (group === "current") {
-    const curRepo = targetRepos?.current ?? input.comparison?.targets.current.repository ?? repository;
-    flags.push("-e", join(curRepo, "dist/src/index.js"));
-  } else if (group !== "native") {
-    const candRepo = targetRepos?.candidate ?? input.comparison?.targets.candidate.repository ?? repository;
-    flags.push("-e", join(candRepo, "dist/src/index.js"));
-  }
   const larva = input.overrides?.find(o => o.requirement === "stable-memory-larva");
   if (larva) {
     requireValue(typeof larva.extension === "string" && existsSync(larva.extension), "EXTENSION", "Explicit Larva extension is unavailable");
     flags.push("-e", larva.extension, "--larva-agent-persona-switch", "manual");
   }
-  // Last loaded only for scenarios with an in-loop prepared boundary.
-  if (input.scenarios.some(s => s.id === "e3" || s.id === "g6" || s.id === "g4" && (s.variant === "task-file" || s.variant === "same-task-history"))) flags.push("-e", join(repository, "dist/src/live/restore-observer.js"));
   return flags;
 }
 import type { Control, ToolTrigger } from "./scenarios.js";
+
+export interface NativeRpcDiagnostic {
+  command: string;
+  stage: "native-prehook" | "native-rpc";
+  reason: "no-retirable-prefix" | "already-compacted" | "compaction-cancelled" | "unknown";
+}
+export class NativeRpcError extends RunnerError {
+  constructor(readonly diagnostic: NativeRpcDiagnostic) {
+    super("RPC", `Native ${diagnostic.command} failed: ${diagnostic.reason}`);
+  }
+}
+/** Exact stock errors only; never retain exception bodies, even for unknown auth/RPC failures. */
+export function nativeRpcError(command: string, error: unknown): NativeRpcError {
+  const reason = command !== "compact" ? "unknown" : error === "Nothing to compact (session too small)" ? "no-retirable-prefix"
+    : error === "Already compacted" ? "already-compacted" : error === "Compaction cancelled" ? "compaction-cancelled" : "unknown";
+  return new NativeRpcError({ command, reason, stage: reason === "no-retirable-prefix" || reason === "already-compacted" ? "native-prehook" : "native-rpc" });
+}
+/** Public cut arithmetic corroborates the captured stock no-work response. */
+export function noRetirablePrefix(branch: SessionEntry[], settings: RunConfig["compaction"]): boolean {
+  if (branch.at(-1)?.type === "compaction") return true;
+  const previous = branch.findLast(e => e.type === "compaction");
+  const start = previous?.type === "compaction" ? branch.findIndex(e => e.id === previous.firstKeptEntryId) : 0;
+  if (start < 0) return false;
+  const cut = projectedNativeCut(branch, settings.keepRecentTokens);
+  return !branch.slice(start, cut?.firstKeptEntryIndex ?? start).some(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message)) && sessionEntryToContextMessages(e).filter(m => m.role !== "system").length > 0);
+}
+/** A captured no-work response alone is insufficient: reconcile source, native cut and effects. */
+export function ordinaryNoWork(error: unknown, facts: {
+  defaults: boolean; before: SessionEntry[]; after: SessionEntry[]; settings: RunConfig["compaction"];
+  newPreparations: number; newMaintenance: number; newRequests: number; unresolved: number;
+  isCompacting: boolean; pendingMessageCount: number;
+}): boolean {
+  return error instanceof NativeRpcError && ["no-retirable-prefix", "already-compacted"].includes(error.diagnostic.reason) &&
+    facts.defaults && isDeepStrictEqual(facts.before, facts.after) &&
+    facts.newPreparations === 0 && facts.newMaintenance === 0 && facts.newRequests === 0 && facts.unresolved === 0 &&
+    !facts.isCompacting && facts.pendingMessageCount === 0 && noRetirablePrefix(facts.after, facts.settings);
+}
 export interface HostOptions {
   repository: string; input: RunInput; selection: Selection; caseRoot: string; modelTargets: Model<Api>[];
   deadline: number; signal: AbortSignal; sessionFile?: string | undefined;
@@ -46,7 +73,6 @@ export interface HostOptions {
   onMaintenanceResponse?: ((event: unknown) => void) | undefined;
   onContext?: ((model: Model<Api>, context: Context, kind: string) => void) | undefined;
   onAction?: ((event: unknown) => void) | undefined;
-  boundary?: { control: Control; requestText: string; fixtureContent: string } | undefined;
   boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }> | undefined;
   verification?: { script: string; artifact: string } | undefined;
   taskFiles?: Record<string, string> | undefined;
@@ -60,7 +86,7 @@ export interface HostOptions {
 export function childEnvironment(state: string): NodeJS.ProcessEnv {
   return { HOME: join(state, "home"), PI_CODING_AGENT_DIR: join(state, "host"), TMPDIR: join(state, "tmp"),
     XDG_CONFIG_HOME: join(state, "xdg/config"), XDG_CACHE_HOME: join(state, "xdg/cache"), XDG_DATA_HOME: join(state, "xdg/data"),
-    PATH: "/opt/homebrew/bin:/usr/bin:/bin", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
+    PATH: `${dirname(process.execPath)}:/opt/homebrew/bin:/usr/bin:/bin`, PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
 }
 /** Native owner configuration/auth stays inherited, only task scratch is redirected. */
 export function nativeEnvironment(state: string): NodeJS.ProcessEnv {
@@ -69,6 +95,72 @@ export function nativeEnvironment(state: string): NodeJS.ProcessEnv {
   // route or child controls. Native Pi model/auth settings remain inherited.
   for (const key of Object.keys(env)) if (key.startsWith("LARVA_")) delete env[key];
   return { ...env, TMPDIR: join(state, "tmp"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", NO_COLOR: "1" };
+}
+/** Darwin can deny group signals even though owned descendants remain signalable. */
+function signalPid(pid: number, signal: NodeJS.Signals | 0): boolean {
+  try { process.kill(pid, signal); return true; }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM" && process.platform === "darwin") return signal === 0;
+    throw error;
+  }
+}
+function processFamily(pid: number, group: boolean): number[] {
+  const rows = execFileSync("/bin/ps", ["-axo", "pid=,ppid=,pgid="], { encoding: "utf8" }).trim().split("\n")
+    .map(row => row.trim().split(/\s+/).map(Number));
+  const family = new Set([pid]);
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const [id, parent, pgid] of rows) if (id && id !== process.pid && !family.has(id) && (family.has(parent!) || group && pgid === pid)) {
+      family.add(id); changed = true;
+    }
+  }
+  return [...family].reverse();
+}
+export function signalProcessGroup(pid: number | undefined, signal: NodeJS.Signals | 0): boolean {
+  if (!pid) return false;
+  try { process.kill(-pid, signal); return true; }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ESRCH" && !(code === "EPERM" && process.platform === "darwin")) throw error;
+    return processFamily(pid, true).map(id => signalPid(id, signal)).some(Boolean);
+  }
+}
+/** Settle the owned group even after its leader exits with all stdio closed. */
+export async function settleProcessGroup(pid: number | undefined): Promise<void> {
+  if (!pid || !signalProcessGroup(pid, "SIGTERM")) return;
+  const deadline = Date.now() + 100;
+  while (signalProcessGroup(pid, 0)) {
+    if (Date.now() >= deadline) { signalProcessGroup(pid, "SIGKILL"); return; }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+/** Shared worker/stock ownership: settle descendants on exit, not just pipe close. */
+export function superviseProcess(command: string, args: string[], options: SpawnOptions, deadline: number, signal: AbortSignal,
+  started: (child: ChildProcess) => void): Promise<{ exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean }> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, detached: true });
+    let timedOut = false, hard: NodeJS.Timeout | undefined, cleanup: Promise<void> | undefined;
+    const stop = () => {
+      if (hard) return;
+      timedOut = true;
+      hard = setTimeout(() => signalProcessGroup(child.pid, "SIGKILL"), 2000);
+      signalProcessGroup(child.pid, "SIGTERM");
+    };
+    const timer = setTimeout(stop, Math.max(1, deadline - Date.now()));
+    signal.addEventListener("abort", stop, { once: true });
+    const settle = () => {
+      clearTimeout(timer); if (hard) clearTimeout(hard); signal.removeEventListener("abort", stop);
+      return cleanup ??= settleProcessGroup(child.pid);
+    };
+    child.once("exit", () => { void settle().catch(reject); });
+    child.once("error", error => { void settle().then(() => reject(error), reject); });
+    child.once("close", (exitCode, exitSignal) => { void settle().then(() => resolve({ exitCode, signal: exitSignal, timedOut }), reject); });
+    try { started(child); } catch (error) { stop(); void settle().then(() => reject(error), reject); }
+    if (signal.aborted) stop();
+  });
 }
 /** A protocol client and read-only native session view. Stock Pi owns every write/run/retry. */
 export class NativeHost {
@@ -98,7 +190,19 @@ export class NativeHost {
   private watch: NodeJS.Timeout | undefined;
   private failure: { code: string; message: string } | undefined;
   readonly commands: Array<{ type: string; message?: string }> = [];
-  private readonly abort = () => { this.child?.kill("SIGTERM"); this.killTimer ??= setTimeout(() => this.child?.kill("SIGKILL"), 1000); };
+  // IPC workers already own a detached group. Keep the native host inside it so
+  // supervisor cleanup still reaches it if the worker dies without finally.
+  private readonly detached = typeof process.send !== "function";
+  private kill(signal: NodeJS.Signals): void {
+    if (!this.pid) return;
+    if (this.detached) signalProcessGroup(this.pid, signal);
+    else for (const pid of processFamily(this.pid, false)) signalPid(pid, signal);
+  }
+  private readonly abort = () => {
+    if (this.killTimer) return;
+    this.killTimer = setTimeout(() => this.kill("SIGKILL"), 1000);
+    this.kill("SIGTERM");
+  };
   private fail(code: string, message: string): void { this.failure ??= { code, message }; this.abort(); }
   private hostError(code = "HOST_EXIT", message = "Native host exited"): RunnerError { return new RunnerError(this.failure?.code ?? code, this.failure?.message ?? message); }
   constructor(readonly options: HostOptions) {}
@@ -136,8 +240,11 @@ export class NativeHost {
     const caseKey = o.input.comparison
       ? `${o.mode ?? "defaults"}:${o.group ?? "candidate"}:${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`
       : `${o.selection.id}${o.selection.variant ? `-${o.selection.variant}` : ""}`;
-    const boundaries = o.boundaries ?? (o.boundary ? [o.boundary] : []);
-    await writeFile(binding, JSON.stringify({ input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, selection: o.selection, taskFiles: o.taskFiles, larvaCompaction, boundary: boundaries[0], boundaries, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable", priorLedgers: o.priorLedgers ?? [] }), { mode: 0o600 });
+    const boundaries = o.boundaries ?? [];
+    const productRepository = o.group === "current" ? o.targetRepos?.current ?? o.input.comparison?.targets.current.repository ?? o.repository
+      : o.targetRepos?.candidate ?? o.input.comparison?.targets.candidate.repository ?? o.repository;
+    const productExtension = o.group === "native" ? undefined : join(productRepository, "dist/src/index.js");
+    await writeFile(binding, JSON.stringify({ productExtension, input: o.input, models: o.modelTargets, deadline: o.deadline, events, ledger: join(state, "calls.jsonl"), cwd, caseKey, selection: o.selection, taskFiles: o.taskFiles, larvaCompaction, boundaries, boundaryCompleted: o.boundaryCompleted, verification: o.verification, guidanceControls: o.guidanceControls, memoryLayout: o.selection.id === "m1" && o.selection.variant === "moving" ? "moving" : "stable", priorLedgers: o.priorLedgers ?? [] }), { mode: 0o600 });
     this.eventsFile = events;
     const model = o.modelTargets[0]; requireValue(model, "MODEL", "No authorized model");
     const hostRepo = o.group === "current" ? (o.targetRepos?.current ?? o.input.comparison?.targets?.current?.repository ?? o.repository) : (o.group === "native" ? (o.targetRepos?.native ?? o.input.comparison?.targets?.native?.repository ?? o.repository) : o.repository);
@@ -153,7 +260,8 @@ export class NativeHost {
         try {
           // The supported pre-change .86 target exposes this flag; the historical .85 fixture does not.
           const pkg = JSON.parse(readFileSync(join(curRepo, "package-lock.json"), "utf8"));
-          groupHasMemoryTools = pkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version === "0.86.1";
+          const version = pkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
+          groupHasMemoryTools = version === "0.86.1" || isSupportedPiVersion(version);
         } catch {
           groupHasMemoryTools = false;
         }
@@ -162,12 +270,13 @@ export class NativeHost {
 
     const tools = groupHasMemoryTools ? "read,write,edit,bash,nunc_memory_read,nunc_memory_patch" : "read,write,edit,bash";
     const memoryToolsFlags = groupHasMemoryTools ? ["--nunc-memory-tools"] : [];
-    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", tools, "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...memoryToolsFlags, ...liveExtensionFlags(o.repository, o.input, o.group, o.targetRepos), ...(o.testExtensions ?? []).flatMap(path => ["-e", path]), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
-    this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), ...(larvaCompaction ? { LARVA_PI_COMPACTION_CONFIG_FILE: larvaCompaction.configFile } : {}), NUNC_LIVE_OBSERVER: binding }, stdio: ["pipe", "pipe", "pipe"] });
+    const args = o.testCommand?.args ?? [cli, "--offline", "--approve", "--mode", "rpc", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--provider", model.provider, "--model", model.id, "--thinking", o.input.effective?.thinking ?? "off", "--tools", tools, "--system-prompt", "Carry out the user's tasks using the available file tools. Work only in the current task directory. Preserve unfinished work when the topic changes. If evidence is insufficient, state uncertainty.", ...memoryToolsFlags, ...liveExtensionFlags(o.repository, o.input), ...(o.testExtensions ?? []).flatMap(path => ["-e", path]), ...(o.group === "native" ? [] : ["--nunc-config", config]), "--session-dir", join(o.caseRoot, "sessions"), ...(o.sessionFile ? ["--session", o.sessionFile] : [])];
+    this.child = spawn(o.testCommand?.command ?? process.execPath, args, { cwd, env: { ...(o.controlledModels ? childEnvironment(state) : nativeEnvironment(state)), ...(larvaCompaction ? { LARVA_PI_COMPACTION_CONFIG_FILE: larvaCompaction.configFile } : {}), NUNC_LIVE_OBSERVER: binding }, detached: this.detached, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid;
     this.child.stdin.on("error", () => this.abort());
-    this.child.stdout.on("data", (buffer: Buffer) => {
-      this.bytes += buffer.length;
+    this.child.stdout.setEncoding("utf8");
+    this.child.stdout.on("data", (buffer: string) => {
+      this.bytes += Buffer.byteLength(buffer);
       if (this.bytes > 32_000_000) { this.fail("OUTPUT", "Native host output exceeded the bound"); return; }
       this.output += buffer.toString(); let end: number;
       while ((end = this.output.indexOf("\n")) >= 0) {
@@ -292,15 +401,23 @@ export class NativeHost {
   }
   async compact(during?: (signal: AbortSignal) => Promise<void>): Promise<void> {
     const stop = new AbortController();
-    const done = this.command("compact").finally(() => stop.abort());
+    let doneSettled = false;
+    const done = this.command("compact").finally(() => { doneSettled = true; stop.abort(); });
     try {
       if (during) {
-        const work = during(AbortSignal.any([stop.signal, this.options.signal]));
+        const work = Promise.resolve().then(() => during(AbortSignal.any([stop.signal, this.options.signal]))).catch(error => {
+          if (!doneSettled) throw error;
+        });
         const results = await Promise.allSettled([done, work]);
-        if (results[1].status === "rejected" && !stop.signal.aborted) throw results[1].reason;
+        if (results[1].status === "rejected") throw results[1].reason;
       }
       await done;
-    } finally { await this.refresh(); }
+    } catch (error) {
+      // Refresh is observational and must not replace the primary RPC/work error.
+      await this.refresh().catch(() => {});
+      throw error;
+    }
+    await this.refresh();
   }
   async steer(message: string): Promise<void> { await this.command("steer", { message }); }
   async abortRun(): Promise<void> { await this.command("abort"); }
@@ -318,7 +435,12 @@ export class NativeHost {
     if (this.watch) clearInterval(this.watch);
     let grace: NodeJS.Timeout | undefined;
     if (!this.exited && this.child) { this.child.stdin.write(JSON.stringify({ type: "prompt", message: "/nunc-observer-quit" }) + "\n"); grace = setTimeout(this.abort, 1000); }
-    await this.closed; if (grace) clearTimeout(grace); if (this.killTimer) clearTimeout(this.killTimer); if (this.eventsFile) this.drain();
+    await this.closed;
+    if (grace) clearTimeout(grace);
+    if (this.killTimer) clearTimeout(this.killTimer);
+    if (this.detached) await settleProcessGroup(this.pid);
+    else this.kill("SIGKILL");
+    if (this.eventsFile) this.drain();
   }
 }
 export async function openHost(options: HostOptions): Promise<NativeHost> { const host = new NativeHost(options); try { return await host.start(); } catch (error) { await host.close(); throw error; } }

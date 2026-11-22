@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { repository } from "./fixtures.js";
+import { repository, temporaryBaseline } from "./fixtures.js";
 import { loadScenario } from "../../src/live/scenarios.js";
+
+const baseline = await temporaryBaseline("1d4fc4a210b64f71871ab3f5c10093215a25990c");
 
 test("public comparison binds explicit pre-change ref and executes scoped-task hosts in both modes", { timeout: 160000 }, async () => {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
@@ -16,7 +18,7 @@ test("public comparison binds explicit pre-change ref and executes scoped-task h
   const selection = { target: { repository, stateRoot: join(f.dir, "nunc-live-compare"), cleanup: "retain" },
     limits: { maxCalls: 120, maxTotalTokens: 9600000, maxOutputTokens: 20000, maxDurationMs: 140000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios: [{ id: "g3", variant: "scoped-tasks" }],
     overrides: [{ requirement: "task-retention-luna", reason: "Controlled comparison with explicit isolated model/config", model: { provider: "openrouter", id: model.id }, thinking: "low", config }, { requirement: "maintenance-thinking", reason: "Observe actual low serialization", maintenanceThinking: "low" }],
-    comparison: { modes: ["defaults", "matched"], targets: { native: { repository }, current: { repository: join(repository, ".scratch/prechange"), ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" }, candidate: { repository } } } };
+    comparison: { modes: ["defaults", "matched"], targets: { native: { repository }, current: { repository: baseline, ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" }, candidate: { repository } } } };
   let turn = "", step = 0;
   f.limits.maxCalls = 120; f.limits.maxTotalTokens = 9600000;
   const tool = (name: string, input: any) => ({ tool: { name, input } });

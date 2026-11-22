@@ -25,8 +25,11 @@ import {
   type ToolResultEdit,
 } from "../../src/engine/index.js";
 import { extractionContext, readSourceRecords, reduceToolBodies } from "../../src/engine/request.js";
-import { memoryPlan, requestTokens } from "../../src/engine/accounting.js";
-import { answer, input, responder, tool, user, assistant } from "./fixtures.js";
+import { memoryPlan, requestTokens, mainPlanningEstimate } from "../../src/engine/accounting.js";
+import { activeUsageObservation } from "../../src/engine/calibration.js";
+import { piComplete, retryMaintenanceComplete } from "../../src/engine/pi-model.js";
+import { messageTextContent } from "../../src/engine/cleanup.js";
+import { answer, input, responder, tool, user, assistant, sourceRecords } from "./fixtures.js";
 
 for (const reduced of [false, true]) test(`capacity suppresses cleanup candidates on ${reduced ? "reduced" : "full"} source and rejects unsolicited edits`, async () => {
   const value = await input();
@@ -846,6 +849,8 @@ test("applyToolResultCleanup replaces text body exactly once and preserves all h
     messages: [originalMessage],
   };
 
+  const replacement = "Short summary";
+  const originalLength = originalMessage.content.map(block => block.text).join("\n").length;
   const decision: ToolResultDecision = {
     entryId: "e-multi",
     messageIndex: 0,
@@ -853,10 +858,10 @@ test("applyToolResultCleanup replaces text body exactly once and preserves all h
     toolName: "fetch_data",
     kind: "semantic",
     action: "replace",
-    text: "[Nunc summary; original recoverable from entry e-multi message 0]:\nSingle summary text",
-    originalLength: 36,
-    cleanedLength: 85,
-    netSavings: 20,
+    text: replacement,
+    originalLength,
+    cleanedLength: replacement.length,
+    netSavings: originalLength - replacement.length,
   };
 
   const projected = applyToolResultCleanup([entry], [decision]);
@@ -1164,4 +1169,166 @@ test("legacy callers without cleanupCandidateScope preserve 100% consistent raw 
   const deliveredTool = result.candidate.kept.find(e => e.entryId === "res-entry");
   assert(deliveredTool);
   assert.equal(messageText(deliveredTool.messages[0]!), longResult);
+});
+
+for (const field of ["samplingParams", "samplingParamsByThinkingLevel"] as const) test(`both maintenance seams reject raw ${field}`, async () => {
+  const value = await input();
+  Object.assign(value.model, { [field]: field === "samplingParams" ? { max_tokens: 1 } : { high: { max_tokens: 1 } } });
+  const result = await maintain(value, async () => assert.fail("unsafe override cannot dispatch"));
+  assert(!result.ok); assert.equal(result.code, "CONFIG");
+  await assert.rejects(async () => piComplete({ complete: async () => assert.fail("unsafe override cannot reach registry") })({
+    model: value.model, context: { messages: [] }, outputTokens: 100, signal: value.signal,
+  }), /sampling overrides/);
+});
+
+for (const message of ["Connection error after 400 ms", "Connection error after 401 tokens", "Connection error (429)"]) test(`retry recognizes status context without treating units as HTTP: ${message}`, async () => {
+  const value = await input(); let attempts = 0;
+  await retryMaintenanceComplete(async () => ++attempts === 1 ? { ...answer(), stopReason: "error", errorMessage: message } : answer(), 0)({
+    model: value.model, context: { messages: [] }, outputTokens: 100, signal: value.signal,
+  });
+  assert.equal(attempts, 2);
+});
+
+test("mechanical cleanup preserves block boundaries and canonicalizes argument order", async () => {
+  const value = await input();
+  const calls = [assistant("a", [{ type: "toolCall", id: "a", name: "read", arguments: { a: 1, b: 2 } }]),
+    assistant("b", [{ type: "toolCall", id: "b", name: "read", arguments: { b: 2, a: 1 } }])];
+  const first = tool("first", "a", "item ".repeat(100));
+  const second = tool("second", "b", "item ".repeat(100));
+  const active = [calls[0]!, first, calls[1]!, second];
+  const options = { active, retainedEntries: active, candidateScope: [{ entryId: "second", messageIndex: 0 }],
+    initialMemory: value.memory, finalMemory: value.memory, mechanicalWhenMemoryUnchanged: true };
+  assert.equal(decideToolResultCleanup(options).applied[0]?.action, "deduplicate");
+  const message = second.messages[0]!; assert(message.role === "toolResult");
+  message.content = [{ type: "text", text: "item ".repeat(50) }, { type: "text", text: "item ".repeat(50) }];
+  assert.equal(messageTextContent(message), "item ".repeat(50) + "\n" + "item ".repeat(50));
+  assert.equal(decideToolResultCleanup(options).applied.length, 0);
+  message.content = [{ type: "text", text: '{ "v": "a' }, { type: "text", text: 'b" }' }];
+  assert.equal(decideToolResultCleanup(options).applied.length, 0, "split JSON strings cannot be mechanically concatenated");
+});
+
+test("UTF-16 savings admit non-BMP reduction while preserving short ASCII", () => {
+  const active = [tool("emoji", "e", "🙂".repeat(150)), tool("ascii", "a", "x".repeat(150))];
+  const reduced = reduceToolBodies(active, 10);
+  assert.deepEqual(reduced.omissions.map(item => item.entryId), ["emoji"]);
+  const before = messageTextContent(active[0]!.messages[0]!)!;
+  const after = messageTextContent(reduced.source[0]!.messages[0]!)!;
+  assert(after.length < before.length); assert.equal(messageTextContent(reduced.source[1]!.messages[0]!), "x".repeat(150));
+});
+
+test("prior cleanup reaches extraction and usage accounting while original K stays bound", async () => {
+  const value = await input();
+  const raw = "Full old evidence. ".repeat(100);
+  value.active = [user("old", "Retire earlier work"), assistant("call", [{ type: "toolCall", id: "c", name: "read", arguments: {} }]),
+    tool("body", "c", raw), { entryId: "usage", sourceRole: "assistant", messages: [{ ...answer(), usage: { ...answer().usage, input: 12000 } }] }, user("latest", "Continue")];
+  value.eligibleKeptEntryIds = ["call"]; value.eligibleUsageEntryIds = ["usage"];
+  value.priorCleanup = [{ entryId: "body", messageIndex: 0, toolName: "read", toolCallId: "c", kind: "semantic", action: "replace",
+    text: "Saved summary", originalLength: raw.length, cleanedLength: 13, netSavings: raw.length - 13 }];
+  const observation = activeUsageObservation(value)!;
+  const effectivePrefix = structuredClone(value.active.slice(0, 4));
+  const body = effectivePrefix[2]!.messages[0]!; assert(body.role === "toolResult"); body.content = [{ type: "text", text: "Saved summary" }];
+  const expected = 12115 - mainPlanningEstimate(value.fixed, value.memory.slots, effectivePrefix, value.model).visibleTokens;
+  assert.equal(observation.rawUndercountTokens, expected);
+  const result = await maintain(value, async request => {
+    const message = sourceRecords(request.context).find(record => record.entryId === "body")!.messages[0]!;
+    assert.equal(messageTextContent(message), "Saved summary");
+    return answer(undefined, request.model);
+  });
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(messageTextContent(result.candidate.kept.find(entry => entry.entryId === "body")!.messages[0]!), raw);
+});
+
+for (const fallback of [false, true]) test(`saved cleaned bodies cannot become new dependency keepers (${fallback ? "fallback" : "success"})`, async () => {
+  const value = await input();
+  const compacted = "Repeated summarized evidence ".repeat(30), raw = compacted + "Original details ".repeat(50);
+  value.active = [user("old", "Earlier work"), assistant("a", [{ type: "toolCall", id: "a", name: "read", arguments: {} }]),
+    tool("first", "a", raw), assistant("b", [{ type: "toolCall", id: "b", name: "read", arguments: {} }]), tool("second", "b", compacted)];
+  value.eligibleKeptEntryIds = ["a"]; value.cleanupCandidateScope = [{ entryId: "second", messageIndex: 0 }];
+  value.priorCleanup = [{ entryId: "first", messageIndex: 0, toolName: "read", toolCallId: "a", kind: "semantic", action: "replace",
+    text: compacted, originalLength: raw.length, cleanedLength: compacted.length, netSavings: raw.length - compacted.length }];
+  const result = await maintain(value, async () => fallback ? { ...answer(), content: [{ type: "text", text: "invalid JSON" }] } : answer());
+  const cleanup = result.ok ? result.candidate.toolResultCleanup : result.fallbackCandidate?.toolResultCleanup;
+  assert(cleanup); assert.deepEqual(cleanup.applied.map(item => item.entryId), ["first"]);
+});
+
+test("incomplete responses retain exceeded-plan observations and malformed JSON retains its cause", async () => {
+  const value = await input();
+  const incomplete = await maintain(value, async () => ({ ...answer(), stopReason: "length", usage: { ...answer().usage, input: 999999, output: 999999 } }));
+  assert(!incomplete.ok); assert.equal(incomplete.observations.accounting!.inputExceededPlan, true);
+  assert.equal(incomplete.observations.accounting!.outputExceededPlan, true);
+  const malformed = await maintain(value, async () => ({ ...answer(), content: [{ type: "text", text: 'invalid JSON' }] }));
+  assert(!malformed.ok); assert((malformed.cause as Error).cause instanceof SyntaxError);
+});
+
+test("prior cleanup protects targets and keepers, and edited bodies cannot become targets or sources", () => {
+  const compactable = '{\n  "evidence": "' + "x".repeat(300) + '"\n}';
+  const active = [assistant("a", [{ type: "toolCall", id: "a", name: "read", arguments: {} }]), tool("saved", "a", compactable),
+    assistant("b", [{ type: "toolCall", id: "b", name: "read", arguments: {} }]), tool("keeper", "b", compactable),
+    assistant("c", [{ type: "toolCall", id: "c", name: "read", arguments: {} }]), tool("edited", "c", compactable),
+    assistant("d", [{ type: "toolCall", id: "d", name: "read", arguments: {} }]), tool("target", "d", "Target evidence ".repeat(100))];
+  active.find(entry => entry.entryId === "edited")!.outputUsageUnavailable = true;
+  const priorCleanup: ToolResultDecision[] = [{ entryId: "saved", messageIndex: 0, toolCallId: "a", toolName: "read",
+    kind: "semantic", action: "replace", text: "Saved summary", originalLength: compactable.length, cleanedLength: 13, netSavings: compactable.length - 13,
+    sourceRefs: [{ entryId: "keeper", messageIndex: 0 }] }];
+  const options: CleanupDecisionOptions = { active, retainedEntries: active, priorCleanup,
+    candidateScope: active.filter(entry => entry.sourceRole === "toolResult").map(entry => ({ entryId: entry.entryId, messageIndex: 0 })),
+    initialMemory: emptyMemory(), finalMemory: { version: 1, nextId: 2, slots: [{ id: "s1", text: "Changed" }] } };
+  for (const source of ["saved", "edited"]) {
+    const result = decideToolResultCleanup({ ...options, semanticEdits: [
+      { entryId: "saved", messageIndex: 0, action: "omit" }, { entryId: "keeper", messageIndex: 0, action: "omit" },
+      { entryId: "edited", messageIndex: 0, action: "omit" },
+      { entryId: "target", messageIndex: 0, action: "omit", sourceRefs: [{ entryId: source, messageIndex: 0 }] },
+    ] });
+    assert.deepEqual(result.applied, []);
+    assert.equal(result.skipped.find(item => item.entryId === "target")?.reason, "missing_source_dependency");
+    assert(result.skipped.filter(item => item.entryId !== "target").every(item => item.reason === "not_in_candidate_scope"));
+  }
+  for (const body of [compactable, KNOWN_LAUNCH_BOILERPLATES[0]! + "Dynamic suffix"]) {
+    const entries = [assistant("first-call", [{ type: "toolCall", id: "first", name: "read", arguments: {} }]), tool("first", "first", body),
+      assistant("next-call", [{ type: "toolCall", id: "next", name: "read", arguments: {} }]), tool("next", "next", body)];
+    for (const unavailable of ["prior-cleaned", "context-edit"]) {
+      entries[1]!.outputUsageUnavailable = unavailable === "context-edit";
+      const result = decideToolResultCleanup({ ...options, active: entries, retainedEntries: entries,
+        candidateScope: [{ entryId: "next", messageIndex: 0 }],
+        priorCleanup: unavailable === "prior-cleaned" ? [{ ...priorCleanup[0]!, entryId: "first", sourceRefs: [] }] : [] });
+      assert(!result.applied.some(decision => decision.action === "deduplicate" || decision.action === "strip_boilerplate"), unavailable);
+      assert(result.applied.every(decision => !decision.sourceRefs?.length));
+    }
+  }
+});
+
+test("unchanged-M opt-in applies only lossless rules in scope intersect retained history", () => {
+  const raw = '{\n  "value": [1, 2, 3],\n  "precise": 9007199254740993\n}';
+  const active = [tool("scoped", "a", raw), tool("outside", "b", raw), tool("retired", "c", raw)];
+  const options: CleanupDecisionOptions = { active, retainedEntries: active.slice(0, 2), candidateScope: [{ entryId: "scoped", messageIndex: 0 }, { entryId: "retired", messageIndex: 0 }],
+    initialMemory: emptyMemory(), finalMemory: emptyMemory(), mechanicalWhenMemoryUnchanged: true,
+    semanticEdits: [{ entryId: "outside", messageIndex: 0, action: "omit" }, { entryId: "scoped", messageIndex: 0, action: "omit" }] };
+  const result = decideToolResultCleanup(options);
+  assert.deepEqual(result.skipped.map(s => s.reason), ["m_unchanged", "m_unchanged"]);
+  assert.deepEqual(result.applied.map(d => [d.entryId, d.action, d.text]), [["scoped", "compact_json", '{"value":[1,2,3],"precise":9007199254740993}']]);
+  assert.equal(decideToolResultCleanup({ ...options, mechanicalWhenMemoryUnchanged: false }).applied.length, 0);
+  const empty = decideToolResultCleanup({ ...options, candidateScope: [] });
+  assert.equal(empty.applied.length, 0);
+  assert.deepEqual(empty.skipped.map(s => s.reason), ["m_unchanged", "m_unchanged"]);
+  const disabled = decideToolResultCleanup({ ...options, disabled: true });
+  assert.equal(disabled.applied.length, 0);
+  assert.deepEqual(disabled.skipped.map(s => s.reason), ["not_in_candidate_scope", "not_in_candidate_scope"]);
+});
+
+test("native maintain opts into mechanical cleanup with unchanged M and accounts effective kept text", async () => {
+  const source = await input();
+  source.active = [user("old", "old context".repeat(1000)), user("current", "continue"),
+    assistant("call", [{ type: "toolCall", id: "a", name: "read", arguments: {} }]), tool("scoped", "a", '{\n  "value": [1, 2, 3]\n}')];
+  source.eligibleKeptEntryIds = ["current"];
+  source.cleanupCandidateScope = [{ entryId: "scoped", messageIndex: 0 }];
+  const result = await maintain(source, responder());
+  assert(result.ok, JSON.stringify(result));
+  assert.deepEqual(result.candidate.memory, source.memory);
+  assert.equal(result.candidate.toolResultCleanup?.applied[0]?.action, "compact_json");
+  const accounting = result.observations.accounting!;
+  assert.equal(accounting.growthTokens, accounting.effectiveTrigger - accounting.mainAfterTokens!);
+  const disabled = await maintain({ ...source, config: { ...source.config, toolResultCleanup: false } }, responder());
+  assert(disabled.ok);
+  assert.equal(disabled.candidate.toolResultCleanup?.applied.length, 0);
+  assert(disabled.observations.accounting!.mainAfterTokens! > accounting.mainAfterTokens!);
 });

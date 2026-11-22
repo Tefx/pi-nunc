@@ -1,9 +1,9 @@
 import { getCurrentSystemPrompt, getCurrentTools, normalizeContext, type Api, type Context, type Message, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Accounting, ActiveEntry, EngineConfig, FixedContext, MaintenanceCandidate, MaintenanceResult, MechanicalFallbackInfo, Memory, PlanningEstimate, Slot, SlotProvenance } from "../engine/index.js";
-import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, mainPlanningEstimate, messagePlanningEstimate, omitsSerializedOutputCap, textTokens } from "../engine/accounting.js";
+import { extractionOutputPlan, hardMemoryLimit, memoryTarget, imageTokenEstimate, isSystemMessage, mainAdmissionLimit, memoryPlan, memoryTokens, messageTokens, mainPlanningEstimate, messagePlanningEstimate, textTokens } from "../engine/accounting.js";
 import { readSourceRecords } from "../engine/request.js";
-import { integer, record } from "../engine/validation.js";
+import { record } from "../engine/validation.js";
 import type { AdmissionLayoutEvent, AdmissionObservation } from "./admission.js";
 import type { MemorySurface } from "./manual.js";
 import type { PayloadObservation } from "./payload.js";
@@ -136,6 +136,7 @@ export interface LastMainContext {
   anchorTrailingMessages?: number;
   inputTokens?: number;
   inputLimit?: number;
+  inputLimitEnforced?: boolean;
   plannedInputLimit?: number;
   inputExceededPlan?: boolean;
   outputTokens?: number;
@@ -199,11 +200,12 @@ export function createContextSurface(options: {
   fixed: (ctx: ExtensionContext) => FixedContext;
   config: (ctx: ExtensionContext, model: Model<Api>) => EngineConfig;
 }): ContextObserver {
-  const state: { lastMain?: LastMainContext; lastMaintenance?: LastMaintenanceContext; frozen?: FrozenMaintenance } = {};
+  const state: { lastMain?: LastMainContext; lastMaintenance?: LastMaintenanceContext } = {};
   const surface: ContextObserver = {
     read(ctx) {
-      const memory = options.memory.read(ctx);
       const projected = project(ctx.sessionManager.buildContextEntries());
+      const memory = options.memory.read(ctx, projected);
+      const fixed = options.fixed(ctx);
       const sessionId = ctx.sessionManager.getSessionId();
       const leafId = ctx.sessionManager.getLeafId();
       const file = ctx.sessionManager.getSessionFile();
@@ -216,14 +218,14 @@ export function createContextSurface(options: {
           const config = options.config(ctx, ctx.model);
           imageTokens = config.imageTokens;
           extraInputTokens = config.main.extraInputTokens;
-          budget = measureBudget(ctx.model, config, options.fixed(ctx), memory.budget.tokens, memory.budget.unknown, memory.memory.slots);
+          budget = measureBudget(ctx.model, config, fixed, memory.budget.tokens, memory.budget.unknown, memory.memory.slots);
         } catch {
           budget = unknownBudget(memory.budget.tokens, true);
         }
       }
       const active = effectiveActive(projected, memory.cleanup?.enabled ?? false);
       const memoryIndex = currentMemoryIndex(sessionId, memory.memory, active, projected.mechanicalFallback);
-      const layout = layoutFromProjection(options.fixed(ctx), memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model, memory.slotProvenance);
+      const layout = layoutFromProjection(fixed, memory.memory, active, imageTokens, extraInputTokens, memoryIndex, ctx.model, memory.slotProvenance, projected.mechanicalFallback);
       const current: CurrentContext = {
         scope: "current",
         ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
@@ -270,6 +272,7 @@ export function createContextSurface(options: {
           ...(observation.anchorTrailingMessages === undefined ? {} : { anchorTrailingMessages: observation.anchorTrailingMessages }),
           ...(observation.inputTokens === undefined ? {} : { inputTokens: observation.inputTokens }),
           ...(observation.inputLimit === undefined ? {} : { inputLimit: observation.inputLimit }),
+          ...(observation.inputLimitEnforced === undefined ? {} : { inputLimitEnforced: observation.inputLimitEnforced }),
           ...(observation.plannedInputLimit === undefined ? {} : { plannedInputLimit: observation.plannedInputLimit }),
           ...(observation.inputExceededPlan === undefined ? {} : { inputExceededPlan: observation.inputExceededPlan }),
           ...(observation.outputTokens === undefined ? {} : { outputTokens: observation.outputTokens }),
@@ -294,29 +297,17 @@ export function createContextSurface(options: {
         const imageTokens = input.config?.imageTokens;
         const inspected = inspectEntries(input.active, imageTokens, input.model);
         const fixed = structuredClone(input.fixed);
-        state.frozen = {
+        state.lastMaintenance = {
+          scope: "last-maintenance",
+          observedAt: Date.now(),
           sessionId: input.ctx.sessionManager.getSessionId(),
           leafId: input.ctx.sessionManager.getLeafId(),
           model: identity(input.model),
-          observedAt: Date.now(),
-          reason: input.reason,
-          fixed,
-          memory: structuredClone(input.memory),
-          ...(input.slotProvenance ? { slotProvenance: structuredClone(input.slotProvenance) } : {}),
-          active: structuredClone(input.active),
-          ...(imageTokens === undefined ? {} : { imageTokens }),
-        };
-        state.lastMaintenance = {
-          scope: "last-maintenance",
-          observedAt: state.frozen.observedAt,
-          sessionId: state.frozen.sessionId,
-          leafId: state.frozen.leafId,
-          model: state.frozen.model,
           reason: input.reason,
           native: "pending",
           before: {
-            memory: state.frozen.memory,
-            ...(state.frozen.slotProvenance ? { slotProvenance: state.frozen.slotProvenance } : {}),
+            memory: structuredClone(input.memory),
+            ...(input.slotProvenance ? { slotProvenance: structuredClone(input.slotProvenance) } : {}),
             entries: inspected.entries,
             messages: inspected.messages,
             system: { text: fixed.systemPrompt, tokens: textTokens(fixed.systemPrompt) },
@@ -327,8 +318,7 @@ export function createContextSurface(options: {
     },
     noteEngine(result) {
       const current = state.lastMaintenance;
-      const frozen = state.frozen;
-      if (!current || !frozen || current.native !== "pending") return;
+      if (!current || current.native !== "pending") return;
       try {
         if (result.observations.accounting) current.accounting = structuredClone(result.observations.accounting);
         if (result.observations.target) current.target = structuredClone(result.observations.target);
@@ -374,7 +364,6 @@ export function createContextSurface(options: {
     resetPath() {
       delete state.lastMain;
       delete state.lastMaintenance;
-      delete state.frozen;
     },
   };
   options.pi.events.on("nunc:context-bind", reply => {
@@ -389,19 +378,6 @@ export function contextSurface(pi: { events: { emit: (channel: string, data: unk
   let found: ContextSurface | undefined;
   pi.events.emit("nunc:context-bind", (surface: ContextSurface) => { found = surface; });
   return found;
-}
-
-interface FrozenMaintenance {
-  sessionId: string;
-  leafId: string | null;
-  model: { id: string; provider: string; api: string };
-  observedAt: number;
-  reason: string;
-  fixed: FixedContext;
-  memory: Memory;
-  slotProvenance?: Record<string, SlotProvenance>;
-  active: ActiveEntry[];
-  imageTokens?: number;
 }
 
 function identity(model: Model<Api>): { id: string; provider: string; api: string } {
@@ -462,7 +438,7 @@ function payloadView(observation: PayloadObservation | undefined, growth: Admiss
   if (!growth) return base;
   base.chargedGrowthTokens = growth.chargedTokens;
   if (growth.append) {
-    base.transform = "last-user-text-append";
+    base.transform ??= "last-user-text-append";
     if (growth.addedTokens !== undefined) base.addedTokens = growth.addedTokens;
     if (growth.addedText !== undefined) base.addedText = growth.addedText;
     const overhead = growth.chargedTokens - (growth.addedTokens ?? 0);
@@ -483,6 +459,7 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
   try {
     const texts: string[] = [];
     for (const message of context.messages) {
+      if (message.role !== "user") continue;
       if (typeof message.content === "string") texts.push(message.content);
       else if (Array.isArray(message.content)) {
         for (const block of message.content) if (block.type === "text") texts.push(block.text);
@@ -497,10 +474,10 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
   } catch { /* Leave cut unknown rather than invent a partition. */ }
 }
 
-function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>, slotProvenance?: Record<string, SlotProvenance>): ContextLayout {
+function layoutFromProjection(fixed: FixedContext, memory: Memory, active: ActiveEntry[], imageTokens: number | undefined, extraInputTokens: number, memoryIndex?: number, model?: Model<Api>, slotProvenance?: Record<string, SlotProvenance>, mechanicalFallback?: MechanicalFallbackInfo): ContextLayout {
   const inspected = inspectEntries(active, imageTokens, model);
   const tools = toolLayer(fixed.tools, fixed.toolState === "partial");
-  const mTokens = imageTokens === undefined ? memoryTokens(memory.slots) : memoryTokens(memory.slots, imageTokens);
+  const mTokens = memoryTokens(memory.slots, imageTokens, mechanicalFallback);
   const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0,
     ...(slotProvenance ? { slotProvenance: structuredClone(slotProvenance) } : {}) };
   const packagingTokens = 64 + extraInputTokens;
@@ -536,7 +513,7 @@ function layoutFromContext(context: Context, imageTokens: number | undefined, ex
     return true;
   });
   const messages = inspectMessages(rMessages, imageTokens);
-  const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: memoryTokens(projection.memory.slots, imageTokens), envelopeTokens: 0 } : undefined;
+  const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: normalized.messages.filter(isNuncCarrier).reduce((sum, carrier) => sum + messageTokens(carrier, imageTokens), 0), envelopeTokens: 0 } : undefined;
   const currentTools = getCurrentTools(normalized.messages);
   const tools = toolLayer(currentTools);
   const packagingTokens = 64 + extraInputTokens;
@@ -616,7 +593,6 @@ function inspectMessages(messages: readonly Message[], imageTokens: number | und
 }
 
 function inspectMessage(message: Message, order: number, imageTokens: number | undefined, model?: Model<Api>, outputUsageUnavailable = false): ContextMessage {
-  const framing = messageCost(message, imageTokens);
   const blocks: ContextBlock[] = [];
   if (typeof message.content === "string") {
     blocks.push({ type: "text", tokens: textTokens(message.content), unknown: false, preview: preview(message.content), text: message.content });
@@ -625,9 +601,9 @@ function inspectMessage(message: Message, order: number, imageTokens: number | u
   } else {
     blocks.push({ type: "unknown", tokens: null, unknown: true, preview: "[unavailable content]" });
   }
-  const unknown = framing.unknown || blocks.some(block => block.unknown);
+  const unknown = blocks.some(block => block.unknown || block.tokens === null);
   const view: ContextMessage = {
-    order, role: message.role, tokens: framing.tokens, unknown, preview: messagePreview(message, blocks), blocks,
+    order, role: message.role, tokens: messageTokens(message, imageTokens), unknown, preview: messagePreview(message, blocks), blocks,
     ...(model ? { planning: messagePlanningEstimate(message, model, imageTokens, outputUsageUnavailable) } : {}),
   };
   if (message.role === "toolResult") {
@@ -672,20 +648,6 @@ function inspectBlock(block: { type: string; text?: string; thinking?: string; t
     default:
       return { type: "unknown", tokens: null, unknown: true, preview: `[${block.type}]` };
   }
-}
-
-function messageCost(message: Message, imageTokens: number | undefined): TokenCount {
-  let tokens = 32 + textTokens(message.role);
-  let unknown = false;
-  if (message.role === "toolResult") tokens += textTokens(message.toolCallId) + textTokens(message.toolName) + 8;
-  if (typeof message.content === "string") return { tokens: tokens + textTokens(message.content), unknown: false };
-  if (!Array.isArray(message.content)) return { tokens, unknown: true };
-  for (const block of message.content) {
-    const view = inspectBlock(block, imageTokens);
-    if (view.unknown || view.tokens === null) unknown = true;
-    if (view.tokens !== null) tokens += view.tokens;
-  }
-  return { tokens, unknown };
 }
 
 function associationsOf(messages: readonly ContextMessage[]): ToolAssociation[] {

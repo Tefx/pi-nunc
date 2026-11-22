@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { setImmediate as flush } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { maintain } from "../../src/engine/engine.js";
-import { hasEquivalentCalibrationRecord, activeUsageObservation, activeUsageUndercount, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
+import { hasEquivalentCalibrationRecord, activeUsageObservation, maintenanceCalibrationRecord, maintenanceFeedback, selectMaintenanceCalibration } from "../../src/engine/calibration.js";
 import { extractionContext, reduceToolBodies, resolveExtractionRequest } from "../../src/engine/request.js";
 import { inputLimit, mainPlanningEstimate, messagePlanningEstimate, requestTokens } from "../../src/engine/accounting.js";
 import { answer, assistant, input, noChange, responder, sourceRecords, tool, user } from "./fixtures.js";
@@ -66,7 +66,6 @@ for (const invalid of ["model", "provider", "api", "aborted", "error", "ineligib
     if (invalid === "missing") Reflect.deleteProperty(message.usage, "totalTokens");
     if (invalid === "zero") Object.assign(message.usage, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 });
     assert.equal(activeUsageObservation(value), undefined);
-    assert.equal(activeUsageUndercount(value), 0);
     const result = await maintain(value, responder());
     assert(result.ok, result.ok ? "" : result.message);
     assert.equal(result.observations.accounting!.calibratedUndercountTokens, 0);
@@ -80,10 +79,10 @@ test("usage selects the latest valid message prefix and keeps the larger mainten
   value.active = [user("old", "source"), { entryId: "anchors", sourceRole: "assistant", messages: [early, latest] }, user("latest", "z".repeat(80000))];
   const prefix = value.active.slice(0, 2);
   const expected = 12115 - mainPlanningEstimate(value.fixed, value.memory.slots, prefix, value.model, undefined, 0).tokens;
-  assert.equal(activeUsageUndercount(value), expected, "later source is excluded and the latest usage wins over the larger earlier usage");
+  assert.equal(activeUsageObservation(value)?.undercountTokens, expected, "later source is excluded and the latest usage wins over the larger earlier usage");
   value.eligibleUsageEntryIds = ["anchors"];
   value.active[0]!.outputUsageUnavailable = true;
-  assert.equal(activeUsageUndercount(value), expected, "explicit host scope permits anchors following an edit");
+  assert.equal(activeUsageObservation(value)?.undercountTokens, expected, "explicit host scope permits anchors following an edit");
   remember(value, await maintain(value, request => Promise.resolve(measured(request, 20000))));
   const feedback = maintenanceFeedback(value);
   assert.equal(feedback.maintenanceUndercountTokens, 20000);
@@ -255,7 +254,7 @@ for (const change of ["model", "provider", "api", "branch", "edit", "prefix", "w
   });
 }
 
-for (const error of ["429 token limit exceeded", "HTTP 429: too many tokens", "Error code: 429 - too many tokens", "Rate limit: too many tokens", "ECONNRESET: connection reset", "fetch failed"]) {
+for (const error of ["429 token limit exceeded", "HTTP 429: too many tokens", "Error code: 429 - too many tokens", "Rate limit: too many tokens", "ECONNRESET: connection reset", "fetch failed", "ECONNRESET: connection reset api.example.com:443"]) {
   test(`${error} is transient, bounded, and not provider context overflow`, async t => {
     const value = await source();
     t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -367,7 +366,10 @@ test("a measured correction can change the resolved reduced cap once; the next i
   remember(value, measuredReduced);
   const changedCap = await maintain(value, async request => overflow(request));
   assert.equal(changedCap.observations.requests, 1);
-  assert.equal(changedCap.observations.accounting!.outputReserveTokens, measuredReduced.observations.accounting!.outputReserveTokens - 900);
+  assert.equal(changedCap.observations.accounting!.calibratedUndercountTokens, 900);
+  assert.equal(changedCap.observations.accounting!.outputReserveTokens,
+    Math.min(32768, value.model.maxTokens, value.model.contextWindow - measuredReduced.observations.maintenanceCalibration!.actualInputTokens - value.config.extraction.safetyTokens),
+    "window headroom absorbs only the part of correction exceeding the previous capability-bound spare room");
   remember(value, changedCap);
   const blocked = await maintain(value, async () => assert.fail("the same newly resolved reduced cap must never resend"));
   assert(!blocked.ok); assert.equal(blocked.code, "CAPACITY"); assert.equal(blocked.observations.requests, 0);
@@ -413,14 +415,14 @@ for (const output of [8000, 20]) test(`signed anchor output ${output} normalizes
   assert.equal(anchorPlan.additionalTokens > 0, output === 8000);
   const expected = 12000 + output - anchorPlan.additionalTokens - prefixPlan.visibleTokens;
   assert(expected > 0);
-  assert.equal(activeUsageUndercount(value), expected);
+  assert.equal(activeUsageObservation(value)?.undercountTokens, expected);
   const result = await maintain(value, responder());
   assert(result.ok, result.ok ? "" : result.message);
   const a = result.observations.accounting!;
   assert.equal(a.normalExtractionAtTrigger, a.fullExtractionTokens - a.planning!.before.visibleTokens + a.effectiveTrigger);
   assert.equal(a.mainBeforeTokens, a.planning!.before.tokens, "retention keeps the forecast proxy");
   const earlier = value.active[1]!.messages[0]!; assert(earlier.role === "assistant"); earlier.usage.output = 29000;
-  assert.equal(activeUsageUndercount(value), expected, "earlier forecast output cannot conceal observed error");
+  assert.equal(activeUsageObservation(value)?.undercountTokens, expected, "earlier forecast output cannot conceal observed error");
   const again = await maintain(value, responder());
   assert.equal(again.observations.accounting!.normalExtractionAtTrigger, a.normalExtractionAtTrigger);
 });
@@ -457,6 +459,23 @@ test("malformed saved calibration is ignored and successful calibration rebinds 
   assert.equal(maintenanceFeedback(value).calibratedUndercountTokens, 0);
 });
 
+test("mechanical handoff binds calibration to cleaned K and keeps failed-attempt provenance separate", async () => {
+  const value = await source();
+  const result = await maintain(value, async request => measured(request, 700));
+  assert(!result.ok && result.fallbackCandidate);
+  const failed = maintenanceCalibrationRecord(value, result)!;
+  assert.deepEqual(failed.sourceEntryIds, value.active.map(e => e.entryId));
+  const saved = maintenanceCalibrationRecord(value, result, result.fallbackCandidate)!;
+  assert.deepEqual(saved.sourceEntryIds, result.fallbackCandidate.kept.map(e => e.entryId));
+  assert.deepEqual(saved.measurement?.sourceEntryIds, value.active.map(e => e.entryId));
+  assert.equal(saved.providerOverflow, undefined);
+  const retained = { ...value, active: result.fallbackCandidate.kept, memory: result.fallbackCandidate.memory, calibration: [saved] };
+  assert.equal(maintenanceFeedback(retained).calibratedUndercountTokens, 700);
+  retained.active = structuredClone(retained.active);
+  retained.active[0]!.messages = [{ role: "user", content: "changed retained source", timestamp: 0 }];
+  assert.equal(maintenanceFeedback(retained).calibratedUndercountTokens, 0);
+});
+
 test("calibration equivalence compares every binding and evidence field, independent of object key order", async () => {
   const source = await input();
   const failed = await maintain(source, async () => ({ ...answer(), stopReason: "error" }));
@@ -465,7 +484,7 @@ test("calibration equivalence compares every binding and evidence field, indepen
   const reordered = Object.fromEntries(Object.entries(candidate).reverse());
   assert.equal(hasEquivalentCalibrationRecord([reordered], candidate), true);
   for (const key of ["provider", "api", "modelId", "sourceDigest", "limitsDigest", "contextDigest", "headTailChars", "providerOverflow", "measurement"] as const) {
-    const changed: Record<string, unknown> = { ...candidate, [key]: key === "headTailChars" ? 99 : key === "measurement" ? undefined : "different" };
+    const changed: Record<string, unknown> = { ...candidate, [key]: key === "headTailChars" ? 99 : key === "measurement" ? undefined : key.endsWith("Digest") ? "f".repeat(64) : "different" };
     assert.equal(hasEquivalentCalibrationRecord([changed], candidate), false, key);
   }
 });

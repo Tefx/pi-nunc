@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createReadToolDefinition } from "@earendil-works/pi-coding-agent";
 import { fixture, repository } from "./fixtures.js";
-import { parseScenario, type ScenarioInput } from "../../src/live/scenarios.js";
-import { archiveCloseoutEffects } from "../../src/live/archive-closeout.js";
+import { parseScenario, archiveCloseoutEffects, type ScenarioInput } from "../../src/live/scenarios.js";
 
 const FEBRUARY_PAGES = [
   { offset: 1, limit: 100 },

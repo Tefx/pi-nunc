@@ -7,7 +7,7 @@ import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { record } from "../../src/engine/validation.js";
 import { applyLastUserTextAppend, authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite } from "../../src/pi/payload.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
-import { responsesSSE, fixture } from "./fixtures.js";
+import { responsesSSE, fixture, surfacePort } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
 
 const provider = openaiCodexProvider();
@@ -85,7 +85,8 @@ test("real loader and Codex serializer deliver restored instructions on idle cal
   type Mode = "unchanged" | "restore" | "overflow" | "rewrite-history" | "cancel";
   let mode: Mode = "unchanged";
   const admissions: AdmissionObservation[] = [], bodies: Record<string, unknown>[] = [];
-  const f = await fixture({ config: { budget: { inputLimit: 8000 } }, extras: [{ name: "identity-projection", factory(pi) {
+  const port = surfacePort();
+  const f = await fixture({ config: { budget: { inputLimit: 8000 } }, extras: [...port.extras, { name: "identity-projection", factory(pi) {
     pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation));
     pi.on("before_agent_start", event => { event.systemPromptOptions.sections.role = "Borrowed role."; });
     pi.on("before_provider_request", (event, ctx) => {
@@ -141,6 +142,9 @@ test("real loader and Codex serializer deliver restored instructions on idle cal
   assert.equal(f.runtime.session.sessionManager.getBranch().filter(e => e.type === "custom_message" && e.customType === "child-result").length, 1);
   const mapped = admissions.findLast(o => o.payload?.transform === "codex-system-instructions");
   assert.equal(mapped?.outcome, "delegate");
+  const observedPayload = port.context().read(port.ctx()).lastMain?.payload;
+  assert.equal(observedPayload?.transform, "codex-system-instructions");
+  assert.equal(observedPayload?.addedText, "Additional callback context.");
   assert(mapped.inputTokens! > 0);
   // Projected wire instructions must not create an original-Context usage receipt.
   const nextStart = admissions.length;

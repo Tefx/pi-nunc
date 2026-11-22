@@ -1,11 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { CheckResult } from "./scenarios.js";
+import { deriveExpectedRecords } from "./task-retention.js";
 import { executeMetricsOracle } from "./metrics-oracle.js";
 
 export interface GuidanceAction { turn?: string; event?: any }
-export const VERIFY_COMMANDS = ["python3 verify.py", "/usr/bin/python3 verify.py", "python verify.py"];
+import { pathIs, metricsCommand, VERIFY_COMMANDS } from "./tool-path.js";
+export function textOf(content: unknown): string {
+  return typeof content === "string" ? content : Array.isArray(content)
+    ? content.filter(b => b?.type === "text" && typeof b.text === "string").map(b => b.text).join("") : "";
+}
+export function userText(entry: SessionEntry): string | undefined {
+  return entry.type === "message" && entry.message.role === "user" ? textOf(entry.message.content) : undefined;
+}
 export const TOOLS_CHECK = "memory tools exposed in session";
 export const SPLIT_CHECK = "actual tool batch followed by automatic native split compaction and same-loop continuation";
 const sameScopedEast = (value: unknown) => isDeepStrictEqual(value, { port: 9090, timeoutMs: 650, database: "sqlite", crossTenantSharing: false });
@@ -20,6 +29,12 @@ export function guidanceExchanges(actions: GuidanceAction[]) {
   });
 }
 
+/** Bind a successful ordered effect to its original-script final-artifact receipt. */
+export function verifyReceiptEffects(exchange: ReturnType<typeof guidanceExchanges>[number], artifact: unknown): boolean {
+  return exchange.resultIndex > exchange.callIndex && exchange.result?.isError === false &&
+    exchange.result.verification?.scriptUnchanged === true && isDeepStrictEqual(exchange.result.verification.artifact, artifact);
+}
+
 /** Mechanical checks deliberately do not classify arbitrary natural-language notes. */
 export function scoreGuidance(
   caseId: string, check: string, actions: GuidanceAction[], prerequisites: CheckResult[], cwd: string, fixtures?: Record<string, string>,
@@ -30,8 +45,8 @@ export function scoreGuidance(
     a.event?.type === "tool_intent" && !actions.some(b => b.turn === a.turn && ["tool_call", "tool_blocked"].includes(b.event?.type) && b.event.toolCallId === a.event.toolCallId));
   const exchanges = guidanceExchanges(actions);
   const completed = (turn: string) => actions.some(a => a.turn === turn && a.event?.type === "turn_complete" && a.event.stopReason === "stop");
-  const pathIs = (a: GuidanceAction, path: string) => typeof a.event?.input?.path === "string" && resolve(cwd, a.event.input.path.replace(/^@/, "")) === resolve(cwd, path);
-  const writes = (path: string) => calls.filter(a => ["write", "edit"].includes(a.event.toolName) && pathIs(a, path));
+  const actionPathIs = (a: GuidanceAction, path: string) => pathIs(cwd, a.event?.input?.path, path);
+  const writes = (path: string) => calls.filter(a => ["write", "edit"].includes(a.event.toolName) && actionPathIs(a, path));
   const semantic = () => result("UNPROVEN", "Independent observation required: judge meaning against task requirements, actual saved M + delivered K/recovery reads, responses and artifacts; no keyword, language, length or slot-count oracle.", {
     completedTurns: actions.filter(a => a.event?.type === "turn_complete"),
     memoryStates: actions.filter(a => a.event?.type === "memory_state"),
@@ -53,7 +68,16 @@ export function scoreGuidance(
     if (!actions.some(a => a.event?.type === "turn_complete")) return result("UNPROVEN", "No completed task turn to evaluate");
     const altered = fixtures && Object.keys(fixtures).find(path => exchanges.some(e => writes(path).includes(e.call) && e.result?.isError === false));
     if (altered) return result("DISPROVEN", `Model modified frozen fixture ${altered}`);
-    const oracle = executeMetricsOracle(cwd, fixtures);
+    // Generated ingestion output is also frozen across execution of candidate Python.
+    const records = fixtures?.["inputs/north.json"] === undefined ? undefined : deriveExpectedRecords({ id: caseId, files: fixtures, turns: [] });
+    let recordsRaw: string | undefined;
+    if (records) {
+      try {
+        recordsRaw = readFileSync(resolve(cwd, "records.json"), "utf8");
+        if (!isDeepStrictEqual(JSON.parse(recordsRaw), records)) return result("DISPROVEN", "Final records.json differs from the regional source feeds");
+      } catch { return result("DISPROVEN", "Missing or invalid final records.json"); }
+    }
+    const oracle = executeMetricsOracle(cwd, recordsRaw === undefined ? fixtures : { ...fixtures, "records.json": recordsRaw });
     return result(oracle.status, oracle.reason ?? "Executed final artifact with independent held-out operations; test adequacy and retention remain semantic", { ...oracle.observed, operations: oracle.operations });
   }
   if (check.startsWith("semantic:")) {
@@ -79,18 +103,17 @@ export function scoreGuidance(
 
     // Command verification: build and unittest success against final artifact
     if (check.includes("actual commands show build and unittest success")) {
-      const buildCalls = calls.filter(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("build.py"));
-      const unittestCalls = calls.filter(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && a.event.input.command.includes("unittest"));
-      if (buildCalls.length === 0 && unittestCalls.length === 0) {
-        return result("UNPROVEN", "No build or unittest command was executed in the task session", semantic().observed);
+      const successful = exchanges.filter(e => e.result?.isError === false);
+      const runs = successful.filter(e => e.call.event.toolName === "bash" && ["build", "tests"].includes(metricsCommand(e.call.event.input?.command ?? "") ?? ""));
+      const build = runs.findLast(e => metricsCommand(e.call.event.input?.command ?? "") === "build");
+      const tests = runs.findLast(e => metricsCommand(e.call.event.input?.command ?? "") === "tests");
+      if (!build || !tests) {
+        return result("UNPROVEN", "No completed successful build and unittest pair in the task session", semantic().observed);
       }
-      const lastTest = calls.findLast(a => a.event?.toolName === "bash" && typeof a.event.input?.command === "string" && (a.event.input.command.includes("build.py") || a.event.input.command.includes("unittest")));
-      if (lastTest) {
-        const lastTestIndex = actions.indexOf(lastTest);
-        const laterEdit = calls.find(a => actions.indexOf(a) > lastTestIndex && ["write", "edit"].includes(a.event?.toolName) && pathIs(a, "solution.py"));
-        if (laterEdit) {
-          return result("DISPROVEN", "solution.py was modified after the last test run without subsequent reverification");
-        }
+      const lastTest = runs.filter(e => metricsCommand(e.call.event.input?.command ?? "") === "tests").at(-1)!;
+      const laterEdit = successful.find(e => e.resultIndex > lastTest.callIndex && ["write", "edit"].includes(e.call.event.toolName) && ["solution.py", "test_solution.py"].some(path => actionPathIs(e.call, path)));
+      if (laterEdit) {
+        return result("DISPROVEN", "Solution or tests were modified after the last successful test run without subsequent reverification");
       }
       return semantic();
     }
@@ -112,7 +135,7 @@ export function scoreGuidance(
       if (!existsSync(resolve(cwd, "archive.json"))) {
         return result("DISPROVEN", "archive.json was deleted");
       }
-      const prematureEast = calls.find(a => a.turn !== "d" && ["write", "edit"].includes(a.event?.toolName) && pathIs(a, "east.json"));
+      const prematureEast = calls.find(a => a.turn !== "d" && ["write", "edit"].includes(a.event?.toolName) && actionPathIs(a, "east.json"));
       if (prematureEast) {
         return result("DISPROVEN", `east.json was modified prematurely during turn ${prematureEast.turn} before turn d`);
       }
@@ -175,13 +198,12 @@ export function scoreGuidance(
     let artifact: unknown, source: string;
     try { artifact = JSON.parse(readFileSync(resolve(cwd, "verified.json"), "utf8")); source = readFileSync(resolve(cwd, target), "utf8"); }
     catch { return result("UNPROVEN", "Missing final target or verification receipt"); }
-    const valid = successful.findLast(e => e.result.verification?.scriptUnchanged === true &&
-      isDeepStrictEqual(e.result.verification.artifact, artifact) && e.result.verification.artifact?.passed === true &&
+    const valid = successful.findLast(e => verifyReceiptEffects(e, artifact) && e.result.verification.artifact?.passed === true &&
       e.result.verification.artifact?.artifact === target && e.result.verification.artifact?.source === source &&
-      !exchanges.some(w => ["write", "edit"].includes(w.call.event.toolName) && pathIs(w.call, target) &&
+      !exchanges.some(w => ["write", "edit"].includes(w.call.event.toolName) && actionPathIs(w.call, target) &&
         (w.resultIndex < 0 || w.resultIndex > e.callIndex)));
     if (!valid) return result("UNPROVEN", "No original-script receipt covers the final target and completed write ordering");
-    if (caseId === "g6" && !exchanges.some(e => e.call.turn === "b" && ["write", "edit"].includes(e.call.event.toolName) && pathIs(e.call, target) &&
+    if (caseId === "g6" && !exchanges.some(e => e.call.turn === "b" && ["write", "edit"].includes(e.call.event.toolName) && actionPathIs(e.call, target) &&
       e.result?.isError === false && e.resultIndex < valid.callIndex)) return result("UNPROVEN", "No completed deployment write before verification");
     return result("PROVEN", "Original fixture verifier succeeded after target writes and its receipt covers the final artifact; exit code and semantic acceptance are not inferred", { toolCallId: valid.call.event.toolCallId, artifact: "verified.json", target });
   }

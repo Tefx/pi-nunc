@@ -5,15 +5,18 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { parseInput, type RunInput } from "../../src/live/contract.js";
 import { executeComparison } from "../../src/live/comparison.js";
+import { dispatchWorker } from "../../src/live/runner.js";
+import { ledgerSummary, type CallRecord, type CallEnd } from "../../src/live/budget.js";
 import { childEnvironment } from "../../src/live/host.js";
-import { fixture, publicSelection, repository } from "./fixtures.js";
+import { fixture, publicSelection, repository, temporaryBaseline, temporaryState } from "./fixtures.js";
 
 const compareScript = join(repository, "scripts/compare-extraction.mjs");
 const mockWorker = join(repository, "tests/live/comparison-mock-worker.mjs");
 const ledgerWorker = join(repository, "tests/live/quota-ledger-worker.mjs");
-const baseline = join(repository, ".scratch/baseline-70dacad");
+const baseline = await temporaryBaseline();
+const state = await temporaryState();
 const { NODE_OPTIONS: _node, ...environment } = process.env;
-const env = { ...environment, PATH: "/opt/homebrew/bin:/usr/bin:/bin", HOME: join(repository, ".scratch/offline-home"), PI_CODING_AGENT_DIR: join(repository, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" };
+const env = { ...environment, PATH: process.env.PATH, HOME: join(state, "home"), PI_CODING_AGENT_DIR: join(state, "host"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" };
 
 async function comparisonFixture(): Promise<RunInput> {
   const input = await fixture();
@@ -27,13 +30,28 @@ function publicLimits(input: RunInput, limits: Record<string, unknown>) {
   return { target: input.target, limits, observations: ["stock_rpc"], scenarios: input.scenarios.map(({ id, variant }) => ({ id, variant })), comparison: input.comparison };
 }
 
+test("shared worker dispatch rejects fresh cumulative call/token/cost exhaustion before launching a child", async () => {
+  const reserve: CallRecord = { kind: "reserve", id: 1, at: 1, model: "fixture", inputEstimate: 10, outputCeiling: 100, reservedTokens: 1000, reservedCostUsd: 1 };
+  const terminal: CallEnd = { kind: "terminal", id: 1, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: 30, cost: 0.1 } };
+  for (const ceiling of ["calls", "tokens", "cost", "unresolved"] as const) {
+    const input = await fixture();
+    input.limits.maxCalls = ceiling === "calls" ? 1 : null;
+    input.limits.maxTotalTokens = ceiling === "tokens" ? 1 : null;
+    input.limits.maxCostUsd = ceiling === "cost" ? 0.1 : null;
+    const usage = ledgerSummary([]), report = { children: [], usage };
+    const records = [{ ledgerPath: "/fixture", record: reserve, terminals: ceiling === "unresolved" ? [] : [terminal] }];
+    await assert.rejects(dispatchWorker("/must-never-launch.js", { input, scenarioIndex: 0, deadline: Date.now() + 10000, resume: false }, new AbortController().signal, report, () => records), (error: { code?: string }) => error.code === ({ calls: "CALL_LIMIT", tokens: "TOKEN_LIMIT", cost: "COST_LIMIT", unresolved: "RECONCILIATION" }[ceiling]));
+    assert.equal(report.children.length, 0);
+  }
+});
+
 test("public stdin omits or nulls call/token totals and rejects invalid numbers", async () => {
   const input = await fixture();
   const script = join(repository, "scripts/verify-live.mjs");
   const run = (limits: unknown) => spawnSync(process.execPath, [script, "--preflight"], {
     input: JSON.stringify({ ...publicSelection(input), limits }),
     encoding: "utf8",
-    env: childEnvironment(join(repository, ".scratch")),
+    env: childEnvironment(state),
   });
   const omitted = run({ maxDurationMs: input.limits.maxDurationMs, maxCostUsd: input.limits.maxCostUsd, maxOutputTokens: input.limits.maxOutputTokens });
   assert.equal(omitted.status, 0, omitted.stderr);
@@ -106,7 +124,7 @@ test("public stdin stock subjob serializes omitted totals and still records mult
   input.observations = ["stock_rpc"];
   input.target.cleanup = "remove";
   const selection = { ...publicSelection(input), limits: { maxDurationMs: input.limits.maxDurationMs, maxCostUsd: input.limits.maxCostUsd, maxOutputTokens: input.limits.maxOutputTokens } };
-  const options = { cwd: repository, encoding: "utf8" as const, timeout: 105000, maxBuffer: 64_000_000, env: childEnvironment(repository + "/.scratch") };
+  const options = { cwd: repository, encoding: "utf8" as const, timeout: 105000, maxBuffer: 64_000_000, env: childEnvironment(state) };
   try {
     const preflight = spawnSync(process.execPath, ["scripts/verify-live.mjs", "--preflight"], { ...options, input: JSON.stringify(selection) });
     assert.equal(preflight.status, 0, preflight.stderr);

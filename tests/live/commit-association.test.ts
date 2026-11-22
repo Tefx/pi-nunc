@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { compactionAssociationError, resolveCompactionIdentity } from "../../src/live/compaction-identity.js";
+import { type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { compactionAssociationError, resolveCompactionIdentity } from "../../src/live/scenarios.js";
 import { joinedObservations } from "../../src/live/comparison.js";
 import { rolloverFacts, type RolloverObservation } from "../../src/live/comparison-observation.js";
 import type { ComparisonGroup, ComparisonMode, RunInput } from "../../src/live/contract.js";
@@ -87,8 +87,9 @@ test("association error helper names missing identity without crediting a report
   assert.match(compactionAssociationError(undefined)!, /no-new-compaction/);
 });
 
-test("public reanalysis CLI refuses missing prestate and emits no usable native references", async () => {
+test("public reanalysis CLI refuses missing prestate and emits no usable native references", async t => {
   const root = await mkdtemp(join(repository, ".scratch", "commit-association-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
   const out = join(root, "out");
   await writeFile(join(root, "execution.json"), JSON.stringify({ rawSegments: [{ group: "native", mode: "matched", scenario: "synthetic", rollovers: [{
     turn: "b", reason: "manual", model: { id: "synthetic", provider: "fixture", contextWindow: 60000 }, thinking: "off",
@@ -119,33 +120,7 @@ async function groupRun(f: Awaited<ReturnType<typeof comparisonStock>>, group: C
   return report;
 }
 
-test("stock persist with dropped prestate refuses later provider transport and keeps the compaction", { timeout: 60000 }, async () => {
-  const f = await comparisonStock({ e3: "siblings" });
-  try {
-    const model: Model<Api> = { id: f.modelId, name: f.modelId, provider: f.provider, api: f.api, baseUrl: f.endpoint, reasoning: false, input: ["text", "image"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
-    const stateRoot = join(f.state, "worker-run-prestate"); await mkdir(join(stateRoot, "tmp"), { recursive: true });
-    const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
-      limits: { maxCalls: 24, maxTotalTokens: 1920000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 60000 },
-      overrides: [{ requirement: "identity-prestate-probe", reason: "Drop frozen prestate after a real persist" }],
-      scenarios: [{ id: "e3", config: { compaction: { enabled: true, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 100 }, extraction: { outputTokens: 1024 } }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }],
-      comparison: { modes: ["defaults"], targets: { native: { repository }, current: { repository }, candidate: { repository } } } };
-    const report = await runSegment({ input, scenarioIndex: 0, deadline: Date.now() + 60000, resume: false, group: "native" },
-      { models: [model], controlledModels: { providers: { groq: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ ...model, provider: undefined, cost: undefined }] } } } });
-    assert.equal(report.status, "UNPROVEN", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic }));
-    const row = report.rollovers?.find(r => r.reason === "threshold");
-    assert.equal(row?.association?.status, "UNPROVEN");
-    assert.equal(row?.association?.reason, "missing-prestate");
-    assert.equal(row?.snapshot, undefined);
-    assert.equal(row?.continuationCallId, undefined);
-    assert.ok(report.sessionFile);
-    const comps = SessionManager.open(report.sessionFile).getBranch().filter(e => e.type === "compaction");
-    assert.equal(comps.length, 1);
-    const lastMaintenance = Math.max(0, ...(row?.callIds ?? []));
-    assert.equal((report.requests ?? []).filter(r => r.kind === "main" && r.callId > lastMaintenance).length, 0);
-  } finally { await f.close(); }
-});
-
-test("stock equal-summary compactons keep distinct actual IDs through observer, join and native references", { timeout: 120000 }, async () => {
+test("stock equal-summary compactions keep distinct actual IDs through observer, join and native references", { timeout: 120000 }, async () => {
   const f = await comparisonStock({ sameMemory: true });
   try {
     const native = await groupRun(f, "native", "matched");

@@ -12,7 +12,7 @@ import { fixture, responsesSSE } from "./fixtures.js";
 
 // Controlled serialized payloads exercise Admission's real wrapper/callback and
 // completion receipt path. Native serializers have separate Google/OpenAI tests.
-async function harness(t: { after(fn: () => void): void }, api: Api = "openai-completions") {
+async function harness(t: { after(fn: () => void): void }, api: Api = "openai-completions", subscription = false) {
   const faux = fauxProvider({ api, provider: "cap-fixture", models: [{ id: "dense", contextWindow: 100000, maxTokens: 90000 }] });
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
   const registry = new ModelRegistry(runtime);
@@ -20,7 +20,9 @@ async function harness(t: { after(fn: () => void): void }, api: Api = "openai-co
   const sent: unknown[] = [];
   let payload: unknown;
   let usage = 12000;
-  registry.registerProvider({ ...faux.provider, streamSimple(model, _context, options) {
+  // Controlled public auth metadata isolates route selection without credentials or HTTP.
+  if (subscription) registry.isUsingOAuth = () => true;
+  registry.registerProvider({ ...faux.provider, ...(subscription ? { auth: openaiProvider().auth } : {}), streamSimple(model, _context, options) {
     const stream = createAssistantMessageEventStream();
     void (async () => {
       const message = { ...fauxAssistantMessage("anchor"), api: model.api, provider: model.provider, model: model.id };
@@ -48,7 +50,7 @@ async function harness(t: { after(fn: () => void): void }, api: Api = "openai-co
   admission.ensure(ctx);
   t.after(() => admission.close(ctx));
   const options = { signal, sessionId: "caps" };
-  return { model, admission, observations, sent, options,
+  return { model, admission, observations, sent, options, registry, ctx,
     setUsage(n: number) { usage = n; },
     async run(body: unknown, messages: TranscriptContext["messages"] = [{ role: "user", content: "x".repeat(20000), timestamp: 1 }], hook?: SimpleStreamOptions["onPayload"]) {
       payload = body;
@@ -98,6 +100,50 @@ test("actual native Responses serialization sends the post-authorization clamp a
   assert.equal(last.stopReason, "stop", last.errorMessage ?? "");
 });
 
+test("clamping preserves live SDK fields and only clones cap containers", async t => {
+  const h = await harness(t, "google-generative-ai");
+  const signal = new AbortController().signal;
+  const thinkingConfig = { thinkingBudget: 0 };
+  const body = { contents: [{ role: "user", parts: [{ text: "x".repeat(20000) }] }],
+    config: { maxOutputTokens: 90000, abortSignal: signal, thinkingConfig } };
+  assert.equal((await h.run(body)).stopReason, "stop");
+  const sent = h.sent[0] as typeof body;
+  assert.notEqual(sent, body);
+  assert.notEqual(sent.config, body.config);
+  assert.equal(sent.contents, body.contents);
+  assert.equal(sent.config.abortSignal, signal);
+  assert.equal(sent.config.thinkingConfig, thinkingConfig);
+  assert.equal(body.config.maxOutputTokens, 90000);
+  assert(sent.config.maxOutputTokens < 90000);
+});
+
+for (const phase of ["serialize", "throw", "reject", "invalidate", "replace-provider"] as const) test(`payload ${phase} settles rejection without speculative delegate`, async t => {
+  const h = await harness(t);
+  const body = phase === "serialize" ? { toJSON() { throw new Error("invalid JSON"); } } : { max_tokens: 90000, messages: [] };
+  const response = await h.run(body, undefined, async () => {
+    if (phase === "throw") throw new Error("hook failed");
+    if (phase === "reject") return Promise.reject(new Error("hook rejected"));
+    if (phase === "invalidate") h.admission.invalidateUsage();
+    if (phase === "replace-provider") h.registry.unregisterProvider(h.model.provider);
+  });
+  assert.equal(response.stopReason, "error");
+  assert.equal(h.sent.length, 0);
+  assert.deepEqual(h.observations.map(o => o.outcome), ["reject"]);
+  assert.equal(h.observations[0]?.code, phase === "invalidate" || phase === "replace-provider" ? "CANCELLED" : "CONFIG");
+});
+
+for (const key of ["samplingParams", "samplingParamsByThinkingLevel"] as const) test(`raw model ${key} rejects before provider or hook`, async t => {
+  const h = await harness(t);
+  Object.assign(h.model, { [key]: key === "samplingParams" ? { max_tokens: 1 } : { off: { max_tokens: 1 } } });
+  let hooks = 0;
+  const response = await h.run({ max_tokens: 90000 }, undefined, () => { hooks++; });
+  assert.equal(response.stopReason, "error");
+  assert.match(response.errorMessage ?? "", /Raw sampling payload overrides/);
+  assert.equal(hooks, 0);
+  assert.equal(h.sent.length, 0);
+  assert.deepEqual(h.observations.map(o => [o.outcome, o.code]), [["reject", "CONFIG"]]);
+});
+
 const caps = { max_tokens: 90000, max_output_tokens: 90000, max_completion_tokens: 90000,
   generationConfig: { maxOutputTokens: 90000 }, config: { maxOutputTokens: 90000, thinkingConfig: { thinkingBudget: 0 } } };
 
@@ -126,6 +172,19 @@ test("post-authorization clamp clones every cap path, reports final cap, and pre
   assert.equal(h.observations.at(-1)?.receiptBreakdown?.observedU, 12004);
 });
 
+test("provider replacement invalidates completed receipts before the next projection is bound", async t => {
+  const h = await harness(t);
+  const prefix = { role: "user" as const, content: "establish receipt", timestamp: 1 };
+  const first = await h.run({ max_tokens: 100, messages: [prefix] }, [prefix]);
+  const prior = h.registry.getProvider(h.model.provider)!;
+  h.registry.registerProvider({ ...prior });
+  h.admission.ensure(h.ctx);
+  const messages = [prefix, first, { role: "user" as const, content: "next", timestamp: 2 }];
+  await h.run({ max_tokens: 100, messages }, messages);
+  assert.equal(h.observations.at(-1)?.estimateReason, "no-receipt");
+  assert.equal(h.observations.at(-1)?.estimator, "pi-heuristic");
+});
+
 test("hook expansion and input over-budget growth reject before clamp", async t => {
   const h = await harness(t);
   const body = { max_tokens: 90000, messages: [{ role: "user", content: "x".repeat(20000) }] };
@@ -141,6 +200,7 @@ test("hook expansion and input over-budget growth reject before clamp", async t 
 for (const thinking of [
   { thinking: { budget_tokens: 1 } },
   ...["thinking_budget", "thinking_token_budget", "thinking_budget_tokens"].flatMap(key => [{ [key]: 1 }, { thinking: { [key]: 1 } }]),
+  { config: { generationConfig: { thinkingConfig: { thinkingBudget: 1 } } } },
   ...["root", "config", "generationConfig"].map(key => key === "root" ? { thinkingConfig: { thinkingBudget: 1 } } : { [key]: { thinkingConfig: { thinkingBudget: 1 } } }),
 ]) test(`positive coupled thinking budget skips clamp: ${JSON.stringify(thinking)}`, async t => {
   const h = await harness(t);
@@ -189,6 +249,22 @@ test("uncapped routes and missing cap states leave payloads untouched", async t 
     assert.equal((await h.run(body)).stopReason, "stop");
     assert.equal(h.sent.at(-1), body);
     assert.equal(h.observations.at(-1)?.outputCapTokens, null);
+  }
+});
+
+test("OAuth Responses route rejects hook-invented caps through the real admission callback", async t => {
+  const body = { model: "dense", stream: true, input: [{ role: "user", content: "Task" }] };
+  for (const subscription of [false, true]) {
+    const h = await harness(t, "openai-responses", subscription);
+    const unchanged = await h.run(body);
+    assert.equal(unchanged.stopReason, "stop");
+    const changed = await h.run(body, undefined, payload => ({ ...payload as typeof body, max_output_tokens: 8192 }));
+    assert.equal(changed.stopReason, subscription ? "error" : "stop");
+    if (subscription) {
+      assert.match(changed.errorMessage ?? "", /invented an output cap/);
+      assert.equal(h.sent.length, 1, "rejected hook never reaches controlled transport");
+      assert.equal(h.observations.at(-1)?.outcome, "reject");
+    }
   }
 });
 

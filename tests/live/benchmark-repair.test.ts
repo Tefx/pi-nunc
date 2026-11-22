@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm, mkdir, access } from "node:fs/promises";
 import { join } from "node:path";
 import { repository } from "./fixtures.js";
 import { input } from "../engine/fixtures.js";
@@ -8,6 +8,27 @@ import { extractionContext } from "../../src/engine/request.js";
 import { renderMemory } from "../../src/engine/memory.js";
 
 const scripts = join(repository, "scripts/benchmarks");
+
+test("stock cleanup reports closure only after children, server and directory settlement; I/O failure remains retryable", async () => {
+  const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
+  const fixture = await new StockFixture().setup();
+  try {
+    fixture.start('rpc');
+    // A real filesystem failure after process/server shutdown must not close the receipt gate.
+    await mkdir(join(fixture.dir, 'wire.json'));
+    const closing = fixture.close();
+    assert(!fixture.closed); assert.throws(() => fixture.artifactReceipt(), /Close the fixture/);
+    await assert.rejects(closing, /EISDIR/);
+    assert(!fixture.closed); assert(fixture.processes.every((p: { exit: unknown }) => p.exit));
+    assert.equal(fixture.server.listening, false);
+    assert.throws(() => fixture.artifactReceipt(), /Close the fixture/);
+    await rm(join(fixture.dir, 'wire.json'), { recursive: true });
+    await fixture.close();
+    assert.equal(fixture.closed, true); assert.deepEqual(fixture.artifactReceipt(), { cleanup: 'removed' });
+    await assert.rejects(access(fixture.dir), /ENOENT/);
+    await fixture.close();
+  } finally { await fixture.close(); }
+});
 async function setup() {
   const { evidence } = await import(join(scripts, "evidence.mjs"));
   const source = await input();

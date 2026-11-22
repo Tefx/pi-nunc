@@ -3,7 +3,7 @@
 // effects: New isolated target; native tools/session/HTTP; bounded cleanup; retained mechanics evidence.
 // requires: Locked build and stock-driver.mjs. Scripted outputs cannot establish memory quality.
 import assert from 'node:assert/strict';
-import { cp, readdir, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StockFixture, root, records } from './stock-driver.mjs';
 import { runSegment } from '../dist/src/live/worker.js';
@@ -169,23 +169,6 @@ try {
   outcome = { status: 'PROVEN_CONTROLLED', case: which, nativePid: report.pid, requests: f.requests.length, calibrations: report.calibrations.length, memoryQuality: 'UNPROVEN: scripted service responses test plumbing only' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
 finally {
-  if (full || late || capacity) {
-    const dest = join(root, '.scratch/observation-support-handoff', which);
-    await mkdir(dest, { recursive: true });
-    const caseRoot = join(target, `${id}${late ? '-late-d' : full ? '-full' : capacity ? '-capacity' : ''}`);
-    try {
-      for (const name of await readdir(caseRoot)) {
-        if (name === 'task') continue;
-        await cp(join(caseRoot, name), join(dest, name), { recursive: true }).catch(() => {});
-      }
-    } catch { /* Target may already be gone. */ }
-    await writeFile(join(dest, 'segment-outcome.json'), JSON.stringify({ ...outcome, commands: undefined }, null, 2)).catch(() => {});
-  }
   await rm(target, { recursive: true, force: true }); await f.close(outcome);
-  if (full || late || capacity) {
-    const dest = join(root, '.scratch/observation-support-handoff', which);
-    await mkdir(dest, { recursive: true });
-    await cp(f.dir, join(dest, 'stock'), { recursive: true }).catch(() => {});
-  }
-  console.log(JSON.stringify({ ...outcome, evidence: f.dir, handoff: (full || late || capacity) ? join(root, '.scratch/observation-support-handoff', which) : undefined }));
+  console.log(JSON.stringify({ ...outcome, cleanup: 'removed' }));
 }

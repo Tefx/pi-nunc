@@ -2,10 +2,43 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";
-import { checkArtifact, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
+import { fauxAssistantMessage, fauxToolCall, type Context } from "@earendil-works/pi-ai";
+import { project, sealDecisions } from "../../src/pi/projection.js";
+import { maintain } from "../../src/engine/engine.js";
+import { input as engineInput, answer } from "../engine/fixtures.js";
+import { DEFAULT_MAX_BYTES, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { checkFullExtraction, expandGeneratedFiles, checkArtifact, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
 import { fixture, repository } from "./fixtures.js";
 import { parseInput } from "../../src/live/contract.js";
+
+test("full extraction follows native context edits and the configured persisted cleanup view", async () => {
+  const entries: SessionEntry[] = [
+    { type: "message", id: "u", parentId: null, timestamp: "0", message: { role: "user", content: "Original request", timestamp: 0 } },
+    { type: "message", id: "a", parentId: "u", timestamp: "1", message: fauxAssistantMessage(fauxToolCall("read", { path: "task.txt" }, { id: "call" }), { stopReason: "toolUse" }) },
+    { type: "message", id: "r", parentId: "a", timestamp: "2", message: { role: "toolResult", toolCallId: "call", toolName: "read", isError: false, timestamp: 2, content: [{ type: "text", text: "Original source evidence" }] } },
+    { type: "context_edit", id: "edit", parentId: "r", timestamp: "3", targetId: "u", replacement: { content: "Edited request" } },
+    { type: "message", id: "next", parentId: "edit", timestamp: "4", message: { role: "user", content: "Continue", timestamp: 4 } },
+  ];
+  const projected = project(entries);
+  entries.push({ type: "custom", customType: "nunc.memory", id: "save", parentId: "next", timestamp: "5", data: { nunc: projected.memory,
+    toolResultCleanup: sealDecisions(projected.active, [{ entryId: "r", messageIndex: 0, toolCallId: "call", toolName: "read", kind: "semantic", action: "replace", text: "Evidence", originalLength: 24, cleanedLength: 8, netSavings: 16 }]) } });
+  for (const cleanupEnabled of [true, false]) {
+    const source = await engineInput(), current = project(entries);
+    source.active = current.active; source.memory = current.memory; source.priorCleanup = current.cleanup;
+    source.config.toolResultCleanup = cleanupEnabled;
+    let context: Context | undefined;
+    await maintain(source, async request => { context = request.context; return answer({ priority: [], required: [] }, request.model); });
+    assert(context, "real engine extraction request reached completion seam");
+    assert.equal(checkFullExtraction(entries, context, cleanupEnabled).status, "PROVEN");
+    assert.equal(checkFullExtraction(entries, context, !cleanupEnabled).status, "UNPROVEN", "raw and cleaned source views must remain distinguishable");
+  }
+});
+
+test("generated expansion is shared with seeding and does not mutate scenario files", async () => {
+  const scenario = { id: "fixture", files: { "fixed.txt": "fixed" }, turns: [], generatedFiles: [{ path: "generated.txt", segments: [{ text: "x", repeat: 3 }] }] };
+  assert.deepEqual(expandGeneratedFiles(scenario), { "fixed.txt": "fixed", "generated.txt": "xxx" });
+  assert.deepEqual(scenario.files, { "fixed.txt": "fixed" });
+});
 
 test("every tracked input/observer variant loads separately; only task fixture files are seeded", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);

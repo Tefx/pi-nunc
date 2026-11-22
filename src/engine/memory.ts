@@ -1,4 +1,3 @@
-import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { Message } from "@earendil-works/pi-ai";
 import type { Memory, MechanicalFallbackInfo, RequiredObservation, Slot, ToolResultEdit } from "./types.js";
 import { EngineError, freezeCopy, integer, keys, nonempty, record, requireThat, validateMemory } from "./validation.js";
@@ -22,10 +21,10 @@ export function legacyRenderMemory(slots: Slot[]): string {
   return slots.length === 0 ? "" : `Nunc working memory (session-local):\n${JSON.stringify(slots)}`;
 }
 /** Use the selected host's public projection for the working memory carrier. */
-export function memoryMessage(slots: Slot[]): Message {
+export function memoryMessage(slots: Slot[], fallback?: MechanicalFallbackInfo): Message {
   return {
     role: "user",
-    content: [{ type: "text", text: renderMemory(slots) }],
+    content: [{ type: "text", text: renderMemoryWithFallback(slots, fallback) }],
     timestamp: 0,
   };
 }

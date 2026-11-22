@@ -1,18 +1,196 @@
-import { scoreGuidance } from "./guidance.js";
-import { project } from "../pi/projection.js";
+import { scoreGuidance, guidanceExchanges, textOf, verifyReceiptEffects } from "./guidance.js";
+import { resolveScenarioPath, VERIFY_COMMANDS } from "./tool-path.js";
+import { project, effectiveActive } from "../pi/projection.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, DEFAULT_MAX_BYTES, truncateHead, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
 import { readSourceRecords } from "../engine/request.js";
-import { isSystemMessage } from "../engine/accounting.js";
+import { isSystemMessage, memoryTokens } from "../engine/accounting.js";
 import { parsePatch } from "../engine/memory.js";
 import { validateMemory } from "../engine/validation.js";
-import type { Context, Message } from "@earendil-works/pi-ai";
-import type { MaintenanceResult } from "../engine/types.js";
+import { getCurrentSystemPrompt, type Context, type Message, type TranscriptContext } from "@earendil-works/pi-ai";
+import type { MaintenanceResult, Memory } from "../engine/types.js";
 import type { RolloverObservation } from "./comparison-observation.js";
 import { object, requireValue, within, type Selection } from "./contract.js";
+
+export type CompactionIdentityReason = "missing-prestate" | "no-new-compaction" | "ambiguous-new-compaction" | "inconsistent-cut-or-result";
+export type CompactionEntry = Extract<SessionEntry, { type: "compaction" }>;
+export type CompactionIdentity =
+  | { status: "resolved"; snapshot: CompactionEntry; reportedId: string | null }
+  | { status: "UNPROVEN"; reason: CompactionIdentityReason; reportedId: string | null };
+
+/** Unique new compaction against frozen pre-maintenance IDs, never summary-text identity. */
+export function resolveCompactionIdentity(input: {
+  preBranchIds?: Iterable<string> | undefined;
+  branch: SessionEntry[];
+  rebuilt?: SessionEntry[] | undefined;
+  reported?: { id?: string; fromHook?: boolean } | undefined;
+  expectedCut?: string | undefined;
+  resultCut?: string | undefined;
+}): CompactionIdentity {
+  const reportedId = typeof input.reported?.id === "string" ? input.reported.id : null;
+  if (input.preBranchIds == null) return { status: "UNPROVEN", reason: "missing-prestate", reportedId };
+  const pre = new Set(input.preBranchIds);
+  const candidates = input.branch.filter((e): e is CompactionEntry => e.type === "compaction" && !pre.has(e.id));
+  if (candidates.length === 0) return { status: "UNPROVEN", reason: "no-new-compaction", reportedId };
+  if (candidates.length > 1) return { status: "UNPROVEN", reason: "ambiguous-new-compaction", reportedId };
+  const snapshot = candidates[0]!;
+  if (snapshot.fromHook !== true && input.expectedCut !== undefined && snapshot.firstKeptEntryId !== input.expectedCut ||
+      input.resultCut !== undefined && snapshot.firstKeptEntryId !== input.resultCut) {
+    return { status: "UNPROVEN", reason: "inconsistent-cut-or-result", reportedId };
+  }
+  if (input.rebuilt) {
+    // buildContextEntries selects the checkpoint first, ahead of historical carriers in K.
+    const latest = input.rebuilt.find(e => e.type === "compaction");
+    if (!latest || latest.id !== snapshot.id || !input.rebuilt.some(e => e.id === snapshot.firstKeptEntryId)) {
+      return { status: "UNPROVEN", reason: "inconsistent-cut-or-result", reportedId };
+    }
+  }
+  return { status: "resolved", snapshot, reportedId };
+}
+export function compactionAssociationStop(reason: CompactionIdentityReason): string {
+  return `Compaction identity unproven (${reason}); dependent transport refused`;
+}
+export function compactionAssociationError(row: { snapshot?: { id: string }; association?: { status?: string; reason?: string } } | undefined): string | undefined {
+  if (row?.association?.status === "UNPROVEN") {
+    const reason = row.association.reason;
+    return compactionAssociationStop(reason === "missing-prestate" || reason === "no-new-compaction" || reason === "ambiguous-new-compaction" || reason === "inconsistent-cut-or-result" ? reason : "no-new-compaction");
+  }
+  if (row?.snapshot) return undefined;
+  return compactionAssociationStop("no-new-compaction");
+}
+
+/** Qualifies a response against this transaction's frozen source and explicit hard limit. */
+export function qualifyCapacity(
+  variant: "fits-required" | "required-too-large", memory: Memory, result: MaintenanceResult | undefined,
+  contexts: Array<Context | TranscriptContext>, responses: Array<{ model: string; stopReason: string; patch: unknown }>,
+  model: string, hardLimit: number | null,
+  growth?: { growthReserve: number; fixedTokens: number; memoryLimit: number; keptTokens: number; effectiveTrigger: number },
+  organizingTarget = 8192,
+): CheckResult[] {
+  const check = "capacity predicate bound to one frozen request and complete response";
+  const advisory = result?.observations.accounting?.memoryLimit;
+  try {
+    if (hardLimit === null) throw new Error("No explicit hard-limit scenario");
+    if (contexts.length !== 1 || responses.length !== 1 || advisory === undefined ||
+        responses[0]!.stopReason !== "stop" || responses[0]!.model !== model) throw new Error("Missing transaction evidence");
+    const context = contexts[0]!;
+    const rawPrompt = ("systemPrompt" in context && typeof context.systemPrompt === "string") ? context.systemPrompt : getCurrentSystemPrompt(context.messages);
+    const declared = rawPrompt?.match(/Rendered memory (advisory|organizing) target: (\d+) estimated tokens/);
+    const declaredHard = rawPrompt?.match(/(?:Independent saved-memory hard cap|Explicit saved-memory hard limit): (\d+) estimated tokens/);
+    const records = context.messages.flatMap(m => typeof m.content === "string" ? readSourceRecords(m.content) :
+      m.content.flatMap(b => b.type === "text" ? readSourceRecords(b.text) : []));
+    const fm = records.filter(r => r.source === "F/M");
+    if (!declared || Number(declared[2]) !== (declared[1] === "organizing" ? organizingTarget : Math.min(advisory, hardLimit)) || !declaredHard || Number(declaredHard[1]) !== hardLimit ||
+        fm.length !== 1 || !isDeepStrictEqual(fm[0]!.M, memory.slots)) throw new Error("Frozen source differs");
+    const a = result?.observations.accounting;
+    const growthMatches = growth && a && ["fixedTokens", "memoryLimit", "keptTokens", "effectiveTrigger"].every(k => (growth as any)[k] === (a as any)[k]);
+    const growthFits = growthMatches && growth!.fixedTokens + (a!.memoryReserveTokens ?? advisory) + growth!.keptTokens + growth!.growthReserve <= growth!.effectiveTrigger;
+    return [{ check, status: "PROVEN", observed: { model, memoryLimit: hardLimit, advisoryTarget: advisory, nextId: memory.nextId, memory: memory.slots, response: responses[0]!.patch } },
+      { check: "growth reserved once outside the advisory target", status: growthFits ? "PROVEN" : "UNPROVEN", observed: growth ?? null },
+      ...evaluateCapacityPredicates(variant, responses[0]!.patch, hardLimit, memoryTokens, memory.slots, memory.nextId)];
+  } catch {
+    return [{ check, status: "UNPROVEN", reason: "Missing or inconsistent current request/response, frozen memory or actual memory limit" }];
+  }
+}
+
+/** Independently resolve required references; engine observations alone cannot prove preservation. */
+export function checkRequiredRetention(result: MaintenanceResult | undefined, saved: Memory, frozen?: { memory: Memory; response: unknown }): CheckResult {
+  const req = result?.observations.required;
+  let required: Array<{ id: string; text: string }> = [];
+  try {
+    if (!frozen) throw new Error("Missing frozen request and response");
+    const { patch, candidates } = capacityCandidates(frozen.response, frozen.memory);
+    required = patch.required.map(key => candidates.find(c => c.key === key)!.slot);
+    const pass = result?.ok === true && req && !req.failed && required.length > 0 &&
+      isDeepStrictEqual(req.declared, patch.required) &&
+      req.retainedSlotIds.length === required.length && new Set(req.retainedSlotIds).size === required.length &&
+      required.every(slot => req.retainedSlotIds.includes(slot.id) && saved.slots.some(s => isDeepStrictEqual(s, slot))) &&
+      isDeepStrictEqual(result.candidate.memory, saved);
+    return { check: "all marked necessary candidates jointly retained in final memory", status: pass ? "PROVEN" : "UNPROVEN", observed: { required: req ?? null, expected: required, saved } };
+  } catch {
+    return { check: "all marked necessary candidates jointly retained in final memory", status: "UNPROVEN", reason: "Missing or invalid frozen request/response", observed: { required: req ?? null, saved } };
+  }
+}
+export function checkCapacityRecovery(facts: {
+  capacityFailed: boolean; deliveredCount: number; terminalStop: boolean;
+  memoryAndBoundaryUnchanged: boolean; additionalMaintenance: number;
+}): CheckResult {
+  return { check: "continuation following capacity failure (failure-path recovery)",
+    status: facts.capacityFailed && facts.deliveredCount === 1 && facts.terminalStop &&
+      facts.memoryAndBoundaryUnchanged && facts.additionalMaintenance === 0 ? "PROVEN" : "UNPROVEN", observed: facts };
+}
+
+const MONTHS = ["january", "february"] as const;
+/** Stock read continuation notices from createReadToolDefinition. */
+const STOCK_READ_FOOTER = /\n\n\[(?:Showing lines \d+-\d+ of \d+(?: \([^)]+ limit\))?\.|\d+ more lines in file\.) Use offset=\d+ to continue\.\]$/;
+type ActionRow = { turn: string; event: any };
+type Effect = ActionRow & { start: number; end: number; result: any };
+interface SourcePage {
+  callId: string; offset: number; limit: number | null; returnedLines: number; from: number; to: number; end: number;
+}
+function pageArgs(input: { offset?: unknown; limit?: unknown }): { offset: number; limit?: number } | undefined {
+  const offset = input.offset === undefined ? 1 : input.offset;
+  if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 1) return undefined;
+  if (input.limit === undefined) return { offset };
+  if (typeof input.limit !== "number" || !Number.isSafeInteger(input.limit) || input.limit < 1) return undefined;
+  return { offset, limit: input.limit };
+}
+function sameJson(text: string, expected: unknown) { try { return isDeepStrictEqual(JSON.parse(text), expected); } catch { return false; } }
+function monthlyTotals(input: ScenarioInput, month: string) {
+  const channels: Record<string, { netUnits: number; netCents: number }> = Object.fromEntries(["web", "counter", "partner"].map(c => [c, { netUnits: 0, netCents: 0 }]));
+  const excludedInvoices = [];
+  for (const row of JSON.parse(input.files[`archive/${month}.json`]!)) {
+    if (row.state === "void") excludedInvoices.push(row.invoice);
+    else { const c = channels[row.channel]!; c.netUnits += row.quantity - row.refundedUnits; c.netCents += (row.quantity - row.refundedUnits) * row.unitCents; }
+  }
+  return { channels, excludedInvoices };
+}
+/** Exact path/offset/limit pages whose returned bytes match the fixture; overlap does not fill gaps. */
+function sourceExposure(effects: Effect[], turn: string, relativePath: string, cwd: string, fixture: string): { pages: SourcePage[]; completeEnd?: number | undefined; completeCallId?: string | undefined; totalLines: number } {
+  const lines = fixture.split("\n"), pages: SourcePage[] = [];
+  for (const effect of effects) {
+    if (effect.turn !== turn || effect.event.toolName !== "read" || typeof effect.event.input?.path !== "string") continue;
+    if (resolveScenarioPath(cwd, effect.event.input.path) !== resolve(cwd, relativePath)) continue;
+    const args = pageArgs(effect.event.input);
+    if (!args) continue;
+    const startLine = args.offset - 1;
+    if (startLine >= lines.length) continue;
+    const body = textOf(effect.result.content).replace(STOCK_READ_FOOTER, ""), returned = body.split("\n");
+    if (returned.length === 0 || args.limit !== undefined && returned.length > args.limit) continue;
+    if (!isDeepStrictEqual(returned, lines.slice(startLine, startLine + returned.length))) continue;
+    pages.push({ callId: effect.event.toolCallId, offset: args.offset, limit: args.limit ?? null, returnedLines: returned.length, from: args.offset, to: args.offset + returned.length - 1, end: effect.end });
+  }
+  const covered = new Set<number>();
+  let completeEnd: number | undefined, completeCallId: string | undefined;
+  for (const page of [...pages].sort((a, b) => a.end - b.end)) {
+    for (let i = page.from - 1; i < page.to; i++) covered.add(i);
+    if (completeEnd === undefined && lines.length > 0 && covered.size === lines.length) { completeEnd = page.end; completeCallId = page.callId; }
+  }
+  return { pages, completeEnd, completeCallId, totalLines: lines.length };
+}
+/** Observable work prerequisites, without supplying the model any result or feedback. */
+export function archiveCloseoutEffects(input: ScenarioInput, actions: unknown[], cwd: string): CheckResult {
+  const effects = guidanceExchanges(actions as ActionRow[]).filter(e => e.result?.isError === false)
+    .map(e => ({ ...e.call, event: e.call.event, turn: e.call.turn!, start: e.callIndex, end: e.resultIndex, result: e.result }));
+  const monthly = MONTHS.map(month => monthlyTotals(input, month)), evidence: unknown[] = [];
+  let complete = true;
+  for (const [index, month] of MONTHS.entries()) {
+    const source = `archive/${month}.json`, exposure = sourceExposure(effects, month, source, cwd, input.files[source]!);
+    const write = effects.find(e => e.turn === month && e.event.toolName === "write" && typeof e.event.input?.path === "string" && resolveScenarioPath(cwd, e.event.input.path) === resolve(cwd, `closeout/${month}.json`) && exposure.completeEnd !== undefined && e.start > exposure.completeEnd && sameJson(e.event.input.content, monthly[index]));
+    complete &&= Boolean(write);
+    evidence.push({ month, read: exposure.completeCallId ?? null, write: write?.event.toolCallId ?? null,
+      pages: exposure.pages.map(({ callId, offset, limit, returnedLines, from, to }) => ({ callId, offset, limit, returnedLines, from, to })),
+      completeAt: exposure.completeCallId === undefined ? null : { toolCallId: exposure.completeCallId, end: exposure.completeEnd }, totalLines: exposure.totalLines });
+  }
+  const combined = { months: [...MONTHS], channels: Object.fromEntries(Object.keys(monthly[0]!.channels).map(c => [c, { netUnits: monthly[0]!.channels[c]!.netUnits + monthly[1]!.channels[c]!.netUnits, netCents: monthly[0]!.channels[c]!.netCents + monthly[1]!.channels[c]!.netCents }])), excludedInvoices: monthly.flatMap(m => m.excludedInvoices) };
+  const reads = MONTHS.map((m, i) => effects.find(e => e.turn === "closeout" && e.event.toolName === "read" && typeof e.event.input?.path === "string" && resolveScenarioPath(cwd, e.event.input.path) === resolve(cwd, `closeout/${m}.json`) && sameJson(textOf(e.result.content), monthly[i])));
+  const write = effects.find(e => e.turn === "closeout" && e.event.toolName === "write" && typeof e.event.input?.path === "string" && resolveScenarioPath(cwd, e.event.input.path) === resolve(cwd, "closeout/quarter-to-date.json") && reads.every(r => r && r.end < e.start) && sameJson(e.event.input.content, combined));
+  complete &&= Boolean(write);
+  return { check: "archive closeout produced monthly and combined finance effects before original a", status: complete ? "PROVEN" : "UNPROVEN", observed: { monthly: evidence, combinedWrite: write?.event.toolCallId ?? null, combinedReads: reads.map(r => r?.event.toolCallId ?? null) } };
+}
 
 export interface Turn { id: string; text: string }
 export interface GeneratedFile { path: string; segments: Array<{ repeat: number; text: string }> }
@@ -234,14 +412,17 @@ export async function loadScenario(repository: string, selection: Selection, exp
   const observerPath = isAbsolute(observerFile) ? observerFile : join(repository, observerFile);
   return parseScenario(JSON.parse(await readFile(inputsPath, "utf8")), JSON.parse(await readFile(observerPath, "utf8")), selection);
 }
-export async function seedScenario(input: ScenarioInput, cwd: string): Promise<void> {
-  await mkdir(cwd, { recursive: true });
+export function expandGeneratedFiles(input: ScenarioInput): Record<string, string> {
   const files = { ...input.files };
   for (const generated of input.generatedFiles ?? []) {
     requireValue(Array.isArray(generated.segments) && generated.segments.every(s => Number.isSafeInteger(s.repeat) && s.repeat > 0 && typeof s.text === "string" && s.repeat * Buffer.byteLength(s.text) <= 1_000_000), "SCENARIO", "Invalid generated fixture");
     files[generated.path] = expandGeneratedText(generated);
   }
-  for (const [path, text] of Object.entries(files)) {
+  return files;
+}
+export async function seedScenario(input: ScenarioInput, cwd: string): Promise<void> {
+  await mkdir(cwd, { recursive: true });
+  for (const [path, text] of Object.entries(expandGeneratedFiles(input))) {
     const target = join(cwd, path); requireValue(within(target, cwd), "SCENARIO", "Fixture escapes task directory");
     await mkdir(dirname(target), { recursive: true }); await writeFile(target, text, { flag: "wx", mode: 0o600 });
   }
@@ -282,14 +463,15 @@ function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: st
 }
 export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean; artifactSnapshots?: Record<string, unknown>; fixtures?: Record<string, string> }) {
   const artifacts: Record<string, unknown> = { ...context?.artifactSnapshots };
+  const unavailable = new Set<string>();
   for (const check of observer.artifactChecks) {
     if (Object.hasOwn(artifacts, check.path)) continue;
     requireValue(within(join(cwd, check.path), cwd), "SCENARIO", "Artifact escapes task directory");
     try { const raw = await readFile(join(cwd, check.path), "utf8"); requireValue(Buffer.byteLength(raw) <= 1_000_000, "ARTIFACT", "Artifact exceeds observer bound"); artifacts[check.path] = JSON.parse(raw); }
-    catch { artifacts[check.path] = null; }
+    catch { unavailable.add(check.path); }
   }
   const eligible = prerequisites.length > 0 && prerequisites.every(p => p.status === "PROVEN");
-  const checks = observer.artifactChecks.map(check => eligible ? checkArtifact(check, artifacts[check.path]) : { check: `${check.path}${check.pointer}`, status: "UNPROVEN" as const, reason: "Required persisted source placement/restart/capacity prerequisites did not pass" });
+  const checks = observer.artifactChecks.map(check => unavailable.has(check.path) ? { check: `${check.path}${check.pointer}`, status: "DISPROVEN" as const, reason: "Artifact is missing, unreadable or invalid JSON" } : eligible ? checkArtifact(check, artifacts[check.path]) : { check: `${check.path}${check.pointer}`, status: "UNPROVEN" as const, reason: "Required persisted source placement/restart/capacity prerequisites did not pass" });
 
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview: CheckResult[] = observer.actionChecks.map(check => {
@@ -298,7 +480,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
     }
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;
-      const verifyCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && ((a.event.input as any).command as string).includes("verify.py"));
+      const verifyCalls = rawActions.filter(a => object(a) && object(a.event) && a.event.type === "tool_call" && a.event.toolName === "bash" && typeof (a.event.input as any)?.command === "string" && VERIFY_COMMANDS.includes(((a.event.input as any).command as string).trim()));
 
       if (verifyCalls.length === 0) {
         return { check, status: "UNPROVEN" as const, reason: "No python3 verify.py command was executed" };
@@ -312,15 +494,11 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
 
       // Only a later, same-turn/same-tool result establishes an effect. Failed attempts
       // remain in the history but do not preclude repair and successful reverification.
-      const completed = rawActions.flatMap((call, callIndex) => {
-        if (!object(call) || !object(call.event) || call.event.type !== "tool_call") return [];
-        const resultIndex = rawActions.findIndex((a, i) => i > callIndex && object(a) && object(a.event) && a.turn === call.turn && a.event.type === "tool_result" && a.event.toolCallId === call.event.toolCallId && a.event.toolName === call.event.toolName);
-        return resultIndex >= 0 && rawActions[resultIndex]!.event.isError === false ? [{ call, callIndex, resultIndex, result: rawActions[resultIndex]!.event }] : [];
-      });
+      const completed = guidanceExchanges(rawActions).filter(e => e.resultIndex >= 0 && e.result.isError === false);
       const successful = completed.filter(e => verifyCalls.includes(e.call));
       if (successful.length === 0) return { check, status: "DISPROVEN" as const, reason: "No verification command has an ordered successful result" };
       const edits = completed.filter(e => ["write", "edit"].includes(e.call.event.toolName) && typeof e.call.event.input?.path === "string")
-        .map(e => ({ ...e, path: relative(cwd, resolve(cwd, e.call.event.input.path)) }));
+        .map(e => ({ ...e, path: relative(cwd, resolveScenarioPath(cwd, e.call.event.input.path)) }));
 
       // Check verification artifact created and passed
       const artifactName = observer.id === "e1" ? "verification.json" : "verified.json";
@@ -342,7 +520,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
         return { check, status: "DISPROVEN" as const, reason: `Verification artifact ${artifactName} was authored directly by tool call rather than python3 verify.py` };
       }
 
-      const receipted = successful.filter(e => !context?.requireVerificationReceipt || (object(e.result.verification) && e.result.verification.scriptUnchanged === true && isDeepStrictEqual(e.result.verification.artifact, verifyArtifact)));
+      const receipted = successful.filter(e => !context?.requireVerificationReceipt || verifyReceiptEffects(e, verifyArtifact));
       if (receipted.length === 0) return { check, status: "UNPROVEN" as const, reason: "Successful commands lack a matching original-script and artifact-effect receipt" };
       // A completed write must precede this invocation, including writes that overlap it.
       const valid = receipted.findLast(v => !edits.some(e => e.path === targetExport && e.resultIndex > v.callIndex));
@@ -353,12 +531,31 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   });
 
   if (observer.id === "e3") {
-    const premature = rawActions.find((a, i) => a.turn !== "b" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && typeof a.event.input?.path === "string" && resolve(cwd, a.event.input.path) === resolve(cwd, "ready.json") && rawActions.slice(i + 1).some(r => r.turn === a.turn && r.event?.type === "tool_result" && r.event.toolCallId === a.event.toolCallId && r.event.isError === false));
+    const premature = rawActions.find((a, i) => a.turn !== "b" && a.event?.type === "tool_call" && ["write", "edit"].includes(a.event.toolName) && typeof a.event.input?.path === "string" && resolveScenarioPath(cwd, a.event.input.path) === resolve(cwd, "ready.json") && rawActions.slice(i + 1).some(r => r.turn === a.turn && r.event?.type === "tool_result" && r.event.toolCallId === a.event.toolCallId && r.event.isError === false));
     actionReview.push({ check: "ready artifact remains pending until b", status: premature ? "DISPROVEN" : rawActions.length > 0 ? "PROVEN" : "UNPROVEN", reason: premature ? `Premature ready artifact during ${premature.turn}` : rawActions.length > 0 ? "No successful ready write/edit before authorization in recorded effects" : "No action trace available" });
   }
   return { artifacts, checks, actionReview };
 }
 
+/** Reconstruct candidate identity/body from frozen input, independent of engine selection reports. */
+function capacityCandidates(rawPatch: unknown, memory: Memory) {
+  validateMemory(memory);
+  const patch = parsePatch(rawPatch, memory);
+  const removed = new Set(patch.remove), used = new Set(memory.slots.map(s => s.id));
+  const updates = new Map(patch.update?.map(s => [s.id, s.text]));
+  const candidates = memory.slots.filter(s => !removed.has(s.id)).map(s => ({ key: s.id, slot: { id: s.id, text: updates.get(s.id) ?? s.text } }));
+  let nextId = memory.nextId;
+  for (const add of patch.add) {
+    let id: string;
+    do {
+      if (!Number.isSafeInteger(nextId + 1)) throw new Error("Frozen ID counter is exhausted");
+      id = `s${nextId++}`;
+    } while (used.has(id));
+    used.add(id);
+    candidates.push({ key: add.key, slot: { id, text: add.text } });
+  }
+  return { patch, candidates };
+}
 export function evaluateCapacityPredicates(
   variant: "fits-required" | "required-too-large",
   rawPatch: unknown,
@@ -368,37 +565,16 @@ export function evaluateCapacityPredicates(
   nextId: number = 1
 ): CheckResult[] {
   const results: CheckResult[] = [];
-  let patch;
+  let reconstructed: ReturnType<typeof capacityCandidates>;
   try {
-    const memory = { version: 1 as const, slots: survivingOldSlots, nextId };
-    validateMemory(memory);
     if (!Number.isSafeInteger(memoryLimit) || memoryLimit < 0) throw new Error("Missing actual memory limit");
-    patch = parsePatch(rawPatch, memory);
-    if (patch.required.length === 0) throw new Error("Capacity variant requires a nonempty marked necessary set");
+    reconstructed = capacityCandidates(rawPatch, { version: 1, slots: survivingOldSlots, nextId });
+    if (reconstructed.patch.required.length === 0) throw new Error("Capacity variant requires a nonempty marked necessary set");
   } catch {
     return [{ check: "valid patch for capacity predicate evaluation", status: "UNPROVEN", reason: "Missing or invalid frozen memory, memory limit or required patch" }];
   }
-  const requiredKeys = new Set(patch.required ?? []);
-  const removedKeys = new Set(patch.remove ?? []);
-  const existingIds = new Set(survivingOldSlots.map(s => s.id));
-  const updates = new Map(patch.update?.map(item => [item.id, item.text]));
-  let curId = nextId;
-
-  const candidates: Array<{ key: string; slot: { id: string; text: string } }> = [];
-  for (const s of survivingOldSlots) {
-    if (!removedKeys.has(s.id)) {
-      candidates.push({ key: s.id, slot: { id: s.id, text: updates.get(s.id) ?? s.text } });
-    }
-  }
-  for (const a of patch.add ?? []) {
-    let id: string;
-    do {
-      if (!Number.isSafeInteger(curId + 1)) return [{ check: "allocatable generated memory IDs", status: "UNPROVEN", reason: "Frozen ID counter is exhausted" }];
-      id = `s${curId++}`;
-    } while (existingIds.has(id));
-    existingIds.add(id);
-    candidates.push({ key: a.key, slot: { id, text: a.text } });
-  }
+  const { patch, candidates } = reconstructed;
+  const requiredKeys = new Set(patch.required);
 
   const requiredCandidates = candidates.filter(c => requiredKeys.has(c.key));
   const optionalCandidates = candidates.filter(c => !requiredKeys.has(c.key));
@@ -489,13 +665,13 @@ export function evaluateE2SetupChecks(
   const probeCall = rawActions.find(a => {
     if (a.turn !== "c" || !object(a.event) || a.event.type !== "tool_call" || a.event.toolName !== "read" || !object(a.event.input) || typeof a.event.input.path !== "string") return false;
     const path = a.event.input.path;
-    return cwd ? relative(cwd, resolve(cwd, path)) === "probe.json" : !isAbsolute(path) && relative("/", resolve("/", path)) === "probe.json";
+    return cwd ? relative(cwd, resolveScenarioPath(cwd, path)) === "probe.json" : !isAbsolute(path) && relative("/", resolveScenarioPath("/", path)) === "probe.json";
   });
   const probeCallId = probeCall?.event?.toolCallId;
   const probeResult = probeCallId ? rawActions.find(a => a.turn === "c" && object(a.event) && a.event.type === "tool_result" && a.event.toolName === "read" && a.event.toolCallId === probeCallId && a.event.isError === false) : undefined;
   const kMessages = kRecords.flatMap(r => r.messages);
   const kHasCall = kMessages.some(m => m.role === "assistant" && Array.isArray(m.content) && m.content.some(b => b.type === "toolCall" && b.id === probeCallId && b.name === "read" && isDeepStrictEqual(b.arguments, probeCall?.event.input)));
-  const completeProbe = expectedProbe !== undefined && Array.isArray(probeResult?.event.content) && probeResult.event.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim() === expectedProbe.trim();
+  const completeProbe = expectedProbe !== undefined && Array.isArray(probeResult?.event.content) && textOf(probeResult.event.content).trim() === expectedProbe.trim();
   const kHasProbe = Boolean(completeProbe && probeResult && kHasCall && kMessages.some(m => m.role === "toolResult" && m.toolCallId === probeCallId && m.toolName === "read" && m.isError === false && isDeepStrictEqual(m.content, probeResult.event.content)));
 
   const turnBIds = turnEntries["b"] ?? [];
@@ -542,8 +718,9 @@ export function semanticEvidence(message: Message): Record<string, unknown> {
   });
   return { role: message.role, ...(message.role === "toolResult" ? { toolCallId: message.toolCallId, toolName: message.toolName, isError: message.isError } : {}), ...(message.role === "assistant" ? { stopReason: message.stopReason } : {}), content };
 }
-export function checkFullExtraction(beforeActive: SessionEntry[], context: Context | undefined): CheckResult {
-  const expected = beforeActive.filter(e => e.type !== "compaction" && !(e.type === "message" && isSystemMessage(e.message))).map(e => ({ entryId: e.id, messages: convertToLlm(sessionEntryToContextMessages(e).filter(m => m.role !== "compactionSummary" && m.role !== "system" && !(m.role === "assistant" && (m.stopReason === "error" || m.stopReason === "aborted")))) })).filter(e => e.messages.length > 0);
+export function checkFullExtraction(beforeActive: SessionEntry[], context: Context | undefined, cleanupEnabled = true): CheckResult {
+  const projected = project(beforeActive);
+  const expected = effectiveActive(projected, cleanupEnabled).map(e => ({ entryId: e.entryId, messages: convertToLlm(e.messages) })).filter(e => e.messages.length > 0);
   const records: Record<string, unknown>[] = [];
   for (const message of context?.messages ?? []) if (Array.isArray(message.content)) for (const block of message.content) if (block.type === "text") {
     records.push(...readSourceRecords(block.text));
@@ -553,8 +730,8 @@ export function checkFullExtraction(beforeActive: SessionEntry[], context: Conte
   // beforeActive is the selected native buildContextEntries() view. Its effective
   // M includes manual saves after the latest checkpoint (or before the first),
   // while older carriers replayed inside the kept range must not override it.
-  // Keep the independent B/K projection above; only M selection shares semantics.
-  const slots = project(beforeActive).memory.slots;
+  // B/K follows the same effective context-edit and saved-cleanup view as extraction.
+  const slots = projected.memory.slots;
   const memory = records.filter(r => r.source === "F/M");
   return { check: "actual full extraction contains all Pi-visible source messages and saved M without loss", status: expected.length > 0 && isDeepStrictEqual(actual, expected.map(e => ({ ...e, messages: e.messages.map(semanticEvidence) }))) && memory.length === 1 && isDeepStrictEqual(memory[0]?.M, slots) ? "PROVEN" : "UNPROVEN" };
 }

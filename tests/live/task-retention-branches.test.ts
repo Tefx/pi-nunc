@@ -21,9 +21,10 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const selection: Selection = { id: scoped ? "g3" : "g4", variant: variant!, config: { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 },
     nunc: { memory: { maxTokens: 600 }, extraction: { outputTokens: 2048, headTailChars: 40, ...(sourceLoss ? { toolResults: "auto" as const } : {}) }, ...(sourceLoss ? { budget: {
-      // Expanded memory tool descriptions put full extraction at about 10526 tokens and reduced at 9709.
-      // Subtracting the 1024 safety reserve gives 9976: reduced fits, full does not.
-      inputLimit: 11000 } } : {}) },
+      // Integrated full/reduced estimates are 10688/9958 (loss), 10701/9969 (unavailable).
+      // After the 1024 safety reserve, 10326 is near both midpoints, with >350 tokens
+      // on either side; a checkout path ~70 characters shorter shifts estimates by ~18.
+      inputLimit: 11350 } } : {}) },
     retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } };
   const scenario = (await loadScenario(repository, selection)).input;
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
@@ -89,12 +90,16 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
     if (scoped) {
       assert.equal(report.rollovers!.length, 2);
       assert.equal(report.setupChecks![1]!.status, "PROVEN", JSON.stringify(report.setupChecks));
+      assert(report.score!.checks.length > 0);
+      assert(report.score!.checks.every(c => c.status === "PROVEN"), JSON.stringify(report.score!.checks));
     } else if (sourceLoss) {
       const omission = report.rollovers!.flatMap(r => r.result!.observations.omissions);
       assert(omission.length > 0, "configured capacity actually omits source detail");
       for (const rollover of report.rollovers!) {
         const accounting = rollover.result!.observations.accounting;
         assert(accounting, "committed rollover reports actual extraction accounting");
+        console.log(variant, "extraction accounting", JSON.stringify({ fullExtractionTokens: accounting.fullExtractionTokens,
+          extractionTokens: accounting.extractionTokens, extractionInputLimit: accounting.extractionInputLimit }));
         assert(accounting.fullExtractionTokens > accounting.extractionInputLimit, "full source exceeds the actual extraction budget");
         assert(accounting.extractionTokens <= accounting.extractionInputLimit, "reduced source fits the actual extraction budget");
       }
@@ -113,6 +118,15 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
       const name = variant === "commit-conflict" ? "conflict-order" : "unconfirmed-no-replay";
       assert.equal(report.score!.actionReview.find(c => c.check === name)!.status, "PROVEN");
       assert.equal((await stat(report.sessionFile!)).mode & 0o200, 0o200);
+      if (variant === "commit-unconfirmed") {
+        for (const check of ["Task read and build failure/repair observed before continuation", "Two unique committed rollovers supplied generated M/K to subsequent requests"]) {
+          // The injected unconfirmed save leaves a new persisted branch without the old
+          // source/snapshots. Shared setup checks must expose that lost evidence.
+          assert.equal(report.setupChecks!.find(c => c.check === check)?.status, "UNPROVEN", JSON.stringify(report.setupChecks));
+        }
+        assert(!report.setupChecks!.some(c => c.check === "Confirmed turn-d memory edit precedes successful task work"));
+        assert.equal(report.score!.actionReview.filter(c => c.check === "unconfirmed-no-replay").length, 1);
+      }
     }
     assert.deepEqual(ledgerSummary(readLedger(join(stateRoot, "calls.jsonl"))).unreconciledCallIds, []);
   } finally { await f.close(); }

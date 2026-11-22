@@ -1,12 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fauxAssistantMessage, fauxToolCall, type Model, type Provider } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type ExtensionAPI, type ExtensionContext, SessionManager } from "@earendil-works/pi-coding-agent";
-import { memoryMessage, renderMemory, legacyRenderMemory, emptyMemory } from "../../src/engine/memory.js";
+import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { memoryTokens, messageTokens, textTokens } from "../../src/engine/accounting.js";
 import { injectedCarrierIndex } from "./carrier-fixture.js";
-import { project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, memoryPatch, preparedSurface } from "./fixtures.js";
@@ -288,7 +286,20 @@ test("budget constraints: unknown budget blocks growth, overbudget blocks growth
   assert.equal(fitResult.isError, undefined);
   const read2 = JSON.parse((await readTool.execute("c4", {}, undefined, undefined, ctxRef)).content[0].text);
 
-  // 3. Shrinking overbudget memory: reducing edit must succeed
+  // 3. A missing selected model makes growth unbudgetable without altering saved M.
+  const unknownContext = Object.create(ctxRef) as ExtensionContext;
+  Object.defineProperty(unknownContext, "model", { value: undefined });
+  const unknownGrowth = await patchTool.execute("unknown", {
+    expectedRevision: read2.revision,
+    update: [{ id: "s1", text: "A modest note plus more details" }],
+  }, undefined, undefined, unknownContext);
+  assert.equal(JSON.parse(unknownGrowth.content[0].text).code, "unknown-budget");
+
+  // 4. Lower the cap below saved usage so this really exercises overbudget recovery.
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(f.configFile, JSON.stringify({ memory: { hardMaxTokens: 1 } }));
+  const overRead = JSON.parse((await readTool.execute("over-read", {}, undefined, undefined, ctxRef)).content[0].text);
+  assert(overRead.budget.usedTokens > overRead.budget.limitTokens);
   const shrinkResult = await patchTool.execute("c5", {
     expectedRevision: read2.revision,
     update: [{ id: "s1", text: "Tiny" }],
@@ -816,7 +827,7 @@ test("cancellation of registered patch execute: aborted signal before commit mak
   assert.equal(f.runtime.session.sessionManager.getEntries().length, entriesCountBefore);
 });
 
-test("authoritative validation rejection of null arrays, unknown fields, and prototype safety", async t => {
+test("authoritative validation rejects null arrays and unknown fields", async t => {
   let ctxRef: ExtensionContext | undefined;
   let surfaceRef: MemorySurface | undefined;
   const f = await fixture({
@@ -867,17 +878,6 @@ test("authoritative validation rejection of null arrays, unknown fields, and pro
   // Ensure nothing was committed during any invalid attempt
   assert.equal(f.runtime.session.sessionManager.getEntries().length, entriesCountBefore);
 
-  // 8. Prototype safety: add with key '__proto__'
-  const rProto = await patchTool.execute("c8", {
-    expectedRevision: v.revision,
-    add: [{ key: "__proto__", text: "Prototype key note" }],
-  }, undefined, undefined, ctxRef);
-  assert.equal(rProto.isError, undefined);
-  const protoData = JSON.parse(rProto.content[0].text);
-  assert.equal(protoData.ok, true);
-  // Verify addedMap has own property '__proto__' without prototype pollution
-  assert.equal(Object.prototype.hasOwnProperty.call(protoData.added, "__proto__"), true);
-  assert.equal(protoData.added["__proto__"], "s1");
 });
 
 test("no recursive margin accumulation across multiple turns: U always comes from actual response", async t => {

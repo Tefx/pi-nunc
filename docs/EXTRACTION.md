@@ -59,7 +59,7 @@ B 在当前维护请求中仍可读，只有候选通过验证并提交后才从
 `nunc-task-retention.observation-support` 的候选提供以下离线可验证工具能力，整合和真实行为接受仍由后续步骤负责：
 1. `g4/task-file` 的三次原生工具边界机会、后续正常自动维护、`g4/active-edit` 的真实编辑观察、`g3/scoped-tasks` 的局部修订和任务退役，以及 g4 来源缺失、冲突和未确认保存分支。来源、切点、唯一持久化 snapshot、M/K 和续做调用按实际 ID 关联；次数与文本关键词不构成语义证明。
 2. 独立执行最终 metrics 产物，覆盖规定的 held-out 计算、三区 history、空 batch、null/零/负值、graph 与递归 trace。检查冻结输入/build 文件及执行期间的变更，运行候选测试；测试充分性、混合笔记保真和错误完成声明仍需独立语义判断。
-3. `comparison.targets.current.ref` 明确绑定修改前提交，要求准备目标的 HEAD 精确相同，并报告完整提交 ID。模板引用 controller 保留的 `refs/nunc/task-retention-pre-change`；省略 ref 的历史调用仍只表示 `70dacad`。三组报告实际配置、来源、预算和工具暴露；native 无 Nunc 工具，当前和候选支持隔离 on/off。
+3. `comparison.targets.current.ref` 明确绑定修改前提交，要求准备目标的 HEAD 精确相同，并报告完整提交 ID。The template binds immutable commit `1d4fc4a210b64f71871ab3f5c10093215a25990c`; historical invocations without a ref still select `70dacad`.三组报告实际配置、来源、预算和工具暴露；native 无 Nunc 工具，当前和候选支持隔离 on/off。
 4. 用实际 native serializer/transport 受控检查核对 main/maintenance 的 low 请求；错误、缺失或未应用的设置在 HTTP 前拒绝。`maintenance-thinking` 仅为隔离观察 override，不改生产维护默认值，也不新增语义模型调用。
 5. 非秘密有限预算模板为 `docs/task-retention-selection.json` 与 `docs/task-retention-comparison-selection.json`。执行和证据限制见 [LIVE](LIVE.md#complete-task-scenario-observation-and-metrics-oracle)；模板不授予真实调用权限。
 

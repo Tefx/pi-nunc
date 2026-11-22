@@ -37,9 +37,10 @@ export class NuncUi {
   currentWarning(): string | undefined { return this.warning; }
 
   noteDiagnostic(level: DiagnosticNote["level"], message: string): void {
+    if (level === "info") return;
     this.diagnostics.push({ level, message });
     if (this.diagnostics.length > DIAGNOSTIC_LIMIT) this.diagnostics = this.diagnostics.slice(-DIAGNOSTIC_LIMIT);
-    if (level !== "info") this.warning = message;
+    this.warning = message;
   }
 
   recover(): void {
@@ -66,12 +67,6 @@ export class NuncUi {
   }
 
   refresh(ctx = this.lastCtx): void {
-    try {
-      this.paint(ctx);
-    } catch { /* UI observation never owns save/maintenance. */ }
-  }
-
-  private paint(ctx = this.lastCtx): void {
     if (!ctx?.hasUI) return;
     let view: MemoryView | undefined;
     try {
@@ -91,7 +86,7 @@ export class NuncUi {
       budget: view?.budget ?? { tokens: 0, limit: null, unknown: true },
     });
     try { ctx.ui.setStatus("nunc", ctx.ui.theme.fg(footer.tone, footer.text)); } catch { /* Footer paint only. */ }
-    try { this.overlay?.sync(); } catch { /* Inspector paint only. */ }
+    this.overlay?.sync();
   }
 
   async openOverlay(ctx: ExtensionContext): Promise<void> {
@@ -106,16 +101,18 @@ export class NuncUi {
           ...(this.options.prepareSave ? { prepareSave: this.options.prepareSave } : {}),
           diagnostics: () => ({ notes: this.diagnostics.slice(), ...(this.warning ? { warning: this.warning } : {}) }),
           done: () => done(null),
-          onFailure: message => { try { this.noteDiagnostic("warning", message); } catch { /* Diagnostic only. */ } this.refresh(ctx); },
-          onSuccess: () => { try { this.recover(); } catch { /* Status only. */ } this.refresh(ctx); },
+          onFailure: message => { this.noteDiagnostic("warning", message); this.refresh(ctx); },
+          onWarning: message => { this.noteDiagnostic("warning", message); this.refresh(ctx); },
+          onSuccess: () => { this.recover(); this.refresh(ctx); },
         });
         this.overlay = overlay;
         return overlay;
       }, { overlay: true, overlayOptions: { width: "90%", maxHeight: "90%", anchor: "center", margin: 1 } });
     } finally {
+      this.overlay?.dispose();
       this.opening = false;
       this.overlay = undefined;
-      this.refresh(ctx);
+      if (this.lastCtx === ctx) this.refresh(ctx);
     }
   }
 }

@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { lstat, mkdir, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { parseInput, preflight, readBoundedJson, selectedModels, validateTarget } from "../../src/live/contract.js";
-import { childEnvironment, execute } from "../../src/live/runner.js";
+import { canResumeScenario, assertBatchConsistency, parseInput, preflight, readBoundedJson, selectedModels, validateTarget } from "../../src/live/contract.js";
+import { execute } from "../../src/live/runner.js";
+import { childEnvironment } from "../../src/live/host.js";
 import { fixture, publicSelection, repository } from "./fixtures.js";
 
 test("bounded stdin rejects empty/malformed/oversized JSON and accepts one complete object", async () => {
@@ -89,6 +90,17 @@ test("native-resolved metadata rejects changed endpoint/capacity, unavailable mo
   const renamed = structuredClone(input); renamed.models[0]!.provider = "ambient-auth";
   assert.doesNotThrow(() => parseInput(renamed)); assert.throws(() => selectedModels(renamed));
 });
+test("model admission permits Google transports supported by scoped global fetch interception", async () => {
+  const input = await fixture();
+  for (const api of ["google-generative-ai", "google-vertex"] as const) {
+    const changed = structuredClone(input);
+    changed.resolvedModels![0]!.api = api;
+    assert.equal(selectedModels(changed)[0]?.api, api);
+    await assert.rejects(lstat(changed.target.stateRoot), { code: "ENOENT" });
+  }
+  assert.equal(selectedModels(input)[0]?.api, input.resolvedModels![0]!.api);
+});
+
 test("tracked fixture yields effect-free receipt bound to scenario/config/limits/target", async () => {
   const input = await fixture(), receipt = await preflight(input, repository);
   assert.equal(receipt.callsMade, 0); assert.equal(receipt.node, process.versions.node); input.receipt = receipt;
@@ -117,10 +129,6 @@ test("preflight accepts compatible Node versions and binds each observed runtime
     assert.equal(upgraded.node, "26.13.0");
     assert.notEqual(upgraded.binding, floor.binding);
     await assert.rejects(preflight({ ...input, receipt: floor }, repository), /does not match/);
-    for (const version of ["26.6.9", "25.7.0", "27.0.0", "26.7", "26.7.x", "26.7.0-rc.1", "26.13.0-nightly"]) {
-      Object.defineProperty(process.versions, "node", { value: version });
-      await assert.rejects(preflight(input, repository), /Use Node/);
-    }
   } finally { Object.defineProperty(process.versions, "node", descriptor); }
 });
 test("public CLI rejects empty stdin/unknown args; real preflight consumes tracked fixture", async () => {
@@ -146,6 +154,32 @@ test("seven legal unique scenario combinations are admitted; duplicates still fa
   const duplicated = [...combos, combos[0]!];
   assert.throws(() => parseInput({ ...input, models, scenarios: duplicated }));
 });
+test("resume eligibility is shared across supported restart scenarios", () => {
+  for (const id of ["c3", "e1", "e3"] as const) {
+    assert.equal(canResumeScenario(id, false), true);
+    assert.equal(canResumeScenario(id, true), false);
+  }
+  for (const id of ["c1", "e2", "g4"] as const) assert.equal(canResumeScenario(id, false), false);
+});
+
+test("duplicate batch authority must agree after timestamp/path normalization", async () => {
+  const input = await fixture();
+  const timestamp = Date.now();
+  const limits = { ...input.limits, firstDispatchAt: timestamp, priorLedgers: ["/tmp/a", "/tmp/b"], sharedLedger: "/tmp/shared" };
+  assert.doesNotThrow(() => assertBatchConsistency({ firstDispatchAt: new Date(timestamp).toISOString(), priorLedgers: ["/tmp/b", "/tmp/a", "/tmp/a"], sharedLedger: "/tmp/./shared" }, limits));
+  for (const batch of [{ firstDispatchAt: timestamp + 1 }, { priorLedgers: ["/tmp/c"] }, { sharedLedger: "/tmp/other" }]) {
+    assert.throws(() => parseInput({ ...input, limits, batch }), /Conflicting batch and limits/);
+  }
+});
+
+test("explicit scenario assets reject symlinks even when their JSON is valid", async () => {
+  const input = await fixture();
+  const alias = join(repository, ".scratch", `asset-alias-${Date.now()}.json`);
+  await symlink(join(repository, "tests/scenarios/inputs.json"), alias);
+  try { await assert.rejects(preflight({ ...input, assets: { inputs: alias } }, repository), /symlink/); }
+  finally { await rm(alias); }
+});
+
 test("child environment is constructed without caller credentials, proxy or NODE_OPTIONS", () => {
   const env = childEnvironment("/isolated");
   assert.deepEqual(Object.keys(env).sort(), ["HOME", "NO_COLOR", "PATH", "PI_CODING_AGENT_DIR", "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME"].sort());

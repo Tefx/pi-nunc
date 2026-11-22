@@ -1,14 +1,18 @@
 import { join, resolve } from "node:path";
+import { resolveScenarioPath } from "./tool-path.js";
 import { pathToFileURL } from "node:url";
 import { buildSessionProjection, estimateTokens, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, Context } from "@earendil-works/pi-ai";
 import { requireValue, RunnerError, type RunConfig } from "./contract.js";
 import type { Control } from "./scenarios.js";
-import { calibrateRetention, type RetentionCalibration } from "./calibration.js";
+import { userText, textOf } from "./guidance.js";
+import { calibrateRetention } from "./calibration.js";
+import { projectMaintenanceCalibration, compactionCleanupScope, deriveSlotProvenance } from "../pi/projection.js";
 
 export interface PreparedBoundary {
   firstKeptEntryId: string;
   triggerCallId?: string;
+  deferred?: boolean;
   config: RunConfig;
   native: { keepRecentTokens: number; cut: NonNullable<ReturnType<typeof projectedNativeCut>>; contextTokens: number | null; trigger: number; contextTokensSource: "public turn_end getContextUsage().tokens" | "not a threshold observation" };
   calibration?: ReturnType<typeof calibrateRetention>;
@@ -66,8 +70,8 @@ export async function prepareBoundary(input: {
   let toolIndex: number | undefined;
   if (input.trigger) {
     const t = input.trigger;
-    const req = branch.findLast(e => e.type === "message" && e.message.role === "user" && (typeof e.message.content === "string" ? e.message.content : e.message.content.filter(b => b.type === "text").map(b => b.text).join("")) === t.requestText);
-    toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === t.callId && (b.name === control.trigger?.toolName || b.name === control.trigger?.alternateToolName) && typeof b.arguments.path === "string" && resolve(t.cwd, b.arguments.path.replace(/^@/, "")) === resolve(t.cwd, t.path)));
+    const req = branch.findLast(e => userText(e) === t.requestText);
+    toolIndex = branch.findIndex(e => e.type === "message" && e.message.role === "assistant" && e.message.content.some(b => b.type === "toolCall" && b.id === t.callId && (b.name === control.trigger?.toolName || b.name === control.trigger?.alternateToolName) && typeof b.arguments.path === "string" && resolveScenarioPath(t.cwd, b.arguments.path) === resolve(t.cwd, t.path)));
     requireValue(req && toolIndex > branch.indexOf(req), "PREPARATION", "Matching request/calling assistant not present");
     retired.add(req.id);
     const call = branch[toolIndex]!;
@@ -80,7 +84,7 @@ export async function prepareBoundary(input: {
     requireValue(siblings.length > 0 && new Set(siblings.map(c => c.id)).size === siblings.length && siblingResults.length === siblings.length && siblings.every(c => siblingResults.filter(e => e.type === "message" && e.message.role === "toolResult" && (e.message as any).toolCallId === c.id && (e.message as any).toolName === c.name).length === 1), "PREPARATION", "Incomplete persisted sibling tool batch");
     const result = siblingResults.find(e => e.type === "message" && e.message.role === "toolResult" && (e.message as any).toolCallId === t.callId);
     requireValue(result?.type === "message" && result.message.role === "toolResult" && !result.message.isError, "PREPARATION", "Required tool operation was unsuccessful");
-    if (result.message.toolName === "read") requireValue(result.message.content.filter(b => b.type === "text").map(b => b.text).join("").trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was incomplete");
+    if (result.message.toolName === "read") requireValue(textOf(result.message.content).trim() === t.fixtureContent.trim(), "PREPARATION", "Required read was incomplete");
     [call, ...siblingResults].forEach(e => retained.add(e.id));
     requireValue(t.contextTokens !== null && Number.isFinite(t.contextTokens), "PREPARATION", "Native threshold usage is unknown");
     const h = Math.min(model.contextWindow - config.compaction.reserveTokens, Math.ceil(t.contextTokens) - 1);
@@ -121,11 +125,11 @@ export async function prepareBoundary(input: {
   requireValue(chosen, "CALIBRATION", "No native legal cut retains the complete requested suffix and retires its source");
   config.compaction.keepRecentTokens = chosen.keep;
   const firstKeptEntryId = branch[chosen.cut.firstKeptEntryIndex]!.id;
-  const prepared: PreparedBoundary = { firstKeptEntryId, ...(input.trigger ? { triggerCallId: input.trigger.callId } : {}), config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens, contextTokensSource: input.trigger ? "public turn_end getContextUsage().tokens" : "not a threshold observation" } };
+  const prepared: PreparedBoundary = { firstKeptEntryId, ...((input.deferred || input.trigger?.deferred) ? { deferred: true } : {}), ...(input.trigger ? { triggerCallId: input.trigger.callId } : {}), config, native: { keepRecentTokens: chosen.keep, cut: chosen.cut, contextTokens: input.trigger?.contextTokens ?? null, trigger: model.contextWindow - config.compaction.reserveTokens, contextTokensSource: input.trigger ? "public turn_end getContextUsage().tokens" : "not a threshold observation" } };
   if (input.repository) {
     // Arithmetic comes from the actually loaded product target, including its policy and wire contract.
     const load = (file: string) => import(pathToFileURL(join(input.repository!, `dist/src/${file}.js`)).href);
-    const [pi, accounting, request, validation, engine, memory] = await Promise.all([load("pi/index"), load("engine/accounting"), load("engine/request"), load("engine/validation"), load("engine/index"), load("engine/memory")]);
+    const [pi, projection, accounting, request, validation, engine, memory] = await Promise.all([load("pi/index"), load("pi/projection"), load("engine/accounting"), load("engine/request"), load("engine/validation"), load("engine/index"), load("engine/memory")]);
     if (input.matched) {
       const ref = input.reference;
       const caps = ref?.outputCaps;
@@ -143,17 +147,23 @@ export async function prepareBoundary(input: {
       prepared.matching = { referenceSnapshot: ref?.snapshotId ?? "unobserved", requestedMemoryLimit: limit, requestedOutputCap: cap, limitations };
     }
     const projected = pi.project(input.active);
+    // Historical comparison targets predate saved tool-result cleanup.
+    const cleanup = projected.cleanup ?? [];
     // Calibration installs an explicit fraction. Resolve that policy now, so
     // default-only host floors/targets cannot leak into its placement forecast.
     const initial = pi.engineConfig(config.nunc, model, config.compaction);
     const calibrationConfig = pi.engineConfig({ ...config.nunc,
       rolling: { ...config.nunc.rolling, keepRecentFraction: initial.keepRecentFraction } }, model, config.compaction);
-    const source = { binding: { sessionId: "observer-arithmetic", leafId: branch.at(-1)!.id, generation: "prepared" }, model,
-      fixed: input.fixed, memory: projected.memory, active: projected.active,
+    const source = {
+      slotProvenance: deriveSlotProvenance(branch, projected.active, projected.memory),
+      cleanupCandidateScope: calibrationConfig.toolResultCleanup === false ? [] : compactionCleanupScope(projected.active, cleanup),
+      binding: { sessionId: "observer-arithmetic", leafId: branch.at(-1)!.id, generation: "prepared" }, model,
+      fixed: input.fixed, memory: projected.memory, active: projected.active, priorCleanup: calibrationConfig.toolResultCleanup === false ? [] : cleanup,
       eligibleKeptEntryIds: pi.eligibleStarts(branch, projected.active, projected.latestId),
+      ...(typeof projection.eligibleUsageEntryIds === "function" ? { eligibleUsageEntryIds: projection.eligibleUsageEntryIds(branch, projected.active) } : {}),
       config: calibrationConfig, policy: await engine.loadPolicy({ ...config.nunc, configFile: join(input.repository, "nunc-config.json") }), signal: input.signal };
     try {
-      prepared.calibration = calibrateRetention(source, control, turns, input.turnOrder,
+      prepared.calibration = calibrateRetention({ ...source, calibration: projectMaintenanceCalibration(branch, source) }, control, turns, input.turnOrder,
         input.config.retentionCalibration ?? { minFraction: Number.EPSILON, maxFraction: 1 - Number.EPSILON },
         { firstKeptEntryId, accounting, request, validation });
     } catch (error) {
@@ -168,78 +178,4 @@ export async function prepareBoundary(input: {
     config.nunc.rolling = { ...config.nunc.rolling, keepRecentFraction: prepared.calibration.selectedFraction };
   }
   return prepared;
-}
-
-export interface PreparationFeasibilityDiagnostic {
-  feasible: boolean;
-  status: "FEASIBLE" | "INSUFFICIENT_PREFIX" | "INSUFFICIENT_CONTEXT" | "CALIBRATION_FAILED" | "ILLEGAL_CUT" | "INVALID_PLACEMENT";
-  code?: string | undefined;
-  prepared?: PreparedBoundary | undefined;
-  accounting?: RetentionCalibration["accounting"] | undefined;
-  firstKeptEntryId?: string | undefined;
-  retiringPrefixTokens?: number | undefined;
-  explanation: string;
-}
-
-/** Readonly preparation diagnostic evaluating retiring prefix, legal cut and complete calibration feasibility via actual prepareBoundary. */
-export async function diagnosePreparationFeasibility(input: {
-  branch: SessionEntry[];
-  active?: SessionEntry[];
-  control: Control;
-  turns: Record<string, string[]>;
-  turnOrder: string[];
-  config: RunConfig;
-  model: Model<Api>;
-  fixed: { systemPrompt: string; tools: NonNullable<Context["tools"]> };
-  repository?: string;
-  trigger?: { callId: string; requestText: string; path: string; cwd: string; fixtureContent: string; contextTokens: number | null; allowDeferred?: boolean; deferred?: boolean };
-  signal?: AbortSignal;
-}): Promise<PreparationFeasibilityDiagnostic> {
-  const signal = input.signal ?? new AbortController().signal;
-  const active = input.active ?? input.branch.filter(e => e.type === "message" || e.type === "compaction");
-  try {
-    const prepared = await prepareBoundary({
-      ...input,
-      active,
-      signal,
-      allowDeferred: false,
-    });
-    const cutIdx = input.branch.findIndex(e => e.id === prepared.firstKeptEntryId);
-    const retiringPrefixTokens = cutIdx > 0
-      ? input.branch.slice(0, cutIdx).flatMap(sessionEntryToContextMessages).reduce((s, m) => s + estimateTokens(m), 0)
-      : 0;
-    return {
-      feasible: true,
-      status: "FEASIBLE",
-      prepared,
-      accounting: prepared.calibration?.accounting,
-      firstKeptEntryId: prepared.firstKeptEntryId,
-      retiringPrefixTokens,
-      explanation: `Compaction boundary is feasible: legal cut at ${prepared.firstKeptEntryId}, calibration succeeded with selected fraction ${prepared.calibration?.selectedFraction ?? "default"}.`,
-    };
-  } catch (error) {
-    if (error instanceof RunnerError) {
-      let status: PreparationFeasibilityDiagnostic["status"] = "CALIBRATION_FAILED";
-      if (error.code === "INSUFFICIENT_CONTEXT" || error.code === "INSUFFICIENT_CAPACITY") {
-        status = "INSUFFICIENT_PREFIX";
-      } else if (error.code === "PREPARATION") {
-        status = error.message.includes("cannot pay") || error.message.includes("costs")
-          ? "INSUFFICIENT_PREFIX"
-          : "INVALID_PLACEMENT";
-      } else if (error.code === "CALIBRATION") {
-        status = error.message.includes("No native legal cut") ? "ILLEGAL_CUT" : "CALIBRATION_FAILED";
-      }
-      return {
-        feasible: false,
-        status,
-        code: error.code,
-        explanation: error.message,
-      };
-    }
-    return {
-      feasible: false,
-      status: "CALIBRATION_FAILED",
-      explanation: error instanceof Error ? error.message : "Preparation feasibility failed",
-    };
-  }
 }

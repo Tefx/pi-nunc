@@ -2,8 +2,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { memoryTokens } from "../../src/engine/accounting.js";
-import { repository } from "./fixtures.js";
+import { repository, temporaryBaseline } from "./fixtures.js";
 import type { NuncConfig } from "../../src/pi/config.js";
+
+const baseline = await temporaryBaseline();
+export const comparisonBaseline = async () => baseline;
 
 /** Fixed hard-cap scenarios need a truly fitting required body on each SDK. */
 export function capacityRequiredText(tooLarge: boolean): string {
@@ -106,7 +109,7 @@ export async function compareCli(f: any, scenarios: unknown[], modes: string[], 
   const stateRoot = join(f.dir, `nunc-live-${tag}`);
   const selection = { target: { repository, stateRoot, cleanup: "remove" }, limits: { maxCalls: 300, maxTotalTokens: 24000000, maxDurationMs: 440000, maxOutputTokens: 20000, maxCostUsd: null }, observations: ["stock_rpc"], scenarios,
     overrides: [{ requirement: "controlled-extraction-observation", reason: "Named isolated loopback native scheduling and measured retention", config: { nunc: { memory: { maxTokens: 100, hardMaxTokens: 100 }, extraction: { outputTokens: 1024 } }, compaction: { enabled: automatic, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } } }, ...(testOverride ? [testOverride] : [])],
-    comparison: { modes, targets: { native: { repository }, current: { repository: join(repository, ".scratch/baseline-70dacad") }, candidate: { repository } } } };
+    comparison: { modes, targets: { native: { repository }, current: { repository: await comparisonBaseline() }, candidate: { repository } } } };
   const child = spawn(process.execPath, [join(repository, "scripts/compare-extraction.mjs")], { cwd: repository, env: f.env, stdio: ["pipe", "pipe", "pipe"] });
   let stdout = "", stderr = "";
   child.stdout.on("data", b => { stdout += b; if (stdout.length > 64000000) child.kill("SIGTERM"); });

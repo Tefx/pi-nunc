@@ -56,7 +56,7 @@ export function thousands(n: number): string {
 }
 
 export function firstLine(message: string, max = 160): string {
-  const line = message.split("\n")[0] ?? message;
+  const line = message.split(/[\r\n]+/)[0] ?? message;
   return line.length > max ? `${line.slice(0, max)}…` : line;
 }
 
@@ -143,7 +143,7 @@ export function maintenanceLines(last: LastMaintenanceContext | undefined): stri
       `Input estimate: full ${thousands(a.fullExtractionTokens)} → selected ${thousands(a.extractionTokens)}`,
       ...((a.calibratedUndercountTokens ?? 0) > 0 ? [`Maintenance calibration: +${thousands(a.calibratedUndercountTokens!)} → planned ${thousands(a.extractionPlanningTokens ?? a.extractionTokens + a.calibratedUndercountTokens!)} (prior maintenance usage; uncertain)`] : []),
       `Last-maintenance input plan: ${thousands(a.extractionInputLimit)}`,
-      `Maintenance output: planned reserve ${thousands(a.outputReserveTokens)} · serialized cap ${a.outputCapTokens === null ? "none" : thousands(a.outputCapTokens)} (reasoning + JSON included)${a.outputDesiredTokens !== undefined ? ` · desired ${thousands(a.outputDesiredTokens)} · limit ${a.outputLimitedBy}` : ""}`,
+      `Maintenance output: planned reserve ${thousands(a.outputReserveTokens)} · serialized cap ${a.outputCapTokens === null ? "none" : thousands(a.outputCapTokens)} (reasoning + JSON included)${a.outputDesiredTokens !== undefined ? ` · desired ${thousands(a.outputDesiredTokens)}${a.outputLimitedBy !== undefined ? ` · limit ${a.outputLimitedBy}` : ""}` : ""}`,
       `Normal-trigger headroom: ${a.normalHeadroomSufficient ? "sufficient" : "insufficient; suggest reserveTokens ≥ " + thousands(a.suggestedReserveTokens)}`,
       `Over-plan records: input ${a.inputExceededPlan ? "yes" : "no"} / output ${a.outputExceededPlan ? "yes" : "no"}`,
     );
@@ -171,15 +171,24 @@ export function lastMainLines(last: LastMainContext | undefined): string[] {
   if (last.resolution) lines.push(`Resolution: ${last.resolution}${last.resolutionDetail ? ` (${last.resolutionDetail})` : ""}`);
   if (last.estimator) lines.push(`Estimator: ${last.estimator}`);
   if (last.layout.memoryIndex !== undefined) lines.push(`Memory request index: ${last.layout.memoryIndex}`);
-  else if ((last.layout.memory?.slots.length ?? 0) > 0) lines.push("Memory request index: unknown");
+  else if ((last.layout.memory?.slots.length ?? 0) > 0 || (last.layout.memory?.tokens ?? 0) > 0) lines.push("Memory request index: unknown");
   if (last.receiptBreakdown) {
     const b = last.receiptBreakdown;
     const oldMText = b.retainedOldMMargin ? ` (includes retained old M estimate ~${thousands(b.oldMTokensEstimate ?? 0)})` : "";
-    lines.push(`Receipt breakdown: observed U ${thousands(b.observedU)}${oldMText} + delta R ${thousands(b.deltaRTokens)} + current M ${thousands(b.currentMTokens)}`);
+    lines.push(`Receipt breakdown: observed U ${thousands(b.observedU)}${oldMText} + delta R ${thousands(b.deltaRTokens)} + additional M ${thousands(b.additionalMTokens)} (current M occupancy ${thousands(b.currentMTokens)})`);
   }
   if (last.inputTokens !== undefined) {
-    lines.push(`Input estimate: ${thousands(last.inputTokens)}${last.inputLimit !== undefined ? ` / enforced ${thousands(last.inputLimit)}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${thousands(last.plannedInputLimit)}` : ""}`);
+    lines.push(`Input estimate: ${thousands(last.inputTokens)}${last.inputLimit !== undefined ? ` / ${last.inputLimitEnforced === false ? "advisory" : "enforced"} ${thousands(last.inputLimit)}` : ""}${last.plannedInputLimit !== undefined ? ` · planned ${thousands(last.plannedInputLimit)}` : ""}`);
   }
+  lines.push(
+    ...(last.inputExceededPlan ? ["input exceeded plan (advisory if delegated)"] : []),
+    ...(last.outputTokens === undefined ? [] : [`output ${last.outputTokens}`]),
+    ...(last.outputReserveTokens === undefined ? [] : [`output reserve ${last.outputReserveTokens}`]),
+    ...(last.outputCapTokens === undefined ? [] : [`output cap ${last.outputCapTokens === null ? "none" : thousands(last.outputCapTokens)}`]),
+    ...(last.initialMetadataTokens === undefined ? [] : [`initialMetadataTokens ${last.initialMetadataTokens}`]),
+    last.layout.unavailable ? "layout unavailable (unknown)" : `${last.layout.messageCount} messages / ${last.layout.blockCount} blocks · heuristic ${last.layout.heuristic.tokens ?? "unknown"}${last.layout.heuristic.unknown ? " + unknown" : " tok"}`,
+    last.outcome === "reject" ? "Local reject is not a send." : "Delegate is not HTTP success.",
+  );
   return lines;
 }
 

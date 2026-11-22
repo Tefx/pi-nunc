@@ -347,6 +347,13 @@ test("stock loader, native session append, public read/patch, active projection 
   await settings(false);
   const off = JSON.parse((await readTool.execute("disabled", {}, undefined, undefined, ctx)).content[0].text);
   assert.equal(off.cleanupCandidates, undefined);
+  const disabledPatch = await patchTool.execute("disabled-save", { expectedRevision: off.revision,
+    update: [{ id: off.slots[0].id, text: "Legal memory update while cleanup is disabled." }],
+    toolResultEdits: [{ ...second, action: "omit" }] }, undefined, undefined, ctx);
+  assert.equal(disabledPatch.isError, undefined);
+  const disabledResult = JSON.parse(disabledPatch.content[0].text);
+  assert.deepEqual(disabledResult.toolResultCleanup.applied, []);
+  assert.equal(disabledResult.toolResultCleanup.skipped[0]?.reason, "not_in_candidate_scope");
   f.respond(() => fauxAssistantMessage("Disabled view"));
   await f.runtime.session.prompt("Continue with cleanup disabled");
   assert.equal(memorySurface(api!)?.read(ctx!).cleanup?.enabled, false);

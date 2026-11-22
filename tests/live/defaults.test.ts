@@ -19,6 +19,14 @@ test("public stdin resolves synthetic native defaults and current shell selectio
   const env = childEnvironment(profile);
   const run = (value: unknown, extra: NodeJS.ProcessEnv = {}, flags = ["--preflight"]) => spawnSync(process.execPath, [join(repository, "scripts/verify-live.mjs"), ...flags], { cwd: repository, env: { ...env, ...extra }, input: JSON.stringify(value), encoding: "utf8", timeout: 60000 });
   try {
+    const batch = { firstDispatchAt: Date.now() - 1000, deadline: Date.now() + 60000, priorLedgers: [], sharedLedger: join(profile, "shared.jsonl") };
+    const batched = run({ ...selection, batch });
+    assert.equal(batched.status, 0, batched.stderr);
+    const resolvedBatch = spawnSync(process.execPath, ["--input-type=module", "-e", 'import { resolveInput } from "./dist/src/live/defaults.js"; let text = ""; for await (const chunk of process.stdin) text += chunk; const input = await resolveInput(JSON.parse(text)); process.stdout.write(JSON.stringify(input.batch));'], { cwd: repository, env, input: JSON.stringify({ ...selection, batch }), encoding: "utf8", timeout: 60000 });
+    assert.equal(resolvedBatch.status, 0, resolvedBatch.stderr);
+    assert.deepEqual(JSON.parse(resolvedBatch.stdout), batch);
+    assert.notEqual(run({ ...selection, batch: { unknown: true } }).status, 0);
+    assert.notEqual(run({ ...selection, batch: { firstDispatchAt: "invalid" } }).status, 0);
     const defaultRun = run(selection); assert.equal(defaultRun.status, 0, defaultRun.stderr);
     const defaults = JSON.parse(defaultRun.stdout); assert.equal(defaults.models[0].id, "gpt-6-astra"); assert.equal(defaults.models[0].maxTokens, 128000);
     await writeFile(settingsFile, JSON.stringify({ ...settings, defaultThinkingLevel: undefined, compaction: { ...settings.compaction, keepRecentTokens: 0 } }));

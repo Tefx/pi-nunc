@@ -1,21 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
-import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeContext, type Context, type Model, type Provider } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, InMemoryCredentialStore, normalizeContext, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { estimateTextAndImageContentTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { bindHostSettings, contextSurface, type MemorySurface } from "pi-nunc/pi";
+import { bindHostSettings, contextSurface } from "pi-nunc/pi";
 import { emptyMemory } from "../../src/engine/index.js";
 import { historyPlanningEstimate, mainContext, memoryTokens, messageTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { Admission, type AdmissionObservation } from "../../src/pi/admission.js";
 import { createContextSurface } from "../../src/pi/context.js";
 import { engineConfig } from "../../src/pi/config.js";
-import { applyLastUserTextAppend } from "../../src/pi/payload.js";
+import { applyLastUserTextAppend, createAppendExtension, SYNTHETIC_LAST_USER_APPEND, SYNTHETIC_LAST_USER_APPEND_B } from "../../src/pi/payload.js";
 import { project } from "../../src/pi/projection.js";
-import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
-import { SYNTHETIC_LAST_USER_APPEND_B } from "../../src/live/append-b.js";
+import { buildContextNodes } from "../../src/ui/context-tree.js";
 import { answer } from "../engine/fixtures.js";
 import { fixture, memoryPatch, surfacePort as port, preparedSurface as prepared, responsesSSE } from "./fixtures.js";
 
@@ -23,6 +22,33 @@ const LONG = "Exact body 中文 🦉\n" + "z".repeat(4000);
 const HOOK_A = "HOOK_A_TEMP_INJECTION";
 const HOOK_B = "HOOK_B_TEMP_INJECTION";
 const QUEUED = "queued-D-not-in-layout";
+
+test("maintenance cut ignores system-policy JSON examples and records only user source blocks", async t => {
+  const h = await prepared(t);
+  h.f.seed();
+  const active = project(h.f.runtime.session.sessionManager.buildContextEntries()).active;
+  h.f.respond(memoryPatch);
+  await h.f.runtime.session.compact();
+  const result = h.f.events[0]!.result;
+  assert(result.ok);
+  const model = h.f.faux.getModel();
+  const surface = createContextSurface({ pi: h.pi(), memory: h.memory(), fixed: () => ({ systemPrompt: "", tools: [] }),
+    config: () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }) });
+  surface.beginMaintenance({ ctx: h.ctx(), model, fixed: { systemPrompt: "", tools: [] }, memory: emptyMemory(), active, reason: "manual" });
+  const kept = result.candidate.kept.map(entry => entry.entryId);
+  const sources = [...result.candidate.retiredEntryIds.map(entryId => ({ region: "B", entryId })), ...kept.map(entryId => ({ region: "K", entryId }))];
+  const context = normalizeContext({ messages: [
+    { role: "system", content: JSON.stringify({ region: "K", entryId: "policy-example" }), timestamp: 0 },
+    { role: "user", content: sources.map(source => JSON.stringify(source)).join("\n"), timestamp: 1 },
+  ] });
+  surface.observeAdmission({ ctx: h.ctx(), model, context, observation: { kind: "maintenance", outcome: "delegate" } });
+  surface.noteEngine(result); surface.noteNative("saved");
+  const view = surface.read(h.ctx()).lastMaintenance!;
+  assert.deepEqual(view.cut?.keptEntryIds, kept);
+  assert.equal(view.cut?.firstKeptEntryId, kept[0]);
+  assert.deepEqual(view.after?.keptEntryIds, kept);
+  assert(!JSON.stringify(view.cut).includes("policy-example"));
+});
 
 
 
@@ -127,6 +153,27 @@ test("context layout links each occurrence of repeated tool call IDs to its own 
   assert.equal(res2.blocks.find(b => b.type === "text")?.text, "beta body");
 });
 
+test("terminal Context tree retains known partial totals and every parallel tool association", async t => {
+  const { f, context, ctx } = await prepared(t);
+  const manager = f.runtime.session.sessionManager;
+  manager.appendMessage({ role: "user", content: "Known history ".repeat(100), timestamp: 1 });
+  manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse", content: [
+    { type: "thinking", thinking: "", thinkingSignature: "opaque" },
+    { type: "toolCall", id: "alpha", name: "read", arguments: { path: "alpha" } },
+    { type: "toolCall", id: "beta", name: "read", arguments: { path: "beta" } },
+  ] });
+  for (const id of ["alpha", "beta"]) manager.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", content: [{ type: "text", text: id }], isError: false, timestamp: 2 });
+  const view = context().read(ctx());
+  const knownSum = view.current.layout.messages.reduce((n, row) => n + (row.tokens ?? 0), 0);
+  assert(view.current.layout.messages.some(row => row.unknown));
+  const nodes = buildContextNodes(view);
+  assert(nodes.get("scope:current")!.preview.includes(`${knownSum.toLocaleString("en-US")} + unknown`));
+  const call = view.current.layout.messages.find(row => row.blocks.some(b => b.type === "toolCall"))!;
+  const preview = nodes.get(`current:R:${call.order}`)!.preview;
+  assert.match(preview, /tool read alpha call@/);
+  assert.match(preview, /tool read beta call@/);
+});
+
 test("manual M revision matches the memory surface; model change keeps last-main labels", async t => {
   const admissions: AdmissionObservation[] = [];
   const { f, memory, context, ctx } = await prepared(t, {}, admissions);
@@ -179,6 +226,7 @@ test("planned and enforced limits stay distinct; plan overrun can still delegate
   const last = context().read(ctx()).lastMain;
   assert.equal(last?.outcome, "delegate");
   assert.equal(last?.inputExceededPlan, true);
+  assert.equal(last?.inputLimitEnforced, false);
   assert(last?.inputTokens !== undefined && last.inputLimit !== undefined && last.inputTokens <= last.inputLimit);
   assert.equal(f.faux.state.callCount > 0, true);
 });
@@ -190,6 +238,7 @@ test("rejected requests are not sent; candidate is not saved; fail/cancel have n
   await f.runtime.session.prompt("Stay within the current model");
   const rejected = context().read(ctx()).lastMain;
   assert.equal(rejected?.outcome, "reject");
+  assert.equal(rejected?.inputLimitEnforced, true);
   assert.equal(f.faux.state.callCount, 0);
   const { f: g, context: context2, ctx: ctx2 } = await prepared(t);
   g.seed(); g.respond(memoryPatch);
@@ -213,8 +262,9 @@ test("rejected requests are not sent; candidate is not saved; fail/cancel have n
   assert.equal(pending.lastMaintenance?.native, "pending");
   assert.equal(pending.lastMaintenance?.engine, undefined);
   assert.equal(pending.lastMaintenance?.after, undefined);
-  assert(pending.lastMaintenance?.cut?.firstKeptEntryId);
-  assert.equal(pending.lastMaintenance.cut.retiredEntryIds.length > 0, true);
+  // Faux has no serialized-payload callback: a blocked responder has no
+  // authorized send observation yet. Never invent a cut from preflight.
+  assert.equal(pending.lastMaintenance?.cut, undefined);
   g.runtime.session.abortCompaction();
   release.resolve();
   await Promise.allSettled([compacting]);
@@ -300,14 +350,8 @@ test("native serializer last-user appends are observed without diagnostic bodies
     config: { budget: { inputLimit: 8000 } },
     extras: [
       ...captured.extras,
-      { name: "append", factory(pi) { pi.on("before_provider_request", event => {
-        const first = applyLastUserTextAppend(event.payload, SYNTHETIC_LAST_USER_APPEND);
-        return first.changed ? first.payload : undefined;
-      }); } },
-      { name: "append-b", factory(pi) { pi.on("before_provider_request", event => {
-        const second = applyLastUserTextAppend(event.payload, SYNTHETIC_LAST_USER_APPEND_B);
-        return second.changed ? second.payload : undefined;
-      }); } },
+      { name: "append", factory: createAppendExtension(SYNTHETIC_LAST_USER_APPEND) },
+      { name: "append-b", factory: createAppendExtension(SYNTHETIC_LAST_USER_APPEND_B) },
     ],
   });
   t.after(() => f.close());
@@ -531,49 +575,7 @@ test("append plus metadata exposes text tokens separately from charged overhead;
   const accounted = (last.layout.heuristic.tokens ?? 0) + (last.initialMetadataTokens ?? 0) + (last.payload?.chargedGrowthTokens ?? 0);
   assert.equal(last.inputTokens, accounted);
 
-  const faux = fauxProvider({ api: "openai-completions", provider: "synthetic-review", models: [{ id: "synthetic", contextWindow: 60000, maxTokens: 8192 }] });
-  faux.setResponses(Array.from({ length: 4 }, () => fauxAssistantMessage("synthetic answer")));
-  const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
-  const registry = new ModelRegistry(runtime);
-  registry.registerProvider(faux.provider);
-  const model = faux.getModel();
-  const signal = new AbortController().signal;
-  const session = { getSessionId: () => "synthetic-session", getLeafId: () => "leaf", getSessionFile: () => "/tmp/nunc-context-meta.jsonl", getBranch: () => [{ id: "leaf" }], buildContextEntries: () => [] };
-  const ctx = { model, signal, sessionManager: session, modelRegistry: registry, getSystemPrompt: () => "Perform the current task." } as unknown as ExtensionContext;
-  const bind: Array<(surface: unknown) => void> = [];
-  const memory: MemorySurface = {
-    read: () => ({ revision: "r", memory: emptyMemory(), status: { occupied: false, unconfirmed: false }, budget: { tokens: 0, limit: 100, unknown: false, overLimit: false }, contextLayout: { slotCount: 0, activeEntries: 0 } }),
-    replace: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
-    delete: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
-    patch: () => ({ ok: false, code: "invalid", message: "no", view: memory.read(ctx) }),
-  };
-  const host = {
-    events: {
-      on(name: string, fn: (reply: unknown) => void) { if (name === "nunc:context-bind") bind.push(fn); },
-      emit(name: string, value: unknown) {
-        if (name === "nunc:context-bind" && typeof value === "function") value(createContextSurface({ pi: host as never, memory, fixed: () => ({ systemPrompt: "Perform the current task.", tools: [] }), config: () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }) }));
-      },
-    },
-    registerProvider(...args: Parameters<ModelRegistry["registerProvider"]>) { registry.registerProvider(...args); },
-  };
-  const surface = createContextSurface({
-    pi: host as never,
-    memory,
-    fixed: () => ({ systemPrompt: "Perform the current task.", tools: [] }),
-    config: () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }),
-  });
-  const admission = new Admission(host as never, () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }), event => surface.observeAdmission(event));
-  admission.ensure(ctx);
-  const provider = registry.getProvider(model.provider);
-  assert(provider);
-  const metadata = { user_id: "m".repeat(2000) };
-  const expected = textTokens(JSON.stringify(metadata));
-  const sent = await provider.streamSimple(model, normalizeContext({ messages: [{ role: "user", content: "short synthetic input", timestamp: 1 }] }), { signal, sessionId: "synthetic-session", metadata }).result();
-  assert.equal(sent.stopReason, "stop", sent.errorMessage ?? "");
-  const observed = surface.read(ctx).lastMain;
-  assert.equal(observed?.outcome, "delegate");
-  assert.equal(observed?.initialMetadataTokens, expected);
-  assert(observed?.inputTokens !== undefined && observed.inputTokens >= expected);
+  assert.equal(last.initialMetadataTokens, textTokens(JSON.stringify({})));
 });
 
 test("current UI separates reply planning from visible/admission counts and invalidates output applicability on native edits", async t => {
@@ -595,10 +597,19 @@ test("current UI separates reply planning from visible/admission counts and inva
   assert.equal(historyPlanningEstimate(project(manager.buildContextEntries()).active, model).tokens, row.planning?.tokens);
   manager.appendContextEdit(id, { content: [{ type: "text", text: "Replacement no longer matches generated output" }] });
   const projected = project(manager.buildContextEntries());
-  assert.equal(projected.active.find(entry => entry.entryId === id)?.outputUsageUnavailable, true);
+  const replacement = projected.active.find(entry => entry.entryId === id)!;
+  assert.equal(replacement.outputUsageUnavailable, true);
+  assert.deepEqual(replacement.messages[0]!.content, [{ type: "text", text: "Replacement no longer matches generated output" }]);
+  assert(!JSON.stringify(replacement.messages).includes("thinkingSignature"));
   const edited = context().read({ ...ctx(), model });
   const fallback = edited.current.layout.messages.find(row => row.role === "assistant")!.planning!;
   assert.equal(fallback.additionalTokens, 0);
   assert.equal(fallback.basis, "visible-heuristic");
-  assert(fallback.partial && fallback.uncertainties.includes("replay-mapping-unknown"));
+  assert(!fallback.uncertainties.includes("replay-mapping-unknown"));
+  manager.appendContextEdit(id, { content: message.content });
+  const stillSigned = context().read({ ...ctx(), model }).current.layout.messages.find(row => row.role === "assistant")!.planning!;
+  assert.equal(project(manager.buildContextEntries()).active.find(entry => entry.entryId === id)?.outputUsageUnavailable, true);
+  assert.equal(stillSigned.additionalTokens, 0);
+  assert.equal(stillSigned.basis, "visible-heuristic");
+  assert(stillSigned.partial && stillSigned.uncertainties.includes("replay-mapping-unknown"));
 });

@@ -1,16 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fauxProvider, normalizeContext, type Context, type Provider, type TranscriptContext } from "@earendil-works/pi-ai";
+import { fauxProvider, normalizeContext, type Provider, type TranscriptContext } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createReadToolDefinition, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
 import observer from "../../src/live/observer.js";
-import { openHost } from "../../src/live/host.js";
-import { NativeRpcError } from "../../src/live/native-no-work.js";
-import { execute } from "../../src/live/runner.js";
+import { openHost, NativeRpcError } from "../../src/live/host.js";
+import { execute, launchWorker } from "../../src/live/runner.js";
 import { fixture, repository } from "./fixtures.js";
 
 const SECRET = "fake-secret-s3ntinel";
@@ -43,6 +44,29 @@ function fetchProvider(base: Provider, afterFetch?: (output: AssistantMessageEve
   };
 }
 
+test("autonomous task compaction exemption starts only after every scheduled boundary is exhausted", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  const previous = process.env.NUNC_LIVE_OBSERVER;
+  try {
+    for (const index of [0, 1, 2]) {
+      const source = join(input.target.stateRoot, `binding-${index}.json`);
+      const events = join(input.target.stateRoot, `events-${index}.jsonl`);
+      await writeFile(events, "");
+      await writeFile(source, JSON.stringify({ input, selection: { id: "g4", variant: "task-file" }, models: input.resolvedModels, deadline: Date.now() + 10000, events, ledger: join(input.target.stateRoot, "calls.jsonl"), boundaries: [{}, {}] }));
+      process.env.NUNC_LIVE_OBSERVER = source;
+      const handlers = new Map<string, (...args: any[]) => any>();
+      const commands = new Map<string, (...args: any[]) => any>();
+      observer({ on: (name: string, handler: (...args: any[]) => any) => handlers.set(name, handler), events: { on() {} }, registerCommand: (name: string, value: { handler: (...args: any[]) => any }) => commands.set(name, value.handler) } as unknown as ExtensionAPI);
+      for (let i = 0; i < index; i++) await commands.get("nunc-observer-release")!(JSON.stringify({ restored: true }));
+      const result = handlers.get("session_before_compact")!({ branchEntries: [], preparation: { firstKeptEntryId: "unarmed", fileOps: {} } }, { sessionManager: { buildContextEntries: () => [] } });
+      assert.deepEqual(result, index < 2 ? { cancel: true } : undefined);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.NUNC_LIVE_OBSERVER; else process.env.NUNC_LIVE_OBSERVER = previous;
+    await rm(input.target.stateRoot, { recursive: true, force: true });
+  }
+});
+
 test("native OpenAI adapter keeps HTTP 429 facts and drops secrets from the consumed terminal", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
@@ -51,7 +75,7 @@ test("native OpenAI adapter keeps HTTP 429 facts and drops secrets from the cons
     let requests = 0;
     const transport: typeof fetch = async (resource, init) => {
       requests++;
-      const request = new Request(resource, init);
+      new Request(resource, init);
       return new Response(JSON.stringify({ error: { message: SECRET, type: "rate_limit_error" } }), { status: 429, headers: { "content-type": "application/json", "x-secret": SECRET, "retry-after": "0" } });
     };
     const provider = boundedProvider(base, [model], ledger, { fetch: transport });
@@ -86,11 +110,14 @@ test("native OpenAI adapter distinguishes network failure from 200 protocol fail
       assert.equal(response.stopReason, "error");
       leak(response); leak(readLedger(path));
       if (kind === "network") {
-        assert.match(response.errorMessage ?? "", /NETWORK|transport=started|errno=ECONNREFUSED/);
+        assert.match(response.errorMessage ?? "", /NETWORK/);
+        assert.match(response.errorMessage ?? "", /transport=started/);
+        assert.match(response.errorMessage ?? "", /errno=ECONNREFUSED/);
         assert.doesNotMatch(response.errorMessage ?? "", /status=/);
       } else {
         assert.match(response.errorMessage ?? "", /status=200/);
-        assert.match(response.errorMessage ?? "", /PROVIDER_PROTOCOL|protocol/);
+        assert.match(response.errorMessage ?? "", /PROVIDER_PROTOCOL/);
+        assert.match(response.errorMessage ?? "", /stage=protocol/);
       }
       const terminal = readLedger(path).find(r => r.kind === "terminal");
       assert(terminal && terminal.kind === "terminal");
@@ -109,7 +136,9 @@ test("local payload rejection terminals without transport; post-send gap stays u
     const local = boundedProvider(base, [model], localLedger, { fetch: async () => { localSends++; return new Response("no"); } });
     const blocked = await local.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key", onPayload: () => ({ stream: false, model: model.id }) }).result();
     assert.equal(blocked.stopReason, "error"); assert.equal(localSends, 0);
-    assert.match(blocked.errorMessage ?? "", /PAYLOAD/); assert.match(blocked.errorMessage ?? "", /transport=not-started|stage=payload/);
+    assert.match(blocked.errorMessage ?? "", /PAYLOAD/);
+    assert.match(blocked.errorMessage ?? "", /transport=not-observed/);
+    assert.match(blocked.errorMessage ?? "", /stage=payload/);
     const localRecords = readLedger(localPath);
     assert.equal(localRecords.filter(r => r.kind === "reserve").length, 1);
     assert.equal(localRecords.filter(r => r.kind === "terminal").length, 1);
@@ -291,12 +320,94 @@ test("host malformed RPC, output limit and observer drain keep distinct failure 
           const events = (await readdir(caseRoot)).find(name => name.startsWith("events-")); assert(events);
           await writeFile(join(caseRoot, events), "{not-an-observer-record\n");
           await new Promise(resolve => setTimeout(resolve, 80));
-          await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER" || error.code === "HOST_EXIT");
+          await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER");
           await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER");
         } finally { await host.close(); }
       } else {
         await assert.rejects(openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: input.resolvedModels!, deadline: Date.now() + (mode === "overflow" ? 20000 : 8000), signal: new AbortController().signal, testCommand: command }), (error: { code?: string }) => error.code === (mode === "malformed" ? "HOST_RPC" : "OUTPUT"));
       }
     } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+  }
+});
+
+test("native RPC decodes split multibyte UTF-8 and shutdown kills descendants after leader exit", { timeout: 15000 }, async () => {
+  for (const mode of ["utf8", "descendant", "descendant-closed"]) {
+    const { input, caseRoot } = await hostFixture();
+    let host: Awaited<ReturnType<typeof openHost>> | undefined;
+    let pid: number | undefined;
+    try {
+      host = await openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: input.resolvedModels!, deadline: Date.now() + 10000, signal: new AbortController().signal, testCommand: { command: process.execPath, args: [hostChild, mode] } });
+      if (mode === "utf8") assert.equal(host.sessionId, "fixture-汉字-🧠");
+      else pid = Number(await readFile(join(caseRoot, "task/descendant.pid"), "utf8"));
+      await host.close(); host = undefined;
+      if (pid) await assertDead(pid);
+    } finally {
+      if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
+      await host?.close();
+      await rm(input.target.stateRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+async function assertDead(pid: number): Promise<void> {
+  const deadline = Date.now() + 1000;
+  while (true) {
+    const state = spawnSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+    assert.equal(state.error, undefined);
+    if (state.status === 1) { assert.equal(state.stdout.trim(), ""); return; }
+    assert.equal(state.status, 0);
+    if (/^Z/.test(state.stdout.trim())) return;
+    assert(Date.now() < deadline, "process must be absent or a dead zombie, never running");
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+
+test("worker normal leader exit settles inherited and closed-pipe descendants without a deadline stop", { timeout: 15000 }, async () => {
+  for (const mode of ["worker-descendant", "worker-descendant-closed"]) {
+    const input = await fixture(); await mkdir(input.target.stateRoot);
+    input.overrides = [{ requirement: mode }];
+    let pid: number | undefined;
+    try {
+      const result = await launchWorker(hostChild, { input, scenarioIndex: 0, deadline: Date.now() + 10000, resume: false }, new AbortController().signal);
+      pid = Number(await readFile(join(input.target.stateRoot, "descendant.pid"), "utf8"));
+      assert.equal(result.exitCode, 0); assert.equal(result.timedOut, false);
+      await assertDead(pid);
+    } finally {
+      if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
+      await rm(input.target.stateRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+test("PTY cleanup settles inherited-pipe and normal closed-pipe leader exits", { timeout: 15000 }, async () => {
+  for (const mode of ["pty-descendant", "pty-descendant-closed"]) {
+    const input = await fixture(); await mkdir(input.target.stateRoot);
+    const driver = spawn("python3", [join(repository, "scripts/pty-driver.py"), process.execPath, hostChild, mode], { cwd: input.target.stateRoot, stdio: ["pipe", "ignore", "pipe"] });
+    const closed = once(driver, "close");
+    const timeout = setTimeout(() => driver.kill("SIGKILL"), 10000);
+    let pid: number | undefined;
+    try {
+      const deadline = Date.now() + 5000;
+      while (true) {
+        try { pid = Number(await readFile(join(input.target.stateRoot, "descendant.pid"), "utf8")); break; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT" || Date.now() >= deadline) throw error; }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      // An inherited PTY writer prevents EOF; exercise explicit termination too.
+      // The closed-pipe arm must terminate solely from the normal leader exit.
+      if (mode === "pty-descendant") {
+        const leaderPid = Number(await readFile(join(input.target.stateRoot, "leader.pid"), "utf8"));
+        await assertDead(leaderPid);
+        driver.kill("SIGTERM");
+      }
+      const [code, signal] = await closed;
+      assert.equal(signal, null); assert.equal(code, 0);
+      await assertDead(pid);
+    } finally {
+      clearTimeout(timeout); driver.kill("SIGKILL"); driver.stdin.destroy();
+      if (pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
+      await closed;
+      await rm(input.target.stateRoot, { recursive: true, force: true });
+    }
   }
 });

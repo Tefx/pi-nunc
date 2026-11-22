@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { loadScenario, scoreArtifacts, seedScenario, type CheckResult } from "../../src/live/scenarios.js";
 import { scoreGuidance, TOOLS_CHECK, SPLIT_CHECK, type GuidanceAction } from "../../src/live/guidance.js";
 import { repository } from "./fixtures.js";
-import { checkRequiredRetention } from "../../src/live/capacity-observation.js";
+import { checkRequiredRetention } from "../../src/live/scenarios.js";
 import type { Selection } from "../../src/live/contract.js";
 
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
@@ -46,7 +46,7 @@ test("complete-task variants load and seed only task files, with independent obs
       // A seeded workspace has no completed artifact. It cannot pass merely
       // because scenario data is valid or a future turn asks for completion.
       const result = await scoreArtifacts(cwd, observer, exposed);
-      for (const [index, check] of result.checks.entries()) assert.equal(check.status, observer.artifactChecks[index]!.operator === "semantic" ? "UNPROVEN" : "DISPROVEN");
+      for (const [index, check] of result.checks.entries()) assert.equal(check.status, "DISPROVEN", `Missing artifact ${observer.artifactChecks[index]!.path} cannot supply semantic evidence`);
       assert(result.actionReview.every(check => check.status === "UNPROVEN"));
       await writeFile(join(cwd, "handoff.json"), '{"complete":true,"verified":true}');
       const claimed = await scoreArtifacts(cwd, observer, exposed, { actions: [terminal("d")], fixtures: Object.fromEntries(Object.entries(input.files).filter(([name]) => name !== "solution.py")) });
@@ -203,11 +203,29 @@ test("g7 unconfirmed needs actual result plus later opportunity and counts block
 test("required retention is bound to saved memory and complete distinct required IDs", () => {
   const saved = { version: 1 as const, nextId: 3, slots: [{ id: "s1", text: "needed" }, { id: "s2", text: "also needed" }] };
   const result: any = { ok: true, candidate: { memory: saved }, observations: { required: { declared: ["a", "b"], retainedSlotIds: ["s1", "s2"], failed: false } } };
-  assert.equal(checkRequiredRetention(result, saved).status, "PROVEN");
-  for (const retainedSlotIds of [["s1"], ["s1", "s1"], ["s1", "missing"]]) {
-    assert.equal(checkRequiredRetention({ ...result, observations: { required: { ...result.observations.required, retainedSlotIds } } }, saved).status, "UNPROVEN");
+  const frozen = { memory: { version: 1 as const, nextId: 1, slots: [] }, response: { add: [{ key: "a", text: "needed" }, { key: "b", text: "also needed" }], priority: ["a", "b"], required: ["a", "b"] } };
+  assert.equal(checkRequiredRetention(result, saved, frozen).status, "PROVEN");
+  assert.equal(checkRequiredRetention(result, saved).status, "UNPROVEN", "engine self-report alone cannot prove required preservation");
+  for (const slots of [saved.slots.slice(0, 1), [{ id: "s1", text: "corrupted" }, saved.slots[1]!]]) {
+    const corrupt = { ...saved, slots };
+    assert.equal(checkRequiredRetention({ ...result, candidate: { memory: corrupt } }, corrupt, frozen).status, "UNPROVEN");
   }
-  assert.equal(checkRequiredRetention(result, { ...saved, slots: saved.slots.slice(0, 1) }).status, "UNPROVEN");
+  for (const retainedSlotIds of [["s1"], ["s1", "s1"], ["s1", "missing"]]) {
+    assert.equal(checkRequiredRetention({ ...result, observations: { required: { ...result.observations.required, retainedSlotIds } } }, saved, frozen).status, "UNPROVEN");
+  }
+  assert.equal(checkRequiredRetention(result, { ...saved, slots: saved.slots.slice(0, 1) }, frozen).status, "UNPROVEN");
+});
+
+test("required retention resolves updated old slots and collision-aware new IDs from frozen input", () => {
+  const frozen = { memory: { version: 1 as const, nextId: 9, slots: [{ id: "s9", text: "retired" }, { id: "s10", text: "old body" }] },
+    response: { remove: ["s9"], update: [{ id: "s10", text: "updated body" }], add: [{ key: "new", text: "new body" }], priority: ["new", "s10"], required: ["new", "s10"] } };
+  const saved = { version: 1 as const, nextId: 12, slots: [{ id: "s10", text: "updated body" }, { id: "s11", text: "new body" }] };
+  const result: any = { ok: true, candidate: { memory: saved }, observations: { required: { declared: ["new", "s10"], retainedSlotIds: ["s11", "s10"], failed: false } } };
+  assert.equal(checkRequiredRetention(result, saved, frozen).status, "PROVEN");
+  for (const slots of [[{ id: "s10", text: "old body" }, saved.slots[1]!], [saved.slots[0]!, { id: "s9", text: "new body" }]]) {
+    const corrupt = { ...saved, slots };
+    assert.equal(checkRequiredRetention({ ...result, candidate: { memory: corrupt } }, corrupt, frozen).status, "UNPROVEN");
+  }
 });
 
 test("g8 candidate size flags alone never prove actual retention or CAPACITY/recovery effects", () => {

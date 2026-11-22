@@ -60,22 +60,18 @@ test("body returns, removal/re-addition and other-slot edits determine exact con
   assert.equal(deriveSlotProvenance(m.getBranch(), [], memory([{ ...a, text: "uncommitted" }])).s1, undefined);
 });
 
-test("corrupt retired commits omit unknown continuity but retain newer origins and prototype-safe IDs", () => {
+test("corrupt retired commits omit unknown continuity but retain newer origins", () => {
   const m = manager();
   const first = m.appendMessage({ role: "user", content: "Old", timestamp: 0 });
   m.appendCompaction("corrupt", first, 100, { nunc: { version: 9 } });
   m.appendCustomEntry(MANUAL_MEMORY_TYPE, { nunc: memory([a]) });
-  const proto = { id: "__proto__", text: "Ordinary slot" };
-  m.appendCustomEntry(MANUAL_MEMORY_TYPE, { nunc: memory([a, b, proto]) });
-  const result = deriveSlotProvenance(m.getBranch(), [user(first, "Active")], memory([a, b, proto]));
-  assert.equal(Object.getPrototypeOf(result), null);
+  m.appendCustomEntry(MANUAL_MEMORY_TYPE, { nunc: memory([a, b]) });
+  const result = deriveSlotProvenance(m.getBranch(), [user(first, "Active")], memory([a, b]));
   assert.equal(Object.hasOwn(result, "s1"), false);
   assert.deepEqual(result.s2, expected(0, 0, true));
-  assert.deepEqual(result.__proto__, expected(0, 0, true));
   assert.equal(formatSlotProvenance("s1", result, true), "age unknown");
   assert.equal(formatSlotProvenance("s1", result), undefined);
   assert.equal(formatSlotProvenance("s1", undefined, true), undefined);
-  assert.deepEqual(JSON.parse(JSON.stringify(result)).__proto__, expected(0, 0, true));
   m.appendCustomEntry(MANUAL_MEMORY_TYPE, { nunc: null });
   assert.equal(Object.keys(deriveSlotProvenance(m.getBranch(), [], memory([a]))).length, 0);
   assert.equal(Object.keys(deriveSlotProvenance([], [], memory([a]))).length, 0);

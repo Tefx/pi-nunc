@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFile, rename, mkdir, rm } from "node:fs/promises";
+import { writeFile, rename, mkdir, rm, access, mkdtemp } from "node:fs/promises";
+import { dirname, resolve, join } from "node:path";
+import { renderMemory } from "../../src/engine/memory.js";
+import { memoryTokens, messageTokens } from "../../src/engine/accounting.js";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { sourceRecords, answer } from "../engine/fixtures.js";
-import { assertOnlyCalibrationAppend, fixture, memoryPatch, surfacePort } from "./fixtures.js";
+import { assertOnlyCalibrationAppend, fixture, memoryPatch, surfacePort, preparedSurface } from "./fixtures.js";
 import { createNuncUi } from "../../src/ui/index.js";
 import { buildContextNodes } from "../../src/ui/context-tree.js";
 import { project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
@@ -22,14 +25,24 @@ for (const reason of ["stop", "length", "error", "aborted", "toolUse"] as const)
       if (reason === "aborted") assert.deepEqual(manager.getEntries(), entries);
       else assertOnlyCalibrationAppend(entries, manager.getEntries(), f.events[0]!.result);
       assert.equal(project(manager.buildContextEntries()).mechanicalFallback, undefined);
+      const failed = port.context().read(port.ctx());
+      assert.equal(failed.lastMaintenance?.native, "failed");
+      assert.equal(failed.lastMaintenance?.after, undefined);
+      assert.equal(port.memory().read(port.ctx()).status.occupied, false);
     } else {
       const saved = await f.runtime.session.compact();
       const after = project(manager.buildContextEntries());
       assert.deepEqual(after.memory, before.memory);
       assert.deepEqual(after.active, before.active.slice(before.active.findIndex(e => e.entryId === saved.firstKeptEntryId)));
+      const calibration = (saved.details as { maintenanceCalibration?: { sourceEntryIds: string[]; providerOverflow?: unknown } }).maintenanceCalibration;
+      assert(calibration);
+      assert.deepEqual(calibration.sourceEntryIds, after.active.map(e => e.entryId));
+      assert.equal(calibration.providerOverflow, undefined);
+      assert.notDeepEqual(calibration.sourceEntryIds, before.active.map(e => e.entryId));
       assert.equal(after.mechanicalFallback?.code, "RESPONSE");
       assert.match(saved.summary, /Nunc Mechanical Roll Fallback/);
       const view = port.context().read(port.ctx());
+      if (!nonempty) assert((view.current.layout.memory?.tokens ?? 0) > 0, "empty M still accounts for the fallback carrier");
       assert.equal(view.lastMaintenance?.engine, "fail");
       assert.equal(view.lastMaintenance?.native, "saved");
       assert.deepEqual(view.lastMaintenance?.after?.memory, before.memory);
@@ -48,6 +61,8 @@ for (const reason of ["stop", "length", "error", "aborted", "toolUse"] as const)
     }
     const result = f.events[0]!.result;
     assert(!result.ok); assert.equal(result.code, "RESPONSE");
+    assert.equal(f.events.length, 1);
+    assert.equal(f.faux.state.callCount, reason === "error" || reason === "aborted" ? 1 : 3, "one extraction plus the two explicit continuation prompts, with no recursive maintenance");
   });
 }
 for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"required":[]}', '{"add":[],"remove":[],"priority":[]}', '{"add":[],"remove":[],"priority":[],"required":["unknown"]}', '{"add":[{"key":"k","text":"note"}],"remove":[],"priority":[],"required":[]}']) test(`invalid patch rolls once: ${bad}`, async t => {
@@ -60,6 +75,19 @@ for (const bad of ["broken", '{"add":[],"remove":[],"priority":["unknown"],"requ
   assert.match(saved.summary, /without updating M/);
   assert.equal(f.events[0]?.result.ok, false);
   assert.equal(f.faux.state.callCount, 1);
+});
+
+test("failed disk-settings fixture initialization restores the environment and removes its directory", async () => {
+  const inherited = process.env.PI_CODING_AGENT_DIR;
+  let dir: string | undefined;
+  await assert.rejects(fixture({ diskSettings: true, extras: [{ name: "fail-fixture-init", factory() {
+    assert(process.env.PI_CODING_AGENT_DIR);
+    dir = dirname(process.env.PI_CODING_AGENT_DIR);
+    throw new Error("fixture-init-error");
+  } }] }), /fixture-init-error/);
+  assert.equal(process.env.PI_CODING_AGENT_DIR, inherited);
+  assert(dir);
+  await assert.rejects(access(dir), { code: "ENOENT" });
 });
 
 test("public abortCompaction propagates to service and leaves saved state unchanged", async t => {
@@ -179,8 +207,17 @@ test("actual overflow response uses same maintenance hook then Pi retries once w
   assert.equal(f.calls.at(-1)?.messages.at(-1)?.role, "user");
 });
 
-test("Pi-owned write failure after handoff is not Nunc rollback or replay", async t => {
-  const f = await fixture(); t.after(() => f.close()); f.seed(); f.respond(memoryPatch);
+test("Pi-owned write failure leaves visible unconfirmed M without activating cleanup or allowing writes", async t => {
+  const { f, memory, ctx } = await preparedSurface(t);
+  f.seed(); f.respond(memoryPatch);
+  const manager = f.runtime.session.sessionManager;
+  for (const id of ["eligible", "newest"]) {
+    manager.appendMessage({ ...answer({}, f.faux.getModel()), stopReason: "toolUse",
+      content: [{ type: "toolCall", id, name: "read", arguments: { path: id } }] });
+    manager.appendMessage({ role: "toolResult", toolCallId: id, toolName: "read", isError: false,
+      content: [{ type: "text", text: '{\n  "value": [1, 2, 3]\n}' }], timestamp: 2 });
+  }
+  f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
   const file = f.runtime.session.sessionFile!;
   // Concrete isolated I/O fault: replace the file target with a directory after
   // successful source loading. SessionManager's real append must encounter it.
@@ -188,10 +225,23 @@ test("Pi-owned write failure after handoff is not Nunc rollback or replay", asyn
   try {
     await assert.rejects(f.runtime.session.compact(), /directory|EISDIR/i);
     assert.equal(f.faux.state.callCount, 1);
-    assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 1, "Pi may already have changed in-memory state before failing its append");
+    const checkpoint = manager.getEntry(manager.getLeafId()!);
+    assert(checkpoint?.type === "compaction", "Pi already changed in-memory state before failing its append");
+    assert((checkpoint.details as { toolResultCleanup: unknown[] }).toolResultCleanup.length > 0, "failure must reach a checkpoint carrying cleanup");
+    const projected = project(manager.buildContextEntries());
+    assert.equal(projected.cleanup.length, 0);
+    assert(projected.memory.slots.length > 0, "unconfirmed M remains visible");
+    const view = memory().read(ctx());
+    assert.equal(view.status.unconfirmed, true);
+    const patch = memory().patch(ctx(), { expectedRevision: view.revision, add: [{ key: "blocked", text: "Cannot save yet" }] });
+    assert(!patch.ok); assert.equal(patch.code, "unconfirmed");
   } finally {
     await rm(file, { recursive: true }); await rename(file + ".saved", file);
   }
+  assert.equal(memory().read(ctx()).status.unconfirmed, true, "restoring the old file cannot confirm a missing checkpoint");
+  await f.runtime.switchSession(file);
+  assert.equal(memory().read(ctx()).status.unconfirmed, false);
+  assert.equal(project(f.runtime.session.sessionManager.buildContextEntries()).cleanup.length, 0);
 });
 
 test("ephemeral session and impossible host reserve/keep preparation never call the extractor", async t => {
@@ -240,4 +290,108 @@ test("mechanical checkpoint warning survives recovery and clears on a normal com
   ui.recover(); ui.refresh(paintCtx);
   assert(!status?.includes("·roll"));
   assert(saved.summary.includes("Nunc Mechanical Roll Fallback"));
+});
+
+for (const targeted of [false, true]) test(`repeated unchanged-M native compaction confirms the newest checkpoint: targeted=${targeted}`, async t => {
+  const notes: string[] = [];
+  const { f, context, ctx } = await preparedSurface(t, { bus: bus => bus.on("nunc:diagnostic", value => notes.push((value as { message: string }).message)) });
+  f.respond(memoryPatch);
+  let firstSummary: string | undefined;
+  for (let i = 0; i < 3; i++) {
+    f.seed(`turn-${i}`);
+    if (targeted) await f.runtime.session.prompt("/nunc compact-for nunc-pi-fixture/small");
+    else await f.runtime.session.compact();
+    const branch = f.runtime.session.sessionManager.getBranch();
+    const saved = branch.findLast(entry => entry.type === "compaction");
+    assert(saved?.type === "compaction");
+    firstSummary ??= saved.summary;
+    assert.equal(saved.summary, firstSummary);
+    assert.equal(branch.filter(entry => entry.type === "compaction").length, i + 1);
+    const view = context().read(ctx());
+    assert.equal(view.lastMaintenance?.native, "saved");
+    assert(view.lastMaintenance.after);
+    assert.equal(view.lastMaintenance.candidate!.firstKeptEntryId, saved.firstKeptEntryId);
+  }
+  if (targeted) assert.equal(notes.filter(note => note.includes("Saved compaction for")).length, 3);
+});
+
+for (const field of ["summary", "toolResultCleanup", "maintenanceCalibration"] as const) test(`native checkpoint ownership verifies ${field} as well as memory`, async t => {
+  await mkdir(resolve(".scratch"), { recursive: true });
+  const dir = await mkdtemp(resolve(".scratch/checkpoint-owner-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const extension = join(dir, "mutate-terminal.mjs");
+  await writeFile(extension, `export default pi => pi.on('session_compact', (_event, ctx) => {
+    const entry = ctx.sessionManager.getBranch().findLast(e => e.type === 'compaction');
+    ${field === "summary" ? "entry.summary += 'foreign summary';" : `entry.details.${field} = { foreign: true };`}
+  });`);
+  const diagnostics: string[] = [];
+  const { f, context, ctx } = await preparedSurface(t, { beforeNunc: [extension], bus: bus => bus.on("nunc:diagnostic", value => diagnostics.push((value as { message: string }).message)) });
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  if (field === "summary") {
+    const entry = f.runtime.session.sessionManager.getBranch().findLast(e => e.type === "compaction");
+    assert(entry?.type === "compaction");
+    const result = f.events[0]!.result;
+    assert(result.ok);
+    entry.summary = renderMemory(result.candidate.memory.slots);
+  }
+  const view = context().read(ctx());
+  assert.equal(view.lastMaintenance?.engine, "ok");
+  assert.equal(view.lastMaintenance?.native, "failed");
+  assert.equal(view.lastMaintenance?.after, undefined);
+  assert(diagnostics.some(message => message.includes("save ownership is unconfirmed")));
+});
+
+for (const warning of ["headroom", "runway"] as const) test(`native saves retain deduplicated ${warning} warning until genuine recovery`, async t => {
+  const diagnostics: string[] = [];
+  const prefix = warning === "headroom" ? "Normal-trigger extraction estimate" : "Candidate post-compaction growth runway";
+  const { f } = await preparedSurface(t, { config: { budget: warning === "headroom" ? { extraExtractionInputTokens: 26000 } : { extraMainInputTokens: 16000 } },
+    bus: bus => bus.on("nunc:diagnostic", value => diagnostics.push((value as { message: string }).message)) });
+  f.respond(memoryPatch);
+  for (let i = 0; i < 2; i++) {
+    if (i === 0) f.seed("warning");
+    else f.runtime.session.sessionManager.appendMessage({ role: "user", content: "Next warning compaction", timestamp: 2 });
+    await f.runtime.session.compact();
+    const accounting = f.events[i]!.result.observations.accounting!;
+    if (warning === "headroom") assert.equal(accounting.normalHeadroomSufficient, false);
+    else assert(accounting.growthTokens! < 0.35 * accounting.effectiveTrigger);
+    f.respond(() => fauxAssistantMessage("Ordinary main response."));
+    await f.runtime.session.prompt("Continue despite maintenance advice");
+    f.respond(memoryPatch);
+    await f.runtime.session.prompt("/nunc details");
+    assert(diagnostics.at(-1)!.includes(`Current warning: ${prefix}`));
+  }
+  assert.equal(diagnostics.filter(message => message.startsWith(prefix)).length, 1, "repeat notification is deduplicated without clearing warning");
+  await writeFile(f.configFile, JSON.stringify({ ...f.config, budget: { extraExtractionInputTokens: 0 } }));
+  f.seed("recovered");
+  await f.runtime.session.compact();
+  assert.equal(f.events.at(-1)!.result.observations.accounting?.normalHeadroomSufficient, true);
+  await f.runtime.session.prompt("/nunc details");
+  assert.match(diagnostics.at(-1)!, /Current warning: none/);
+  await writeFile(f.configFile, JSON.stringify(f.config));
+  f.runtime.session.sessionManager.appendMessage({ role: "user", content: "Warning regressed", timestamp: 3 });
+  await f.runtime.session.compact();
+  assert.equal(diagnostics.filter(message => message.startsWith(prefix)).length, 2, "genuine recovery re-arms warning notification");
+});
+
+test("fallback carrier occupancy matches current layout and bound receipt", async t => {
+  const { f, context, ctx, admissions } = await preparedSurface(t);
+  f.seed();
+  f.respond(() => fauxAssistantMessage("broken"));
+  await f.runtime.session.compact();
+  const before = context().read(ctx());
+  const fallback = before.current.mechanicalFallback;
+  assert(fallback);
+  const expected = memoryTokens([], undefined, fallback);
+  assert.equal(before.current.layout.memory!.tokens, expected);
+  f.respond(() => fauxAssistantMessage("Continued"));
+  await f.runtime.session.prompt("Continue");
+  const carrier = f.calls.at(-1)!.messages.find(message => JSON.stringify(message).includes("Nunc Mechanical Roll Fallback"));
+  assert(carrier);
+  assert.equal(messageTokens(carrier), expected);
+  await f.runtime.session.prompt("Continue again");
+  const receipt = admissions.findLast(row => row.receiptBreakdown);
+  assert.equal(receipt?.receiptBreakdown?.currentMTokens, expected);
+  assert.equal(receipt?.receiptBreakdown?.oldMTokensEstimate, expected);
+  assert.equal(context().read(ctx()).lastMain!.layout.memory!.tokens, expected);
 });

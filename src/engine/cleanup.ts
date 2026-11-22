@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { ActiveEntry, CleanupSkipped, Memory, Omission, SourceRef, ToolResultDecision, ToolResultEdit, ToolResultCleanupResult, ToolResultRef } from "./types.js";
 import { isMemoryUnchanged } from "./memory.js";
-import { integer, nonempty, record } from "./validation.js";
+import { canonical, integer, nonempty, record } from "./validation.js";
 
 export function refKey(ref: ToolResultRef): string {
   return `${ref.entryId}:${ref.messageIndex}`;
@@ -226,6 +226,7 @@ export interface CleanupDecisionOptions {
   keyToSlotMap?: Map<string, string> | undefined;
   retainedKeys?: Set<string> | undefined;
   semanticEdits?: unknown;
+  priorCleanup?: readonly ToolResultDecision[];
   omissions?: Omission[] | undefined;
   disabled?: boolean | undefined;
   /** Native compaction only: lossless rules may run without a memory change. */
@@ -235,15 +236,8 @@ export interface CleanupDecisionOptions {
 export function messageTextContent(message: ActiveEntry["messages"][number]): string | null {
   if (typeof message.content === "string") return message.content;
   if (!Array.isArray(message.content)) return null;
-  let text = "";
-  for (const block of message.content) {
-    if (block.type === "text") {
-      text += block.text;
-    } else {
-      return null;
-    }
-  }
-  return text;
+  if (!message.content.every(block => block.type === "text")) return null;
+  return message.content.map(block => block.text).join("\n");
 }
 
 /**
@@ -259,7 +253,7 @@ function extractToolCallAssociationMap(active: ActiveEntry[]): Map<string, { too
       if (message.role === "assistant" && Array.isArray(message.content)) {
         for (const block of message.content) {
           if (block.type === "toolCall") {
-            openCalls.set(block.id, { toolName: block.name, argsJson: JSON.stringify(block.arguments) });
+            openCalls.set(block.id, { toolName: block.name, argsJson: canonical(block.arguments) });
           }
         }
       } else if (message.role === "toolResult") {
@@ -330,8 +324,12 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
       retainedMessageKeys.add(`${entry.entryId}:${i}`);
     }
   }
+  const cleanedSources = new Set((options.priorCleanup ?? []).map(refKey));
+  const protectedRefs = new Set((options.priorCleanup ?? []).flatMap(decision => [decision, ...(decision.sourceRefs ?? [])]).map(refKey));
+  const unavailableSources = new Set(active.filter(entry => entry.outputUsageUnavailable)
+    .flatMap(entry => entry.messages.map((_, index) => `${entry.entryId}:${index}`)));
   for (const key of candidateScopeSet) {
-    if (!retainedMessageKeys.has(key)) {
+    if (!retainedMessageKeys.has(key) || protectedRefs.has(key) || unavailableSources.has(key)) {
       candidateScopeSet.delete(key);
     }
   }
@@ -501,9 +499,10 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
 
   for (const entry of active) {
     for (const [messageIndex, message] of entry.messages.entries()) {
-      if (message.role !== "toolResult") continue;
+      if (message.role !== "toolResult" || !Array.isArray(message.content) || message.content.length !== 1) continue;
       const ref: ToolResultRef = { entryId: entry.entryId, messageIndex };
       const key = refKey(ref);
+      if (cleanedSources.has(key) || unavailableSources.has(key)) continue;
       const text = messageTextContent(message);
       if (text === null) continue;
 
@@ -682,7 +681,9 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         messageIndex: edit.messageIndex,
         action: edit.action,
         reason: "not_in_candidate_scope",
-        details: "Tool result is not within the eligible candidate scope",
+        details: unavailableSources.has(key) ? "Tool result changed by native context_edit"
+          : protectedRefs.has(key) ? "Tool result is protected by prior cleanup"
+          : "Tool result is not within the eligible candidate scope",
       });
       continue;
     }
@@ -753,6 +754,10 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
         const sKey = refKey(sRef);
         if (!retainedMessageKeys.has(sKey)) {
           sourceRefError = `Source ref '${sKey}' is not in final retained history (retired or non-existent)`;
+          break;
+        }
+        if (cleanedSources.has(sKey) || unavailableSources.has(sKey)) {
+          sourceRefError = `Source ref '${sKey}' was already cleaned or changed by native context_edit`;
           break;
         }
         // Full source condition: cannot point to a message being modified semantically or mechanically
@@ -832,6 +837,13 @@ export function decideToolResultCleanup(options: CleanupDecisionOptions): ToolRe
   }
 
   return { applied, skipped };
+}
+
+/** Keep only decisions whose target and full-source dependencies survive this suffix. */
+export function retainedToolResultCleanup(entries: readonly ActiveEntry[], decisions: readonly ToolResultDecision[]): ToolResultDecision[] {
+  const retained = new Set(entries.map(entry => entry.entryId));
+  return decisions.filter(decision => retained.has(decision.entryId) &&
+    !decision.sourceRefs?.some(ref => !retained.has(ref.entryId)));
 }
 
 /** Pure helper to project active entries with applied tool-result cleanups. Returns a new detached copy. */

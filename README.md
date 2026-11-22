@@ -17,7 +17,7 @@ Compaction:    F | M | B | K   -->   updated M + retained K
 
 1. **Verbatim recent history (`R` / `K`):** Recent turns stay verbatim so the model sees exact tool calls, outputs, and immediate context.
 2. **Anchored working memory (`M`):** Information that still matters after older turns age out—goals, constraints, decisions, inputs, and unfinished work—lives in discrete text slots (`{ id, text }`). During normal turns, unchanged `M` stays anchored at the history boundary where it was last sent (`R_before | M | R_after`), keeping the prompt prefix stable for provider caching.
-3. **Single-pass incremental maintenance:** When Pi triggers compaction (threshold, overflow recovery, or `/compact`), Nunc splits active history into retiring `B` and retained `K`, and makes **at most one** call on the session's current model. The model returns a structured JSON patch (`add`, `update`, `remove`, `priority`, `required`, and optional `toolResultEdits`). All `required` items are kept together; if validation or capacity fails, Nunc cancels the compaction so Pi preserves the existing session state unchanged.
+3. **Incremental maintenance:** When Pi triggers compaction (threshold, overflow recovery, or `/compact`), Nunc splits active history into retiring `B` and retained `K`, then performs one extraction transaction on the session's current model, with bounded transient transport retry and no model-repair loop. The model returns a structured JSON patch (`add`, `update`, `remove`, `priority`, `required`, and optional `toolResultEdits`). All `required` items are kept together. Capacity, cancellation and provider-error failures preserve existing state. Eligible completed-response failures can instead save a mechanical window roll with unchanged `M` and retained `K`, visibly marking that retired history was not extracted. Targeted compaction does not use that fallback.
 4. **Tool-result cleanup & overflow calibration:** Completed business-tool outputs that have already been distilled into `M` (or duplicated in `K`) can be compacted or summarized in place while keeping raw originals in the session JSONL. If a provider undercounts tokens or rejects a maintenance request for context overflow, Nunc records branch-bound calibration so the next attempt automatically trims large tool bodies or fails fast without repeating the same rejected call.
 
 ## Tools and TUI
@@ -122,14 +122,9 @@ Example `nunc.json` (overriding `rolling.keepRecentFraction` from `0.5` to `0.67
 
 ## Development
 
-`npm ci` and `npm run build` compile the extension. Running the full check suite (`scripts/check.mjs all`) additionally requires Node/npm satisfying `^26.7.0` / `^11.19.0`, local comparison baseline checkouts, POSIX PTYs, and `/usr/bin/python3`. Older, cross-major, malformed and prerelease versions are rejected. Checks report the actual observed Node/npm versions; live preflight records the observed Node version in its receipt and SHA-256 binding, invalidating earlier receipts after a runtime change. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/LIVE.md](docs/LIVE.md).
+`npm ci` and `npm run build` compile the extension. Running the full check suite (`scripts/check.mjs all`) additionally requires Node/npm satisfying `^26.7.0` / `^11.19.0`, historical Git objects and offline dependency-cache entries for comparison fixtures, POSIX PTYs, and `/usr/bin/python3`. Older, cross-major, malformed and prerelease versions are rejected. Checks report the actual observed Node/npm versions; live preflight records the observed Node version in its receipt and SHA-256 binding, invalidating earlier receipts after a runtime change. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/LIVE.md](docs/LIVE.md).
 
-The scoped-task comparison uses the immutable main-history commit for `.scratch/prechange` (separate from `.scratch/baseline-70dacad`):
-
-```sh
-git worktree add --detach .scratch/prechange 1d4fc4a210b64f71871ab3f5c10093215a25990c
-(cd .scratch/prechange && npm ci --ignore-scripts --no-audit --no-fund && npm run build)
-```
+Comparison tests prepare and remove isolated temporary worktrees from `70dacad` and immutable scoped-task pre-change commit `1d4fc4a210b64f71871ab3f5c10093215a25990c`. Each fixture uses its own tracked dependency lock with offline installation and disabled lifecycle scripts; no pre-existing `.scratch` checkout is required.
 
 ## Documentation
 

@@ -7,8 +7,7 @@ import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 import { estimateContextTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
 import { EngineError } from "../../src/engine/validation.js";
-import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
-import { SYNTHETIC_LAST_USER_APPEND_B } from "../../src/live/append-b.js";
+import { SYNTHETIC_LAST_USER_APPEND, SYNTHETIC_LAST_USER_APPEND_B } from "../../src/pi/payload.js";
 import {
   applyLastUserTextAppend, authorizePayload, classifyPayloadChange, jsonView, lastUserTextAppend, payloadMode,
 } from "../../src/pi/payload.js";

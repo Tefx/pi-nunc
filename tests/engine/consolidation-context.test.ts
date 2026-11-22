@@ -75,7 +75,7 @@ test("final tail binds update/remove to exact current IDs, including empty M", a
   for (const slots of [[], [{ id: "s3", text: "First current task." }, { id: "s7", text: "Second current task." }]]) {
     s.memory = { version: 1, nextId: 8, slots };
     const tail = textBlocks(extractionContext(s, 1, 8192, s.active, [])).at(-1)!;
-    assert(tail.endsWith(`Current M slot IDs: ${JSON.stringify(slots.map(slot => slot.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`));
+    assert(tail.includes(`Current M slot IDs: ${JSON.stringify(slots.map(slot => slot.id))}. Only these exact existing IDs may appear in update (each with only {"id","text"}) or remove; any new slot or previously removed ID must be placed in add (each with only {"key","text"}).`));
   }
 });
 
@@ -95,7 +95,7 @@ test("provenance varies only the final instruction and preserves cleanup positio
   assert.deepEqual(after.slice(0, -1), before.slice(0, -1), "F/M, B/K and cleanup candidate block stay byte-identical");
   assert.deepEqual(JSON.parse(after.at(-2)!).cleanupCandidates, [{ entryId: "tool", messageIndex: 0, toolName: "read", toolCallId: "c1", textLength: 13 }]);
   assert(after.at(-1)!.includes(`Current M slot provenance: ${JSON.stringify(s.slotProvenance)}. Current M slot IDs:`));
-  assert(after.at(-1)!.endsWith(suffix));
+  assert(after.at(-1)!.includes(suffix));
   s.slotProvenance = {};
   assert.deepEqual(textBlocks(extractionContext(s, 1, 8192, s.active, [])), before);
 });

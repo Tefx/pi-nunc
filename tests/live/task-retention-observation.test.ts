@@ -1,16 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { executeMetricsOracle, HELD_OUT_RECORDS } from "../../src/live/metrics-oracle.js";
-import { parseInput, type Selection } from "../../src/live/contract.js";
-import { scoreGuidance, TOOLS_CHECK } from "../../src/live/guidance.js";
+import { parseInput } from "../../src/live/contract.js";
+import { scoreGuidance, TOOLS_CHECK, type GuidanceAction } from "../../src/live/guidance.js";
 import { repository } from "./fixtures.js";
 import { boundedProvider, BudgetLedger } from "../../src/live/budget.js";
-import { createAssistantMessageEventStream, type Model, type Context, type Api, type Provider } from "@earendil-works/pi-ai";
-import { resolveInput } from "../../src/live/defaults.js";
+import { createAssistantMessageEventStream, type Model, type Provider } from "@earendil-works/pi-ai";
 import { taskFileChecks } from "../../src/live/task-retention.js";
+
+import { rolloverFacts, type RolloverObservation } from "../../src/live/comparison-observation.js";
+import { memoryTokens, textTokens } from "../../src/engine/accounting.js";
+import { model as fixtureModel } from "../engine/fixtures.js";
+import type { MechanicalFallbackInfo, Slot } from "../../src/engine/types.js";
 
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
@@ -30,6 +34,50 @@ async function setupWorkspace(dir: string, files: Record<string, string>) {
     await writeFile(join(dir, name), content, "utf8");
   }
 }
+
+test("guidance command evidence uses completed successes and detects post-test edits to solution and tests", () => {
+  let id = 0;
+  const effect = (toolName: string, input: unknown, isError = false) => {
+    const toolCallId = String(id++);
+    return [{ event: { type: "tool_call", toolName, toolCallId, input } }, { event: { type: "tool_result", toolName, toolCallId, isError } }];
+  };
+  const check = "semantic: actual commands show build and unittest success";
+  const score = (actions: GuidanceAction[]) => scoreGuidance("g4", check, actions, [], "/task");
+  const build = effect("bash", { command: "python3 build.py" });
+  const tests = effect("bash", { command: "python3 -m unittest test_solution.py" });
+  for (const actions of [[...build, tests[0]!], [...build, ...effect("bash", { command: "python3 -m unittest" }, true)], [{ event: { type: "tool_blocked", toolName: "bash", input: { command: "python3 build.py" } } }]]) {
+    assert.match(score(actions).reason!, /No completed successful/);
+  }
+  for (const path of ["solution.py", "test_solution.py"]) {
+    const edit = effect("edit", { path });
+    assert.equal(score([...build, ...tests, ...edit]).status, "DISPROVEN");
+    assert.equal(score([...build, edit[0]!, ...tests, edit[1]!]).status, "DISPROVEN", "An overlapping completed write is not covered by that test invocation");
+    assert.equal(score([...build, ...tests, ...edit, ...effect("bash", { command: "python3 -m unittest" }, true)]).status, "DISPROVEN");
+    assert.match(score([...build, ...tests, ...edit, ...effect("bash", { command: "python3 -m unittest" })]).reason!, /Independent observation/);
+    assert.match(score([...build, ...tests, ...effect("edit", { path }, true)]).reason!, /Independent observation/);
+  }
+});
+
+test("rollover memory measurement matches zero-carrier, populated and fallback projections", () => {
+  const fallback: MechanicalFallbackInfo = { code: "RESPONSE", message: "Incomplete response", retiredEntryCount: 1, firstKeptEntryId: "kept" };
+  for (const slots of [[], [{ id: "s1", text: "Retained task" }]] satisfies Slot[][]) {
+    for (const mechanicalFallback of [undefined, fallback]) {
+      const row: RolloverObservation = { turn: "a", reason: "threshold", model: fixtureModel, thinking: "low", branch: [], active: [], config,
+        preparation: { firstKeptEntryId: "kept", settings: config.compaction, isSplitTurn: false, messagesToSummarize: [], turnPrefixMessages: [], tokensBefore: 1000 },
+        snapshot: { type: "compaction", id: "snapshot", parentId: null, timestamp: new Date(0).toISOString(), firstKeptEntryId: "kept", tokensBefore: 1000, summary: "", details: { nunc: { slots }, ...(mechanicalFallback ? { mechanicalFallback } : {}) } }, callIds: [] };
+      const facts = rolloverFacts(row, [], "current");
+      assert.equal(facts.mTokens, memoryTokens(slots, undefined, mechanicalFallback));
+      assert.equal(facts.overhead.wrapperOverheadTokens, facts.mTokens! - textTokens(slots.map(slot => slot.text).join("")));
+      if (!slots.length && !mechanicalFallback) {
+        assert.equal(facts.mTokens, 0);
+        assert.equal(facts.overhead.wrapperOverheadTokens, 0);
+      } else {
+        assert(facts.mTokens! > 0);
+        assert(facts.overhead.wrapperOverheadTokens! > 0);
+      }
+    }
+  }
+});
 
 test("unrelated file writes after a build cannot prove subsequent behavior work", () => {
   const actions: any[] = [];
@@ -60,7 +108,7 @@ test("metrics oracle passes on valid solution.py with all operations and held-ou
     assert.equal(report.observed?.candidateTestCoverage, "UNPROVEN");
     assert(report.observed?.buildSuccess === true);
     assert(report.observed?.unittestSuccess === true);
-    assert(report.observed?.singleRecords === HELD_OUT_RECORDS.length);
+    assert.equal(report.observed?.singleRecords, HELD_OUT_RECORDS.length);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -225,39 +273,6 @@ test("task-retention model validation enforces exact gpt-5.6-luna and low thinki
   assert.throws(() => parseInput(mediumInput), /require exact thinking level "low"/);
 });
 
-test("scoreGuidance evaluates held-out oracle for g4/task-file", async () => {
-  const dir = await mkdtemp(join(repository, ".scratch", "guidance-g4-"));
-  const check = "semantic: execute final solution.py independently for every operation; apply the held-out oracle in docs/POLICY.md Complete-task scenario handoff, including recursive trace interaction and cross-mode null/negative/zero consistency; handoff booleans alone prove no behavior";
-  const prerequisites = [{ check: TOOLS_CHECK, status: "PROVEN" as const }];
-  try {
-    // 1. Fresh workspace with no solution: returns DISPROVEN when actions occurred
-    const actionsWithTurn = [{ turn: "a", event: { type: "turn_complete", stopReason: "stop" } }];
-    const resNoSol = scoreGuidance("g4", check, actionsWithTurn, prerequisites, dir);
-    assert.equal(resNoSol.status, "DISPROVEN");
-    assert(resNoSol.reason?.includes("Missing final solution.py"));
-
-    // 2. Working solution in workspace: returns UNPROVEN with mechanical oracle evidence
-    await setupWorkspace(dir, {
-      "solution.py": metricsSolution,
-      "build.py": VALID_BUILD_PY,
-      "TASK.md": "# Task\n",
-      "records.json": "{}\n",
-      "test_solution.py": metricsTests,
-    });
-    const resPass = scoreGuidance("g4", check, actionsWithTurn, prerequisites, dir);
-    assert.equal(resPass.status, "UNPROVEN");
-    assert(resPass.reason?.includes("mechanical held-out oracle passed"));
-    assert((resPass.observed as any)?.oracle?.buildSuccess === true);
-
-    // 3. Broken solution: returns DISPROVEN
-    await writeFile(join(dir, "solution.py"), "broken code");
-    const resFail = scoreGuidance("g4", check, actionsWithTurn, prerequisites, dir);
-    assert.equal(resFail.status, "DISPROVEN");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
 test("scoreGuidance evaluates scoped-tasks cancellations and property preservation for g3", async () => {
   const dir = await mkdtemp(join(repository, ".scratch", "guidance-g3-"));
   const prerequisites = [{ check: TOOLS_CHECK, status: "PROVEN" as const }];
@@ -380,7 +395,8 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
         const stream = createAssistantMessageEventStream();
         void (async () => {
           try {
-            await opts?.onPayload?.({ stream: true, model: m.id, max_tokens: 1000, reasoning: { effort: "low" } }, m as any);
+            assert.equal(opts.reasoningEffort, "low", "maintenance override must reach the raw provider option");
+            await opts.onPayload({ stream: true, model: m.id, max_tokens: 1000, reasoning: { effort: opts.reasoningEffort } }, m);
             const message: any = { role: "assistant", api: m.api, provider: m.provider, model: m.id, content: [], usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() };
             stream.push({ type: "done", reason: "stop", message });
             stream.end(message);

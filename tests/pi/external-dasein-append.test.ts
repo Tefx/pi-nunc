@@ -5,8 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { Model, Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
-import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
-import { applyLastUserTextAppend, canonicalJson } from "../../src/pi/payload.js";
+import { SYNTHETIC_LAST_USER_APPEND, applyLastUserTextAppend, canonicalJson } from "../../src/pi/payload.js";
 import { responsesSSE, fixture } from "./fixtures.js";
 
 const DASEIN_INJECTOR = process.env.NUNC_DASEIN_INJECTOR ?? "/Users/tefx/Projects/dasein-pi-extension/src/core/provider-payload-injector.ts";

@@ -3,12 +3,20 @@ import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { buildContextEntries, convertToLlm, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { prepareBoundary } from "../../src/live/preparation.js";
+import { logicalPlacement } from "../../src/live/comparison-observation.js";
 import { metricsCommand } from "../../src/live/tool-path.js";
 import { toolBlockReason } from "../../src/live/observer.js";
 import { RunnerError } from "../../src/live/contract.js";
 import { requestTokens, mainContext, messageTokens } from "../../src/engine/accounting.js";
 import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { repository } from "./fixtures.js";
+import { project, eligibleStarts, engineConfig } from "../../src/pi/index.js";
+import { sealDecisions, eligibleUsageEntryIds, deriveSlotProvenance, compactionCleanupScope, projectMaintenanceCalibration, MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/projection.js";
+import { decideToolResultCleanup } from "../../src/engine/cleanup.js";
+import { maintain } from "../../src/engine/engine.js";
+import { loadPolicy } from "../../src/engine/index.js";
+import { answer } from "../engine/fixtures.js";
+import { maintenanceCalibrationRecord } from "../../src/engine/calibration.js";
 
 function createExactFixtureEntries(): { branch: SessionEntry[]; requestText: string; fixtureContent: string; extraMainInputTokens: number } {
   const requestText = "Read TASK.md. We have work to do.";
@@ -178,6 +186,20 @@ test("reproduces exact numerical gap: usage=2929, H=2928, F=1854, growth=1024, m
   assert(prepared.calibration.selectedFraction <= baseConfig.retentionCalibration.maxFraction);
   assert.equal(prepared.config.compaction.enabled, true);
   assert.equal(prepared.firstKeptEntryId, "entry-call");
+
+  const suffix: SessionEntry = { type: "message", id: "suffix", parentId: "entry-result", timestamp: new Date(4).toISOString(), message: fauxAssistantMessage("Task progress after deferred boundary.") };
+  const progressed = [...branch, suffix];
+  const continuedInput = { ...progressInput, branch: progressed, active: buildContextEntries(progressed) };
+  await assert.rejects(prepareBoundary(continuedInput), /suffix already ran/);
+  const deferred = await prepareBoundary({ ...continuedInput, deferred: true });
+  assert.equal(deferred.deferred, true);
+  const snapshot: Extract<SessionEntry, { type: "compaction" }> = { type: "compaction", id: "snapshot", parentId: "suffix", timestamp: new Date(5).toISOString(), summary: "Task state", firstKeptEntryId: deferred.firstKeptEntryId, tokensBefore: 6000 };
+  const row = { turn: "a", reason: "threshold", model, thinking: "low", branch: progressed, active: buildContextEntries(progressed),
+    config: deferred.config, prepared: deferred, snapshot, rebuilt: buildContextEntries([...progressed, snapshot]), callIds: [],
+    preparation: { firstKeptEntryId: deferred.firstKeptEntryId, settings: deferred.config.compaction, isSplitTurn: true, messagesToSummarize: [], turnPrefixMessages: [], tokensBefore: 6000 },
+    placement: { control, turns: [{ id: "a", text: requestText }], files: { "TASK.md": fixtureContent }, turnEntries: { a: progressed.map(e => e.id) }, requiredReads: [] } };
+  assert.deepEqual(logicalPlacement(row, "/task").issues, []);
+  assert(logicalPlacement({ ...row, prepared: { ...deferred, deferred: false } }, "/task").issues.includes("Suffix already ran before the requested tool boundary"));
 });
 
 test("contract errors never defer: invalid config, corrupted turn mapping, placement conflict, or extraction overflow hard fail", async () => {
@@ -311,27 +333,70 @@ test("contract errors never defer: invalid config, corrupted turn mapping, place
   );
 });
 
+test("preparation forecasts actual maintenance with persisted cleanup and cross-cut source expiration", async () => {
+  const model = fauxProvider({ provider: "nunc-preparation", models: [{ id: "fixture", contextWindow: 200000, maxTokens: 8192 }] }).getModel();
+  for (const dependent of [false, true]) {
+    const { branch, requestText } = createExactFixtureEntries();
+    const body = JSON.stringify({ evidence: "value".repeat(500) }, null, 200);
+    const current = branch[2]!;
+    assert(current.type === "message" && current.message.role === "toolResult");
+    current.message.content = [{ type: "text", text: body }];
+    const keeperCall: SessionEntry = { type: "message", id: "keeper-call", parentId: null, timestamp: new Date(0).toISOString(), message: fauxAssistantMessage(fauxToolCall("read", { path: dependent ? "TASK.md" : "other.json" }, { id: "keeper" }), { stopReason: "toolUse" }) };
+    const keeperResult: SessionEntry = { type: "message", id: "keeper-result", parentId: "keeper-call", timestamp: new Date(0).toISOString(), message: { role: "toolResult", toolCallId: "keeper", toolName: "read", content: [{ type: "text", text: body }], isError: false, timestamp: 0 } };
+    branch.unshift(keeperCall, keeperResult);
+    branch[2]!.parentId = "keeper-result";
+    const before = project(branch);
+    before.memory = { version: 1, nextId: 2, slots: [{ id: "s1", text: "Keep the task requirement." }] };
+    const cleanup = decideToolResultCleanup({ active: before.active, retainedEntries: before.active, initialMemory: before.memory, finalMemory: before.memory,
+      candidateScope: [{ entryId: "entry-result", messageIndex: 0 }], mechanicalWhenMemoryUnchanged: true }).applied;
+    assert.equal(cleanup[0]?.action, dependent ? "deduplicate" : "compact_json");
+    branch.push({ type: "custom", customType: "nunc.memory", id: "saved-cleanup", parentId: "entry-result", timestamp: new Date(4).toISOString(), data: { nunc: before.memory, toolResultCleanup: sealDecisions(before.active, cleanup) } });
+    const config = { compaction: { enabled: false, reserveTokens: 16384, keepRecentTokens: 1 }, nunc: { budget: { growthTokens: 1024 } }, retentionCalibration: { minFraction: 0.00001, maxFraction: 0.99999 } };
+    const fixed = { systemPrompt: "Work on the task", tools: [] };
+    const preparationInput = { branch, active: buildContextEntries(branch), control: {
+      duringTurn: "a", action: "rollover_at_tool_boundary" as const, trigger: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", when: "after_result_before_continuation" as const },
+      placement: { retireRequestOfTurn: "a", retainToolExchange: { occurrence: 1, pathArgument: "TASK.md", toolName: "read", turn: "a" } },
+    }, turns: { a: ["entry-req", "entry-call", "entry-result"] }, turnOrder: ["a"], config, fixed, model, repository, signal: new AbortController().signal,
+      trigger: { callId: "call-task", requestText, path: "TASK.md", cwd: "/task", fixtureContent: body, contextTokens: 30000 } };
+    let prepared = await prepareBoundary(preparationInput);
+    const projected = project(buildContextEntries(branch));
+    assert.equal(projected.cleanup.length, 1);
+    const maintenanceInput = { binding: { sessionId: "fixture", leafId: "saved-cleanup", generation: "fixture" }, model, fixed, memory: projected.memory, active: projected.active,
+      slotProvenance: deriveSlotProvenance(branch, projected.active, projected.memory),
+      cleanupCandidateScope: compactionCleanupScope(projected.active, projected.cleanup),
+      priorCleanup: projected.cleanup, eligibleKeptEntryIds: eligibleStarts(branch, projected.active, projected.latestId), eligibleUsageEntryIds: eligibleUsageEntryIds(branch, projected.active),
+      config: engineConfig(prepared.config.nunc, model, prepared.config.compaction), policy: await loadPolicy(), signal: new AbortController().signal };
+    assert(maintenanceInput.slotProvenance.s1);
+    const failed = await maintain(maintenanceInput, async req => ({ ...answer(undefined, model), content: [{ type: "text", text: "invalid JSON" }],
+      usage: { ...answer().usage, input: requestTokens(req.context) + 500, cacheRead: 0, cacheWrite: 0 } }));
+    assert(!failed.ok);
+    const record = maintenanceCalibrationRecord(maintenanceInput, failed);
+    assert.equal(record?.measurement?.undercountTokens, 500);
+    branch.push({ type: "custom", customType: MAINTENANCE_CALIBRATION_TYPE, id: "calibration", parentId: "saved-cleanup", timestamp: new Date(5).toISOString(), data: record });
+    prepared = await prepareBoundary({ ...preparationInput, active: buildContextEntries(branch) });
+    const result = await maintain({ ...maintenanceInput,
+      config: engineConfig(prepared.config.nunc, model, prepared.config.compaction),
+      calibration: projectMaintenanceCalibration(branch, maintenanceInput) }, async () => answer({ add: [], remove: [], priority: ["s1"], required: ["s1"] }, model));
+    assert(result.ok, result.ok ? "" : result.message);
+    assert.equal(result.candidate.firstKeptEntryId, prepared.calibration!.firstKeptEntryId);
+    assert.equal(result.observations.accounting!.keepTarget, prepared.calibration!.accounting.keepTarget);
+    assert.equal(result.observations.accounting!.fullExtractionTokens, prepared.calibration!.accounting.fullExtractionTokens);
+    assert.equal(result.observations.accounting!.keptTokens, prepared.calibration!.accounting.keptTokens);
+    assert.equal(result.observations.accounting!.calibratedUndercountTokens, 500);
+    assert.equal(result.observations.accounting!.extractionTokens, prepared.calibration!.accounting.extractionTokens);
+    assert.equal(result.observations.accounting!.normalExtractionAtTrigger, prepared.calibration!.accounting.normalExtractionAtTrigger);
+  }
+});
+
 test("metricsCommand recognizes minimal necessary invocation forms and rejects unauthorized commands", () => {
   // 1. Build invocations
   assert.equal(metricsCommand("python3 build.py"), "build");
-  assert.equal(metricsCommand("python build.py"), "build");
-  assert.equal(metricsCommand("/usr/bin/python3 build.py"), "build");
-  assert.equal(metricsCommand("python3 ./build.py"), "build");
   assert.equal(metricsCommand("python3 -m py_compile solution.py"), "build");
-  assert.equal(metricsCommand("python3 -m py_compile ./solution.py"), "build");
-  assert.equal(metricsCommand("/usr/bin/python3 -m py_compile solution.py"), "build");
 
   // 2. Test invocations
   assert.equal(metricsCommand("python3 -m unittest test_solution.py"), "tests");
   assert.equal(metricsCommand("python3 -m unittest -v test_solution.py"), "tests");
-  assert.equal(metricsCommand("python3 -m unittest test_solution.py -v"), "tests");
-  assert.equal(metricsCommand("python3 -m unittest test_solution"), "tests");
-  assert.equal(metricsCommand("python3 -m unittest -v test_solution"), "tests");
-  assert.equal(metricsCommand("python3 -m unittest test_solution -v"), "tests");
-  assert.equal(metricsCommand("python3 -m unittest"), "tests");
-  assert.equal(metricsCommand("python3 -m unittest -v"), "tests");
   assert.equal(metricsCommand("python3 -m unittest discover"), "tests");
-  assert.equal(metricsCommand("python3 -m unittest discover -v"), "tests");
   assert.equal(metricsCommand("python3 test_solution.py"), "tests");
   assert.equal(metricsCommand("python3 ./test_solution.py"), "tests");
   assert.equal(metricsCommand("python3 test_solution.py -v"), "tests");
@@ -340,8 +405,8 @@ test("metricsCommand recognizes minimal necessary invocation forms and rejects u
   assert.equal(metricsCommand("python3 solution.py"), "solution");
   assert.equal(metricsCommand("python3 ./solution.py"), "solution");
   assert.equal(metricsCommand("python3 solution.py <<'JSON'\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), "solution");
-  assert.equal(metricsCommand("python3 solution.py <<\"JSON\"\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), "solution");
-  assert.equal(metricsCommand("python3 solution.py <<JSON\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), "solution");
+  assert.equal(metricsCommand("python3 solution.py <<\"JSON\"\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), undefined);
+  assert.equal(metricsCommand("python3 solution.py <<JSON\n{\"op\":\"single\",\"record\":{\"gross\":10,\"refunds\":2}}\nJSON"), undefined);
 
   // 4. Unauthorized commands are rejected (no arbitrary shell expansion, no unauthorized tools)
   assert.equal(metricsCommand("find . -maxdepth 2 -type f -print"), undefined);

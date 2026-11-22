@@ -1,15 +1,35 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, normalizeContext, type TranscriptContext } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, type CallRecord, type CallEnd } from "../../src/live/budget.js";
+import { googleProvider } from "@earendil-works/pi-ai/providers/google";
+import { googleVertexProvider } from "@earendil-works/pi-ai/providers/google-vertex";
+import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, readQualifiedLedgers, type CallRecord, type CallEnd } from "../../src/live/budget.js";
 import { selectedModels } from "../../src/live/contract.js";
 import { fixture, repository } from "./fixtures.js";
 const context: TranscriptContext = normalizeContext({ systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] });
+
+test("orphan terminals reject raw and qualified ledger reads; aggregate unresolved IDs retain ledger identity", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  const a = join(input.target.stateRoot, "a.jsonl"), b = join(input.target.stateRoot, "b.jsonl");
+  const reserve: CallRecord = { kind: "reserve", id: 1, at: 1, model: "fixture", inputEstimate: 10, outputCeiling: 100, reservedTokens: 1000, reservedCostUsd: 1 };
+  const terminal: CallEnd = { kind: "terminal", id: 1, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: 30, cost: 0.1 } };
+  try {
+    const inA = { ...reserve, ledgerPath: a }, inB = { ...reserve, ledgerPath: b };
+    assert.deepEqual(ledgerSummary([inA, inB]).unreconciledCallIds, [`${a}::1`, `${b}::1`]);
+    assert.deepEqual(ledgerSummary([inA, inB, { ...terminal, ledgerPath: b }]).unreconciledCallIds, [`${a}::1`]);
+    assert.throws(() => ledgerSummary([inA, { ...terminal, ledgerPath: b }]), /Orphan terminal/);
+    await appendFile(a, JSON.stringify(reserve) + "\n");
+    await appendFile(b, JSON.stringify(terminal) + "\n");
+    assert.throws(() => readQualifiedLedgers([a, b]), /Orphan terminal/);
+    await rm(b); await appendFile(b, JSON.stringify(reserve) + "\n");
+    assert.deepEqual(ledgerSummary(readQualifiedLedgers([a, b])).unreconciledCallIds, [`${a}::1`, `${b}::1`]);
+  } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+});
 
 test("real OpenAI adapter enforces serialized cap and stops on HTTP failure without retry or subsequent calls", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
@@ -109,7 +129,7 @@ test("unknown usage remains null while full reservations survive restart; cached
     first.finish(reserve, message);
     const second = new BudgetLedger(path, input.limits, Date.now() + 10000, new AbortController().signal);
     const next = second.reserve(model, context, 1000);
-    message.usage = { input: 10, output: 20, cacheRead: 500, cacheWrite: 100, totalTokens: 630, cost: { input: 1, output: 1, cacheRead: 1, cacheWrite: 1, total: 4 } };
+    message.usage = { input: 10, output: 20, cacheRead: 500, cacheWrite: 100, totalTokens: 630, cost: { input: 0.001, output: 0.001, cacheRead: 0.001, cacheWrite: 0.001, total: 0.004 } };
     second.finish(next, message);
     const records = readLedger(path), summary = ledgerSummary(records);
     assert.equal(summary.reservedTokens, 402000); assert.equal(summary.totalTokens, null); assert.equal(summary.costUsd, null);
@@ -348,7 +368,7 @@ test("duplicate or inconsistent terminal records cannot undercharge and keep wor
       usage: { input: 100000, output: 100000, cacheRead: 0, cacheWrite: 0, contextInput: 100000, reasoning: null, totalTokens: 200000, cost: 2.0 }
     };
     assert.equal(callChargedTokens(r, [tExceed]), 68192);
-    assert.equal(callChargedCost(r, [tExceed]), 0.68192);
+    assert.equal(callChargedCost(r, [tExceed]), 2.0, "actual cost above reserve must remain charged");
 
     // Incomplete or zero-default usage: { totalTokens: 0, contextInput: null, output: null }
     const tZeroDefault: import("../../src/live/budget.js").CallEnd = {
@@ -429,7 +449,7 @@ test("shared batch accounting across invocations/comparison preserves cumulative
     assert.throws(() => ledger2.reserve(model, context, 8192), /CALL_LIMIT|Call ceiling/);
 
     // Summary across all records reflects cumulative usage
-    const summary = ledgerSummary(ledger2.readAllRecords(), limits);
+    const summary = ledgerSummary(ledger2.readQualifiedCalls().calls, limits);
     assert.equal(summary.calls, 2);
     assert.equal(summary.chargedTokens, 1255 + 1500);
     assert.equal(summary.actualTokens, 2755);
@@ -457,7 +477,7 @@ test("shared batch accounting across invocations/comparison preserves cumulative
     // Missing declared prior file must block with LEDGER error, not silently skip
     assert.throws(
       () => new BudgetLedger(runCPath, limits, Date.now() + 60000, new AbortController().signal, undefined, ["/path/does/not/exist.jsonl"]),
-      (err: any) => err.code === "LEDGER"
+      (err: any) => err.code === "LEDGER_RECONCILIATION"
     );
 
     // Shuffled prior files find earliest historical dispatch
@@ -559,6 +579,33 @@ test("wallclock deadline from first dispatch and interval elapsed time; expired 
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
+test("duplicate terminal on one call cannot conceal another call's missing terminal", () => {
+  const reserve: CallRecord = { kind: "reserve", id: 1, at: 1, model: "test/model", inputEstimate: 10, outputCeiling: 100, reservedTokens: 1000, reservedCostUsd: null };
+  const terminal: CallEnd = { kind: "terminal", id: 1, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: 30, cost: null } };
+  const summary = ledgerSummary([reserve, { ...reserve, id: 2 }, terminal, { ...terminal }]);
+  assert.equal(summary.actualTokens, null);
+  assert.equal(summary.input, null);
+  assert.equal(summary.output, null);
+  assert.deepEqual(summary.unreconciledCallIds, [2]);
+});
+
+test("controlled usage overflow preserves an unresolved reservation without a synthetic local terminal", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "overflow", contextWindow: 60000, maxTokens: 8192 }] });
+    faux.setResponses([fauxAssistantMessage("x".repeat(5000))]); // Native faux reports 1250 output tokens, beyond the 1000 authorization.
+    const model = faux.getModel();
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "overflow.jsonl"), input.limits, Date.now() + 10000, new AbortController().signal);
+    const provider = boundedProvider(faux.provider, [model], ledger, { controlled: true });
+    const response = await provider.streamSimple(model, context, { maxTokens: 1000 }).result();
+    assert.equal(response.stopReason, "error");
+    assert.match(response.errorMessage ?? "", /USAGE_LIMIT/);
+    assert.equal(readLedger(ledger.path).length, 1);
+    assert.deepEqual(ledgerSummary(readLedger(ledger.path)).unreconciledCallIds, [1]);
+    assert.throws(() => ledger.reserve(model, context, 1000), /Concurrent model calls|terminal receipt/);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
 test("requireThinkingLevel inspects trailing configuration_update effort on openai-responses and falls back to top-level effort", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
@@ -638,5 +685,122 @@ test("requireThinkingLevel inspects trailing configuration_update effort on open
     assert.equal(sends, 2, "must reject before HTTP when trailing configuration_update effort mismatches");
     const badTerm = readLedger(badLedger.path).find((r): r is CallEnd => r.kind === "terminal");
     assert.equal(badTerm?.diagnostic?.code, "THINKING_UNAPPLIED");
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("concurrent Google and Vertex native adapters isolate bounded transport and restore global fetch", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  const originalFetch = globalThis.fetch;
+  try {
+    await Promise.all([googleProvider(), googleVertexProvider()].map(async base => {
+      const catalog = base.getModels().find(m => m.id.includes("gemini-3") && m.reasoning);
+      assert(catalog);
+      const model = { ...catalog, baseUrl: "https://id.example.com/v1" };
+      const ledger = new BudgetLedger(join(input.target.stateRoot, `${model.api}.jsonl`), { ...input.limits, maxCostUsd: null, maxTotalTokens: null }, Date.now() + 10000, new AbortController().signal);
+      let sends = 0;
+      const provider = boundedProvider(base, [model], ledger, {
+        requireThinkingLevel: "low",
+        fetch: async (resource, init) => {
+          const request = new Request(resource, init);
+          const body = await request.json();
+          assert.equal(body.generationConfig.maxOutputTokens, 1000);
+          assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, "LOW");
+          sends++;
+          return new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 } })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        },
+      });
+      const response = await provider.streamSimple(model, context, { maxTokens: 1000, reasoning: "low", apiKey: "offline-fixture-key" }).result();
+      assert.equal(response.stopReason, "stop", response.errorMessage ?? "");
+      assert.equal(sends, 1);
+      assert.deepEqual(ledgerSummary(readLedger(ledger.path)).unreconciledCallIds, []);
+    }));
+  } finally { assert.equal(globalThis.fetch, originalFetch); await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("native pre-transport adapter exceptions settle reservations for raw and simple calls", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  const originalFetch = globalThis.fetch;
+  try {
+    const base = googleProvider(), model = base.getModels()[0]!;
+    for (const simple of [true, false]) {
+      const ledger = new BudgetLedger(join(input.target.stateRoot, `${simple}.jsonl`), { ...input.limits, maxCostUsd: null }, Date.now() + 10000, new AbortController().signal);
+      let sends = 0;
+      const provider = boundedProvider(base, [model], ledger, { fetch: async () => { sends++; throw new Error("Unexpected transport"); } });
+      const response = await (simple ? provider.streamSimple(model, context, { maxTokens: 1000 }) : provider.stream(model, context, { maxTokens: 1000 })).result();
+      assert.equal(response.stopReason, "error");
+      assert.equal(sends, 0);
+      const records = readLedger(ledger.path);
+      assert.equal(records.length, 2);
+      assert.deepEqual(ledgerSummary(records).unreconciledCallIds, []);
+      assert.equal(globalThis.fetch, originalFetch);
+    }
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("future batch dispatch timestamps reject explicit and historical origins", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    for (const timestamp of [Date.now() + 60000, new Date(Date.now() + 60000).toISOString()]) {
+      assert.throws(() => resolveBatchContext({ ...input, batch: { firstDispatchAt: timestamp } }), /no later than now/);
+      assert.throws(() => resolveBatchContext({ ...input, limits: { ...input.limits, firstDispatchAt: timestamp } }), /no later than now/);
+    }
+    const now = Date.now();
+    assert.equal(resolveBatchContext({ ...input, batch: { firstDispatchAt: now } }).firstDispatchAt, now);
+    const path = join(input.target.stateRoot, "future.jsonl");
+    const reserve: CallRecord = { kind: "reserve", id: 1, model: "fixture", at: now + 60000, inputEstimate: 10, outputCeiling: 16, reservedTokens: 100, reservedCostUsd: null };
+    await appendFile(path, `${JSON.stringify(reserve)}\n`);
+    assert.throws(() => resolveBatchContext({ ...input, batch: { priorLedgers: [path] } }), /no later than now/);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("persisted invalid reservation values reject reads and new reservations without changing either ledger", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] });
+    const model = faux.getModel(); model.cost = { input: 10, output: 10, cacheRead: 0, cacheWrite: 0 };
+    const limits = { maxCalls: 10, maxTotalTokens: 2000000, maxCostUsd: 20, maxDurationMs: 60000, maxOutputTokens: 8192 };
+    const path = join(input.target.stateRoot, "history.jsonl"), nextPath = join(input.target.stateRoot, "next.jsonl");
+    const reserve: CallRecord = { kind: "reserve", id: 1, model: "fixture", at: 1, inputEstimate: 100, outputCeiling: 8192, reservedTokens: 68192, reservedCostUsd: 0.68192 };
+    const terminal: CallEnd = { kind: "terminal", id: 1, at: 2, latencyMs: 1, stopReason: "stop", usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, contextInput: 50, reasoning: null, totalTokens: 100, cost: 0.001 } };
+    for (const field of ["inputEstimate", "outputCeiling", "reservedTokens", "at", "reservedCostUsd", "catalogReservationUsd"] as const) {
+      // Raw JSON numbers can overflow to Infinity even though JSON.stringify cannot emit it.
+      for (const raw of [field === "reservedTokens" ? "-100000" : "-1", '"1"', "true", "{}", "1e400", "-1e400", "null", undefined]) {
+        if ((field === "reservedCostUsd" && raw === "null") || (field === "catalogReservationUsd" && raw === undefined)) continue;
+        const { [field]: omitted, ...rest } = reserve;
+        const json = JSON.stringify(rest);
+        const contents = `${raw === undefined ? json : `${json.slice(0, -1)},"${field}":${raw}}`}\n${JSON.stringify(terminal)}\n`;
+        await writeFile(path, contents); await writeFile(nextPath, "");
+        const expected = { code: "LEDGER_RECONCILIATION", message: "Invalid ledger reservation values" };
+        assert.throws(() => readLedger(path), expected, `${field}=${raw}`);
+        assert.throws(() => readQualifiedLedgers([path]), expected, `${field}=${raw}`);
+        for (const ledger of [
+          new BudgetLedger(path, limits, Date.now() + 60000, new AbortController().signal),
+          new BudgetLedger(nextPath, limits, Date.now() + 60000, new AbortController().signal, undefined, [path]),
+        ]) assert.throws(() => ledger.reserve(model, context, 8192), expected, `${field}=${raw}`);
+        assert.equal(await readFile(path, "utf8"), contents);
+        assert.equal(await readFile(nextPath, "utf8"), "");
+      }
+    }
+    for (const historical of [reserve, { ...reserve, reservedCostUsd: null }, { ...reserve, inputEstimate: 0, at: 0, catalogReservationUsd: 0 }]) {
+      await writeFile(path, `${JSON.stringify(historical)}\n${JSON.stringify(terminal)}\n`);
+      await writeFile(nextPath, "");
+      assert.equal(readLedger(path).length, 2);
+      const summary = ledgerSummary(readQualifiedLedgers([path]));
+      assert.equal(summary.chargedTokens, 100);
+      assert.equal(summary.chargedCostUsd, historical.reservedCostUsd === null ? null : 0.001);
+      const ledger = new BudgetLedger(nextPath, { ...limits, maxCostUsd: null }, Date.now() + 60000, new AbortController().signal, undefined, [path]);
+      ledger.finish(ledger.reserve(model, context, 8192), fauxAssistantMessage("ok"));
+      assert.deepEqual(ledgerSummary(ledger.readQualifiedCalls().calls).unreconciledCallIds, []);
+    }
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("persisted duplicate reservation IDs reject at the ledger read boundary", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const path = join(input.target.stateRoot, "calls.jsonl");
+    const reserve: CallRecord = { kind: "reserve", id: 1, model: "fixture", at: 1, inputEstimate: 10, outputCeiling: 16, reservedTokens: 100, reservedCostUsd: 1 };
+    await appendFile(path, `${JSON.stringify(reserve)}\n${JSON.stringify(reserve)}\n`);
+    assert.throws(() => readLedger(path), /Duplicate reservation/);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });

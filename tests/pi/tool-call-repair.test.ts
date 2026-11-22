@@ -462,7 +462,9 @@ test("combined seam for all 4 native mapping families: stock Pi session tool loo
 
     // Verify all admissions were delegated (no Duplicate tool call rejection)
     const delegates = admissions.filter(o => o.kind === "main" && o.outcome === "delegate");
-    assert(delegates.length >= 4, `expected at least 4 delegated main admissions on ${adapter.name}`);
+    assert.equal(delegates.length, 4, `one authorized admission per native request on ${adapter.name}`);
+    assert.equal(admissions.filter(o => o.kind === "main" && o.outcome === "reject").length, 0);
+    assert(delegates.every(o => o.payload !== undefined), "every native send passed serialized-payload authorization");
 
     // Verify captured wire body on request 4 (continuation of turn 2)
     const lastBody = bodies[3];

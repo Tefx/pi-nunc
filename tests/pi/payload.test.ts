@@ -26,6 +26,24 @@ test("uncalibrated main input is diagnostic while explicit limits and native cla
     delta: classifyPayloadChange(base, metadata, "replacement"), enforceInputLimit: false }), /native output clamp/);
 });
 
+test("metadata type labels and tool schemas never enter the content media census", () => {
+  const before = { model: model.id, messages: [{ role: "user", content: "a" }] };
+  for (const type of ["image", "document", "file"]) {
+    const after = { ...before, metadata: { type } };
+    const delta = classifyPayloadChange(before, after, "replacement");
+    assert.deepEqual(delta.categories, ["metadata"]);
+    assert.equal(delta.imagesAdded, 0);
+    assert.deepEqual(delta.unsupportedAdded, []);
+    authPayload({ model, before, after, delta, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens });
+    const tools = { ...before, tools: [{ parameters: { type } }] };
+    assert.deepEqual(classifyPayloadChange(before, tools, "replacement").categories, ["tools"]);
+    const messageMetadata = { ...before, messages: [{ role: "user", content: "a", metadata: { type }, tool_calls: [{ function: { arguments: { type } } }] }] };
+    assert.deepEqual(classifyPayloadChange(before, messageMetadata, "replacement").categories, ["input"]);
+    const content = { ...before, messages: [{ role: "user", content: [{ type }] }] };
+    assert(classifyPayloadChange(before, content, "replacement").categories.includes("media"));
+  }
+});
+
 class SdkParams {
   model = "engine-test";
   stream = true;
@@ -77,6 +95,19 @@ test("authorize allows metadata and identity; rejects overcap, non-stream, model
   assert.throws(() => authPayload({ model, delta: growth, before: base, after: grown, inputTokens: 900, inputLimit: 1000, authorizedOutput: model.maxTokens }), /input growth/);
 });
 
+test("serializer-mapped Azure deployment names cannot be replaced with the catalog model id", () => {
+  const azure = { ...model, api: "azure-openai-responses" as const };
+  const before = { model: "work-deployment", stream: true, max_output_tokens: 16, input: [] };
+  const authorize = (after: unknown) => authPayload({ model: azure, before, after,
+    delta: classifyPayloadChange(before, after, "replacement"), inputTokens: 100, inputLimit: 1000, authorizedOutput: 16 });
+  assert.doesNotThrow(() => authorize({ ...before, temperature: 0 }));
+  for (const renamed of [model.id, "other-deployment", "", null]) {
+    assert.throws(() => authorize({ ...before, model: renamed }), /native model field/);
+  }
+  const { model: _model, ...missing } = before;
+  assert.throws(() => authorize(missing), /native model field/);
+});
+
 test("payloadOutputCeiling reads Completions, Responses and Gemini generationConfig fields", () => {
   assert.equal(payloadOutputCeiling({ max_tokens: 8 }), 8);
   assert.equal(payloadOutputCeiling({ max_output_tokens: 9 }), 9);
@@ -119,6 +150,19 @@ test("Google nested config and Completions n are control, not metadata", () => {
   for (const patch of [{ previous_response_id: "resp_synthetic" }, { conversation: "conv_synthetic" }, { truncation: "auto" }]) {
     const after = { ...responsesHidden, ...patch };
     assert.throws(() => authPayload({ model, delta: classifyPayloadChange(responsesHidden, after, "replacement"), before: responsesHidden, after, inputTokens: 100, inputLimit: 1000, authorizedOutput: model.maxTokens }), /unrecognized payload field/);
+  }
+});
+
+for (const container of ["config", "generationConfig", "nested"] as const) test(`Google ${container} validates every changed field before transport authorization`, () => {
+  const wrap = (value: Record<string, unknown>) => container === "nested" ? { config: { generationConfig: value } } : { [container]: value };
+  const before = { model: model.id, ...wrap({ maxOutputTokens: 128 }) };
+  const authorize = (value: Record<string, unknown>) => {
+    const after = { model: model.id, ...wrap(value) };
+    return authPayload({ model, before, after, delta: classifyPayloadChange(before, after, "replacement"), inputTokens: 100, inputLimit: 10000, authorizedOutput: 128 });
+  };
+  assert.doesNotThrow(() => authorize({ maxOutputTokens: 64 }));
+  for (const [key, value] of Object.entries({ thinking: { budget: 10 }, thinkingConfig: { thinkingBudget: 10 }, modality: "AUDIO", responseModalities: ["AUDIO"], candidateCount: 2, systemInstruction: "changed", tools: [{ name: "read" }], unknown: true })) {
+    assert.throws(() => authorize({ maxOutputTokens: 64, [key]: value }), /unvalidated payload|unrecognized payload field/, key);
   }
 });
 

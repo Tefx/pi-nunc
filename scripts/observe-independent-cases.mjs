@@ -85,12 +85,12 @@ try {
       assert.doesNotMatch(`${report.reason ?? ""} ${report.segments.map(s => `${s.reason ?? ""} ${s.diagnostic ?? ""}`).join(" ")}`, /CALL_LIMIT|TOKEN_LIMIT/);
     }
   }
-  result = { status: "PROVEN_CONTROLLED", case: unlimited ? "unlimited" : quota ? "quota" : "continue", children: report.children.length, calls: summary.calls, requests: f.requests.length, memoryQuality: "UNPROVEN: scripted service", evidence: f.dir };
+  result = { status: "PROVEN_CONTROLLED", case: unlimited ? "unlimited" : quota ? "quota" : "continue", children: report.children.length, calls: summary.calls, requests: f.requests.length, memoryQuality: "UNPROVEN: scripted service" };
 } catch (error) {
   result.error = { message: error.message, stack: error.stack };
   process.exitCode = 1;
 } finally {
   await rm(stateRoot, { recursive: true, force: true });
   await f.close(result);
-  console.log(JSON.stringify(result));
+  console.log(JSON.stringify({ ...result, ...f.artifactReceipt() }));
 }

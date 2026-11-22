@@ -8,7 +8,7 @@ import nunc from "pi-nunc";
 import { contextSurface, memorySurface, bindHostSettings, type MaintenanceEvent, type NuncConfig } from "pi-nunc/pi";
 import { sourceRecords, answer } from "../engine/fixtures.js";
 import type { MaintenanceResult } from "../../src/engine/types.js";
-import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/calibration.js";
+import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/projection.js";
 
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 
@@ -76,6 +76,8 @@ export async function fixture(options: {
 } = {}) {
   const scratch = resolve(root, ".scratch"); await mkdir(scratch, { recursive: true });
   const dir = await mkdtemp(join(scratch, "pi-"));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  try {
   const cwd = join(dir, "work"), agentDir = join(dir, "agent"), sessionDir = join(dir, "sessions");
   await Promise.all([cwd, agentDir, sessionDir].map(path => mkdir(path)));
   const configFile = join(dir, "nunc.json");
@@ -85,7 +87,6 @@ export async function fixture(options: {
   if (options.projectTrusted !== undefined) {
     settings.setProjectTrusted(options.projectTrusted);
   }
-  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   if (options.diskSettings) {
     const globalSettingsContent = {
       compaction: settings.getCompactionSettings(),
@@ -174,6 +175,14 @@ export async function fixture(options: {
       }
     },
   };
+  } catch (error) {
+    if (options.diskSettings) {
+      if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    }
+    await rm(dir, { recursive: true, force: true });
+    throw error;
+  }
 }
 /** Failures may now append one non-context evidence entry, while every pre-existing byte and checkpoint stays unchanged. */
 export function assertOnlyCalibrationAppend(before: SessionEntry[], after: SessionEntry[], result: MaintenanceResult) {

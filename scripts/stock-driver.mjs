@@ -11,8 +11,8 @@ import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-code
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { watch, readFileSync, existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { appendFileSync, watch, readFileSync, existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, realpath, writeFile, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +21,10 @@ export const text = m => typeof m.content === 'string' ? m.content : (m.content 
 export const records = payload => (payload.messages ?? payload.input ?? []).flatMap(m => readSourceRecords(text(m)));
 export class StockFixture {
   changes = new EventEmitter(); processes = []; requests = []; log = []; timeline = []; error; holds = new Map(); maintenanceCount = 0;
-  async setup({ config = {}, compaction = {}, timeoutMs = 90000, artifactParent = join(root, '.scratch/stock'), api = 'openai-completions' } = {}) {
+  async setup({ config = {}, compaction = {}, timeoutMs = 90000, artifactParent, api = 'openai-completions' } = {}) {
+    try {
+    this.removeArtifacts = artifactParent === undefined;
+    artifactParent ??= join(root, '.scratch', 'stock');
     this.api = api; this.codex = api === 'openai-codex-responses';
     this.provider = this.codex ? 'openai-codex' : 'groq'; this.modelId = this.codex ? 'gpt-6-astra' : 'nunc-native';
     this.oauth = this.codex ? oauthFixture() : undefined;
@@ -30,12 +33,12 @@ export class StockFixture {
     assert(this.limits.maxOutputTokens >= (this.codex ? 128000 : 20000), 'authorize stock fixture default total output ceiling');
     timeoutMs = Math.min(timeoutMs, this.limits.maxDurationMs);
     await mkdir(artifactParent, { recursive: true });
-    this.dir = await mkdtemp(join(artifactParent, 'run-'));
+    this.dir = await mkdtemp(join(await realpath(artifactParent), `nunc-stock-${process.pid}-`));
     this.state = join(this.dir, 'isolated');
     for (const d of ['home', 'agent', 'sessions', 'work', 'tmp', 'xdg']) await mkdir(join(this.state, d), { recursive: true });
     this.logFile = join(this.dir, 'events.jsonl'); await writeFile(this.logFile, '');
     this.watcher = watch(this.logFile, () => { const lines = readFileSync(this.logFile, 'utf8').split('\n'); lines.pop(); this.log = lines.map(s => JSON.parse(s)); this.changes.emit('change'); });
-    this.env = { PATH: '/opt/homebrew/bin:/usr/bin:/bin', HOME: join(this.state, 'home'), PI_CODING_AGENT_DIR: join(this.state, 'agent'), TMPDIR: join(this.state, 'tmp'), XDG_CONFIG_HOME: join(this.state, 'xdg'), PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0', DO_NOT_TRACK: '1', JITI_FS_CACHE: 'false', TERM: 'xterm-256color', NUNC_OBSERVATION_LOG: this.logFile, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? '/Library/Developer/CommandLineTools' };
+    this.env = { PATH: `${dirname(process.execPath)}:/opt/homebrew/bin:/usr/bin:/bin`, HOME: join(this.state, 'home'), PI_CODING_AGENT_DIR: join(this.state, 'agent'), TMPDIR: join(this.state, 'tmp'), XDG_CONFIG_HOME: join(this.state, 'xdg'), PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0', DO_NOT_TRACK: '1', JITI_FS_CACHE: 'false', TERM: 'xterm-256color', NUNC_OBSERVATION_LOG: this.logFile, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? '/Library/Developer/CommandLineTools' };
     this.server = createServer((req, res) => {
       const chunks = []; let bytes = 0; req.setTimeout(15000, () => req.destroy());
       req.on('data', part => { chunks.push(part); bytes += part.length; if (bytes > 2000000) req.destroy(); });
@@ -59,6 +62,10 @@ export class StockFixture {
     await writeFile(this.configFile, JSON.stringify({ extraction: { outputTokens: this.codex ? 128000 : 1024 }, ...(this.codex ? { budget: { extraMainInputTokens: 103500 } } : {}), ...config }));
     this.timer = setTimeout(() => { this.error = new Error('whole observation deadline'); this.changes.emit('change'); for (const p of this.processes) p.child.kill('SIGTERM'); this.server.closeAllConnections(); }, timeoutMs);
     return this;
+    } catch (error) {
+      try { await this.close(); } catch { /* Preserve the setup failure after cleanup was attempted. */ }
+      throw error;
+    }
   }
   hold(kind) { this.holds.set(kind, Promise.withResolvers()); }
   release(kind) { this.holds.get(kind)?.resolve(); this.holds.delete(kind); }
@@ -72,6 +79,17 @@ export class StockFixture {
     const independent = kind === 'main' && messages.length === 1 && text(messages[0]) === 'Unclassified nested request';
     if (kind === 'main' && this.processes.length && !independent) assert.equal(req.headers['x-nunc-fixture'], 'preserved', 'public header composition preserved');
     assert((this.limits.maxCalls == null || this.requests.length < this.limits.maxCalls) && (this.limits.maxTotalTokens == null || (this.requests.length + 1) * this.reservation <= this.limits.maxTotalTokens), 'bounded native HTTP/token inventory');
+    const ledgerPath = process.env.NUNC_STOCK_LEDGER;
+    const at = Date.now();
+    const id = ledgerPath && existsSync(ledgerPath) ? readFileSync(ledgerPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(r => r.kind === 'reserve').length + 1 : 1;
+    if (ledgerPath) appendFileSync(ledgerPath, JSON.stringify({ kind: 'reserve', id, model: `${this.provider}/${this.modelId}`, inputEstimate: this.reservation - (this.codex ? 128000 : 20000), outputCeiling: this.codex ? 128000 : 20000, reservedTokens: this.reservation, reservedCostUsd: 0, at }) + '\n', { mode: 0o600, flush: true });
+    let settled = false;
+    const settle = () => {
+      if (!ledgerPath || settled) return;
+      settled = true;
+      appendFileSync(ledgerPath, JSON.stringify({ kind: 'terminal', id, at: Date.now(), latencyMs: Date.now() - at, stopReason: res.writableFinished && res.statusCode === 200 ? 'stop' : 'error', usage: { input: null, output: null, cacheRead: null, cacheWrite: null, contextInput: null, reasoning: null, totalTokens: null, cost: 0 } }) + '\n', { mode: 0o600, flush: true });
+    };
+    res.once('close', settle);
     const row = { kind, payload, encoding: req.headers['content-encoding'] ?? 'identity', closed: false, number: this.requests.length + 1 }; this.requests.push(row);
     res.on('close', () => { row.closed = true; this.changes.emit('change'); });
     this.changes.emit('change');
@@ -150,7 +168,7 @@ export class StockFixture {
       this.changes.emit('change');
     });
     child.stderr.setEncoding('utf8'); child.stderr.on('data', s => { p.stderr += s; });
-    child.on('error', e => { this.error = e; this.changes.emit('change'); });
+    child.on('error', e => { p.exit = -1; this.error = e; this.changes.emit('change'); });
     child.on('exit', (code, signal) => { p.exit = { code, signal }; this.changes.emit('change'); });
     p.command = async (type, fields = {}) => {
       assert.equal(mode, 'rpc'); assert(!p.exit, p.stderr);
@@ -170,20 +188,30 @@ export class StockFixture {
     p.quit = async () => { if (p.exit) return; await p.send('/fixture-quit'); await this.wait(() => p.exit, 'graceful stock exit'); assert.equal(p.exit.code, 0); };
     return p;
   }
+  artifactReceipt() {
+    assert(this.closed && this.dir, 'Close the fixture before reporting artifacts');
+    assert.equal(existsSync(this.dir), !this.removeArtifacts, 'Artifact receipt must match completed cleanup');
+    return this.removeArtifacts ? { cleanup: 'removed' } : { evidence: this.dir };
+  }
   async close(outcome = {}) {
+    if (this.closed) return;
     clearTimeout(this.timer); for (const k of this.holds.keys()) this.release(k);
     for (const p of this.processes) if (!p.exit) {
       p.child.kill('SIGTERM'); const timer = setTimeout(() => p.child.kill('SIGKILL'), 2000);
       await new Promise(resolve => { if (p.exit) resolve(); else p.child.once('exit', resolve); }); clearTimeout(timer);
     }
-    this.server.closeAllConnections(); await new Promise(resolve => this.server.close(resolve)); this.watcher.close();
+    if (this.server) { this.server.closeAllConnections(); await new Promise(resolve => this.server.close(resolve)); }
+    this.watcher?.close();
+    if (!this.dir) { this.closed = true; return; }
     // Preserve observations and durable native state before fixture cleanup.
     const files = this.log.filter(e => e.type === 'snapshot').map(e => e.data.file).filter(Boolean);
     for (const [i, file] of [...new Set(files)].entries()) if (existsSync(file)) await writeFile(join(this.dir, `session-${i}.jsonl`), await readFile(file));
     await writeFile(join(this.dir, 'wire.json'), JSON.stringify(this.requests, null, 2));
     await writeFile(join(this.dir, 'processes.json'), JSON.stringify(this.processes.map(({ child, command, ...p }) => ({ pid: child.pid, ...p })), null, 2));
     await writeFile(join(this.dir, 'timeline.json'), JSON.stringify(this.timeline, null, 2));
-    await rm(this.state, { recursive: true, force: true });
-    await writeFile(join(this.dir, 'result.json'), JSON.stringify({ ...outcome, cleanup: { childrenExited: this.processes.every(p => p.exit), serverClosed: !this.server.listening, isolatedStateRemoved: true } }, null, 2));
+    if (this.state) await rm(this.state, { recursive: true, force: true });
+    await writeFile(join(this.dir, 'result.json'), JSON.stringify({ ...outcome, cleanup: { childrenExited: this.processes.every(p => p.exit), serverClosed: !this.server?.listening, isolatedStateRemoved: true } }, null, 2));
+    if (this.removeArtifacts) await rm(this.dir, { recursive: true, force: true });
+    this.closed = true;
   }
 }

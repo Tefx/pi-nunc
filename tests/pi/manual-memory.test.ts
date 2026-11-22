@@ -5,6 +5,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { bindHostSettings, MANUAL_MEMORY_TYPE, memorySurface, type MemorySurface } from "pi-nunc/pi";
+import { createMemorySurface } from "../../src/pi/manual.js";
 import { isManualMemoryEntry, project, type BranchHistoryResult } from "../../src/pi/projection.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, memoryPatch, surfacePort as port, preparedSurface } from "./fixtures.js";
@@ -16,6 +17,20 @@ async function prepared(t: { after: (fn: () => Promise<void>) => void }, options
   await f.runtime.session.compact();
   return { f, ...captured };
 }
+
+test("committed saves isolate observer failures and rejected freeze ignores survive owner settlement", async t => {
+  const captured = port();
+  const f = await fixture({ extras: captured.extras }); t.after(() => f.close());
+  const surface = createMemorySurface({ pi: captured.pi(), config: () => ({}), onCommitted: () => { throw new Error("Observer failed"); } });
+  assert(surface.beginFreeze()); assert.equal(surface.beginFreeze(), false);
+  surface.endFreeze();
+  assert.equal(surface.noteForeignFailure(), true, "late overlapping failure remains claimed after owner settlement");
+  assert.equal(surface.noteForeignFailure(), false);
+  const view = surface.read(captured.ctx());
+  const result = surface.patch(captured.ctx(), { expectedRevision: view.revision, add: [{ key: "task", text: "Committed despite observer failure." }] });
+  assert(result.ok);
+  assert.equal(project(f.runtime.session.sessionManager.buildContextEntries()).memory.slots[0]?.text, "Committed despite observer failure.");
+});
 
 test("registered read tool retrieves retired source bodies after native compaction without changing memory", async t => {
   const f = await fixture({ diskSettings: true, globalSettings: { nunc: { memoryTools: true } } });

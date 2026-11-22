@@ -38,4 +38,4 @@ try {
   await p.quit();
   outcome = { status: 'PROVEN_CONTROLLED', mainInputLimit: 271999, plannedMainInputLimit: 254592, extractionInputLimit: 262784, outputReserve: 8192, outputCap: null, observedExtractionOutput: 12000, persistedCompactions: 1, memoryQuality: 'UNPROVEN: controlled response' };
 } catch (error) { outcome.error = { message: error.message, stack: error.stack }; console.error(error); process.exitCode = 1; }
-finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }
+finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt() })); }

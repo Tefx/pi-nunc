@@ -3,6 +3,7 @@
 // effects: Fresh protocol/ledger trees only; no auth/model/tool calls. Old selection remains intact.
 // requires: Retained canonical arena/beam/mab protocols and unchanged original inputs.
 import assert from 'node:assert/strict';
+import { buildReceipt, assertNuncBuild } from './build.mjs';
 import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -10,7 +11,7 @@ export const scope='remaining-defaults-v1';
 export const revision='7ea066982b140a19337e17e60d45d4076e042faf';
 export function allocation(){return {scope,newCapUsd:30,exclusive:{arena:10,beam:10,event:10},conditions:{arena:{Luna:1,Sol:9},beam:{Luna:1,Sol:8,judge:1},event:{Luna:1,Sol:9}},priorKnownUsd:37.157149720,priorHeldUsd:20.30112,priorChargedUsd:57.458269720,unknownReleaseAuthorized:false};}
 export function assertAllocation(a){assert.deepEqual(a,allocation(),'Frozen new allocation; old20 is closed');}
-function defaults(p){assert.equal(p.scope,scope);assert.deepEqual(Object.keys(p.nunc).sort(),['compiledSource','configuration']);assert.equal(p.nunc.configuration,'defaults');assert(p.nunc.compiledSource);assert.equal(p.arm,'nunc');assert.equal(p.maxConcurrentRequests,1);}
+function defaults(p){assert.equal(p.scope,scope);assertNuncBuild(p.nunc);assert.equal(p.arm,'nunc');assert.equal(p.maxConcurrentRequests,1);}
 export function assertArenaProtocol(p){
  defaults(p);assert(['Luna','Sol'].includes(p.modelName));assert.equal(p.model.id,p.modelName==='Luna'?'openai/gpt-6-luna':'openai/gpt-6.1-sol');assert.equal(p.model.provider,'openrouter');assert.equal(p.model.api,'openai-completions');
  const groups=p.modelName==='Luna'?[5,6]:[4,5,6];assert.deepEqual(p.groups,groups);assert.deepEqual(p.order,groups.map(g=>[g,'nunc']));assert.equal(p.thinking,'medium');assert.deepEqual(p.compaction,{reserveTokens:255616,keepRecentTokens:8000,effectiveContext:272000,earlyTriggerTokens:16384});assert.equal(p.flightCsvBytes,304807007);assert.equal(p.catalogAllowanceUsd,allocation().conditions.arena[p.modelName]);assert.deepEqual(p.retry,{provider:0,agent:0,boundedRecoveryPerTraveler:0});
@@ -37,7 +38,7 @@ export function freezeSelection(retained,root,compiledSource,commit){
  assert(!existsSync(root),'Selection target exists');assert(existsSync(compiledSource));const read=p=>JSON.parse(readFileSync(p,'utf8')),write=(p,x)=>writeFileSync(p,JSON.stringify(x,null,2)+'\n'),a=allocation();assertAllocation(a);mkdirSync(root);write(join(root,'allocation.json'),a);
  for(const suite of ['arena','beam','event'])mkdirSync(join(root,suite));
  const mab=read(join(retained,'mab/protocol.json')),replacement=read(join(retained,'mab/event-replacement-protocol.json'));assert.equal(replacement.datasetRevision,revision);assert.equal(replacement.replacementRow,8);
- const common={scope,productCommit:commit,arm:'nunc',maxConcurrentRequests:1,nunc:{configuration:'defaults',compiledSource}};
+ const common={scope,productCommit:commit,arm:'nunc',maxConcurrentRequests:1,nunc:{configuration:'defaults',compiledSource,buildReceipt:buildReceipt(compiledSource)}};
  const event={...mab,...common,cases:[replacement.case],conditions:[],budgetUsd:10,framing:{...mab.framing,event:replacement.framing},datasetRevision:revision,replacementRow:8,canonicalReplacement:join(retained,'mab/event-replacement-protocol.json')};
  for(const label of ['Luna','Sol']){
   const key=label.toLowerCase()+'-nunc',model={...mab.models[label],contextWindow:272000},allowanceUsd=a.conditions.event[label];const p={...event,condition:key,model,modelName:label,allowanceUsd};assertEventProtocol(p);const dir=join(root,'event',key);mkdirSync(dir);write(join(dir,'protocol.json'),p);write(join(dir,'admission.json'),{allowanceUsd,spentUsd:0,heldUnknownUsd:0,pending:{},admissions:0,receipts:0,maxReservedTotalUsd:0,modelId:model.id,cost:model.cost,contextWindow:272000,maxTokens:model.maxTokens,condition:key,arm:'nunc',stopped:false});event.conditions.push({key,modelName:label,arm:'nunc',allowanceUsd});

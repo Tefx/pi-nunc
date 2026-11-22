@@ -1,5 +1,6 @@
 import { getSystemMessageText, normalizeContext, type Api, type Context, type ImageContent, type Message, type Model, type SystemMessage, type TextContent, type TranscriptContext, type Usage } from "@earendil-works/pi-ai";
-import type { ActiveEntry, EngineConfig, FixedContext, PlanningEstimate, RequestBudget, Slot, UsageObservation } from "./types.js";
+import type { ActiveEntry, EngineConfig, FixedContext, PlanningEstimate, RequestBudget, Slot, UsageObservation, MechanicalFallbackInfo, ToolResultDecision } from "./types.js";
+import { applyToolResultCleanup } from "./cleanup.js";
 import { memoryMessage } from "./memory.js";
 import { integer, record, requireThat } from "./validation.js";
 
@@ -178,12 +179,14 @@ export function requestTokens(context: Context, imageTokens?: number): number {
   const normalized = normalizeContext(context);
   return 64 + normalized.messages.reduce((sum, m) => sum + messageTokens(m, imageTokens), 0);
 }
-function usageFields(message: Message): number | undefined {
-  if (message.role !== "assistant") return;
+export function usableAssistantUsageTokens(message: unknown): number | undefined {
+  if (!record(message) || message.role !== "assistant") return;
   if (message.stopReason === "aborted" || message.stopReason === "error") return;
   const usage = message.usage;
   if (!record(usage) || ![usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.totalTokens].every(n => integer(n))) return;
-  const tokens = calculateContextTokens(usage);
+  // Input includes both cache fields; reasoning is already part of output.
+  // An inconsistent reported total must not replace the component sum.
+  const tokens = (usage.input as number) + (usage.output as number) + (usage.cacheRead as number) + (usage.cacheWrite as number);
   return integer(tokens, 1) ? tokens : undefined;
 }
 /** Caller must establish unchanged model/prefix before allowing historical usage.
@@ -194,7 +197,7 @@ export function admissionEstimate(context: Context, model: Model<Api>, imageToke
   if (!allowUsage) return { tokens: fresh, estimator: "pi-heuristic" };
   if (usageIndex !== undefined) {
     const anchor = context.messages[usageIndex];
-    const usageTokens = anchor ? usageFields(anchor) : undefined;
+    const usageTokens = anchor ? usableAssistantUsageTokens(anchor) : undefined;
     if (anchor?.role === "assistant" && usageTokens !== undefined && usageIndex >= minimumUsageIndex && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
       const trailing = context.messages.slice(usageIndex + 1);
       return { tokens: usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
@@ -204,11 +207,12 @@ export function admissionEstimate(context: Context, model: Model<Api>, imageToke
   if (context.messages.every(m => m.role !== "assistant" || record(m.usage) && [m.usage.input, m.usage.output, m.usage.cacheRead, m.usage.cacheWrite, m.usage.totalTokens].every(n => integer(n)))) {
     const estimate = estimateContextTokens(context.messages);
     const anchor = estimate.lastUsageIndex === null ? undefined : context.messages[estimate.lastUsageIndex];
-    if (estimate.lastUsageIndex !== null && estimate.lastUsageIndex >= minimumUsageIndex && anchor?.role === "assistant" && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
+    const usageTokens = usableAssistantUsageTokens(anchor);
+    if (estimate.lastUsageIndex !== null && estimate.lastUsageIndex >= minimumUsageIndex && usageTokens !== undefined && anchor?.role === "assistant" && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
       const trailing = context.messages.slice(estimate.lastUsageIndex + 1);
       // Pi's usage includes F and earlier messages. Add our explicit framing/media
       // estimate only for new messages, without charging the prefix twice.
-      return { tokens: estimate.usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
+      return { tokens: usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
     }
   }
   return { tokens: fresh, estimator: "pi-heuristic" };
@@ -219,9 +223,9 @@ export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEn
 }
 export function memoryTarget(config: { memory?: { targetTokens?: number } }): number { return config.memory?.targetTokens ?? 8192; }
 export function hardMemoryLimit(config: { memory?: { hardMaxTokens?: number } }): number | null { return config.memory?.hardMaxTokens ?? null; }
-export function memoryTokens(slots: Slot[], imageTokens?: number): number {
-  if (slots.length === 0) return 0;
-  return messageTokens(memoryMessage(slots), imageTokens);
+export function memoryTokens(slots: Slot[], imageTokens?: number, fallback?: MechanicalFallbackInfo): number {
+  if (slots.length === 0 && !fallback) return 0;
+  return messageTokens(memoryMessage(slots, fallback), imageTokens);
 }
 /** Minimum positive output accepted by the native serializer. */
 export function outputFloor(model: Pick<Model<Api>, "api">): number {
@@ -288,11 +292,24 @@ export function mainAdmissionLimit(model: Model<Api>, budget: RequestBudget): nu
   return limit;
 }
 export const retentionRounding = "nearest-feasible" as const;
-export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig, model?: Model<Api>): { cut: number; keptTokens: number } {
+export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: number, memoryLimit: number, keepTarget: number, trigger: number, config: EngineConfig, model?: Model<Api>, priorCleanup: ToolResultDecision[] = []): { cut: number; keptTokens: number } {
   const sizes = active.map(e => model ? historyPlanningEstimate([e], model, config.imageTokens).tokens : e.messages.reduce((sum, m) => sum + messageTokens(m, config.imageTokens), 0));
   const suffix: number[] = new Array(sizes.length + 1).fill(0);
   for (let i = sizes.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + sizes[i]!;
-  const feasible = cuts.map(cut => ({ cut, keptTokens: suffix[cut]! })).filter(c => fixedTokens + memoryLimit + c.keptTokens + config.growthTokens <= trigger);
+  // Measure each saved replacement once. Do not clone every raw suffix per cut.
+  const indices = new Map(active.map((entry, index) => [entry.entryId, index]));
+  const savings = priorCleanup.flatMap(decision => {
+    const index = indices.get(decision.entryId);
+    if (index === undefined) return [];
+    const cleaned = applyToolResultCleanup([active[index]!], [decision]);
+    const tokens = model ? historyPlanningEstimate(cleaned, model, config.imageTokens).tokens
+      : cleaned[0]!.messages.reduce((n, message) => n + messageTokens(message, config.imageTokens), 0);
+    const through = Math.min(index, ...(decision.sourceRefs ?? []).map(ref => indices.get(ref.entryId) ?? -1));
+    return [{ through, tokens: sizes[index]! - tokens }];
+  });
+  const atCut = (cut: number) => ({ cut, keptTokens: suffix[cut]! - savings.reduce((sum, saved) =>
+    sum + (saved.through >= cut ? saved.tokens : 0), 0) });
+  const feasible = cuts.map(atCut).filter(c => fixedTokens + memoryLimit + c.keptTokens + config.growthTokens <= trigger);
   // A stale historical F cannot veto an otherwise valid maintenance extraction.
   // The complete extraction is measured separately before transport; main admission
   // measures the next real provider Context after Pi applies its tool loadout.
@@ -301,16 +318,20 @@ export function chooseCut(active: ActiveEntry[], cuts: number[], fixedTokens: nu
     message.role === "assistant" && message.stopReason === "stop" &&
       (!Array.isArray(message.content) || !message.content.some(block => block.type === "toolCall")));
   const turnUnfinished = lastUserIndex > 0 && !active.slice(lastUserIndex + 1).some(assistantStop);
-  const alignedFeasible = turnUnfinished ? feasible.filter(candidate => candidate.cut <= lastUserIndex) : [];
+  const alignedFeasible = turnUnfinished && atCut(lastUserIndex).keptTokens <= keepTarget ? feasible.filter(candidate => candidate.cut <= lastUserIndex) : [];
   const prevCompletedIndex = turnUnfinished ? active.slice(0, lastUserIndex).findLastIndex(assistantStop) : -1;
-  // Preserve a completed response as a structural example only within feasible
-  // headroom, when the current turn is already oversized or the increment is small.
+  // A small preceding completed response may accompany an in-target current turn.
   const completedFeasible = prevCompletedIndex > 0 &&
-    (suffix[lastUserIndex]! > keepTarget || suffix[prevCompletedIndex]! - suffix[lastUserIndex]! <= memoryLimit)
+    atCut(prevCompletedIndex).keptTokens - atCut(lastUserIndex).keptTokens <= memoryLimit
     ? alignedFeasible.filter(candidate => candidate.cut <= prevCompletedIndex) : [];
   const activeFeasible = completedFeasible.length ? completedFeasible : alignedFeasible.length ? alignedFeasible : feasible;
-  const candidates = activeFeasible.length ? activeFeasible : cuts.map(cut => ({ cut, keptTokens: suffix[cut]! }));
+  const candidates = activeFeasible.length ? activeFeasible : cuts.map(atCut);
   requireThat(candidates.length > 0, "CAPACITY", "No legal nonempty B/K boundary");
+  // Expiring source-dependent cleanup can make suffix costs non-monotone.
+  if (priorCleanup.length) return candidates.reduce((best, candidate) => {
+    const distance = Math.abs(candidate.keptTokens - keepTarget), previous = Math.abs(best.keptTokens - keepTarget);
+    return distance < previous || distance === previous && candidate.keptTokens > best.keptTokens ? candidate : best;
+  });
   const lowerIndex = candidates.findIndex(c => c.keptTokens <= keepTarget);
   if (lowerIndex < 0) return candidates[candidates.length - 1]!;
   const lower = candidates[lowerIndex]!;

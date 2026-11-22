@@ -1,8 +1,9 @@
 import * as accounting from "../engine/accounting.js";
-import { maintenanceFeedback } from "../engine/calibration.js";
+import { applyToolResultCleanup, retainedToolResultCleanup } from "../engine/cleanup.js";
+import { sameRejectedRequest } from "../engine/calibration.js";
 import * as request from "../engine/request.js";
 import * as validation from "../engine/validation.js";
-import type { MaintenanceInput, Omission } from "../engine/types.js";
+import type { MaintenanceInput } from "../engine/types.js";
 import { requireValue, RunnerError, type RetentionCalibrationRange } from "./contract.js";
 import { validateControl, type Control } from "./scenarios.js";
 
@@ -30,6 +31,12 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
     requireValue(Number.isFinite(range.minFraction) && Number.isFinite(range.maxFraction) && range.minFraction > 0 && range.minFraction <= range.maxFraction && range.maxFraction < 1, "CALIBRATION", "Invalid authorized fraction range");
     validateConfig(source.config); validateMemory(source.memory);
     const { active, config, model } = source;
+    const priorCleanup = config.toolResultCleanup === false ? [] : source.priorCleanup ?? [];
+    const effectiveSuffix = (cut: number) => {
+      const kept = active.slice(cut);
+      return applyToolResultCleanup(kept, retainedToolResultCleanup(kept, priorCleanup));
+    };
+    const baseSource = priorCleanup.length ? applyToolResultCleanup(active, priorCleanup) : active;
     const placement = control.placement;
     const ids = new Set(active.map(e => e.entryId));
     const mapped = (turn: string): string[] => {
@@ -63,16 +70,35 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       requireValue(available > 0, "CALIBRATION", `Effective F exhausts the work budget: F=${fixed}, H=${trigger}, mainInputLimit=${mainInput}`);
     }
     const suffix = new Array<number>(active.length + 1).fill(0);
-    for (let i = active.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1]! + (typeof currentAccounting.historyPlanningEstimate === "function"
-      ? currentAccounting.historyPlanningEstimate([active[i]!], model, config.imageTokens).tokens
-      : active[i]!.messages.reduce((sum, message) => sum + messageTokens(message, config.imageTokens), 0));
+    for (let i = 0; i < active.length; i++) {
+      const kept = effectiveSuffix(i);
+      suffix[i] = typeof currentAccounting.historyPlanningEstimate === "function"
+        ? currentAccounting.historyPlanningEstimate(kept, model, config.imageTokens).tokens
+        : kept.reduce((sum, entry) => sum + entry.messages.reduce((n, message) => n + messageTokens(message, config.imageTokens), 0), 0);
+    }
     const targetPlan = currentAccounting.memoryPlan(source.fixed, model, config, source.memory.slots, suffix[0]);
     const memoryLimit = targetPlan.memoryLimit;
     const memoryReserve = targetPlan.memoryReserveTokens ?? memoryLimit;
     // Historical product builds ignore the history argument and expose no historyBase.
     const denominator = targetPlan.historyBase ?? available - memoryReserve;
     const organizingTarget = targetPlan.organizingTarget ?? memoryLimit;
-    const feasible = cuts.filter(cut => fixed + memoryReserve + suffix[cut]! + config.growthTokens <= trigger);
+    const feasible = cuts.filter(cut => {
+      try {
+        return fixed + memoryReserve + chooseCut(active, [cut], fixed, memoryReserve, 0, trigger, config, model, priorCleanup).keptTokens + config.growthTokens <= trigger;
+      } catch (error) {
+        // Historical selectors reject infeasible singleton cuts rather than
+        // returning their size. Keep enumerating, preserving other failures.
+        if (error && typeof error === "object" && "code" in error && error.code === "CAPACITY") return false;
+        throw error;
+      }
+    });
+    // Enumerate exact phase boundaries as well as open intervals. Unfinished-turn
+    // alignment changes the selector independently of nearest-cut rounding.
+    const boundaries = [...new Set([range.minFraction, range.maxFraction, ...cuts.flatMap(c => [
+      (suffix[c]! - 1) / trigger, suffix[c]! / trigger,
+      (suffix[c]! - 1) / denominator, suffix[c]! / denominator,
+    ])])].filter(q => q >= range.minFraction && q <= range.maxFraction).sort((a, b) => a - b);
+    const candidates = [...boundaries, ...boundaries.slice(1).map((q, i) => (q + boundaries[i]!) / 2)];
     for (const [position, cut] of feasible.entries()) {
       if (target && active[cut]!.entryId !== target.firstKeptEntryId) continue;
       if (active.slice(cut).some(e => retired.has(e.entryId)) || active.slice(0, cut).some(e => retained.has(e.entryId))) continue;
@@ -82,67 +108,40 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       const lowerTarget = next === undefined ? 0 : nearest ? Math.ceil((suffix[cut]! + suffix[next]!) / 2) : suffix[cut]!;
       const exclusiveUpper = previous === undefined ? 1 : (nearest ? Math.ceil((suffix[previous]! + suffix[cut]!) / 2) : suffix[previous]!) / denominator;
       const lower = Math.max(range.minFraction, lowerTarget / denominator), upper = Math.min(range.maxFraction, exclusiveUpper);
-      if (lower > upper) continue;
-      const fraction = lower === upper ? lower : lower + (upper - lower) / 2;
+      for (const fraction of [...(lower <= upper ? [lower === upper ? lower : lower + (upper - lower) / 2] : []), ...candidates]) {
       if (fraction < range.minFraction || fraction > range.maxFraction || fraction <= 0 || fraction >= 1) continue;
       const selectedConfig = { ...config, keepRecentFraction: fraction };
       const keepTarget = currentAccounting.memoryPlan(source.fixed, model, selectedConfig, source.memory.slots, suffix[0]).keepTarget;
-      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, selectedConfig, model);
+      const chosen = chooseCut(active, cuts, fixed, memoryReserve, keepTarget, trigger, selectedConfig, model, priorCleanup);
       if (chosen.cut !== cut) continue; // Includes an empty intersection at an exclusive floating-point edge.
-      const context = extractionContext(source, cut, organizingTarget, active, []);
-      const fullExtraction = requestTokens(context, config.imageTokens) + config.extraction.extraInputTokens;
+      const plan = request.planExtractionRequest(source, cut, organizingTarget, baseSource, extractionInput,
+        { extractionContext, reduceToolBodies }, requestTokens);
+      const fullExtraction = plan.fullExtractionTokens;
       const mainBefore = typeof currentAccounting.mainPlanningEstimate === "function"
-        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).tokens
-        : requestTokens(mainContext(source.fixed, source.memory.slots, active), config.imageTokens) + config.main.extraInputTokens;
-      const fullFeedback = !target ? maintenanceFeedback(source, active, fullExtraction) : undefined;
-      const mainBeforeVisible = !target ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, active, model, config.imageTokens, config.main.extraInputTokens).visibleTokens : mainBefore;
-      const triggerExtraUndercount = fullFeedback ? Math.max(0, fullFeedback.maintenanceUndercountTokens - fullFeedback.activeUndercountTokens) : 0;
+        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, effectiveSuffix(0), model, config.imageTokens, config.main.extraInputTokens).tokens
+        : requestTokens(mainContext(source.fixed, source.memory.slots, effectiveSuffix(0)), config.imageTokens) + config.main.extraInputTokens;
+      const fullFeedback = plan.fullFeedback;
+      const mainBeforeVisible = typeof currentAccounting.mainPlanningEstimate === "function"
+        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, effectiveSuffix(0), model, config.imageTokens, config.main.extraInputTokens).visibleTokens : mainBefore;
+      const triggerExtraUndercount = Math.max(0, fullFeedback.maintenanceUndercountTokens - fullFeedback.activeUndercountTokens);
       const normalAtTrigger = fullExtraction + triggerExtraUndercount - mainBeforeVisible + trigger;
       // Trigger headroom is advisory. Calibrate against the actual extraction below.
-      let extraction = fullExtraction, selectedSource = active;
-      let omissions: Omission[] = [];
-      let includeCleanupCandidates = true;
-      let resolved: ReturnType<typeof request.resolveExtractionRequest> | undefined;
-      if (target) {
-        if (fullExtraction > extractionInput && config.extraction.toolResults === "auto") {
-          const reduction = reduceToolBodies(active, config.extraction.headTailChars);
-          selectedSource = reduction.source; omissions = reduction.omissions;
-          extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions), config.imageTokens) + config.extraction.extraInputTokens;
-        }
-        resolved = resolveExtractionRequest?.(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap));
-      } else {
-        let undercount = fullFeedback!.calibratedUndercountTokens;
-        const knownOverflow = fullFeedback!.full !== undefined || fullFeedback!.reduced !== undefined;
-        if (!knownOverflow && extraction + undercount > extractionInput) {
-          const tokens = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, [], undefined, false), config.imageTokens) + config.extraction.extraInputTokens;
-          const correction = maintenanceFeedback(source, selectedSource, tokens).calibratedUndercountTokens;
-          if (tokens + correction <= extractionInput) {
-            includeCleanupCandidates = false; extraction = tokens; undercount = correction;
-          }
-        }
-        if ((extraction + undercount > extractionInput || knownOverflow) && config.extraction.toolResults === "auto") {
-          const reduction = reduceToolBodies(active, config.extraction.headTailChars);
-          selectedSource = reduction.source; omissions = reduction.omissions;
-          includeCleanupCandidates = true;
-          extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions, undefined, true), config.imageTokens) + config.extraction.extraInputTokens;
-          undercount = maintenanceFeedback(source, selectedSource, extraction).calibratedUndercountTokens;
-          requireValue(!knownOverflow || omissions.length > 0, "CALIBRATION", "Provider already rejected this source; reduction made no omissions");
-          if (extraction + undercount > extractionInput) {
-            includeCleanupCandidates = false;
-            extraction = requestTokens(extractionContext(source, cut, organizingTarget, selectedSource, omissions, undefined, false), config.imageTokens) + config.extraction.extraInputTokens;
-            undercount = maintenanceFeedback(source, selectedSource, extraction).calibratedUndercountTokens;
-          }
-        }
-        requireValue(extraction + undercount <= extractionInput, "CALIBRATION", "Selected calibrated extraction cannot fit; no maintenance call made");
-        resolved = resolveExtractionRequest(source, cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap, includeCleanupCandidates), selectedSource);
-      }
-      if (resolved) extraction = resolved.extractionTokens;
+      const { selectedSource, omissions, includeCleanupCandidates } = plan;
+      requireValue(!plan.knownOverflow || config.extraction.toolResults !== "auto" || omissions.length > 0,
+        "CALIBRATION", "Provider already rejected this source; reduction made no omissions");
+      requireValue(plan.extractionPlanningTokens <= extractionInput, "CALIBRATION", "Selected calibrated extraction cannot fit; no maintenance call made");
+      const resolved = resolveExtractionRequest?.(source,
+        cap => extractionContext(source, cut, organizingTarget, selectedSource, omissions, cap, includeCleanupCandidates), selectedSource);
+      if (resolved) requireValue(!sameRejectedRequest(omissions.length ? fullFeedback.reduced : fullFeedback.full, source.active, resolved),
+        "CALIBRATION", "Provider already rejected the same maintenance source and effective limits; no maintenance call made");
+      const extraction = resolved?.extractionTokens ?? plan.extractionTokens;
       requireValue((resolved?.extractionPlanningTokens ?? extraction) <= (resolved?.extractionInputLimit ?? extractionInput), "CALIBRATION", `The selected extraction cannot fit: full=${fullExtraction}, selected=${extraction}, limit=${extractionInput}; no maintenance call made`);
       return {
         afterTurn: (control.afterTurn ?? control.duringTurn)!, firstKeptEntryId: active[cut]!.entryId, previousFraction: config.keepRecentFraction, selectedFraction: fraction, authorizedRange: { ...range },
         model: { provider: model.provider, id: model.id, contextWindow: model.contextWindow },
         accounting: { effectiveTrigger: trigger, fixedTokens: fixed, memoryLimit, keepTarget, keptTokens: chosen.keptTokens, mainInputLimit: mainInput, extractionInputLimit: resolved?.extractionInputLimit ?? extractionInput, fullExtractionTokens: fullExtraction, extractionTokens: extraction, normalExtractionAtTrigger: normalAtTrigger, growthReserve: config.growthTokens },
       };
+      }
     }
     if (isLegalTargetCut && !targetViolatesPlacement) {
       throw new RunnerError("INSUFFICIENT_CAPACITY", `No legal retained boundary within the authorized fraction range satisfies actual turn placement and growth: H=${trigger}, F=${fixed}, memoryLimit=${memoryLimit}, growth=${config.growthTokens}, requestedK=${suffix[wanted]}, legalCuts=${cuts.length}, feasibleCuts=${feasible.length}`);

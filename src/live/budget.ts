@@ -1,6 +1,9 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { maintenanceThinkingOptions, payloadThinking } from "../engine/pi-model.js";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
-import { createAssistantMessageEventStream, getCurrentTools, type Api, type ApiStreamOptions, type AssistantMessage, type AssistantMessageEventStream, type Context, type Model, type Provider, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, getCurrentTools, type Api, type ApiStreamOptions, type AssistantMessage, type AssistantMessageEventStream, type AssistantMessageEvent, type Context, type Model, type Provider, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
 import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
 
 declare module "@earendil-works/pi-ai/providers/compat-schema" {
@@ -11,7 +14,8 @@ declare module "@earendil-works/pi-ai/providers/compat-schema" {
 }
 import type { UsageObservation } from "../engine/types.js";
 import { outputCapState } from "../pi/payload.js";
-import { canonical, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
+import { canonical } from "../engine/validation.js";
+import { batchTimestamp, assertBatchConsistency, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
 
 export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string; ledgerPath?: string }
 export interface CallDiagnostic { code: string; stage: string; transport: "started" | "not-started" | "not-observed"; httpStatus?: number; networkCode?: string }
@@ -22,11 +26,28 @@ export function readLedger(path: string): LedgerRecord[] {
   const text = readFileSync(path, "utf8");
   requireValue(!text || text.endsWith("\n"), "RECONCILIATION", "Incomplete ledger write; do not retry");
   const canonicalPath = resolve(path);
-  return text.trim() ? text.trim().split("\n").map(line => {
-    const record = JSON.parse(line) as LedgerRecord;
-    record.ledgerPath = canonicalPath;
-    return record;
-  }) : [];
+  let records: LedgerRecord[];
+  try {
+    records = text.trim() ? text.trim().split("\n").map(line => {
+      const record: unknown = JSON.parse(line);
+      requireValue(object(record), "LEDGER_RECONCILIATION", "Invalid ledger record");
+      return { ...record, ledgerPath: canonicalPath } as unknown as LedgerRecord;
+    }) : [];
+  } catch { throw new RunnerError("LEDGER_RECONCILIATION", "Invalid ledger JSON record"); }
+  const reserves = new Set<number>();
+  for (const record of records) {
+    requireValue((record.kind === "reserve" || record.kind === "terminal") && Number.isSafeInteger(record.id) && record.id > 0, "LEDGER_RECONCILIATION", "Invalid ledger record kind or id");
+    if (record.kind !== "reserve") continue;
+    requireValue(
+      [record.inputEstimate, record.outputCeiling, record.reservedTokens, record.at].every(n => typeof n === "number" && Number.isFinite(n) && n >= 0)
+      && (record.reservedCostUsd === null || (typeof record.reservedCostUsd === "number" && Number.isFinite(record.reservedCostUsd) && record.reservedCostUsd >= 0))
+      && (record.catalogReservationUsd === undefined || (typeof record.catalogReservationUsd === "number" && Number.isFinite(record.catalogReservationUsd) && record.catalogReservationUsd >= 0)),
+      "LEDGER_RECONCILIATION", "Invalid ledger reservation values",
+    );
+    requireValue(!reserves.has(record.id), "LEDGER_RECONCILIATION", "Duplicate reservation id");
+    reserves.add(record.id);
+  }
+  return records;
 }
 const LOCAL_GATE = new Set(["PREPARATION", "PAYLOAD", "ENDPOINT", "CALL_LIMIT", "MODEL", "AUTHORIZATION", "OUTPUT_LIMIT", "INPUT_LIMIT", "COST_LIMIT", "TOKEN_LIMIT", "TIME_LIMIT", "CONCURRENCY", "TERMINAL_FAILURE", "BILLING", "THINKING_UNAPPLIED"]);
 const NETWORK_CODE = /^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EPIPE|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ERR_SOCKET_CONNECTION_TIMEOUT|UND_ERR_[A-Z0-9_]{1,40}|AbortError|TimeoutError)$/;
@@ -124,12 +145,14 @@ export function callChargedCost(r: CallRecord, terminals: CallEnd[] | undefined)
     return Math.max(baseCost, ...terminals.map(t => typeof t.usage?.cost === "number" && Number.isFinite(t.usage.cost) ? t.usage.cost : baseCost));
   }
   const t = terminals[0]!;
+  const actual = t.usage?.cost;
+  if (typeof actual === "number" && Number.isFinite(actual) && actual > baseCost) return actual;
   if (t.stopReason !== "stop" && t.stopReason !== "toolUse") return baseCost;
   if (t.diagnostic && t.diagnostic.code !== "OK") return baseCost;
 
   const cost = t.usage?.cost;
   // Unknown cost (null or undefined) or non-positive cost cannot settle against positive reservation
-  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0 || cost > baseCost) {
+  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
     return baseCost;
   }
   return cost;
@@ -151,7 +174,8 @@ export function resolveBatchContext(input: RunInput): {
   firstDispatchAt: number | null;
   deadline: number;
 } {
-  const lim = input.limits as any;
+  assertBatchConsistency(input.batch, input.limits);
+  const lim = input.limits;
   const rawPaths: string[] = [
     ...(input.batch?.priorLedgers ?? []),
     ...(lim?.priorLedgers ?? []),
@@ -165,7 +189,7 @@ export function resolveBatchContext(input: RunInput): {
     const canonical = resolve(p);
     if (seen.has(canonical)) continue;
     seen.add(canonical);
-    requireValue(existsSync(p), "LEDGER", `Declared prior ledger file does not exist: ${p}`);
+    requireValue(existsSync(p), "LEDGER_RECONCILIATION", "Declared prior ledger file is missing");
     priorLedgerPaths.push(p);
   }
 
@@ -176,7 +200,7 @@ export function resolveBatchContext(input: RunInput): {
   const explicitFirst = input.batch?.firstDispatchAt ?? lim?.firstDispatchAt;
   let firstDispatchAt: number | null = null;
   if (explicitFirst !== undefined) {
-    const parsed = typeof explicitFirst === "string" ? new Date(explicitFirst).getTime() : explicitFirst;
+    const parsed = batchTimestamp(explicitFirst);
     requireValue(Number.isFinite(parsed) && parsed > 0, "BATCH", "firstDispatchAt must be a positive timestamp or ISO date");
     if (earliestHistoricalDispatch !== null) {
       requireValue(parsed <= earliestHistoricalDispatch, "BATCH", `explicit firstDispatchAt cannot be later than earliest historical dispatch`);
@@ -188,10 +212,11 @@ export function resolveBatchContext(input: RunInput): {
     firstDispatchAt = earliestHistoricalDispatch;
   }
 
+  requireValue(firstDispatchAt === null || firstDispatchAt <= Date.now(), "BATCH", "firstDispatchAt must be no later than now");
   const explicitDeadline = input.batch?.deadline ?? lim?.deadline;
   let parsedExplicitDeadline: number | undefined;
   if (explicitDeadline !== undefined) {
-    const parsed = typeof explicitDeadline === "string" ? new Date(explicitDeadline).getTime() : explicitDeadline;
+    const parsed = batchTimestamp(explicitDeadline);
     requireValue(Number.isFinite(parsed) && parsed > 0, "BATCH", "deadline must be a positive timestamp or ISO date");
     parsedExplicitDeadline = parsed;
   }
@@ -210,24 +235,12 @@ export class BudgetLedger {
   private active = false;
   constructor(readonly path: string, readonly limits: Limits, readonly deadline: number, readonly signal: AbortSignal, readonly caseKey?: string, readonly priorLedgerPaths: string[] = []) {
     for (const p of this.priorLedgerPaths) {
-      requireValue(existsSync(p), "LEDGER", `Declared prior ledger file does not exist: ${p}`);
+      requireValue(existsSync(p), "LEDGER_RECONCILIATION", "Declared prior ledger file is missing");
     }
   }
 
   readQualifiedCalls(): { calls: QualifiedCall[]; currentFileRecords: LedgerRecord[] } {
-    return { calls: readQualifiedLedgers([...this.priorLedgerPaths, this.path]), currentFileRecords: readLedger(this.path) };
-  }
-
-  readAllRecords(): LedgerRecord[] {
-    const seen = new Set<string>();
-    const records: LedgerRecord[] = [];
-    for (const p of [...this.priorLedgerPaths, this.path]) {
-      const canonical = resolve(p);
-      if (seen.has(canonical)) continue;
-      seen.add(canonical);
-      if (existsSync(p)) records.push(...readLedger(p));
-    }
-    return records;
+    return { calls: readQualifiedLedgers([...this.priorLedgerPaths, ...(existsSync(this.path) ? [this.path] : [])]), currentFileRecords: readLedger(this.path) };
   }
 
   reserve(model: Model<Api>, context: Context | TranscriptContext, outputCeiling: number, subscription = model.api === "openai-codex-responses"): CallRecord {
@@ -293,10 +306,12 @@ export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
     const canonical = resolve(p);
     if (seen.has(canonical)) continue;
     seen.add(canonical);
-    if (!existsSync(p)) continue;
+    requireValue(existsSync(p), "LEDGER_RECONCILIATION", "Declared prior ledger file is missing");
     const records = readLedger(p);
     const fileCalls = records.filter((r): r is CallRecord => r.kind === "reserve");
     const fileTerminals = records.filter((r): r is CallEnd => r.kind === "terminal");
+    const reserveIds = new Set(fileCalls.map(r => r.id));
+    requireValue(fileTerminals.every(t => reserveIds.has(t.id)), "RECONCILIATION", "Orphan terminal has no matching reservation");
     const fileTerminalsById = new Map<number, CallEnd[]>();
     for (const t of fileTerminals) {
       const list = fileTerminalsById.get(t.id) ?? [];
@@ -305,7 +320,7 @@ export function readQualifiedLedgers(ledgerPaths: string[]): QualifiedCall[] {
     }
     for (const r of fileCalls) {
       calls.push({
-        ledgerPath: p,
+        ledgerPath: canonical,
         record: r,
         terminals: fileTerminalsById.get(r.id) ?? [],
       });
@@ -331,10 +346,14 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
   const qCalls: QualifiedCall[] = qualified ? records as QualifiedCall[] : rawCalls.map(record => ({
     ledgerPath: record.ledgerPath ?? "", record, terminals: terminalsById.get(callKey(record)) ?? [],
   }));
+  requireValue(qCalls.every(c => c.terminals.every(t => t.id === c.record.id && (t.ledgerPath === undefined || t.ledgerPath === c.ledgerPath))), "RECONCILIATION", "Orphan terminal has no matching qualified reservation");
+  const reserveKeys = new Set(rawCalls.map(callKey));
+  requireValue(qualified || terminal.every(t => reserveKeys.has(callKey(t))), "RECONCILIATION", "Orphan terminal has no matching reservation");
   const calls = qCalls.map(c => c.record);
+  const multipleLedgers = new Set(qCalls.map(c => c.ledgerPath)).size > 1;
   const activeCalls = qCalls.filter(c => c.terminals.length === 0);
   const sum = (key: keyof UsageObservation): number | null =>
-    terminal.length !== calls.length || terminal.some(r => r.usage[key] === null)
+    qCalls.some(c => c.terminals.length !== 1) || terminal.length !== calls.length || terminal.some(r => r.usage[key] === null)
       ? null
       : terminal.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
 
@@ -375,7 +394,7 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
     remainingCalls,
     remainingTokens,
     remainingCostUsd,
-    unreconciledCallIds: activeCalls.map(c => c.record.id),
+    unreconciledCallIds: activeCalls.map(c => multipleLedgers ? `${c.ledgerPath}::${c.record.id}` : c.record.id),
   };
 }
 function errorMessage(model: Model<Api>, reason: string): AssistantMessage {
@@ -394,19 +413,36 @@ function assertAuthorizedDestination(baseUrl: string, requestUrl: string): void 
   const prefix = authorized.pathname.replace(/\/+$/, "") || "/";
   requireValue(prefix === "/" || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`), "ENDPOINT", "Transport path is outside authorized model baseUrl");
 }
+// Google adapters use global fetch rather than accepting a custom fetch option.
+// ALS keeps concurrent invocations and unrelated host requests on their own transports.
+const googleFetch = new AsyncLocalStorage<typeof fetch>();
+let googleFetchUsers = 0;
+let hostFetch: typeof fetch;
+async function withGoogleFetch<T>(transport: typeof fetch, run: () => Promise<T>): Promise<T> {
+  if (googleFetchUsers++ === 0) {
+    hostFetch = globalThis.fetch;
+    globalThis.fetch = (resource, init) => (googleFetch.getStore() ?? hostFetch)(resource, init);
+  }
+  try { return await googleFetch.run(transport, run); }
+  finally { if (--googleFetchUsers === 0) globalThis.fetch = hostFetch; }
+}
+
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
 export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; subscriptionBilling?: (model: Model<Api>) => boolean; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
   function stream(model: Model<Api>, context: Context | TranscriptContext, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = createAssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
     void (async () => {
-      let reservation: CallRecord | undefined, finished = false, ended = false;
+      let reservation: CallRecord | undefined, finished = false;
+      let finalMessage = errorMessage(model, "Provider did not settle");
+      let terminalEvent: AssistantMessageEvent | undefined;
       let wrapperEntries = 0, transportStarted = false, payloadChecked = false, localCode: string | undefined;
       let httpStatus: number | undefined, net: string | undefined;
       const snapshot = () => ({ wrapperEntries, transportStarted, ...(httpStatus !== undefined ? { httpStatus } : {}), ...(net ? { networkCode: net } : {}) });
       const complete = (message: AssistantMessage, diagnostic?: CallDiagnostic) => {
         if (finished || !reservation) return;
-        ledger.finish(reservation, message, diagnostic); finished = true;
+        finished = true; // A failed settlement must never be retried as a synthetic terminal.
+        ledger.finish(reservation, message, diagnostic);
         options.onResponse?.(model, message, kind);
       };
       try {
@@ -432,32 +468,27 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
           outputPlanning: original?.maxTokens ?? null, reasoning: (original as SimpleStreamOptions | undefined)?.reasoning ?? (original as { reasoningEffort?: unknown } | undefined)?.reasoningEffort ?? null,
           context: { ...context, tools: activeTools.map(({ name, description, parameters }) => ({ name, description, parameters })) } });
         const combined = AbortSignal.any([ledger.signal, ...(original?.signal ? [original.signal] : [])]);
+        const google = ["google-generative-ai", "google-vertex"].includes(model.api);
+        const transport = options.fetch ?? original?.fetch ?? (googleFetchUsers > 0 ? hostFetch : globalThis.fetch);
         const onPayload = async (payload: unknown, selected: Model<Api>) => {
           const replacement = await original?.onPayload?.(payload, selected);
           try {
             const body = replacement === undefined ? payload : replacement;
             requireValue(object(body), "PAYLOAD", "Native payload is not a JSON object");
-            requireValue(body.stream === true && body.background !== true, "PAYLOAD", "Native payload is not a single SSE request");
+            requireValue((google ? body.stream === undefined || body.stream === true : body.stream === true) && body.background !== true, "PAYLOAD", "Native payload is not a single SSE request");
             if (Object.hasOwn(body, "model") || options.requireThinkingLevel) requireValue(body.model === model.id, "PAYLOAD", "Native payload model differs from authorization");
             const caps = outputCapState(body);
             requireValue(caps.kind !== "invalid" && caps.kind !== "conflict", "PAYLOAD", "Native serialized output cap is invalid");
             if (caps.kind === "missing") requireValue(maxTokens === model.maxTokens, "PAYLOAD", "Payload omits an output cap; reserve the full native model.maxTokens allowance");
             else requireValue(caps.value > 0 && caps.value <= maxTokens, "PAYLOAD", "Native serialized output cap exceeds authorization");
             if (options.requireThinkingLevel) {
-              let payloadEffort: string | undefined;
-              const configUpdates = Array.isArray((body as any).input)
-                ? (body as any).input.filter((item: any) => object(item) && item.type === "configuration_update" && object(item.reasoning) && typeof (item.reasoning as any).effort === "string")
-                : [];
-              if (configUpdates.length > 0) {
-                payloadEffort = (configUpdates.at(-1).reasoning as any).effort;
-              } else if (object(body.reasoning) && typeof (body.reasoning as any).effort === "string") {
-                payloadEffort = (body.reasoning as any).effort;
-              } else if (typeof (body as any).reasoning_effort === "string") {
-                payloadEffort = (body as any).reasoning_effort;
-              }
-              const expectedEffort = options.requireThinkingLevel;
-              if (expectedEffort !== undefined && expectedEffort !== "off") {
-                requireValue(payloadEffort === expectedEffort, "THINKING_UNAPPLIED", `${kind} request payload for ${selected.id} does not apply required thinking level "${expectedEffort}"; observed "${payloadEffort ?? "none"}"`);
+              const applied = payloadThinking(body);
+              const expected = options.requireThinkingLevel;
+              if (expected !== "off") {
+                const mapped = model.thinkingLevelMap?.[expected as ModelThinkingLevel] ?? expected;
+                const matches = typeof applied === "number" ? Number.isFinite(applied) && (applied > 0 || applied === -1)
+                  : applied === mapped || applied === "adaptive";
+                requireValue(matches, "THINKING_UNAPPLIED", `${kind} request payload for ${selected.id} does not apply required thinking level "${expected}"; observed "${applied ?? "none"}"`);
               }
             }
             options.onPayload?.({ callId: reservation!.id, cap: caps, ...(options.capturePayload ? { finalPayload: structuredClone(body) } : {}) });
@@ -478,7 +509,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
           } catch (error) { if (error instanceof RunnerError) localCode = error.code; throw error; }
           transportStarted = true;
           try {
-            const response = await (options.fetch ?? original?.fetch ?? fetch)(request, { signal: AbortSignal.any([combined, request.signal]), redirect: "error" });
+            const response = await transport(request, { signal: AbortSignal.any([combined, request.signal]), redirect: "error" });
             httpStatus = httpStatusOf(response.status);
             return response;
           } catch (error) {
@@ -487,43 +518,55 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
           }
         };
         const bounded: Record<string, unknown> = { ...original, onPayload, maxRetries: 0, timeoutMs: Math.max(1, ledger.deadline - Date.now()), signal: combined, transport: "sse" as const, fetch: boundedFetch };
+        if (google) delete bounded.fetch;
         if (kind === "maintenance" && options.maintenanceThinking) {
-          bounded.reasoningEffort = options.maintenanceThinking;
+          Object.assign(bounded, maintenanceThinkingOptions(model, options.maintenanceThinking as ModelThinkingLevel, maxTokens));
           bounded.reasoning = options.maintenanceThinking;
         }
-        // The two public entry points have distinct API-specific option unions; preserve the caller's entry point.
-        // Historical comparison targets own their older Context API. Do not
-        // normalize their input with the candidate's library before delegation.
-        const source = simple ? base.streamSimple(model, context as TranscriptContext, bounded as SimpleStreamOptions) : base.stream(model, context as TranscriptContext, bounded);
-        let terminal: AssistantMessage | undefined;
-        for await (const event of source) {
-          if (event.type === "done") terminal = event.message;
-          if (event.type === "error") terminal = event.error;
-          if (terminal) {
-            const failed = terminal.stopReason === "error" || terminal.stopReason === "aborted" || Boolean(terminal.errorMessage);
-            if (failed) {
-              delete terminal.diagnostics;
-              const code = localCode ?? (terminal.stopReason === "aborted" || ledger.signal.aborted ? "CANCELLED" : httpStatus === 200 ? "PROVIDER_PROTOCOL" : httpStatus !== undefined ? "PROVIDER_HTTP" : transportStarted ? (net ? "NETWORK" : "PROVIDER_ERROR") : "PROVIDER_ERROR");
-              const info = describeFailure(code, snapshot());
-              terminal.errorMessage = info.message;
-              if (options.controlled || transportStarted || (localCode && !transportStarted)) complete(terminal, info);
-            } else {
-              requireValue(options.controlled || transportStarted, "TRANSPORT", "No bounded HTTP transport was observed");
-              complete(terminal);
+        const consume = async () => {
+          // The two public entry points have distinct API-specific option unions; preserve the caller's entry point.
+          // Historical comparison targets own their older Context API. Do not
+          // normalize their input with the candidate's library before delegation.
+          const source = simple ? base.streamSimple(model, context as TranscriptContext, bounded as SimpleStreamOptions) : base.stream(model, context as TranscriptContext, bounded);
+          let terminal: AssistantMessage | undefined;
+          for await (const event of source) {
+            if (event.type === "done") terminal = event.message;
+            if (event.type === "error") terminal = event.error;
+            if (terminal) {
+              const failed = terminal.stopReason === "error" || terminal.stopReason === "aborted" || Boolean(terminal.errorMessage);
+              if (failed) {
+                delete terminal.diagnostics;
+                const code = localCode ?? (terminal.stopReason === "aborted" || ledger.signal.aborted ? "CANCELLED" : httpStatus === 200 ? "PROVIDER_PROTOCOL" : httpStatus !== undefined ? "PROVIDER_HTTP" : transportStarted ? (net ? "NETWORK" : "PROVIDER_ERROR") : "PROVIDER_ERROR");
+                const info = describeFailure(code, snapshot());
+                terminal.errorMessage = info.message;
+                complete(terminal, info);
+              } else {
+                requireValue(options.controlled || transportStarted, "TRANSPORT", "No bounded HTTP transport was observed");
+                complete(terminal);
+              }
             }
+            if (event.type === "done" || event.type === "error") terminalEvent = event;
+            else output.push(event);
           }
-          output.push(event);
-        }
-        requireValue(terminal, "RECONCILIATION", "Provider ended without a terminal event");
-        ended = true; output.end(terminal);
+          requireValue(terminal, "RECONCILIATION", "Provider ended without a terminal event");
+          finalMessage = terminal;
+        };
+        if (google) await withGoogleFetch(boundedFetch, consume);
+        else await consume();
       } catch (error) {
         const aborted = ledger.signal.aborted || (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"));
         const code = error instanceof RunnerError ? error.code : aborted ? "CANCELLED" : net ? "NETWORK" : "PROVIDER_ERROR";
         const info = describeFailure(code, snapshot());
         const message = errorMessage(model, info.message);
-        const provenLocal = !transportStarted && (Boolean(localCode) || error instanceof RunnerError && LOCAL_GATE.has(error.code));
-        if (provenLocal || (options.controlled && !transportStarted)) complete(message, info);
-        if (!ended) { ended = true; output.push({ type: "error", reason: aborted ? "aborted" : "error", error: message }); output.end(message); }
+        finalMessage = message;
+        try {
+          if (!transportStarted && !(error instanceof RunnerError && error.code === "USAGE_LIMIT")) complete(message, info);
+        } catch { /* The reservation stays unresolved; the error stream must still settle. */ }
+        terminalEvent = { type: "error", reason: aborted ? "aborted" : "error", error: message };
+      } finally {
+        // Publish the terminal only after scoped transport cleanup has completed.
+        if (terminalEvent) output.push(terminalEvent);
+        output.end(finalMessage);
       }
     })();
     return output;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { ModelRegistry, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { emptyMemory } from "../../src/engine/index.js";
 import { createContextSurface, unknownBudget } from "../../src/pi/context.js";
 import { engineConfig } from "../../src/pi/config.js";
@@ -8,7 +8,7 @@ import { budgetLines, capLabel, detailsLines, DIAGNOSTIC_LIMIT, maintenanceLines
 import { NuncUi } from "../../src/ui/index.js";
 import { model } from "../engine/fixtures.js";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { assertOnlyCalibrationAppend, fixture, memoryPatch, surfacePort as port } from "./fixtures.js";
+import { assertOnlyCalibrationAppend, fixture, memoryPatch, preparedSurface, surfacePort as port } from "./fixtures.js";
 
 
 test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unknown; reports do not consume diagnostics", async t => {
@@ -221,6 +221,23 @@ test("last-maintenance engine vs native states stay on ContextSurface used by th
   assert.match(savedReport, new RegExp(`Last-maintenance input plan: ${saved.lastMaintenance.accounting.extractionInputLimit.toLocaleString("en-US")}`));
 });
 
+test("superseding native checkpoint is reported as failed without a Nunc after projection", async t => {
+  const captured = port();
+  const f = await fixture({ extras: [...captured.extras, { name: "foreign-terminal", factory(pi) {
+    pi.on("session_before_compact", event => ({ compaction: {
+      summary: "External checkpoint", firstKeptEntryId: event.preparation.firstKeptEntryId,
+      tokensBefore: event.preparation.tokensBefore, details: {},
+    } }));
+  } }] });
+  t.after(() => f.close()); f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const view = captured.context().read(captured.ctx());
+  assert.equal(view.lastMaintenance?.engine, "ok");
+  assert.equal(view.lastMaintenance?.native, "failed");
+  assert.equal(view.lastMaintenance?.after, undefined);
+  assert.match(detailsLines({ view, diagnostics: [] }), /Native save: failed/);
+});
+
 test("failed maintenance keeps the received terminal in the existing context report", async t => {
   const captured = port();
   const f = await fixture({ extras: captured.extras }); t.after(() => f.close());
@@ -279,5 +296,61 @@ test("session reset drops last maintenance from the shared report source without
   assert.equal(empty.lastMaintenance, undefined);
   assert.match(detailsLines({ view: empty, diagnostics: [] }), /No maintenance record in this context/);
   assert.equal(f.faux.state.callCount, calls);
+});
+
+test("model diagnostics deduplicate startup and selection, survive thinking changes, and reset with session", async t => {
+  const notes: string[] = [];
+  const h = await preparedSurface(t, { config: { memory: { hardMaxTokens: 1000 } }, bus: bus => bus.on("nunc:diagnostic", value => notes.push((value as { message: string }).message)) });
+  const warnings = () => notes.filter(n => n.includes("memory.hardMaxTokens"));
+  assert.equal(warnings().length, 1, "startup runs shared diagnostics");
+  const original = h.f.faux.getModel();
+  const dense = { ...original, id: "dense-output", maxTokens: 54000 };
+  const registry = new ModelRegistry(h.f.modelRuntime);
+  registry.registerProvider({ ...h.f.faux.provider, getModels: () => [original, dense] });
+  await h.f.runtime.session.setModel(dense);
+  assert.equal(notes.filter(n => n.includes("Oversized catalog output caps")).length, 1);
+  h.f.runtime.session.setThinkingLevel("low");
+  await h.f.runtime.session.setModel(original);
+  await h.f.runtime.session.setModel(dense);
+  assert.equal(notes.filter(n => n.includes("Oversized catalog output caps")).length, 1);
+  assert.equal(warnings().length, 2, "one per model, including startup model");
+  await h.f.runtime.newSession();
+  assert.equal(warnings().length, 3, "new session startup diagnoses its initial model again");
+  await h.f.runtime.session.setModel(dense);
+  assert.equal(notes.filter(n => n.includes("Oversized catalog output caps")).length, 2);
+});
+
+test("narrow candidate runway is separate from sufficient normal extraction headroom and warns once until invalidation", async t => {
+  const notes: string[] = [];
+  const h = await preparedSurface(t, { bus: bus => bus.on("nunc:diagnostic", value => notes.push((value as { message: string }).message)) });
+  h.f.respond(() => fauxAssistantMessage(JSON.stringify({ add: [], remove: [], priority: [], required: [] })));
+  let seeded = false;
+  const prepare = () => {
+    if (!seeded) { h.f.seed(); seeded = true; }
+    const manager = h.f.runtime.session.sessionManager;
+    manager.appendMessage({ role: "user", content: "Current indivisible work " + "x".repeat(60000), timestamp: 3 });
+    h.f.runtime.session.agent.state.messages = manager.buildSessionContext().messages;
+  };
+  prepare();
+  await h.f.runtime.session.compact();
+  const result = h.f.events.at(-1)!.result;
+  assert(result.ok, JSON.stringify(result));
+  const a = result.observations.accounting!;
+  assert.equal(a.normalHeadroomSufficient, true);
+  assert(a.growthTokens! < 0.35 * a.effectiveTrigger);
+  assert.equal(a.growthTokens, a.effectiveTrigger - a.mainAfterTokens!);
+  const report = maintenanceLines(h.context().read(h.ctx()).lastMaintenance).join("\n");
+  assert.match(report, /Normal-trigger headroom: sufficient/);
+  assert.match(report, /Candidate post-compaction runway:.*narrow.*forecast/);
+  const runway = () => notes.filter(n => n.includes("Candidate post-compaction growth runway"));
+  assert.equal(runway().length, 1);
+  assert.doesNotMatch(runway()[0]!, /reserveTokens/);
+  prepare();
+  await h.f.runtime.session.compact();
+  assert.equal(runway().length, 1);
+  h.f.runtime.session.setThinkingLevel("low");
+  prepare();
+  await h.f.runtime.session.compact();
+  assert.equal(runway().length, 2);
 });
 

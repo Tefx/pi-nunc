@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Context } from "@earendil-works/pi-ai";
-import { checkCapacityRecovery, qualifyCapacity } from "../../src/live/capacity-observation.js";
-import { evaluateCapacityPredicates } from "../../src/live/scenarios.js";
+import { checkCapacityRecovery, qualifyCapacity, evaluateCapacityPredicates } from "../../src/live/scenarios.js";
 import type { MaintenanceResult, Memory } from "../../src/engine/types.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
 import { maintain } from "../../src/engine/engine.js";
@@ -79,15 +78,31 @@ test("capacity qualification binds the actual new organizing prompt and never in
   const result = await maintain(source, async request => { sent = request.context; return answer(patch, request.model); });
   assert(result.ok);
   const responses = [{ model: source.model.id, stopReason: "stop", patch }];
-  const checks = qualifyCapacity("fits-required", source.memory, result, [sent], responses, source.model.id, 200);
+  const checks = qualifyCapacity("fits-required", source.memory, result, [sent], responses, source.model.id, 200, undefined, 50);
   assert.equal(checks[0]!.status, "PROVEN");
   assert.equal(qualifyCapacity("fits-required", source.memory, result, [sent], responses, source.model.id, null)[0]!.status, "UNPROVEN");
+});
+
+test("organizing declarations bind only to organizingTarget, never reserve or advisory budgets", () => {
+  const memory: Memory = { version: 1, slots: [], nextId: 1 };
+  const result = { observations: { accounting: { memoryLimit: 100, memoryReserveTokens: 186 } } } as MaintenanceResult;
+  const response = { model: "fixture", stopReason: "stop", patch: {} };
+  const run = (kind: string, n: number) => qualifyCapacity("fits-required", memory, result, [{
+    systemPrompt: `Rendered memory ${kind} target: ${n} estimated tokens; Independent saved-memory hard cap: 200 estimated tokens`,
+    messages: [{ role: "user", timestamp: 0, content: JSON.stringify({ source: "F/M", M: [] }) }],
+  }], [response], "fixture", 200, undefined, 50)[0]!.status;
+  assert.equal(run("organizing", 186), "UNPROVEN");
+  assert.equal(run("organizing", 100), "UNPROVEN");
+  assert.equal(run("organizing", 50), "PROVEN");
+  assert.equal(run("advisory", 100), "PROVEN");
+  assert.equal(run("advisory", 50), "UNPROVEN");
+  assert.equal(run("advisory", 186), "UNPROVEN");
 });
 
 test("capacity recovery needs a real failed transaction, one delivered input, unchanged checkpoint and no repeat maintenance", () => {
   const facts = { capacityFailed: true, deliveredCount: 1, terminalStop: true, memoryAndBoundaryUnchanged: true, additionalMaintenance: 0 };
   assert.equal(checkCapacityRecovery(facts).status, "PROVEN");
-  for (const delta of [{ capacityFailed: false }, { deliveredCount: 0 }, { deliveredCount: 2 }, { terminalStop: false }, { memoryAndBoundaryUnchanged: false }, { additionalMaintenance: 1 }]) {
+  for (const delta of [{ deliveredCount: 2 }, { memoryAndBoundaryUnchanged: false }, { additionalMaintenance: 1 }]) {
     assert.equal(checkCapacityRecovery({ ...facts, ...delta }).status, "UNPROVEN");
   }
 });

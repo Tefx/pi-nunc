@@ -5,7 +5,12 @@ import { emptyMemory, loadPolicy, type MaintenanceInput } from "../../src/engine
 import { engineConfig } from "../../src/pi/index.js";
 import { calibrateRetention } from "../../src/live/calibration.js";
 import { maintain } from "../../src/engine/engine.js";
-import { input, responder, user } from "../engine/fixtures.js";
+import { decideToolResultCleanup, applyToolResultCleanup, retainedToolResultCleanup } from "../../src/engine/cleanup.js";
+import * as accounting from "../../src/engine/accounting.js";
+import * as request from "../../src/engine/request.js";
+import * as validation from "../../src/engine/validation.js";
+import { historyPlanningEstimate } from "../../src/engine/accounting.js";
+import { answer, input, responder, user, assistant, tool } from "../engine/fixtures.js";
 
 test("low-water calibration predicts the boundary that actual maintenance independently selects", async () => {
   const source = await input();
@@ -26,6 +31,94 @@ test("low-water calibration predicts the boundary that actual maintenance indepe
   source.config.keepRecentTargetTokens = 10;
   assert.throws(() => calibrateRetention(source, control, turns, order, range), /No legal retained boundary/);
 });
+
+test("calibration and maintain share cleanup-aware history, per-cut dependencies and extraction sources", async () => {
+  for (const dependent of [false, true]) for (const disabled of [false, true]) for (const keepBoth of [false, true]) {
+    const source = await input();
+    source.model.contextWindow = 200000;
+    source.config = engineConfig({ rolling: { keepRecentFraction: 0.5 } }, source.model, { reserveTokens: 16384, keepRecentTokens: 1 });
+    source.config.toolResultCleanup = !disabled;
+    const body = JSON.stringify({ payload: "evidence".repeat(500) }, null, 200);
+    const exchange = (id: string) => [assistant(`${id}-call`, [{ type: "toolCall", id, name: "read", arguments: { path: dependent ? "source.json" : `${id}.json` } }]), tool(`${id}-result`, id, body)];
+    source.active = [user("a", "Old history ".repeat(6000)), ...exchange("b"), ...exchange("c"), user("d", "Continue ".repeat(100))];
+    source.priorCleanup = decideToolResultCleanup({ active: source.active, retainedEntries: source.active,
+      initialMemory: source.memory, finalMemory: source.memory, mechanicalWhenMemoryUnchanged: true,
+      candidateScope: dependent ? [{ entryId: "c-result", messageIndex: 0 }] : [{ entryId: "b-result", messageIndex: 0 }, { entryId: "c-result", messageIndex: 0 }],
+    }).applied;
+    assert(source.priorCleanup.some(d => d.action === (dependent ? "deduplicate" : "compact_json")));
+    const turns = { a: ["a"], b: ["b-call", "b-result"], c: ["c-call", "c-result"], d: ["d"] };
+    const control = { afterTurn: "d", action: "rollover" as const, placement: { retireThroughTurn: keepBoth ? "a" : "b", retainTurns: keepBoth ? ["b", "c", "d"] : ["c", "d"] } };
+    const calibrated = calibrateRetention(source, control, turns, ["a", "b", "c", "d"], { minFraction: 0.00001, maxFraction: 0.99999 });
+    source.config.keepRecentFraction = calibrated.selectedFraction;
+    const result = await maintain(source, responder());
+    assert(result.ok, result.ok ? "" : result.message);
+    assert.equal(result.candidate.firstKeptEntryId, calibrated.firstKeptEntryId);
+    assert.equal(calibrated.firstKeptEntryId, keepBoth ? "b-call" : "c-call");
+    const accounting = result.observations.accounting!;
+    assert.equal(accounting.keepTarget, calibrated.accounting.keepTarget);
+    assert.equal(accounting.keptTokens, calibrated.accounting.keptTokens);
+    assert.equal(accounting.fullExtractionTokens, calibrated.accounting.fullExtractionTokens);
+    assert.equal(accounting.extractionTokens, calibrated.accounting.extractionTokens);
+    assert.equal(accounting.normalExtractionAtTrigger, calibrated.accounting.normalExtractionAtTrigger);
+    const kept = source.active.slice(keepBoth ? 1 : 3);
+    const effective = applyToolResultCleanup(kept, retainedToolResultCleanup(kept, disabled ? [] : source.priorCleanup));
+    assert.equal(accounting.keptTokens, historyPlanningEstimate(effective, source.model).tokens);
+    if (dependent && !keepBoth) assert.deepEqual(retainedToolResultCleanup(kept, source.priorCleanup), [], "sourceRefs expire independently for each cut");
+    if (!dependent && !disabled) assert(accounting.keptTokens < historyPlanningEstimate(kept, source.model).tokens);
+  }
+});
+
+for (const mode of ["candidate-only", "calibrated-reduction", "reduced-candidate-only"] as const) {
+  test(`current and loaded-target calibration share the extraction cascade: ${mode}`, async () => {
+    const source = await input();
+    const body = "evidence ".repeat(4000);
+    source.active = [user("a", "Retire this work."),
+      assistant("old-call", [{ type: "toolCall", id: "old", name: "read", arguments: {} }]), tool("old-body", "old", body),
+      assistant("call", [{ type: "toolCall", id: "x", name: "read", arguments: {} }]),
+      tool("body", "x", "Small retained evidence."), user("b", "Continue")];
+    source.eligibleKeptEntryIds = ["call"];
+    source.cleanupCandidateScope = [{ entryId: "body", messageIndex: 0 }];
+    source.memory = { version: 1, nextId: 2, slots: [{ id: "s1", text: "Keep the requirement." }] };
+    source.slotProvenance = { s1: { unmodifiedTurns: 2, unmodifiedCompactions: 1, originInActiveWindow: false } };
+    if (mode === "calibrated-reduction") {
+      const anchor = answer();
+      anchor.usage = { ...anchor.usage, input: 50000, output: 40, cacheRead: 0, cacheWrite: 0, totalTokens: 50040 };
+      source.active.splice(5, 0, { entryId: "usage", sourceRole: "assistant", messages: [anchor] });
+    }
+    const organizingTarget = accounting.memoryPlan(source.fixed, source.model, source.config, source.memory.slots).organizingTarget;
+    const full = request.extractionContext(source, 3, organizingTarget, source.active, []);
+    const fullTokens = accounting.requestTokens(full) + source.config.extraction.extraInputTokens;
+    const reduced = request.reduceToolBodies(source.active, source.config.extraction.headTailChars);
+    const reducedTokens = accounting.requestTokens(request.extractionContext(source, 3, organizingTarget, reduced.source, reduced.omissions)) + source.config.extraction.extraInputTokens;
+    source.config.extraction.inputLimit = mode === "candidate-only" ? fullTokens
+      : mode === "reduced-candidate-only" ? reducedTokens : fullTokens + 501;
+    source.config.extraction.safetyTokens = 1;
+    const control = { afterTurn: "b", action: "rollover" as const, placement: { retireThroughTurn: "a", retainTurns: ["b"] } };
+    const turns = { a: source.active.slice(0, 3).map(entry => entry.entryId), b: source.active.slice(3).map(entry => entry.entryId) };
+    const range = { minFraction: 0.00001, maxFraction: 0.99999 };
+    const calibrated = calibrateRetention(source, control, turns, ["a", "b"], range);
+    const loaded = calibrateRetention(source, control, turns, ["a", "b"], range,
+      { firstKeptEntryId: "call", accounting, request, validation });
+    assert.deepEqual(loaded, calibrated);
+    source.config.keepRecentFraction = loaded.selectedFraction;
+    const result = await maintain(source, async req => {
+      const text = JSON.stringify(req.context);
+      assert(text.includes("unmodifiedCompactions"));
+      assert.equal(text.includes("cleanupCandidates"), mode === "calibrated-reduction");
+      return answer({ add: [], remove: [], priority: ["s1"], required: ["s1"] });
+    });
+    assert(result.ok, result.ok ? "" : result.message);
+    const actual = result.observations.accounting!;
+    assert.equal(actual.fullExtractionTokens, loaded.accounting.fullExtractionTokens);
+    assert.equal(actual.extractionTokens, loaded.accounting.extractionTokens);
+    assert.equal(actual.normalExtractionAtTrigger, loaded.accounting.normalExtractionAtTrigger);
+    assert.equal(result.observations.omissions.length > 0, mode !== "candidate-only");
+    if (mode === "calibrated-reduction") {
+      assert(fullTokens <= source.config.extraction.inputLimit!);
+      assert(actual.calibratedUndercountTokens! > 0);
+    }
+  });
+}
 
 test("calibration refuses illegal tool association cuts and absent retained entries", async () => {
   const provider = fauxProvider({ provider: "nunc-calibration", models: [{ id: "short", contextWindow: 60000, maxTokens: 4096 }] }), model = provider.getModel();

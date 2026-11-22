@@ -33,13 +33,13 @@
       "requirement": "measured-required-competition",
       "reason": "Task-only 512-token memory experiment; actual complete response must independently qualify required fit and optional competition",
       "scenario": "g8/fits-required",
-      "config": { "nunc": { "memory": { "maxTokens": 512 } } }
+      "config": { "nunc": { "memory": { "maxTokens": 512, "hardMaxTokens": 512 } } }
     },
     {
       "requirement": "measured-required-overflow",
       "reason": "Task-only 128-token memory experiment; actual necessary set must exceed this limit while an optional candidate fits",
       "scenario": "g8/required-too-large",
-      "config": { "nunc": { "memory": { "maxTokens": 128 } } }
+      "config": { "nunc": { "memory": { "maxTokens": 128, "hardMaxTokens": 128 } } }
     }
   ]
 }

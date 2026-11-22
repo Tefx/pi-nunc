@@ -1,24 +1,25 @@
-import { archiveCloseoutEffects } from "./archive-closeout.js";
-import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./native-no-work.js";
-import { qualifyCapacity, checkCapacityRecovery, checkRequiredRetention } from "./capacity-observation.js";
-import { elapsedInterval, type WallClockInterval } from "./timing.js";
+import { userText, textOf } from "./guidance.js";
+import { canonical } from "../engine/validation.js";
+import { archiveCloseoutEffects, qualifyCapacity, checkCapacityRecovery, checkRequiredRetention, compactionAssociationError, expandGeneratedFiles } from "./scenarios.js";
+import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./host.js";
+import { elapsedInterval, type WallClockInterval } from "./contract.js";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import { convertToLlm, sessionEntryToContextMessages, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { openHost, type NativeHost } from "./host.js";
-import { canonical, object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection, taskRetentionSelection } from "./contract.js";
+import { object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection, taskRetentionSelection } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult } from "./scenarios.js";
-import { isSystemMessage } from "../engine/accounting.js";
+import { isSystemMessage, memoryPlan } from "../engine/accounting.js";
+import { engineConfig } from "../pi/config.js";
 import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
 import type { MaintenanceResult } from "../engine/types.js";
 import { project, type NuncConfig } from "../pi/index.js";
 import type { RetentionCalibration } from "./calibration.js";
-import { compactionAssociationError } from "./compaction-identity.js";
 import { prepareBoundary, type PreparedBoundary, type MatchReference } from "./preparation.js";
 import { rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";
-import { qualifyMemoryOnly, archiveMemoryArtifact } from "./stable-memory-task.js";
+import { qualifyMemoryOnly, archiveMemoryArtifact } from "./stable-memory-observation.js";
 import { layoutsFromRequests, scoreStableMemory, type LayoutObservation } from "./stable-memory-observation.js";
 
 export interface WorkerJob { input: RunInput; scenarioIndex: number; deadline: number; resume: boolean; group?: ComparisonGroup | undefined; mode?: ComparisonMode | undefined; caseRoot?: string | undefined; matchReferences?: MatchReference[] | undefined; priorLedgers?: string[] | undefined }
@@ -59,16 +60,9 @@ export interface SegmentReport {
   ordinaryScore?: Awaited<ReturnType<typeof scoreArtifacts>>;
   observedFacts?: RolloverFacts;
 }
-function userText(entry: SessionEntry): string | undefined {
-  if (entry.type !== "message" || entry.message.role !== "user") return undefined;
-  const content = entry.message.content;
-  if (typeof content === "string") return content;
-  return Array.isArray(content) ? content.filter(b => b.type === "text").map(b => b.text).join("") : undefined;
-}
 function deliveredUserIds(branch: SessionEntry[], text: string): string[] {
   return branch.filter(e => userText(e) === text).map(e => e.id);
 }
-export { taskFileChecks as evaluateTaskFileSetupChecks, sameTaskHistoryChecks as evaluateSameTaskHistorySetupChecks, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks } from "./task-retention.js";
 import { taskFileChecks as evaluateTaskFileSetupChecks, sameTaskHistoryChecks as evaluateSameTaskHistorySetupChecks, sameTaskHistoryEffects, activeEditChecks as evaluateActiveEditSetupChecks, scopedTasksChecks as evaluateScopedTasksSetupChecks, taskRead, sourceLossChecks } from "./task-retention.js";
 
 function captureComparisonFacts(report: SegmentReport, group: ComparisonGroup): void {
@@ -85,11 +79,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   const caseRoot = job.caseRoot ?? join(input.target.stateRoot, `${selection.id}${selection.variant ? `-${selection.variant}` : ""}`);
   const checkpointPath = join(caseRoot, "checkpoint.json");
   const { input: scenario, observer } = await loadScenario(input.target.repository, selection, input.assets);
+  const fixtureInventory = expandGeneratedFiles(scenario);
   const local = new AbortController();
   const signal = AbortSignal.any([local.signal, AbortSignal.timeout(Math.max(1, job.deadline - Date.now())), ...(overrides.signal ? [overrides.signal] : [])]);
   const onSignal = () => local.abort(); process.once("SIGTERM", onSignal); process.once("SIGINT", onSignal);
   const report: SegmentReport = { pid: process.pid, scenario: selection.id, group, mode, status: "STOPPED", prerequisites: [], nextTurn: 0, contexts: [], maintenance: [], actions: [], commands: [], calibrations: [] };
-  const firstModel = overrides.models?.[0] ?? selectedModels(input)[0]!;
   const startLedger = readLedger(join(input.target.stateRoot, "calls.jsonl"));
   const startReserveIds = new Set(startLedger.filter(r => r.kind === "reserve").map(r => r.id));
 
@@ -111,13 +105,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
   report.rollovers = []; report.requests = []; report.preparations = [];
   const boundaryControls = observer.controls.filter(c => c.action === "rollover_at_tool_boundary");
   let currentBoundaryIndex = 0;
-  const boundaryControl = boundaryControls[0];
+  const deferredBoundaries = new Set<number>();
   const boundaries = boundaryControls.map(c => ({
     control: c,
     requestText: scenario.turns.find(t => t.id === c.duringTurn)!.text,
-    fixtureContent: c.trigger?.pathArgument ? (scenario.files[c.trigger.pathArgument] ?? "") : "",
+    fixtureContent: c.trigger?.pathArgument ? (fixtureInventory[c.trigger.pathArgument] ?? "") : "",
   }));
-  const boundary = boundaries[0];
   const guidanceControls = observer.controls
     ?.filter(c => c.action === "revision_conflict" || c.action === "unconfirmed_save")
     .map(c => ({ action: c.action as "revision_conflict" | "unconfirmed_save", turn: c.duringTurn ?? c.afterTurn, trigger: c.trigger,
@@ -159,23 +152,23 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
     runtime = await openHost({ repository: input.target.repository, input, selection: { ...selection, config: runConfig }, caseRoot, modelTargets: overrides.models ?? selectedModels(input), deadline: job.deadline, signal,
       group, mode, targetRepos: input.comparison?.targets ? { native: input.comparison.targets.native.repository, current: input.comparison.targets.current.repository, candidate: input.comparison.targets.candidate.repository } : undefined,
       ...(checkpoint ? { sessionFile: checkpoint.sessionFile } : {}), ...(overrides.controlledModels ? { controlledModels: overrides.controlledModels } : {}),
-      boundary,
-      taskFiles: scenario.files,
-      boundaries, boundaryCompleted: Boolean(checkpoint && boundary), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
+      taskFiles: fixtureInventory,
+      boundaries, boundaryCompleted: Boolean(checkpoint && boundaries.length), verification: scenario.files["verify.py"] !== undefined ? { script: scenario.files["verify.py"], artifact: selection.id === "e1" ? "verification.json" : "verified.json" } : undefined,
       ...(guidanceControls?.length ? { guidanceControls } : {}),
       priorLedgers: job.priorLedgers,
       onBoundary: async data => {
+        const idx = data.boundaryIndex ?? currentBoundaryIndex;
         try {
-          const idx = data.boundaryIndex ?? currentBoundaryIndex;
-          const ctrl = boundaryControls[idx] ?? boundaryControl!;
-          const bnd = boundaries[idx] ?? boundary!;
+          const ctrl = boundaryControls[idx]!;
+          const bnd = boundaries[idx]!;
           boundaryRestoreConfig = structuredClone(runConfig);
-          const isDeferred = Boolean(report.preparations?.some(p => (p as any).deferred));
+          const isDeferred = deferredBoundaries.has(idx);
           const result = await prepare(data.branch, data.active, ctrl, { callId: data.triggerId, requestText: bnd.requestText,
             path: ctrl.trigger?.pathArgument ?? "", cwd: join(caseRoot, "task"), fixtureContent: bnd.fixtureContent, contextTokens: data.usage?.tokens ?? null }, isDeferred);
           await runtime!.releaseBoundary({ firstKeptEntryId: result.firstKeptEntryId });
         } catch (error) {
           if (error instanceof RunnerError && error.code === "INSUFFICIENT_CONTEXT") {
+            deferredBoundaries.add(idx);
             report.preparations!.push({ deferred: true, turn, reason: error.message });
             await runtime!.releaseBoundary({ deferred: true });
             return;
@@ -194,6 +187,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
           runConfig = structuredClone(boundaryRestoreConfig); effectiveConfig = runConfig.nunc;
           await runtime!.reconfigure(runConfig);
           (report.configurationChanges ??= []).push({ phase: "boundary-restore", from, to: structuredClone(runConfig) });
+          deferredBoundaries.delete(currentBoundaryIndex);
           currentBoundaryIndex++;
           await runtime!.releaseBoundary({ restored: true });
         } catch {
@@ -204,7 +198,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       onObservation: (type, data) => {
         if (type === "diagnostic") report.actions.push({ turn, event: { type, ...data } });
         if (type === "stopped") boundaryFailure ??= data.message;
-        if (boundary && type === "lifecycle") {
+        if (boundaries.length && type === "lifecycle") {
           if (data.stopped) boundaryFailure ??= data.stopped;
           if (data.phase === "maintenance-failed") boundaryFailure ??= "Automatic boundary maintenance failed; suffix is unproven";
         }
@@ -249,12 +243,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         report.contexts.push({ turn, model: `${model.provider}/${model.id}`, kind, context });
         if (selection.id.startsWith("g") && kind === "main") {
           const activeTools = context.tools?.map(t => t.name) ?? [];
-          const exposed = ["nunc_memory_read", "nunc_memory_patch"].every(name => activeTools.includes(name));
+          const names = ["nunc_memory_read", "nunc_memory_patch"];
           const expected = group !== "native" && !input.overrides?.some(o => o.requirement === "memory-tools-off" || o.memoryTools === false);
+          const exposed = expected ? names.every(name => activeTools.includes(name)) : !names.some(name => activeTools.includes(name));
           const name = expected ? "memory tools exposed in session" : "memory tools absent under selected tools-off/native mode";
           const previous = report.prerequisites.find(p => p.check === name);
-          if (!previous) report.prerequisites.push({ check: name, status: exposed === expected ? "PROVEN" : "UNPROVEN", observed: { activeTools, expected, exposed, source: "actual main provider context" } });
-          else if (exposed !== expected) { previous.status = "UNPROVEN"; previous.reason = "A main request disagreed with selected tool exposure"; }
+          if (!previous) report.prerequisites.push({ check: name, status: exposed ? "PROVEN" : "UNPROVEN", observed: { activeTools, expected, exposed, source: "actual main provider context" } });
+          else if (!exposed) { previous.status = "UNPROVEN"; previous.reason = "A main request disagreed with selected tool exposure"; }
         }
       },
       onAction: event => {
@@ -312,7 +307,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       await session.prompt(inputTurn.text);
       turns[turn] = sm.getBranch().filter(e => e.type === "message" && !isSystemMessage(e.message) && !beforeIds.has(e.id)).map(e => e.id);
       report.nextTurn = index + 1;
-      if (!boundaryFailure && report.preparations?.some(p => (p as any).deferred) && report.rollovers!.length === 0) {
+      if (!boundaryFailure && deferredBoundaries.has(currentBoundaryIndex)) {
         boundaryFailure = "Compaction boundary remained deferred; insufficient context to establish maintenance premise";
       }
       requireValue(!boundaryFailure, "PREPARATION", boundaryFailure ?? "Boundary preparation failed");
@@ -353,7 +348,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         const count = deliveredUserIds(sm.getBranch(), text).length; if (count === 0) continue;
         const freezeAt = report.contexts.findIndex(c => c.kind === "maintenance");
         const firstMain = freezeAt >= 0 ? report.contexts.slice(freezeAt + 1).find(c => c.kind === "main") : undefined;
-        const includes = Boolean(firstMain && JSON.stringify(firstMain.context).includes(text));
+        const includes = Boolean(firstMain && firstMain.context.messages.some(m => textOf(m.content).includes(text)));
         turns[id] = deliveredUserIds(sm.getBranch(), text);
         report.prerequisites.push({ check: "corrective D delivered verbatim once after freeze without a serial prompt", status: count === 1 && includes ? "PROVEN" : count > 1 ? "DISPROVEN" : "UNPROVEN", observed: { count, firstPostFreezeMainIncludesD: includes } });
       }
@@ -463,7 +458,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               const ids = turns[t] ?? [];
               report.prerequisites.push({ check: `complete turn ${t} retained with tool associations`, status: ids.length > 0 && ids.every(id => rebuilt.some(e => e.id === id)) ? "PROVEN" : "UNPROVEN" });
             }
-            if (selection.id === "e4") {
+            if (selection.id === "e4" || selection.id === "g8") {
               report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "native", guardApplicability: "NOT_APPLICABLE", note: "Native Pi does not apply Nunc required-item selection" } });
             }
           } else {
@@ -472,6 +467,11 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
             const frozenCapacityMemory = project(beforeActive).memory;
             const capacityResponseStart = maintenanceResponses.length, capacityContextStart = report.contexts.length;
             const capacityModel = session.model ? `${session.model.provider}/${session.model.id}` : "";
+            // Capture the same organizing plan as maintenance before compaction changes F.
+            // History and current M affect retention, but not organizingTarget.
+            const organizingTarget = (selection.id === "e4" || selection.id === "g8") && group === "candidate" && session.model
+              ? memoryPlan(session.fixed, session.model, engineConfig(runConfig.nunc, session.model, runConfig.compaction)).organizingTarget
+              : runConfig.nunc.memory?.targetTokens ?? 8192;
             const steerTurn = control.steer ? scenario.turns.find(t => t.id === control.steer) : undefined;
             let steered = false, overlap = false;
             const frozenContext = () => report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
@@ -498,7 +498,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 frozenCapacityMemory, report.maintenance.length === eventCount + 1 ? result : undefined,
                 report.contexts.slice(capacityContextStart).filter(c => c.kind === "maintenance").map(c => c.context),
                 maintenanceResponses.slice(capacityResponseStart), capacityModel, runConfig.nunc.memory?.hardMaxTokens ?? null,
-                report.rollovers!.at(-1)?.prepared?.calibration?.accounting)
+                report.rollovers!.at(-1)?.prepared?.calibration?.accounting, organizingTarget)
                 .filter(c => selection.id !== "g8" || c.check !== "at least one necessary candidate is larger than an optional candidate"));
             }
             if (failed || !result?.ok || report.maintenance.length <= eventCount) {
@@ -529,13 +529,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               }
               report.prerequisites.push(...checkRollover(before, after, saved, result, control, turns));
               if (selection.config.retentionCalibration || mode === "matched") report.prerequisites.push({ check: "Nunc/Pi independently selected and persisted calibrated boundary", status: result.candidate.firstKeptEntryId === report.rollovers!.at(-1)?.prepared?.firstKeptEntryId ? "PROVEN" : "UNPROVEN" });
-              if (result.observations.omissions.length === 0) report.prerequisites.push(checkFullExtraction(beforeActive, report.contexts.findLast(c => c.turn === turn && c.kind === "maintenance")?.context));
+              if (result.observations.omissions.length === 0) report.prerequisites.push(checkFullExtraction(beforeActive, report.contexts.findLast(c => c.turn === turn && c.kind === "maintenance")?.context, selection.id !== "m5" || selection.variant !== "cleanup-off"));
               if (selection.id === "e4" || selection.id === "g8") {
                 if (group === "candidate") {
                   report.prerequisites.push({ check: "required-item guard applicability", status: "PROVEN", observed: { group: "candidate", guardApplicability: "APPLICABLE" } });
-                  const req = result?.observations.required;
                   if (selection.variant === "fits-required") {
-                    report.setupChecks!.push(checkRequiredRetention(result, project(saved.buildContextEntries()).memory));
+                    report.setupChecks!.push(checkRequiredRetention(result, project(saved.buildContextEntries()).memory, { memory: frozenCapacityMemory, response: maintenanceResponses[capacityResponseStart]?.patch }));
                   } else if (selection.variant === "required-too-large") {
                     const reqExceeds = report.setupChecks?.find(p => p.check.includes("marked necessary set exceeds saved-memory hard limit"))?.status === "PROVEN";
                     report.setupChecks!.push({ check: "required-too-large rollover eligibility", status: reqExceeds ? "DISPROVEN" : "UNPROVEN", reason: reqExceeds ? "Maintenance succeeded despite the measured necessary-set overflow" : "Successful ordinary continuation remains eligible; the capacity variant did not qualify" });
@@ -547,7 +546,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
                 const exception = scenario.generatedFiles?.[0]?.segments.find(s => s.repeat === 1)?.text.trim();
                 const visible = before.some(e => e.type === "message" && e.message.role === "toolResult" && !e.message.isError && e.message.content.some(b => b.type === "text" && Boolean(exception) && b.text.includes(exception!)));
                 const requests = report.contexts.filter(c => c.turn === turn && c.kind === "maintenance");
-                const extracted = Boolean(exception) && requests.some(r => JSON.stringify(r.context).includes(exception!));
+                const extracted = Boolean(exception) && requests.some(r => r.context.messages.some(m => textOf(m.content).includes(exception!)));
                 if (selection.variant === "full") {
                   report.prerequisites.push(qualifyFullGiantSource(scenario.generatedFiles));
                   const toolTexts: string[] = [];
@@ -565,7 +564,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
               } else report.prerequisites.push({ check: "normal rollover used full extraction", status: result.observations.omissions.length === 0 ? "PROVEN" : "UNPROVEN" });
               if (steerTurn) {
                 const frozen = frozenContext();
-                const absent = frozen.length > 0 && frozen.every(c => !JSON.stringify(c.context).includes(steerTurn.text));
+                const absent = frozen.length > 0 && frozen.every(c => !c.context.messages.some(m => textOf(m.content).includes(steerTurn.text)));
                 report.prerequisites.push({ check: "public frozen extraction overlapped one accepted steer", status: overlap && steered ? "PROVEN" : "UNPROVEN", observed: { overlap, steered, frozenRequests: frozen.length, compactingAck: overlap } });
                 report.prerequisites.push({ check: "corrective D absent from frozen extraction", status: overlap && absent ? "PROVEN" : overlap && frozen.length > 0 ? "DISPROVEN" : "UNPROVEN", observed: { frozenRequests: frozen.length, absent } });
               }
@@ -626,8 +625,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         const first = report.requests?.find(r => r.kind === "main" && r.turn === continuation);
         const a = first?.admission;
         const actualR = first?.context.messages.filter((_, i) => i !== a?.memoryIndex);
-        const exposed = ["cedar-17", "maple-29"].filter(value => JSON.stringify(actualR ?? []).includes(value) || first?.context.systemPrompt?.includes(value));
-        report.prerequisites.push({ check: `M-only ${continuation}: first delivered Context excludes source codes outside M`, status: first && a?.memoryPresent !== undefined && exposed.length === 0 ? "PROVEN" : "UNPROVEN", observed: { callId: first?.callId, exposed } });
+        const exposed = ["cedar-17", "maple-29"].filter(value => actualR?.some(m => textOf(m.content).includes(value)) || first?.context.systemPrompt?.includes(value));
+        const memoryMessage = a?.memoryIndex === undefined ? undefined : first?.context.messages[a.memoryIndex];
+        const expectedMemory = continuation === "f" ? undefined : continuation === "b2" ? "cedar-17" : "maple-29";
+        const memoryQualified = a?.memoryPresent === (continuation !== "f") &&
+          (expectedMemory === undefined || Boolean(memoryMessage && textOf(memoryMessage.content).includes(expectedMemory)));
+        report.prerequisites.push({ check: `M-only ${continuation}: first delivered Context excludes source codes outside M`, status: first && memoryQualified && exposed.length === 0 ? "PROVEN" : "UNPROVEN", observed: { callId: first?.callId, exposed } });
       }
     }
     if (selection.id.startsWith("g")) {
@@ -637,7 +640,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       } else if (selection.id === "g4" && selection.variant === "same-task-history") {
         report.setupChecks.push(...evaluateSameTaskHistorySetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       } else if (selection.id === "g4" && ["active-edit", "commit-conflict", "commit-unconfirmed"].includes(String(selection.variant))) {
-        report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
+        report.setupChecks.push(...evaluateActiveEditSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests, { expectConfirmedTurnD: selection.variant !== "commit-unconfirmed" }));
       } else if (selection.id === "g3" && selection.variant === "scoped-tasks") {
         report.setupChecks.push(...evaluateScopedTasksSetupChecks(scenario, turns, sm.getBranch(), sm.buildContextEntries(), report.rollovers ?? [], report.actions as any, join(caseRoot, "task"), report.requests));
       }
@@ -667,7 +670,7 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const updated = completed.find(row => row.turn === "c")?.event;
       const oldSlots = first?.memory?.slots, newSlots = updated?.memory?.slots;
       const oldSent = Array.isArray(oldSlots) && oldSlots.length > 0 && (report.requests ?? []).some(r =>
-        r.kind === "main" && r.turn === "b" && oldSlots.every((slot: { text: string }) => JSON.stringify(r.context.messages).includes(slot.text)));
+        r.kind === "main" && r.turn === "b" && oldSlots.every((slot: { text: string }) => r.context.messages.some(m => textOf(m.content).includes(slot.text))));
       const memoryChanged = Array.isArray(newSlots) && newSlots.length > 0 && !isDeepStrictEqual(oldSlots, newSlots);
       const aMemoryIndex = branch.findIndex(e => e.type === "custom" && e.customType === "nunc.memory" && first?.activeEntryIds?.includes(e.id));
       const cMemoryIndex = branch.findIndex((e, i) => i > aMemoryIndex && e.type === "custom" && e.customType === "nunc.memory" && updated?.activeEntryIds?.includes(e.id) && !first?.activeEntryIds?.includes(e.id));
@@ -688,7 +691,12 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
         project(branch.slice(0, aMemoryIndex + 1).filter(e => e.type === "message" || e.type === "custom" || e.type === "compaction")).cleanup.length === 0;
       const committed = selected.cleanup.filter(d => resultKeys.has(`${d.entryId}:${d.messageIndex}`));
       const projected = (report.requests ?? []).filter(r => r.kind === "main" && r.turn === "d" &&
-        committed.some(d => JSON.stringify(r.context.messages).includes(d.text)));
+        committed.some(d => {
+          const source = branch.find(e => e.id === d.entryId);
+          if (source?.type !== "message" || source.message.role !== "toolResult") return false;
+          const toolCallId = source.message.toolCallId;
+          return r.context.messages.some(m => m.role === "toolResult" && m.toolCallId === toolCallId && textOf(m.content).includes(d.text));
+        }));
       const qualified = oldSent && memoryChanged && groups.size >= 2 && noEligible &&
         (on ? committed.length > 0 && projected.length > 0 : selected.cleanup.length === 0);
       report.prerequisites.push({ check: on ? "cleanup-on: no-eligible initial save, sent M, completed groups, lawful committed source and provider projection" : "cleanup-off: no-eligible initial save, sent M and completed groups without a saved decision",
@@ -711,13 +719,13 @@ export async function runSegment(job: WorkerJob, overrides: { controlledModels?:
       const qualified = report.rolloverSeries.length >= 3 && report.rolloverSeries.every(row => row.reason === "threshold" && row.facts.snapshotId && row.facts.cutPoint !== null && row.beforeInput !== undefined && row.afterInput !== undefined) && report.rolloverSeries.slice(1).every(row => (row.mainRequestsSincePrevious ?? 0) > 0);
       report.prerequisites.push({ check: "at least two native threshold-driven compression intervals with actual retained input and release measurements", status: qualified ? "PROVEN" : "UNPROVEN", observed: report.rolloverSeries });
     }
-    const fixtures = taskRetentionSelection(selection) ? Object.fromEntries(Object.entries(scenario.files).filter(([name]) => ["TASK.md", "records.json", "build.py", "archive.json"].includes(name))) : undefined;
+    const fixtures = taskRetentionSelection(selection) ? Object.fromEntries(Object.entries(scenario.files).filter(([name]) => selection.variant === "same-task-history" ? name !== "solution.py" : ["TASK.md", "records.json", "build.py", "archive.json"].includes(name))) : undefined;
     if (fixtures && selection.id === "g4" && ["source-loss", "source-unavailable"].includes(String(selection.variant))) {
       if (selection.variant === "source-loss") fixtures["source/TASK.md"] = fixtures["TASK.md"]!;
       delete fixtures["TASK.md"];
     }
     const scoreContext = { actions: report.actions, ...(fixtures ? { fixtures } : {}), requireVerificationReceipt: true, ...(report.artifactSnapshots ? { artifactSnapshots: report.artifactSnapshots } : {}) };
-    const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? report.setupChecks ?? [] : [])];
+    const scorePrerequisites = [...report.prerequisites, ...(selection.id.startsWith("g") ? (report.setupChecks ?? []).filter(check => !check.reason?.startsWith("Independent semantic")) : [])];
     if (report.noWork?.length) report.ordinaryScore = await scoreArtifacts(join(caseRoot, "task"), observer, report.prerequisites, scoreContext);
     report.score = await scoreArtifacts(join(caseRoot, "task"), observer, [...scorePrerequisites, ...(report.noWork?.length ? [report.rolloverQuality ?? { check: "rollover continuity", status: "UNPROVEN" as const, reason: "Native no-work occurred before restart" }] : [])], scoreContext);
     captureComparisonFacts(report, group);

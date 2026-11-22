@@ -3,9 +3,9 @@ import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MechanicalFallbackInfo, Memory, Slot, SlotProvenance, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { decideToolResultCleanup, hardMemoryLimit, memoryTarget, memoryTokens } from "../engine/index.js";
-import { EngineError, integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
-import { readConfig, type HostCompactionSettings } from "./config.js";
-import { MANUAL_MEMORY_TYPE, deriveSlotProvenance, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions } from "./projection.js";
+import { integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
+import { readConfig, type NuncConfig, type HostCompactionSettings } from "./config.js";
+import { MANUAL_MEMORY_TYPE, deriveSlotProvenance, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions, setCleanupUnconfirmed } from "./projection.js";
 
 export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed" | "cancelled";
 
@@ -47,7 +47,7 @@ export type MemoryPatchResult =
   | { ok: false; code: ManualSaveCode; message: string; view: MemoryView };
 
 export interface MemorySurface {
-  read(ctx: ExtensionContext): MemoryView;
+  read(ctx: ExtensionContext, projected?: ReturnType<typeof project>): MemoryView;
   replace(ctx: ExtensionContext, revision: string, slotId: string, text: string): ManualSaveResult;
   delete(ctx: ExtensionContext, revision: string, slotId: string): ManualSaveResult;
   patch(ctx: ExtensionContext, params: MemoryPatchParams, signal?: AbortSignal): MemoryPatchResult;
@@ -60,19 +60,21 @@ export interface MemoryFreeze extends MemorySurface {
 
 export function createMemorySurface(options: {
   pi: ExtensionAPI;
-  fixed: (ctx: ExtensionContext) => FixedContext;
-  settings: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
+  config?: (ctx: ExtensionContext) => NuncConfig;
+  fixed?: (ctx: ExtensionContext) => FixedContext;
+  settings?: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
   cleanup?: (ctx: ExtensionContext, memory: Memory, active: ReturnType<typeof project>["active"], saved: ToolResultDecision[]) => { enabled: boolean; scope: ToolResultRef[] };
   onCommitted: () => void;
 }): MemoryFreeze {
-  const state = { occupied: false, ignoreFailed: 0 };
-  const viewOf = (ctx: ExtensionContext): MemoryView => {
+  const state = { occupied: false, rejectedFreezes: [] as symbol[] };
+  const viewOf = (ctx: ExtensionContext, snapshot?: ReturnType<typeof project>): MemoryView => {
     // Pi may settle overlapping aborted/manual compactions without delivering
     // their terminal hooks in start order. Native idle proves no checkpoint
     // writer still owns the freeze; never leave a stale lock on M edits.
-    if (state.occupied && ctx.isIdle()) { state.occupied = false; state.ignoreFailed = 0; }
+    if (state.occupied && ctx.isIdle()) state.occupied = false;
+    const unconfirmed = sessionUnconfirmed(ctx.sessionManager);
     const entries = ctx.sessionManager.buildContextEntries();
-    const projected = project(entries);
+    const projected = snapshot ?? project(entries);
     const slotProvenance = deriveSlotProvenance(ctx.sessionManager.getBranch(), projected.active, projected.memory);
     const budget = measureBudget(ctx, options, projected.memory.slots);
     const enabled = options.cleanup?.(ctx, projected.memory, projected.active, projected.cleanup).enabled ?? false;
@@ -82,7 +84,7 @@ export function createMemorySurface(options: {
       memory: projected.memory,
       ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
       slotProvenance,
-      status: { occupied: state.occupied, unconfirmed: sessionUnconfirmed(ctx.sessionManager) },
+      status: { occupied: state.occupied, unconfirmed },
       budget,
       contextLayout: {
         slotCount: projected.memory.slots.length,
@@ -93,13 +95,12 @@ export function createMemorySurface(options: {
   };
   const surface: MemoryFreeze = {
     beginFreeze() {
-      if (state.occupied) { state.ignoreFailed++; return false; }
+      if (state.occupied) { state.rejectedFreezes.push(Symbol("rejected compaction")); return false; }
       state.occupied = true; return true;
     },
-    endFreeze() { state.occupied = false; state.ignoreFailed = 0; },
+    endFreeze() { state.occupied = false; },
     noteForeignFailure() {
-      if (state.ignoreFailed > 0) { state.ignoreFailed--; return true; }
-      return false;
+      return state.rejectedFreezes.shift() !== undefined;
     },
     read: viewOf,
     patch(ctx, params, signal) {
@@ -116,13 +117,13 @@ export function createMemorySurface(options: {
       if (!revisionApplies(params.expectedRevision, ctx.sessionManager.getSessionId(), ctx.sessionManager.getLeafId(), ctx.sessionManager.buildContextEntries(), ctx.sessionManager.getBranch())) {
         return fail("conflict", "Session path or memory revision changed; re-read before saving", current);
       }
-      if (params.add !== undefined && (!Array.isArray(params.add) || params.add === null)) {
+      if (params.add !== undefined && !Array.isArray(params.add)) {
         return fail("invalid", "add must be an array of addition items if provided", current);
       }
-      if (params.update !== undefined && (!Array.isArray(params.update) || params.update === null)) {
+      if (params.update !== undefined && !Array.isArray(params.update)) {
         return fail("invalid", "update must be an array of update items if provided", current);
       }
-      if (params.remove !== undefined && (!Array.isArray(params.remove) || params.remove === null)) {
+      if (params.remove !== undefined && !Array.isArray(params.remove)) {
         return fail("invalid", "remove must be an array of slot ID strings if provided", current);
       }
 
@@ -192,7 +193,7 @@ export function createMemorySurface(options: {
       // Assign IDs for additions
       let nextId = current.memory.nextId;
       const allIds = new Set(existingSlots.map(s => s.id));
-      const addedMap: Record<string, string> = Object.create(null);
+      const addedMap: Record<string, string> = {};
       const newSlots: Slot[] = [];
       for (const item of addList) {
         let id: string;
@@ -205,7 +206,7 @@ export function createMemorySurface(options: {
           id = `s${nextId++}`;
         } while (allIds.has(id));
         allIds.add(id);
-        Object.defineProperty(addedMap, item.key, { value: id, enumerable: true, writable: true, configurable: true });
+        addedMap[item.key] = id;
         newSlots.push({ id, text: item.text });
       }
 
@@ -228,8 +229,11 @@ export function createMemorySurface(options: {
         return fail("unknown-budget", "Memory budget cannot be computed; growing edit was not saved", current);
       }
       if (grew && budget.limit !== null && budget.tokens > budget.limit) {
-        return fail("overbudget", `Growing edit estimate ${budget.tokens} exceeds M budget ${budget.limit}. Use update/remove to consolidate or remove old process records with no continuing use; preserve necessary state and normal word spaces, never strip spaces to fit.`, { ...current, budget });
+        return fail("overbudget", `Growing edit estimate ${budget.tokens} exceeds M budget ${budget.limit}. Use update/remove to consolidate or remove old process records with no continuing use; preserve necessary state and normal word spaces, never strip spaces to fit.`, current);
       }
+
+      const before = project(ctx.sessionManager.buildContextEntries());
+      const opportunity = options.cleanup?.(ctx, before.memory, before.active, before.cleanup) ?? { enabled: false, scope: [] };
 
       // No-op check
       if (isDeepStrictEqual(nextMemory, current.memory)) {
@@ -237,6 +241,10 @@ export function createMemorySurface(options: {
           ok: true,
           revision: current.revision,
           memory: current.memory,
+          ...(params.toolResultEdits !== undefined && params.suppressCleanup !== true ? { cleanup: decideToolResultCleanup({
+            active: [], retainedEntries: [], initialMemory: current.memory, finalMemory: current.memory,
+            semanticEdits: params.toolResultEdits, disabled: !opportunity.enabled,
+          }) } : {}),
           ...(current.slotProvenance ? { slotProvenance: current.slotProvenance } : {}),
           added: addedMap,
           budget: { usedTokens: current.budget.tokens, limitTokens: current.budget.limit },
@@ -246,28 +254,15 @@ export function createMemorySurface(options: {
       // Cancellation check before commit
       if (signal?.aborted) return fail("cancelled", "Memory patch cancelled before commit", current);
 
-      const before = project(ctx.sessionManager.buildContextEntries());
-      const opportunity = options.cleanup?.(ctx, before.memory, before.active, before.cleanup) ?? { enabled: false, scope: [] };
-      const selected = opportunity.enabled && params.suppressCleanup !== true ? decideToolResultCleanup({
+      const cleanup = params.suppressCleanup !== true ? decideToolResultCleanup({
         active: effectiveActive(before, true), retainedEntries: effectiveActive(before, true),
         candidateScope: opportunity.scope, initialMemory: current.memory, finalMemory: nextMemory,
         keyToSlotMap: new Map(Object.entries(addedMap)),
         retainedKeys: new Set([...nextMemory.slots.map(s => s.id), ...addList.map(item => item.key)]),
         semanticEdits: params.toolResultEdits,
+        priorCleanup: before.cleanup,
+        disabled: !opportunity.enabled,
       }) : { applied: [], skipped: [] };
-      const already = new Set(before.cleanup.map(d => `${d.entryId}:${d.messageIndex}`));
-      // Native context_edit replaces source bodies under stable entry IDs. M-only
-      // ancestor revisions remain legal, but cleanup must never approve those bodies.
-      const edited = new Set(before.active.filter(entry => entry.outputUsageUnavailable).map(entry => entry.entryId));
-      const cleanup: ToolResultCleanupResult = { applied: [], skipped: [...selected.skipped] };
-      for (const decision of selected.applied) {
-        const targetInvalid = edited.has(decision.entryId) || already.has(`${decision.entryId}:${decision.messageIndex}`);
-        const dependencyInvalid = decision.sourceRefs?.some(ref => edited.has(ref.entryId) || already.has(`${ref.entryId}:${ref.messageIndex}`));
-        if (targetInvalid || dependencyInvalid) cleanup.skipped.push({ entryId: decision.entryId, messageIndex: decision.messageIndex,
-          action: decision.action, reason: dependencyInvalid ? "missing_source_dependency" : "not_in_candidate_scope",
-          details: "Cleanup source or dependency was already cleaned or changed by native context_edit" });
-        else cleanup.applied.push(decision);
-      }
       const nextDecisions = [...before.cleanup, ...cleanup.applied];
       const leaf = ctx.sessionManager.getLeafId();
       try {
@@ -278,7 +273,7 @@ export function createMemorySurface(options: {
         return fail("unconfirmed", `Save unconfirmed: ${error instanceof Error ? error.message : "native append failed"}. ${UNCONFIRMED_MESSAGE}`, viewOf(ctx));
       }
 
-      options.onCommitted();
+      try { options.onCommitted(); } catch { /* Observers cannot undo a committed save. */ }
       const saved = viewOf(ctx);
       return {
         ok: true,
@@ -327,10 +322,11 @@ function unconfirmedMarks(): WeakMap<object, string> {
   return g[UNCONFIRMED] ??= new WeakMap();
 }
 type SessionHandle = ExtensionContext["sessionManager"];
-function markUnconfirmed(manager: SessionHandle, leaf: string): void {
+export function markUnconfirmed(manager: SessionHandle, leaf: string): void {
   unconfirmedMarks().set(manager, leaf);
+  setCleanupUnconfirmed(manager.getEntry(leaf), true);
 }
-function entryOnDisk(file: string | undefined, id: string): boolean {
+export function entryOnDisk(file: string | undefined, id: string): boolean {
   if (!file) return false;
   try {
     for (const line of readFileSync(file, "utf8").split("\n")) {
@@ -345,6 +341,7 @@ function sessionUnconfirmed(manager: SessionHandle): boolean {
   if (!marked) return false;
   if (!manager.getEntry(marked) || entryOnDisk(manager.getSessionFile(), marked)) {
     unconfirmedMarks().delete(manager);
+    setCleanupUnconfirmed(manager.getEntry(marked), false);
     return false;
   }
   return true;
@@ -353,7 +350,8 @@ function sessionUnconfirmed(manager: SessionHandle): boolean {
 function measureBudget(ctx: ExtensionContext, options: Parameters<typeof createMemorySurface>[0], slots: Slot[]): MemoryBudgetView {
   const tokens = memoryTokens(slots);
   try {
-    const config = readConfig(options.pi.getFlag("nunc-config"), ctx.cwd).config;
+    requireThat(ctx.model !== undefined, "CONFIG", "No model selected for memory budgeting");
+    const config = options.config?.(ctx) ?? readConfig(options.pi.getFlag("nunc-config"), ctx.cwd).config;
     const target = memoryTarget(config), hardLimit = hardMemoryLimit(config);
     const limit = Math.min(target, hardLimit ?? Infinity);
     const used = memoryTokens(slots, config.budget?.imageTokens);

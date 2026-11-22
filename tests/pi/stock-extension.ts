@@ -1,8 +1,7 @@
 import { appendFileSync } from "node:fs";
 import { Type } from "typebox";
 import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { SYNTHETIC_LAST_USER_APPEND } from "../../src/live/append.js";
-import { applyLastUserTextAppend } from "../../src/pi/payload.js";
+import { SYNTHETIC_LAST_USER_APPEND, applyLastUserTextAppend } from "../../src/pi/payload.js";
 
 /** Controlled-service observer plus explicit public-composition fault commands. Never generates memory. */
 export default function (pi: ExtensionAPI): void {

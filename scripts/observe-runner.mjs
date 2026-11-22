@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { StockFixture, root } from './stock-driver.mjs';
 const f = await new StockFixture().setup({ api: 'openai-codex-responses', compaction: { enabled: false, reserveTokens: 200000 } });
 const systemTemp = process.argv[2] === '--system-temp';
-const originalTemp = await realpath(tmpdir());
+const originalTemp = systemTemp ? await realpath(tmpdir()) : undefined;
 const targetParent = systemTemp ? await mkdtemp(join(originalTemp, 'nunc-runner-test-')) : f.dir;
 const stateRoot = join(targetParent, 'nunc-live-runner');
 if (systemTemp) assert(!stateRoot.startsWith(join(root, '.scratch') + '/'));
@@ -47,6 +47,6 @@ try {
   assert.deepEqual(JSON.parse(await readFile(join(f.state, 'agent/settings.json'), 'utf8')), settings);
   const again = await run(); assert.notEqual(again.code, 0); assert.equal(f.requests.length, 12, 'single-use refusal makes no extra call');
   await writeFile(join(f.dir, 'runner-report.json'), execution.stdout);
-  result = { status: 'PROVEN_CONTROLLED', calls: report.usage.calls, nativeWorkers: report.children.length, targetClass: systemTemp ? 'system-temp' : 'checkout-scratch', memoryQuality: 'UNPROVEN: scripted service', evidence: f.dir };
+  result = { status: 'PROVEN_CONTROLLED', calls: report.usage.calls, nativeWorkers: report.children.length, targetClass: systemTemp ? 'system-temp' : 'checkout-scratch', memoryQuality: 'UNPROVEN: scripted service' };
 } catch (error) { result.error = { message: error.message, stack: error.stack }; process.exitCode = 1; }
-finally { await rm(stateRoot, { recursive: true, force: true }); if (systemTemp) { await rm(targetParent, { recursive: true }); await assert.rejects(lstat(targetParent), { code: 'ENOENT' }); } await f.close(result); console.log(JSON.stringify(result)); }
+finally { await rm(stateRoot, { recursive: true, force: true }); if (systemTemp) { await rm(targetParent, { recursive: true }); await assert.rejects(lstat(targetParent), { code: 'ENOENT' }); } await f.close(result); console.log(JSON.stringify({ ...result, ...f.artifactReceipt() })); }

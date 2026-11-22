@@ -37,8 +37,16 @@ export function parseConfig(value: unknown): NuncConfig {
   }
   return structuredClone(root) as NuncConfig; // Every allowed field is checked above.
 }
-export function readConfig(flag: unknown, cwd: string): { config: NuncConfig; configFile?: string } {
-  if (flag === undefined) return { config: {} };
+export function readConfig(flag: unknown, cwd: string, settings: { projectNunc?: unknown; globalNunc?: unknown; projectTrusted?: boolean } = {}): { config: NuncConfig; configFile?: string } {
+  if (flag === undefined) {
+    const config: NuncConfig = {};
+    for (const key of ["rolling", "memory", "extraction", "budget", "policyFile"] as const) {
+      const value = resolveNuncSetting(settings, key);
+      if (value !== undefined) Object.assign(config, { [key]: value });
+    }
+    if (config.policyFile !== undefined && !isAbsolute(config.policyFile)) config.policyFile = resolve(cwd, config.policyFile);
+    return { config: parseConfig(config) };
+  }
   if (typeof flag !== "string" || !flag.trim()) throw new EngineError("CONFIG", "--nunc-config requires a path");
   const configFile = isAbsolute(flag) ? flag : resolve(cwd, flag);
   try {
@@ -77,7 +85,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
       ...(config.memory?.maxTokens === undefined ? {} : { maxTokens: config.memory.maxTokens }) },
     keepRecentFraction: config.rolling?.keepRecentFraction ?? 0.5,
     ...(config.rolling?.targetTokens !== undefined ? { keepRecentTargetTokens: config.rolling.targetTokens }
-      : config.rolling?.keepRecentFraction === undefined ? { keepRecentTargetTokens: Math.min(100000, Math.max(1, settings.keepRecentTokens, Math.floor(triggerTokens * 0.25))) } : {}),
+      : config.rolling?.keepRecentFraction === undefined ? { keepRecentTargetTokens: settings.keepRecentTokens > 1 ? Math.max(1, settings.keepRecentTokens) : Math.min(32768, Math.max(1, Math.floor(triggerTokens * 0.15))) } : {}),
     ...(config.rolling?.keepRecentFraction === undefined ? { keepRecentTokens: settings.keepRecentTokens } : {}),
     growthTokens: config.budget?.growthTokens ?? 1024,
     main: { ...common, outputTokens: mainOutput, ...(nativeContextOutput ? { nativeOutputReserve: mainReserve } : {}), extraInputTokens: config.budget?.extraMainInputTokens ?? 0 },
@@ -88,7 +96,7 @@ export function engineConfig(config: NuncConfig, model: Model<Api>, settings: Ho
   return result;
 }
 
-export interface NuncSettings {
+export interface NuncSettings extends NuncConfig {
   /** Enables both memory tools, including selected-branch read-only history lookup; default false. */
   memoryTools?: boolean;
   toolResultCleanup?: boolean;
@@ -96,20 +104,16 @@ export interface NuncSettings {
 
 export function parseNuncSettings(value: unknown, label: string = "settings.json: nunc"): NuncSettings {
   if (value === undefined) return {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new EngineError("CONFIG", `${label} must be an object`);
-  }
-  const obj = value as Record<string, unknown>;
-  for (const key of Object.keys(obj)) {
-    if (key !== "memoryTools" && key !== "toolResultCleanup") throw new EngineError("CONFIG", `Unknown ${label}.${key}`);
-  }
+  const obj = object(value, ["memoryTools", "toolResultCleanup", "rolling", "memory", "extraction", "budget", "policyFile"], label);
+  const { memoryTools: _memoryTools, toolResultCleanup: _cleanup, ...config } = obj;
+  const parsed = parseConfig(config);
   if (obj.memoryTools !== undefined && typeof obj.memoryTools !== "boolean") {
     throw new EngineError("CONFIG", `Invalid ${label}.memoryTools: expected boolean, got ${typeof obj.memoryTools}`);
   }
   if (obj.toolResultCleanup !== undefined && typeof obj.toolResultCleanup !== "boolean") {
     throw new EngineError("CONFIG", `Invalid ${label}.toolResultCleanup: expected boolean, got ${typeof obj.toolResultCleanup}`);
   }
-  return { ...(obj.memoryTools === undefined ? {} : { memoryTools: obj.memoryTools as boolean }),
+  return { ...parsed, ...(obj.memoryTools === undefined ? {} : { memoryTools: obj.memoryTools as boolean }),
     ...(obj.toolResultCleanup === undefined ? {} : { toolResultCleanup: obj.toolResultCleanup as boolean }) };
 }
 
@@ -126,20 +130,20 @@ export function validateNuncSettings(settings: {
   }
 }
 
+function resolveNuncSetting<K extends keyof NuncSettings>(options: { projectNunc?: unknown; globalNunc?: unknown; projectTrusted?: boolean }, key: K): NuncSettings[K] | undefined {
+  if (options.projectTrusted === true && options.projectNunc !== undefined) {
+    const value = parseNuncSettings(options.projectNunc, "project settings.json: nunc")[key];
+    if (value !== undefined) return value;
+  }
+  return options.globalNunc === undefined ? undefined : parseNuncSettings(options.globalNunc, "global settings.json: nunc")[key];
+}
+
 export function resolveToolResultCleanup(options: {
   projectNunc?: unknown;
   globalNunc?: unknown;
   projectTrusted?: boolean;
 }): boolean {
-  if (options.projectTrusted !== false && options.projectNunc !== undefined) {
-    const project = parseNuncSettings(options.projectNunc, "project settings.json: nunc");
-    if (project.toolResultCleanup !== undefined) return project.toolResultCleanup;
-  }
-  if (options.globalNunc !== undefined) {
-    const global = parseNuncSettings(options.globalNunc, "global settings.json: nunc");
-    if (global.toolResultCleanup !== undefined) return global.toolResultCleanup;
-  }
-  return true;
+  return resolveNuncSetting(options, "toolResultCleanup") ?? true;
 }
 
 export function resolveMemoryTools(options: {
@@ -149,14 +153,6 @@ export function resolveMemoryTools(options: {
   projectTrusted?: boolean;
 }): boolean {
   if (Boolean(options.cliFlag)) return true;
-  if (options.projectTrusted !== false && options.projectNunc !== undefined) {
-    const project = parseNuncSettings(options.projectNunc, "project settings.json: nunc");
-    if (project.memoryTools !== undefined) return project.memoryTools;
-  }
-  if (options.globalNunc !== undefined) {
-    const global = parseNuncSettings(options.globalNunc, "global settings.json: nunc");
-    if (global.memoryTools !== undefined) return global.memoryTools;
-  }
-  return false;
+  return resolveNuncSetting(options, "memoryTools") ?? false;
 }
 

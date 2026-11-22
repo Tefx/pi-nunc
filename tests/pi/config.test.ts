@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getCurrentSystemPrompt } from "@earendil-works/pi-ai";
-import { parseConfig, engineConfig, readConfig } from "../../src/pi/config.js";
+import { parseConfig, parseNuncSettings, engineConfig, readConfig } from "../../src/pi/config.js";
 import { model, user, assistant, tool } from "../engine/fixtures.js";
 import { chooseCut, inputLimit, memoryPlan } from "../../src/engine/accounting.js";
 import { legalCuts, validateConfig } from "../../src/engine/validation.js";
-import { fixture, memoryPatch } from "./fixtures.js";
+import { fixture, memoryPatch, preparedSurface } from "./fixtures.js";
 
 for (const config of [null, [], { unknown: 1 }, { policyFile: "" }, { memory: { fraction: 1 } }, { memory: { fraction: -1 } }, { memory: { maxTokens: 0 } }, { memory: { targetTokens: 0 } }, { memory: { targetTokens: -1 } }, { memory: { targetTokens: 1.5 } }, { rolling: { keepRecentFraction: 0 } }, { rolling: { keepRecentFraction: 1 } }, { rolling: { keepRecentFraction: -0.1 } }, { rolling: { keepRecentFraction: 1.5 } }, { rolling: { keepRecentFraction: "0.5" } }, { extraction: { toolResults: "never" } }, { extraction: { outputTokens: 1.5 } }, { budget: { inputLimit: -1 } }, { budget: { extraMainInputTokens: -1 } }]) {
   test(`invalid configuration rejected: ${JSON.stringify(config)}`, () => assert.throws(() => parseConfig(config)));
@@ -67,13 +67,13 @@ test("retention budget formula computes keepTarget = floor(q * (available - memo
   assert.equal(planDefault.memoryLimit, planExplicit.memoryLimit);
 
   // Formula check
-  assert.equal(planDefault.keepTarget, 6000);
+  assert.equal(planDefault.keepTarget, hostSettings.keepRecentTokens);
   assert.equal(planExplicit.keepTarget, Math.floor(0.67 * (planExplicit.available - planExplicit.memoryLimit)));
   assert(planDefault.keepTarget < planExplicit.keepTarget);
 });
 
 test("proportional default target follows H, honors host minimum, and caps large windows", () => {
-  for (const [window, reserve, recent, expected] of [[272000, 16384, 20000, 63904], [1000000, 16384, 20000, 100000], [60000, 36000, 7000, 7000], [400000, 16384, 20000, 95904]]) {
+  for (const [window, reserve, recent, expected] of [[272000, 16384, 20000, 20000], [1000000, 16384, 20000, 20000], [60000, 36000, 7000, 7000], [400000, 16384, 8000, 8000], [272000, 16384, 1, 32768], [60000, 36000, 1, 3600]]) {
     const m = { ...model, contextWindow: window! };
     const settings = { reserveTokens: reserve!, keepRecentTokens: recent! };
     assert.equal(engineConfig({}, m, settings).keepRecentTargetTokens, expected);
@@ -167,11 +167,11 @@ test("chooseCut with legal cuts preserves full tool/message units and chooses mi
   assert.equal(cutMidLow.cut, cutMidHigh.cut);
   assert.equal(cutMidLow.keptTokens, cutMidHigh.keptTokens);
 
-  // Case 3: An unfinished oversized turn keeps the preceding completed response
-  // when both fit, even though the current user alone would be closer to target.
+  // Case 3: An oversized unfinished turn releases turn alignment so the closest
+  // legal suffix can retire the preceding completed response.
   const tinyTarget = 100;
   const cutOver = chooseCut(active, cuts, fixedTokens, memoryLimit, tinyTarget, trigger, cfgDefault);
-  assert.equal(cutOver.cut, 4); // preceding completed response and current user
+  assert.equal(cutOver.cut, 5); // current user is the smallest indivisible suffix
   assert(cutOver.keptTokens > tinyTarget);
 });
 
@@ -293,6 +293,17 @@ test("relative config/policy loading, one frozen policy per extraction, later ed
   assert.equal(f.events.filter(e => e.result.ok).length, 2);
 });
 
+test("malformed local config errors retain parser diagnostics", async t => {
+  const f = await fixture(); t.after(() => f.close());
+  await writeFile(f.configFile, '{"memory": invalid}');
+  assert.throws(() => readConfig(f.configFile, f.cwd), error => {
+    assert(error instanceof Error);
+    assert(error.cause instanceof SyntaxError);
+    assert.match(error.message, /Cannot load Nunc configuration/);
+    return true;
+  });
+});
+
 test("unreadable policy / invalid UTF-8 or configuration cannot fall through to Pi default generation", async t => {
   const f = await fixture({ config: { policyFile: "missing.md" } }); t.after(() => f.close()); f.seed();
   await assert.rejects(f.runtime.session.compact(), /cancel/i); assert.equal(f.faux.state.callCount, 0);
@@ -301,4 +312,40 @@ test("unreadable policy / invalid UTF-8 or configuration cannot fall through to 
   await writeFile(f.configFile, '{"memory":{"fraction":1}}');
   await assert.rejects(f.runtime.session.compact(), /cancel/i); assert.equal(f.faux.state.callCount, 0);
   assert.equal(f.runtime.session.sessionManager.getEntries().filter(e => e.type === "compaction").length, 0);
+});
+
+test("settings engine sections share config validation and require explicit project trust", () => {
+  const globalNunc = { rolling: { targetTokens: 8000 }, memory: { targetTokens: 1000 }, extraction: { toolResults: "full" }, budget: { safetyTokens: 100 }, policyFile: "policy.md" };
+  assert.deepEqual(parseNuncSettings(globalNunc), globalNunc);
+  for (const value of [{ rolling: { targetTokens: 0 } }, { memory: { fraction: 1 } }, { extraction: { toolResults: "invalid" } }, { budget: { inputLimit: -1 } }, { policyFile: "" }]) assert.throws(() => parseNuncSettings(value));
+  for (const projectTrusted of [undefined, false, true]) {
+    const { config } = readConfig(undefined, "/workspace", { globalNunc, ...(projectTrusted === undefined ? {} : { projectTrusted }), projectNunc: { rolling: { targetTokens: 2000 } } });
+    assert.equal(config.rolling!.targetTokens, projectTrusted === true ? 2000 : 8000);
+    assert.equal(config.memory!.targetTokens, 1000);
+    assert.equal(config.policyFile, "/workspace/policy.md");
+    if (projectTrusted !== true) assert.doesNotThrow(() => readConfig(undefined, "/workspace", { projectNunc: { invalid: true }, ...(projectTrusted === undefined ? {} : { projectTrusted }) }));
+  }
+});
+
+for (const projectTrusted of [false, true]) test(`native settings engine config reaches maintenance and memory growth budget: trusted=${projectTrusted}`, async t => {
+  const { f, memory, ctx } = await preparedSurface(t, { configFlag: false, diskSettings: true, projectTrusted,
+    globalSettings: { nunc: { memoryTools: true, memory: { targetTokens: 1000 }, rolling: { targetTokens: 700 }, extraction: { toolResults: "full" }, policyFile: "policy.md" } },
+    projectSettings: { nunc: { memory: { targetTokens: 500 }, rolling: { targetTokens: 400 } } } });
+  await writeFile(join(f.cwd, "policy.md"), "Keep exact source-based conclusions.");
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  const result = f.events.at(-1)!.result;
+  assert(result.ok, result.ok ? "" : result.message);
+  assert.equal(result.observations.accounting!.keepTarget, projectTrusted ? 400 : 700);
+  assert.equal(memory().read(ctx()).budget.target, projectTrusted ? 500 : 1000);
+  assert(f.calls.at(-1)!.systemPrompt.includes("Keep exact source-based conclusions."));
+});
+
+test("explicit config file overrides settings engine options throughout native maintenance", async t => {
+  const { f, memory, ctx } = await preparedSurface(t, { diskSettings: true, config: { memory: { targetTokens: 1200 }, rolling: { targetTokens: 900 } },
+    globalSettings: { nunc: { memory: { targetTokens: 500 }, rolling: { targetTokens: 400 }, policyFile: "missing.md" } } });
+  f.seed(); f.respond(memoryPatch);
+  await f.runtime.session.compact();
+  assert.equal(f.events.at(-1)!.result.observations.accounting!.keepTarget, 900);
+  assert.equal(memory().read(ctx()).budget.target, 1200);
 });

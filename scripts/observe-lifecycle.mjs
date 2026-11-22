@@ -42,8 +42,9 @@ try {
   await p.prompt('After real process restart');
   const beforeReload = count('admission'); await p.send('/fixture-reload'); await p.prompt('After reload');
   const added = f.log.filter(e => e.type === 'admission').slice(beforeReload);
-  assert.equal(added.filter(e => !e.data.payload).length, 1, 'no layered stale wrapper on reload');
-  assert.equal(added.filter(e => e.data.payload).length, 1, 'composed onPayload observed once');
+  assert.equal(added.length, 1, 'one authorized observation, no speculative delegate or layered stale wrapper on reload');
+  assert.equal(added[0].data.outcome, 'delegate');
+  assert(added[0].data.payload, 'composed onPayload authorized once');
   assert(f.requests.at(-1).payload.messages.map(text).join('\n').includes(previous.summary));
   await p.command('set_model', { provider: 'groq', modelId: 'nunc-small' }); await p.prompt('After model selection');
   assert.equal(f.requests.at(-1).payload.model, 'nunc-small');
@@ -64,7 +65,7 @@ try {
   assert.equal(f.requests.length, beforeLegacy); assert.equal(f.log.filter(e => e.type === 'admission').at(-1).data.code, 'CONFIG');
   await p.send('/fixture-native-reset'); await p.prompt('After removing legacy stream');
   const beforeContext = f.requests.length; await p.send('/fixture-context-rewrite on'); await p.prompt('Unknown late request mutation');
-  assert.ok(f.requests.length > beforeContext); assert.equal(f.log.filter(e => e.type === 'admission').at(-1).data.outcome, 'delegate');
+  assert.equal(f.requests.length, beforeContext + 1); assert.equal(f.log.filter(e => e.type === 'admission').at(-1).data.outcome, 'delegate');
   assert(text(f.requests.at(-1).payload.messages.at(-1)).includes('Unowned late context mutation'));
   await p.send('/fixture-context-rewrite off');
   const beforePayload = f.requests.length; await p.send('/fixture-payload-rewrite on'); await p.prompt('Payload must not change');
@@ -99,7 +100,7 @@ try {
   await p.prompt('Captured native provider still owns an unknown API label');
   const apiAdmissions = f.log.filter(e => e.type === 'admission').slice(beforeAdmissions);
   assert(!apiAdmissions.some(e => e.data?.code === 'CONFIG'), 'API-name membership must not reject captured native dispatch');
-  if (apiAdmissions.some(e => e.data?.outcome === 'delegate')) assert.ok(f.requests.length >= beforeApi);
+  assert.equal(f.requests.length, beforeApi + (apiAdmissions.some(e => e.data?.outcome === 'delegate') ? 1 : 0), 'delegate must correspond to exactly one controlled native send');
   models.providers.groq.models[0].api = 'openai-completions';
   await applyGroq(m => m.api === 'openai-completions' && !hasSampling(m), 'models.json openai-completions restore never reached the catalog');
   await p.prompt('Native model defaults restored');
@@ -146,4 +147,4 @@ try {
   await p.quit();
   outcome = { status: 'PROVEN_CONTROLLED', checkpoints: 3, overlappingOlderCheckpoint: true, actualRestartReload: true, modelCloneForkNewTree: true, threshold: true, disabledAuto: true, defaultOversizedInputDelegated: true, extractionFailureAndCancellation: true, independentRawDelegated: true, providerReplacementAndComposition: true, payloadMutationAndSamplingRejected: true, requests: f.requests.length, memoryQuality: 'UNPROVEN: controlled protocol responses' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
-finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, evidence: f.dir })); }
+finally { await f.close(outcome); console.log(JSON.stringify({ ...outcome, ...f.artifactReceipt() })); }

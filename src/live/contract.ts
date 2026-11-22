@@ -1,16 +1,20 @@
 import { createHash } from "node:crypto";
-import { satisfiesStableCaret } from "./toolchain.js";
 import { canonical } from "../engine/validation.js";
-export { canonical } from "../engine/validation.js";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { lstat, readFile, realpath, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { isSupportedPiVersion, SUPPORTED_PI_RANGE } from "../pi/compat.js";
+import { satisfiesStableCaret, isSupportedPiVersion, SUPPORTED_PI_RANGE } from "../pi/compat.js";
 import { engineConfig, parseConfig, type NuncConfig } from "../pi/config.js";
-export type { NuncConfig } from "../pi/config.js";
+
+/** Unix-millisecond wall-clock intervals; provider durations remain separate ledger facts. */
+export interface WallClockInterval { startedAt: number; endedAt: number; elapsedMs: number }
+export function elapsedInterval(startedAt: number): WallClockInterval {
+  const endedAt = Date.now();
+  return { startedAt, endedAt, elapsedMs: endedAt - startedAt };
+}
 
 export class RunnerError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
@@ -35,10 +39,6 @@ export function payloadAppendBEnabled(input: { overrides?: Record<string, unknow
 /** Transparent Provider wrap after the first settled turn so Nunc re-captures the chain. */
 export function providerWrapEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
   return namedRequirement(input, "provider-wrap");
-}
-/** Verification-only: drop frozen prestate after session_before_compact so a real persist can still miss identity. */
-export function identityPrestateProbeEnabled(input: { overrides?: Record<string, unknown>[] }): boolean {
-  return namedRequirement(input, "identity-prestate-probe");
 }
 function keys(value: unknown, allowed: string[], label: string): asserts value is Record<string, unknown> {
   requireValue(object(value), "INPUT", `${label} must be an object`);
@@ -70,6 +70,17 @@ export interface Limits {
   priorLedgers?: string[];
   sharedLedger?: string;
 }
+export function batchTimestamp(value: number | string): number { return typeof value === "string" ? Date.parse(value) : value; }
+export function assertBatchConsistency(batch: BatchAuthority | undefined, limits: Limits): void {
+  for (const key of ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"] as const) {
+    const a = batch?.[key], b = limits[key];
+    if (a === undefined || b === undefined) continue;
+    const normalize = (value: unknown): unknown => key === "firstDispatchAt" || key === "deadline"
+      ? batchTimestamp(value as number | string)
+      : Array.isArray(value) ? [...new Set(value.map(p => resolve(p)))].sort() : resolve(String(value));
+    requireValue(canonical(normalize(a)) === canonical(normalize(b)), "BATCH", `Conflicting batch and limits ${key}`);
+  }
+}
 export interface RetentionCalibrationRange { minFraction: number; maxFraction: number }
 export interface RunConfig { nunc: NuncConfig; compaction: { enabled: boolean; reserveTokens: number; keepRecentTokens: number }; retentionCalibration?: RetentionCalibrationRange }
 export interface ScenarioAssets { inputs?: string; observer?: string }
@@ -81,6 +92,9 @@ export interface ComparisonTarget { repository: string; ref?: string }
 export function taskRetentionSelection(s: { id?: unknown; variant?: unknown }): boolean {
   return s.id === "g3" && s.variant === "scoped-tasks" || s.id === "g4" &&
     ["task-file", "same-task-history", "active-edit", "source-loss", "source-unavailable", "commit-conflict", "commit-unconfirmed"].includes(String(s.variant));
+}
+export function canResumeScenario(id: Selection["id"], resume: boolean): boolean {
+  return !resume && ["c3", "e1", "e3"].includes(id);
 }
 export function taskRetentionRun(input: { scenarios: unknown; overrides?: unknown }): boolean {
   return Array.isArray(input.scenarios) && input.scenarios.some(s => object(s) && taskRetentionSelection(s)) ||
@@ -112,11 +126,11 @@ export interface RunInput {
 }
 export interface Receipt { version: 1; binding: string; candidate: string; node: string; pi: string; callsMade: 0 }
 export const MAX_STDIN_BYTES = 65536;
-export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>): Promise<unknown> {
+export async function readBoundedJson(stream: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>, limit = MAX_STDIN_BYTES): Promise<unknown> {
   const chunks: Buffer[] = []; let length = 0;
   for await (const chunk of stream) {
     const bytes = Buffer.from(chunk); length += bytes.length;
-    requireValue(length <= MAX_STDIN_BYTES, "INPUT_SIZE", "stdin exceeds 65536 bytes"); chunks.push(bytes);
+    requireValue(length <= limit, "INPUT_SIZE", `stdin exceeds ${limit} bytes`); chunks.push(bytes);
   }
   requireValue(length > 0, "INPUT", "A bounded task selection JSON object is required on stdin");
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); } catch { throw new RunnerError("INPUT", "stdin must contain one JSON object"); }
@@ -139,7 +153,7 @@ export function validateConfig(value: unknown): asserts value is RunConfig {
 function validateBatchFields(target: Record<string, unknown>, code: string, prefix: string): void {
   for (const field of ["firstDispatchAt", "deadline"]) {
     const value = target[field];
-    if (value !== undefined) requireValue((typeof value === "number" && Number.isFinite(value) && value > 0) || (typeof value === "string" && !isNaN(Date.parse(value))), code, `${prefix}.${field} must be a positive timestamp or valid ISO date`);
+    if (value !== undefined) requireValue((typeof value === "number" || typeof value === "string") && Number.isFinite(batchTimestamp(value)) && batchTimestamp(value) > 0, code, `${prefix}.${field} must be a positive timestamp or valid ISO date`);
   }
   if (target.priorLedgers !== undefined) requireValue(Array.isArray(target.priorLedgers) && target.priorLedgers.every(p => typeof p === "string" && p.trim().length > 0), code, `${prefix}.priorLedgers must be an array of non-empty paths`);
   if (target.sharedLedger !== undefined) requireValue(typeof target.sharedLedger === "string" && target.sharedLedger.trim().length > 0, code, `${prefix}.sharedLedger must be a non-empty string path`);
@@ -155,7 +169,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
       for (const model of (value.models as any[] ?? [])) {
         let url: URL | undefined;
         try { url = new URL(model.baseUrl); } catch { /* handled */ }
-        const isLoopback = url && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+        const isLoopback = url && ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname);
         requireValue(isLoopback, "AUTHORIZATION", "Controlled execution requires an explicit loopback or synthetic endpoint; real service endpoints are forbidden in controlled mode");
       }
     }
@@ -174,6 +188,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
     keys(value.batch, ["firstDispatchAt", "deadline", "priorLedgers", "sharedLedger"], "batch");
     validateBatchFields(value.batch, "BATCH", "batch");
   }
+  assertBatchConsistency(value.batch as BatchAuthority | undefined, value.limits as unknown as Limits);
   requireValue(Array.isArray(value.models) && value.models.length >= 1 && value.models.length <= 2, "MODEL", "Authorize one or two exact models");
   const modelKeys = new Set<string>();
   const isGuidance = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("g"));
@@ -191,7 +206,7 @@ export function parseInput(value: unknown, execution = false): RunInput {
       const id = String(model.id).toLowerCase();
       const provider = String(model.provider).toLowerCase();
       const isForbidden = id.includes("astra") || provider === "openai-codex" || id.includes("codex") || provider.includes("astra");
-      const isGemini = (id.includes("gemini") || id.includes("google/gemini")) && !isForbidden;
+      const isGemini = model.provider === "openrouter" && model.id === "google/gemini-3.8-flash";
       requireValue(!isForbidden && isGemini, "MODEL", "Legacy guidance scenarios authorize OpenRouter google/gemini-3.8-flash only; Astra and non-Gemini models are forbidden");
     }
     const isStableMemory = Array.isArray(value.scenarios) && value.scenarios.some((s: any) => typeof s?.id === "string" && s.id.startsWith("m"));
@@ -298,7 +313,7 @@ export function selectedModels(input: RunInput): Model<Api>[] {
     const model = input.resolvedModels!.find(m => m.id === target.id && m.provider === target.provider);
     requireValue(model, "MODEL", "Authorized model is absent from native-resolved metadata");
     requireValue(model.contextWindow === target.contextWindow && model.maxTokens === target.maxTokens && model.baseUrl === target.baseUrl, "MODEL", "Authorized model capacity/endpoint differs from native resolution");
-    requireValue(!model.headers && !model.samplingParams, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
+    requireValue(!model.headers && !model.samplingParams && !model.samplingParamsByThinkingLevel, "MODEL", "Model header/sampling overrides require a supported native accounting contract");
     requireValue(input.limits.maxOutputTokens >= model.maxTokens, "LIMIT", "Authorize the stock main model's total default output ceiling, including thinking");
     // Legacy API is subscription-only. The shared openai API's billing type
     // is checked from public native auth metadata at runtime, before reservation.
@@ -361,7 +376,9 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     catch { throw new RunnerError("BUILD", "Current baseline target must have compiled dist/src/index.js"); }
     const curPkg = JSON.parse(await readFile(join(curRepo, "package-lock.json"), "utf8"));
     const curPiVersion = curPkg.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
-    requireValue(curPiVersion === (requestedRef === "70dacad" ? "0.85.1" : "0.86.1"), "DEPENDENCY", "Current target uses an unsupported locked Pi version");
+    requireValue(isSupportedPiVersion(curPiVersion) || curPiVersion === (expectedCommit === "70dacad1f065a70b29f565b5bfcf02d31cec2bdc" ? "0.85.1" : expectedCommit === "1d4fc4a210b64f71871ab3f5c10093215a25990c" ? "0.86.1" : undefined), "DEPENDENCY", "Current target uses an unsupported locked Pi version");
+    const curPiManifest = JSON.parse(await readFile(join(curRepo, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
+    requireValue(curPiManifest.version === curPiVersion, "DEPENDENCY", "Current target installed Pi differs from its lock");
     // Verify baseline build parity against its tracked source
     if (!existingOwnedWorker) {
       const { assertBuildParity } = await import("./build.js");
@@ -418,7 +435,8 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const p = isAbsolute(assetFile) ? assetFile : join(repository, assetFile);
     if (existsSync(p)) {
       const stat = await lstat(p);
-      if (stat.isFile()) digest.update(await readFile(p));
+      requireValue(stat.isFile() && !stat.isSymbolicLink(), "ASSETS", "Explicit asset must be a regular file, not a symlink");
+      digest.update(await readFile(p));
     }
   }
   for (const name of ["src", "scripts", "dist/src", "tests/scenarios", "policies", "package.json", "package-lock.json", "tsconfig.json"]) await bind(join(repository, name));

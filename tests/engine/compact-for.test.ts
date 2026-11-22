@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { maintain } from "../../src/engine/engine.js";
 import { engineConfig } from "../../src/pi/config.js";
-import { answer, input, responder, sourceRecords, user } from "./fixtures.js";
+import { answer, assistant, input, responder, sourceRecords, tool, user } from "./fixtures.js";
 
 async function targeted() {
   const s = await input();
@@ -72,10 +72,28 @@ test("targeted compaction does not retain images for a text-only target", async 
   assert(!result.ok); assert.equal(result.code, "CAPACITY"); assert.equal(result.observations.requests, 0);
 });
 
+test("target preflight rejects raw K restored by an expired prior cleanup without dispatch", async () => {
+  const s = await input();
+  const body = "large retained source ".repeat(1000);
+  s.active = [user("old", "old"), assistant("source-call", [{ type: "toolCall", id: "c0", name: "read", arguments: {} }]), tool("source", "c0", "keeper"),
+    assistant("target-call", [{ type: "toolCall", id: "c1", name: "read", arguments: {} }]), tool("target", "c1", body)];
+  s.priorCleanup = [{ entryId: "target", messageIndex: 0, toolCallId: "c1", toolName: "read", kind: "semantic", action: "replace",
+    text: "Consumed.", originalLength: body.length, cleanedLength: 9, netSavings: body.length - 9, sourceRefs: [{ entryId: "source", messageIndex: 0 }] }];
+  s.eligibleKeptEntryIds = ["target-call"];
+  s.config.extraction.toolResults = "full";
+  s.target = { model: s.model, config: { ...s.config, triggerTokens: 4000, growthTokens: 100 } };
+  const result = await maintain(s, async () => assert.fail("raw restored K cannot fit the target"));
+  assert(!result.ok);
+  assert.equal(result.code, "CAPACITY");
+  assert.equal(result.observations.requests, 0);
+  assert.equal(result.observations.target!.fits, false);
+});
+
 test("ordinary maintenance remains independent of the explicit target gate", async () => {
   const s = await targeted(); delete s.target;
   const result = await maintain(s, responder());
   assert(result.ok, result.ok ? "" : result.message);
   assert.equal(result.observations.target, undefined);
-  assert(result.candidate.kept.length >= 14);
+  assert.equal(result.observations.accounting!.keepTarget, Math.floor(s.config.triggerTokens * 0.15));
+  assert(result.candidate.kept.length >= 12 && result.candidate.kept.length <= 14);
 });

@@ -1,8 +1,8 @@
 /**
- * purpose: Reanalyze retained comparison rollovers with the tracked compaction-identity resolver and join/K consumers.
+ * purpose: Reanalyze retained comparison rollovers with the tracked scenario compaction-identity resolver and join/K consumers.
  * usage: node scripts/reanalyze-commit-association.mjs RETAINED_ROOT OUT_DIR [WORKTREE]
  * effects: Reads retained execution.json and optional snapshot-origin-data.json; writes OUT_DIR/projection.json. Does not modify retained reports, bindings, source-budget, or sessions.
- * requires: Node, compiled dist/src/live/{compaction-identity,comparison,comparison-observation}.js, retained execution.json; no model/runtime replay.
+ * requires: Node, compiled dist/src/live/{scenarios,comparison,comparison-observation}.js, retained execution.json; no model/runtime replay.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -17,7 +17,7 @@ if (!retainedRoot || !outDir) {
 }
 
 const live = join(worktree, "dist/src/live");
-const { resolveCompactionIdentity } = await import(pathToFileURL(join(live, "compaction-identity.js")).href);
+const { resolveCompactionIdentity } = await import(pathToFileURL(join(live, "scenarios.js")).href);
 const { joinedObservations } = await import(pathToFileURL(join(live, "comparison.js")).href);
 const { rolloverFacts } = await import(pathToFileURL(join(live, "comparison-observation.js")).href);
 
@@ -95,7 +95,7 @@ try {
 } catch { retainedApplicability = [{ status: "unavailable" }]; }
 
 const out = {
-  predicate: "src/live/compaction-identity.ts resolveCompactionIdentity + src/live/comparison.ts joinedObservations + src/live/comparison-observation.ts rolloverFacts",
+  predicate: "src/live/scenarios.ts resolveCompactionIdentity + src/live/comparison.ts joinedObservations + src/live/comparison-observation.ts rolloverFacts",
   retainedRoot, worktree, originalReportsUntouched: true,
   groups,
   retainedApplicability,

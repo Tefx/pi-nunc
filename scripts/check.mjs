@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { satisfiesStableCaret } from "../src/live/toolchain.ts";
+import { homedir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { registerHooks } from "node:module";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fail = message => { console.error(`check: ${message}`); process.exit(1); };
@@ -10,6 +11,32 @@ const json = path => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 const pkg = json("package.json");
 const selected = process.argv.slice(2);
 if (selected.length !== 1 || !["engine", "all"].includes(selected[0])) fail("Expected nonempty selection: engine or all.");
+// Load the canonical source before a build exists. Pi source uses emitted .js
+// specifiers and TypeScript syntax beyond native Node's type stripping.
+const compiler = resolve(root, "node_modules/typescript/lib/typescript.js");
+if (!existsSync(compiler)) fail("Missing local typescript; install from package-lock.json separately");
+const { default: ts } = await import(pathToFileURL(compiler).href);
+const hooks = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if ((specifier.startsWith("./") || specifier.startsWith("../")) && specifier.endsWith(".js") && context.parentURL?.startsWith("file:")) {
+      const source = new URL(specifier.slice(0, -3) + ".ts", context.parentURL);
+      if (existsSync(source)) return nextResolve(source.href, context);
+    }
+    return nextResolve(specifier, context);
+  },
+  load(url, context, nextLoad) {
+    if (url.startsWith("file:") && url.endsWith(".ts")) return {
+      format: "module", shortCircuit: true,
+      source: ts.transpileModule(readFileSync(new URL(url), "utf8"), {
+        compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext }, fileName: fileURLToPath(url),
+      }).outputText,
+    };
+    return nextLoad(url, context);
+  },
+});
+let satisfiesStableCaret;
+try { ({ satisfiesStableCaret } = await import("../src/pi/compat.ts")); }
+finally { hooks.deregister(); }
 if (!satisfiesStableCaret(process.versions.node, pkg.engines.node)) fail(`Requires Node ${pkg.engines.node}; found ${process.versions.node}`);
 if (process.env.NODE_OPTIONS) fail("Unset NODE_OPTIONS for reproducible checks");
 const lock = json("package-lock.json");
@@ -19,23 +46,25 @@ for (const name of Object.keys(pkg.devDependencies)) {
   const wanted = lock.packages?.[`node_modules/${name}`]?.version;
   if (!wanted || json(path).version !== wanted) fail(`Local ${name} differs from the tracked lock`);
 }
+const hostHome = process.env.HOME ?? homedir();
+const npmCache = process.env.npm_config_cache ?? (existsSync(resolve(hostHome, ".npm")) ? resolve(hostHome, ".npm") : resolve(root, ".npm-cache"));
 const nodeDirectories = [dirname(process.execPath), dirname(realpathSync(process.execPath))];
 const npmCli = [...nodeDirectories.flatMap(dir => [
   resolve(dir, "../lib/node_modules/npm/bin/npm-cli.js"),
   resolve(dir, "node_modules/npm/bin/npm-cli.js"),
 ]), "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"].find(p => existsSync(p));
-const npm = spawnSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, "--version"] : ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: resolve(root, ".npm-cache"), npm_config_update_notifier: "false" } });
+const npm = spawnSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, "--version"] : ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: npmCache, npm_config_update_notifier: "false" } });
 const npmVersion = npm.stdout?.trim() ?? "";
 if (npm.status !== 0 || !satisfiesStableCaret(npmVersion, pkg.engines.npm)) fail(`Requires npm ${pkg.engines.npm}; found ${npmVersion || npm.error || npm.status}`);
 console.log(`check: observed Node ${process.versions.node}, npm ${npmVersion}`);
-const tests = readdirSync(resolve(root, "tests"), { recursive: true }).filter(name => name.endsWith(".test.ts") && (selected[0] === "all" || name.startsWith("engine/"))).sort();
+const tests = readdirSync(resolve(root, "tests"), { recursive: true }).filter(name => (name.endsWith(".test.ts") || name === "pi/larva.integration.ts") && (selected[0] === "all" || name.startsWith("engine/"))).sort();
 if (tests.length === 0) fail("Empty test selection");
 if (selected[0] === "all") for (const suite of ["engine", "pi", "live"]) {
   if (!tests.some(name => name.startsWith(`${suite}/`))) fail(`Missing required ${suite} inventory`);
 }
 function run(args) {
   console.log(`> ${process.execPath} ${args.join(" ")}`);
-  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: "/usr/bin:/bin", HOME: resolve(root, ".scratch/offline-home"), PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
+  const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: [...new Set([...nodeDirectories, "/usr/bin", "/bin"])].join(":"), HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: npmCache, npm_config_update_notifier: "false", PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.NUNC_LARVA_EXTENSION ? { NUNC_LARVA_EXTENSION: resolve(process.env.NUNC_LARVA_EXTENSION) } : {}), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
   if (result.error || result.status !== 0) fail(`Command failed: ${result.error?.message ?? result.signal ?? result.status}`);
 }
 run([resolve(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"]);

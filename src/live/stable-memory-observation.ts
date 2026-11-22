@@ -1,8 +1,50 @@
+import { readdir, readFile, stat, mkdir, rename } from "node:fs/promises";
+import { join } from "node:path";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import { project } from "../pi/projection.js";
 import { isDeepStrictEqual } from "node:util";
+import { getSystemMessageText, renderSystemMessageUpdate } from "@earendil-works/pi-ai";
 import type { CheckResult } from "./scenarios.js";
 import type { NuncConfig } from "../pi/config.js";
 import type { RequestObservation } from "./comparison-observation.js";
 import type { CallEnd, LedgerRecord } from "./budget.js";
+
+/** Observe only this isolated task directory, never historical session files. */
+export async function qualifyMemoryOnly(turn: string, entries: readonly SessionEntry[], cwd: string): Promise<CheckResult> {
+  const values = ["cedar-17", "maple-29"], active = project(entries);
+  const history = JSON.stringify(active.active), memory = JSON.stringify(active.memory.slots);
+  let complete = true;
+  const matches: string[] = [];
+  async function scan(dir: string): Promise<void> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isSymbolicLink()) { complete = false; continue; }
+      if (entry.isDirectory()) await scan(path);
+      else if (entry.isFile()) {
+        if ((await stat(path)).size > 1000000) { complete = false; continue; }
+        const body = await readFile(path, "utf8");
+        if (values.some(v => body.includes(v))) matches.push(path);
+      }
+    }
+  }
+  try { await scan(cwd); } catch { complete = false; }
+  const historyMatches = values.filter(v => history.includes(v)), memoryValues = values.filter(v => memory.includes(v));
+  const expected = turn === "b2" ? [values[0]] : turn === "d2" ? [values[1]] : [];
+  const memoryQualified = JSON.stringify(memoryValues) === JSON.stringify(expected);
+  return { check: `M-only ${turn}: source values unavailable in current R/task files and current M has the required state`,
+    status: complete && !matches.length && !historyMatches.length && memoryQualified ? "PROVEN" : "UNPROVEN",
+    observed: { turn, activeEntryIds: active.active.map(e => e.entryId), memory: active.memory, taskScanComplete: complete, taskMatches: matches, historyMatches, memoryValues } };
+}
+/** Retain observed model output outside task visibility before later continuation. */
+export async function archiveMemoryArtifact(turn: string, caseRoot: string): Promise<{ path: string; value: unknown } | undefined> {
+  const path = turn === "b2" ? "initial.json" : turn === "d2" ? "corrected.json" : undefined;
+  if (!path) return;
+  let value: unknown;
+  try { value = JSON.parse(await readFile(join(caseRoot, "task", path), "utf8")); } catch { return; }
+  await mkdir(join(caseRoot, "observed-artifacts"), { recursive: true });
+  await rename(join(caseRoot, "task", path), join(caseRoot, "observed-artifacts", path));
+  return { path, value };
+}
 
 export interface LayoutObservation {
   turn: string; model: string; kind: string; callId?: number;
@@ -35,21 +77,52 @@ export function serializedEvidence(request: RequestObservation): { memory?: bool
     const expected = expectedResults[i]!;
     return m.tool_call_id === expected.toolCallId && text(m.content) === text(expected.content);
   });
-  const expectedCalls = request.context.messages.flatMap(m => m.role === "assistant" ? m.content.filter(b => b.type === "toolCall").map(b => b.id) : []);
-  const calls = actual.flatMap(m => m.role === "assistant" ? (m.tool_calls ?? []).map((c: any) => c.id) : []);
   // A changed result can be a legitimate later hook; it disproves preservation,
   // without assigning the cause to the serializer from a literal substring.
   const textual = results.every(m => text(m.content) !== undefined) && expectedResults.every(m => text(m.content) !== undefined);
-  const synthetic = textual ? !(resultsMatch && isDeepStrictEqual(calls, expectedCalls)) : undefined;
+  const callGroups = (messages: any[], native: boolean) => messages.filter(m => m.role === "assistant").map(m => native
+    ? (m.tool_calls ?? []).map((c: any) => { try { return { id: c.id, name: c.function?.name, arguments: JSON.parse(c.function?.arguments) }; } catch { return null; } })
+    : m.content.filter((b: any) => b.type === "toolCall").map((b: any) => ({ id: b.id, name: b.name, arguments: b.arguments })));
+  const synthetic = textual ? !(resultsMatch && isDeepStrictEqual(callGroups(actual, true), callGroups(request.context.messages, false))) : undefined;
   const admission = request.admission;
   if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
-  if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
+  // Preserve ordered multimodal blocks and bind calls to their own assistant message.
+  // Unsupported blocks never compare equal merely because both text projections are undefined.
+  const blocks = (value: any, native: boolean): unknown[] | undefined => {
+    if (typeof value === "string") return [{ type: "text", text: value }];
+    if (!Array.isArray(value)) return;
+    const result: unknown[] = [];
+    for (const block of value) {
+      if (block?.type === "text" && typeof block.text === "string") result.push({ type: "text", text: block.text });
+      else if (!native && block?.type === "image") result.push({ type: "image", url: `data:${block.mimeType};base64,${block.data}` });
+      else if (native && block?.type === "image_url" && typeof block.image_url?.url === "string") result.push({ type: "image", url: block.image_url.url });
+      else return;
+    }
+    return result;
+  };
+  const compat = request.model.compat;
+  const developer = request.model.reasoning && !(compat && "supportsDeveloperRole" in compat && compat.supportsDeveloperRole === false);
+  const expectedMessages = request.context.messages.map((m, i) => ({
+    role: m.role === "toolResult" ? "tool" : m.role === "system" && developer ? "developer" : m.role,
+    content: m.role === "system" ? blocks(i === 0 ? getSystemMessageText(m) : renderSystemMessageUpdate(m), false) :
+      m.role === "assistant" ? blocks(text(m.content.filter(b => b.type === "text")) ?? "", false) : blocks(m.content, false),
+    ...(m.role === "assistant" ? { calls: callGroups([m], false)[0] } : {}),
+    ...(m.role === "toolResult" ? { callId: m.toolCallId } : {}),
+  }));
+  const actualMessages = actual.map(m => ({ role: m.role,
+    content: blocks(m.role === "assistant" && m.content == null ? "" : m.content, true),
+    ...(m.role === "assistant" ? { calls: callGroups([m], true)[0] } : {}),
+    ...(m.role === "tool" ? { callId: m.tool_call_id } : {}),
+  }));
+  if (expectedMessages.some(m => m.content === undefined) || actualMessages.some(m => m.content === undefined)) return synthetic === undefined ? {} : { synthetic };
+  const sameMessages = isDeepStrictEqual(actualMessages, expectedMessages);
+  if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: sameMessages && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
   const index = admission.memoryIndex;
   if (index === undefined) return { ...(synthetic !== undefined ? { synthetic } : {}), memory: false };
   const users = actual.filter(m => m.role === "user");
   const contextUsers = request.context.messages.filter(m => m.role === "user");
   const ordinal = request.context.messages.slice(0, index).filter(m => m.role === "user").length;
-  return { ...(synthetic !== undefined ? { synthetic } : {}), memory: users.length === contextUsers.length && text(users[ordinal]?.content) === admission.memoryContent };
+  return { ...(synthetic !== undefined ? { synthetic } : {}), memory: sameMessages && users.length === contextUsers.length && text(users[ordinal]?.content) === admission.memoryContent };
 }
 // Native Responses serializes Pi's "call_id|item_id" as a separate call_id and
 // item id. Only safe native call IDs are comparable; unsupported/opaque shapes
@@ -89,15 +162,71 @@ function serializedResponsesEvidence(request: RequestObservation, payload: any):
   }
   const admission = request.admission;
   if (admission?.memoryPresent === undefined) return synthetic === undefined ? {} : { synthetic };
+  // Compare the complete supported sequence, not just its user-message projection.
+  // Responses emits one message per assistant text block, interleaved with calls.
+  const blocks = (content: unknown): string[] | undefined => {
+    if (typeof content === "string") return [content];
+    if (!Array.isArray(content) || content.some(b => !b || !["text", "input_text", "output_text"].includes(b.type) || typeof b.text !== "string")) return;
+    return content.map(b => b.text);
+  };
+  const expectedSequence: unknown[] = [], actualSequence: unknown[] = [];
+  const compat = request.model.compat;
+  const instructionRole = request.model.reasoning && !(compat && "supportsDeveloperRole" in compat && compat.supportsDeveloperRole === false) ? "developer" : "system";
+  for (const [i, message] of request.context.messages.entries()) {
+    if (message.role === "system") {
+      const content = i === 0 ? getSystemMessageText(message) : renderSystemMessageUpdate(message);
+      if (i === 0 && payload.instructions !== undefined) {
+        if (payload.instructions !== content) return {};
+      } else if (content) expectedSequence.push({ role: instructionRole, content: [content] });
+    } else if (message.role === "user") {
+      const content = blocks(message.content);
+      if (!content) return {};
+      if (content.length) expectedSequence.push({ role: "user", content });
+    } else if (message.role === "assistant") {
+      for (const block of message.content) {
+        if (block.type === "text") expectedSequence.push({ role: "assistant", content: [block.text] });
+        else if (block.type === "thinking") {
+          // Unsigned thinking is omitted by the native serializer. Signed replay is ordered evidence.
+          if (block.thinkingSignature) {
+            try {
+              const item = JSON.parse(block.thinkingSignature);
+              if (item?.type !== "reasoning") return {};
+              expectedSequence.push(item);
+            } catch { return {}; }
+          }
+        }
+        else if (block.type === "toolCall" && codexCallId(block.id) !== undefined) expectedSequence.push({ type: "function_call", callId: codexCallId(block.id), name: block.name, arguments: block.arguments });
+        else return {};
+      }
+    } else if (message.role === "toolResult" && codexCallId(message.toolCallId) !== undefined && text(message.content) !== undefined) {
+      expectedSequence.push({ type: "function_call_output", callId: codexCallId(message.toolCallId), output: text(message.content) });
+    } else return {};
+  }
+  if (payload.instructions !== undefined && request.context.messages[0]?.role !== "system" &&
+      !(request.model.api === "openai-codex-responses" && payload.instructions === "You are a helpful assistant.")) return {};
+  for (const item of actual) {
+    // Native reasoning controls carry no messages and do not affect sequence preservation.
+    if (item.type === "configuration_update" || item.type === "additional_tools") continue;
+    if (item.type === "reasoning") { actualSequence.push(item); continue; }
+    if (item.type === "function_call") {
+      try { actualSequence.push({ type: item.type, callId: item.call_id, name: item.name, arguments: JSON.parse(item.arguments) }); }
+      catch { return {}; }
+    } else if (item.type === "function_call_output") {
+      actualSequence.push({ type: item.type, callId: item.call_id, output: item.output });
+    } else if ((item.type === undefined || item.type === "message") && ["system", "developer", "user", "assistant"].includes(item.role)) {
+      const content = blocks(item.content);
+      if (!content) return {};
+      actualSequence.push({ role: item.role, content });
+    } else return {};
+  }
+  const sameSequence = isDeepStrictEqual(actualSequence, expectedSequence);
   const users = actual.filter(item => item.role === "user" && (item.type === undefined || item.type === "message"));
-  const contextUsers = request.context.messages.filter(message => message.role === "user");
-  const sameCount = users.length === contextUsers.length;
   if (!admission.memoryPresent) return { ...(synthetic !== undefined ? { synthetic } : {}),
-    memory: sameCount && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
+    memory: sameSequence && admission.memoryCarrierCount === 0 && admission.memoryIndex === undefined };
   const index = admission.memoryIndex;
   const ordinal = index === undefined ? -1 : request.context.messages.slice(0, index).filter(message => message.role === "user").length;
   return { ...(synthetic !== undefined ? { synthetic } : {}),
-    memory: sameCount && ordinal >= 0 && text(users[ordinal]?.content) === admission.memoryContent };
+    memory: sameSequence && ordinal >= 0 && text(users[ordinal]?.content) === admission.memoryContent };
 }
 /** Independent Context oracle: tool-call/result intervals exclude interrupted boundaries.
  * Unlike the production selector, enumerate boundaries after validating the complete

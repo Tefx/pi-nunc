@@ -1,10 +1,14 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { object, requireValue, within, RunnerError } from "./contract.js";
+export function resolveScenarioPath(cwd: string, path: string): string { return resolve(cwd, path.replace(/^@/, "")); }
+export const pathIs = (cwd: string, actual: unknown, wanted: string): boolean => typeof actual === "string" && resolveScenarioPath(cwd, actual) === resolve(cwd, wanted);
+export const VERIFY_COMMANDS = ["python3 verify.py", "/usr/bin/python3 verify.py", "python verify.py"];
+
 /** Resolve existing prefixes to catch accidental aliases; tools see scenario files only. */
 export async function toolPath(cwd: string, input: unknown, toolName?: "read" | "write" | "edit"): Promise<string> {
   requireValue(typeof input === "string" && input.length > 0, "TOOL_PATH", "A scenario-local path is required");
-  const path = resolve(cwd, input.replace(/^@/, ""));
+  const path = resolveScenarioPath(cwd, input);
   const readRoot = toolName === "read" && path === cwd;
   requireValue((readRoot || within(path, cwd)) && !path.slice(cwd.length).split("/").some(p => [".pi", ".agents", ".git"].includes(p) || p.startsWith(".env") || p === "auth.json"), "TOOL_PATH", "Tool path is outside scenario task files");
   if (readRoot) {
@@ -27,7 +31,7 @@ export function metricsCommand(command: string): "build" | "tests" | "solution" 
   if (new RegExp(`^${py} (?:-m unittest(?: (?:-v )?(?:\\./)?test_solution(?:\\.py)?(?: -v)?| discover(?: -v)?| -v)?|(?:\\./)?test_solution\\.py(?: -v)?)$`).test(command)) return "tests";
   if (new RegExp(`^${py} (?:\\./)?solution\\.py$`).test(command)) return "solution";
   if (new RegExp(`^${py} (?:(?:\\./)?scripts/validate_records\\.py)$`).test(command)) return "validate";
-  const here = command.match(new RegExp(`^${py} (?:\\./)?solution\\.py <<['"]?JSON['"]?\\n([^]*?)\\nJSON$`));
+  const here = command.match(new RegExp(`^${py} (?:\\./)?solution\\.py <<'JSON'\\n([^]*?)\\nJSON$`));
   if (here) { try { JSON.parse(here[1]!); return "solution"; } catch {} }
   return undefined;
 }
@@ -39,7 +43,7 @@ export function metricsCommand(command: string): "build" | "tests" | "solution" 
 export async function authorizeVerification(cwd: string, script: string | undefined, siblingWrites: unknown[] = [], name = "verify.py"): Promise<void> {
   requireValue(script !== undefined, "SCRIPT_UNPROVIDED", "No fixture verification script was provided");
   const path = resolve(cwd, name);
-  requireValue(!siblingWrites.some(p => typeof p === "string" && resolve(cwd, p.replace(/^@/, "")) === path), "SCRIPT_BUSY", "Verification cannot run in the same tool batch as a script write");
+  requireValue(!siblingWrites.some(p => typeof p === "string" && resolveScenarioPath(cwd, p) === path), "SCRIPT_BUSY", "Verification cannot run in the same tool batch as a script write");
   try {
     await toolPath(cwd, name, "read");
     requireValue((await lstat(path)).isFile(), "SCRIPT_CHANGED", "Fixture verification script is not an original regular file");
