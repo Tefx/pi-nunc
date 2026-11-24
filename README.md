@@ -122,6 +122,8 @@ Example `nunc.json` (overriding `rolling.keepRecentFraction` from `0.5` to `0.67
 
 `npm ci` and `npm run build` compile the extension. Running the full check suite (`scripts/check.mjs all`) additionally requires Node/npm satisfying `^26.7.0` / `^11.19.0`, historical Git objects and offline dependency-cache entries for comparison fixtures, POSIX PTYs, and `/usr/bin/python3`. Older, cross-major, malformed and prerelease versions are rejected. Checks report the actual observed Node/npm versions; live preflight records the observed Node version in its receipt and SHA-256 binding, invalidating earlier receipts after a runtime change. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/LIVE.md](docs/LIVE.md).
 
+The build first emits TypeScript JS and declarations, then bundles `dist/src/index.js` into one ESM unit using the locked TypeScript compiler API (no additional bundler dependency). Local engine, Pi, and UI modules stay within that unit so Pi's `/reload` cannot combine an upgraded entrypoint with stale native ESM submodules. Host `@earendil-works/pi-*` modules and `node:*` builtins remain external. The standalone `./pi` and `./engine` exports and declarations remain available. Live build parity applies the same compiler and bundle transformation in memory without rewriting artifacts.
+
 Comparison tests prepare and remove isolated temporary worktrees from `70dacad` and immutable scoped-task pre-change commit `1d4fc4a210b64f71871ab3f5c10093215a25990c`. Each fixture uses its own tracked dependency lock with offline installation and disabled lifecycle scripts; no pre-existing `.scratch` checkout is required.
 
 ## Documentation

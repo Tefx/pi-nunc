@@ -17,8 +17,10 @@ export function extractSharedWritingGuidance(policyMarkdown: string): string {
   return body;
 }
 
-/** Supports emitted dist/src/engine as well as direct source loading by Pi's TS loader. */
-const root = new URL(import.meta.url.includes("/dist/src/engine/") ? "../../../" : "../../", import.meta.url);
+/** The bundle lives in dist/src; standalone emission adds the engine directory.
+ * Direct source loading also resolves the package policy two levels above.
+ */
+const root = new URL(new URL(import.meta.url).pathname.endsWith("/dist/src/engine/policy.js") ? "../../../" : "../../", import.meta.url);
 export async function loadPolicy(options: { policyFile?: string; configFile?: string } = {}): Promise<PolicySnapshot> {
   async function text(path: string | URL): Promise<string> {
     try { return new TextDecoder("utf-8", { fatal: true }).decode(await readFile(path)); }

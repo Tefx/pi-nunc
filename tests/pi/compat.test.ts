@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cp, lstat, mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bundleExtension } from "../../src/build/bundle.js";
+import { loadPolicy } from "../../src/engine/policy.js";
 import ts from "typescript";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DefaultResourceLoader, SettingsManager, VERSION } from "@earendil-works/pi-coding-agent";
@@ -142,6 +144,51 @@ test("built runtime Pi imports belong to the extension loader's exact virtual mo
   assert(imports.length > 0, "the built extension must exercise host module imports");
 });
 
+test("jiti reload at the same unpacked path uses upgraded UI, Pi and engine implementations", async t => {
+  const isolated = await realpath(await mkdtemp(join(tmpdir(), "nunc-reload-")));
+  t.after(() => rm(isolated, { recursive: true, force: true }));
+  const entry = join(isolated, "bundled/dist/src/index.js");
+  await writeFile(join(isolated, "package.json"), '{"type":"module"}');
+  // Use the actual host's jiti entry, including its transitive dependency resolution.
+  const host = import.meta.resolve("@earendil-works/pi-coding-agent");
+  const { createJiti } = await import(new URL("core/extensions/jiti-loader.js", host).href);
+  const alias = Object.fromEntries([...loaderModules].map(name => [name, fileURLToPath(import.meta.resolve(name === "@earendil-works/pi-ai" ? "@earendil-works/pi-ai/compat" : name))]));
+  const writeVersion = async (version: number, bundled = true) => {
+    const outputs = new Map([
+      ["index.js", `import { NuncUi } from './ui/index.js';
+        import { version } from './pi/version.js';
+        import { VERSION } from '@earendil-works/pi-coding-agent';
+        export default function extension() { return [VERSION, new NuncUi().${version === 1 ? "startSession" : "resetSession"}(), version()]; }`],
+      ["ui/index.js", `import { version } from '../engine/version.js';
+        export class NuncUi { ${version === 1 ? "startSession" : "resetSession"}() { return 'ui-${version}:' + version(); } }`],
+      ["pi/version.js", `import { version as engine } from '../engine/version.js'; export const version = () => 'pi-${version}:' + engine();`],
+      ["engine/version.js", `export const version = () => 'engine-${version}';`],
+    ]);
+    // Overwrite all standalone submodules as an on-disk package upgrade does.
+    for (const [file, content] of outputs) {
+      const path = join(isolated, bundled ? "bundled" : "unbundled", "dist/src", file);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content);
+    }
+    if (bundled) await writeFile(entry, bundleExtension(outputs));
+  };
+  const load = (path = entry) => createJiti(import.meta.url, { moduleCache: false, alias }).import(path, { default: true });
+  await writeVersion(1);
+  const first = await load();
+  assert.deepEqual(first(), [VERSION, "ui-1:engine-1", "pi-1:engine-1"]);
+  await writeVersion(2);
+  const second = await load();
+  assert.deepEqual(second(), [VERSION, "ui-2:engine-2", "pi-2:engine-2"]);
+  assert.deepEqual(first(), [VERSION, "ui-1:engine-1", "pi-1:engine-1"], "old factory retains its own module graph");
+  // Negative control: identical unbundled ESM hits the original split-brain seam.
+  const unbundledEntry = join(isolated, "unbundled/dist/src/index.js");
+  await writeVersion(1, false);
+  assert.deepEqual((await load(unbundledEntry))(), [VERSION, "ui-1:engine-1", "pi-1:engine-1"]);
+  await writeVersion(2, false);
+  const stale = await load(unbundledEntry);
+  assert.throws(() => stale(), /resetSession.*not a function/, "new entrypoint sees the stale v1 UI class without bundling");
+});
+
 test("Pi loads the unpacked built extension outside the repository without local node_modules", async t => {
   const isolated = await realpath(await mkdtemp(join(tmpdir(), "nunc-loader-")));
   t.after(() => rm(isolated, { recursive: true, force: true }));
@@ -156,6 +203,17 @@ test("Pi loads the unpacked built extension outside the repository without local
     if (path === dirname(path)) break;
   }
   const entry = join(unpacked, "dist/src/index.js");
+  const bundled = ts.createSourceFile(entry, await readFile(entry, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  for (const statement of bundled.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      assert(ts.isStringLiteral(statement.moduleSpecifier));
+      assert.match(statement.moduleSpecifier.text, /^(node:|@earendil-works\/pi-)/);
+    }
+  }
+  assert((await loadPolicy()).builtin.includes("## Shared writing and applicability policy"), "standalone engine policy resolution");
+  for (const name of ["index.d.ts", "pi/index.js", "pi/index.d.ts", "engine/index.js", "engine/index.d.ts"]) {
+    assert((await lstat(join(unpacked, "dist/src", name))).isFile(), name);
+  }
   // This public resource loader delegates to Pi's loadExtensionsCached and its
   // host module aliases; no inline factory or mocked module resolver is involved.
   const loader = new DefaultResourceLoader({

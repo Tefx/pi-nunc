@@ -68,6 +68,7 @@ function run(args) {
   if (result.error || result.status !== 0) fail(`Command failed: ${result.error?.message ?? result.signal ?? result.status}`);
 }
 run([resolve(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"]);
+run([resolve(root, "scripts/bundle.mjs")]);
 const compiled = tests.map(name => `dist/tests/${name.replace(/\.ts$/, ".js")}`);
 for (const test of compiled) if (!existsSync(resolve(root, test))) fail(`Missing emitted test ${test}`);
 // Stock-host suites spawn their own children. Bound file-level concurrency even on large machines.

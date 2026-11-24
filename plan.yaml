@@ -14497,3 +14497,144 @@ phases:
       (comparison-native, observation-method, script-authorization, guidance-native,
       commit-association) -> 31/31 pass; zero leaked worktrees; integrated rm -rf
       dist && npm run build -> 0.'
+- id: nunc-reload-split-brain-fix
+  name: Pi /reload 升级脑裂根因修复与单单元扩展打包闭环（Reload Split-Brain Fix）
+  status: done
+  gate: 'dist/src/index.js 及其内部子模块（./engine/*、./pi/*、./ui/*）在 Pi createJiti(..., {
+    moduleCache: false, alias }) 热重载升级下无 V8 ModuleMap 脑裂混合，保留 package.json exports（.、./pi、./engine）与
+    files/pi.extensions 契约，tests/pi/compat.test.ts 真实 jiti /reload v1->v2 磁盘覆写升级回归测试通过，npm
+    run build、node scripts/check.mjs engine、node --test dist/tests/pi/*.test.js 与
+    npm pack --dry-run 全部零失败通过'
+  depends_on:
+  - nunc-seventh-contract-and-debloat-closure
+  steps:
+  - id: nunc-reload-split-brain-fix.reload-single-unit-extension-bundle
+    name: 消除 /reload 跨版本升级 V8 ModuleMap 脑裂并补充真实 jiti 热重载升级回归测试
+    status: done
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\n\n\
+      [REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver:\n- [RSB-1] `dist/src/index.js`\
+      \ & build pipeline (`package.json:scripts.build`, `scripts/check.mjs`) — Eliminate\
+      \ `/reload` split-brain across `dist/src/index.js` and its internal sub-modules\
+      \ (`./engine/*`, `./pi/*`, `./ui/*`) when loaded via Pi's `createJiti(import.meta.url,\
+      \ { moduleCache: false, alias })` across an on-disk package upgrade, by emitting/bundling\
+      \ the Pi extension entrypoint `dist/src/index.js` as a single self-contained\
+      \ ESM unit with `@earendil-works/pi-*` and `node:*` externalized (or an equivalent\
+      \ single-unit mechanism proven against real `jiti` `moduleCache: false` reload\
+      \ across simulated `v1 -> v2` on-disk upgrades) so `jiti` never mixes a newly\
+      \ transpiled `dist/src/index.js` with stale V8 `ModuleMap` entries for `./engine/*.js`,\
+      \ `./pi/*.js`, or `./ui/*.js`.\n- [RSB-2] `package.json` & `src/live/build.ts:checkBuildParity`\
+      \ — Preserve existing package `exports` (`.`, `./pi`, `./engine`) and `package.json`\
+      \ `\"files\"` / `\"pi.extensions\"` contract so `tests/pi/compat.test.ts`, `tests/live/build.test.ts`,\
+      \ and `npm pack --dry-run` remain valid, keeping `assertBuildParity` / `buildReceipt`\
+      \ (`src/live/build.ts`) and `scripts/check.mjs` in exact parity with the emitted\
+      \ `dist/src/` artifacts.\n- [RSB-3] `tests/pi/compat.test.ts` — Add a real `jiti`\
+      \ `/reload` upgrade regression test in `tests/pi/compat.test.ts` that loads\
+      \ an initial unpacked extension version (`v1`) via `createJiti(..., { moduleCache:\
+      \ false, alias }).import(...)` (or `DefaultResourceLoader`), overwrites the\
+      \ extension and its internal sub-module implementations (`ui.*`, `pi/*`, `engine/*`)\
+      \ on disk with `v2` at the same file path, reloads via a fresh `createJiti(...,\
+      \ { moduleCache: false, alias }).import(...)` in the same Node process, and\
+      \ verifies the reloaded extension invokes the new `v2` internal sub-module APIs\
+      \ without hitting stale V8 `ModuleMap` cache entries.\n\nImplementation Notes\
+      \ (Non-Binding):\n- Pi's `loadExtensionModule` (`@earendil-works/pi-coding-agent/dist/core/extensions/loader.js`)\
+      \ resolves `jiti` from `@mariozechner/jiti` inside `@earendil-works/pi-coding-agent`'s\
+      \ dependency tree (or via `DefaultResourceLoader.reload()`) with `{ moduleCache:\
+      \ false, alias }` and without `tryNative: false`. Because `dist/src/index.js`\
+      \ imports virtual `@earendil-works/pi-*` aliases, `nativeImport` fails on `dist/src/index.js`\
+      \ and `jiti` transpiles it from disk, whereas relative `./engine/*.js`, `./pi/*.js`,\
+      \ and `./ui/*.js` files without `@earendil-works/pi-*` imports succeed in `nativeImport`\
+      \ and get permanently pinned in Node's V8 ESM `ModuleMap`.\n- If bundling `dist/src/index.js`\
+      \ from the emitted `dist/src/**/*.js` (or `src/index.ts`) using TypeScript's\
+      \ AST/bundler script (zero new npm dependencies), ensure:\n  1. `src/engine/policy.ts:21`\
+      \ (`import.meta.url` relative resolution to `policies/default.md`) continues\
+      \ to resolve `../../policies/default.md` from `dist/src/index.js` as well as\
+      \ `../../../policies/default.md` from `dist/src/engine/policy.js`.\n  2. `dist/src/pi/index.js`\
+      \ and `dist/src/engine/index.js` (and their `.d.ts` files) remain intact for\
+      \ `./pi` and `./engine` package exports and `scripts/*.mjs` consumers.\n  3.\
+      \ `src/live/build.ts:checkBuildParity` and `scripts/check.mjs` run/verify the\
+      \ same deterministic build step so `assertBuildParity` (`tests/live/build.test.ts`)\
+      \ passes without drift.\n\nBoundary:\n- Owner: `node-typescript-engineer`\n\
+      - `scope.allowed_paths`: `src/**`, `scripts/**`, `package.json`, `tests/pi/compat.test.ts`,\
+      \ `tests/live/build.test.ts`, `README.md`, `docs/**`\n- `scope.blocked_paths`:\
+      \ `plan.yaml`, `tsconfig.json`, `package-lock.json`\n- Rollback class: `git\
+      \ checkout -- src/ scripts/ package.json tests/` and `npm run build`\n\nAdmit:\n\
+      - Witnessed inputs: `src/index.ts`, `src/engine/policy.ts`, `src/live/build.ts`,\
+      \ `scripts/check.mjs`, `package.json`, `tests/pi/compat.test.ts`, `tests/live/build.test.ts`.\n\
+      - Executable checks: `npm run build && node scripts/check.mjs engine && node\
+      \ --test dist/tests/pi/compat.test.js dist/tests/live/build.test.js && npm pack\
+      \ --dry-run`.\n- Consumer: `nunc-reload-split-brain-fix.reload-fix-gate`.\n\n\
+      Recovery:\n- Reconcile any build-parity or export mismatch within `src/live/build.ts`,\
+      \ `scripts/`, and `package.json` before completing; stop if changes outside\
+      \ authorized scope are needed."
+    verification: npm run build && node scripts/check.mjs engine && node --test dist/tests/pi/compat.test.js
+      dist/tests/live/build.test.js && npm pack --dry-run
+    evidence_template: 'Exact owner: node-typescript-engineer; bundled/single-unit
+      extension mechanism; jiti v1->v2 reload test output; build/check/pack exit codes'
+    refs:
+    - src/index.ts
+    - src/engine/policy.ts
+    - src/live/build.ts
+    - scripts/check.mjs
+    - package.json
+    - tests/pi/compat.test.ts
+    - tests/live/build.test.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T10:58:40.754221Z'
+    done_at: '2026-11-23T11:08:34.216018+00:00'
+    evidence: 'Integrated commit e8dd62ac (retained at refs/vectl/retained/nunc-reload-split-brain-fix.reload-single-unit-extension-bundle)
+      from isolated worktree .vectl/worktrees/nunc-reload-split-brain-fix.reload-single-unit-extension-bundle,
+      exact owner node-typescript-engineer; worktree removed (+13,192 KiB free). Added
+      zero-dependency TypeScript-AST bundler (src/build/bundle.ts + scripts/bundle.mjs)
+      invoked by package.json:scripts.build and scripts/check.mjs, bundling dist/src/index.js
+      into a single self-contained ESM unit with @earendil-works/pi-* and node:* externalized
+      while preserving ./pi and ./engine exports, declarations, and src/live/build.ts
+      build parity; updated src/engine/policy.ts import.meta.url policy resolution
+      for both bundled dist/src/index.js and standalone dist/src/engine/policy.js;
+      added real same-process jiti /reload upgrade test (with unbundled split-brain
+      negative control) in tests/pi/compat.test.ts. Worktree verification: rm -rf
+      dist && npm run build -> 0; check.mjs engine -> 297/297 pass; compat+build ->
+      9/9 pass; component -> 89/89 pass; npm pack --dry-run -> 132 files; integrated
+      rm -rf dist && npm run build -> 0.'
+  - id: nunc-reload-split-brain-fix.reload-fix-gate
+    name: Pi /reload 升级脑裂修复整合验收门禁
+    status: done
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\n\nDeliver:\n\
+      - [RSB-GATE] Verify end-to-end closure of `nunc-reload-split-brain-fix.reload-single-unit-extension-bundle`:\n\
+      \  1. `dist/src/index.js` loads as a self-contained unit without V8 `ModuleMap`\
+      \ split-brain across `./engine/*`, `./pi/*`, and `./ui/*` when reloaded via\
+      \ `jiti` (`moduleCache: false, alias`) after an in-place on-disk upgrade (`v1\
+      \ -> v2`).\n  2. Package `exports` (`.`, `./pi`, `./engine`), `files`, and `pi.extensions`\
+      \ in `package.json` remain intact.\n  3. Execute and verify zero failures across\
+      \ `npm run build`, `node scripts/check.mjs engine`, `node --test dist/tests/pi/*.test.js`,\
+      \ `npm pack --dry-run`, and the real `jiti` `/reload` upgrade regression test\
+      \ in `tests/pi/compat.test.ts`.\n\nBoundary:\n- Owner: `gate-reviewer`\n- `scope.allowed_paths`:\
+      \ `[]` (read-only gate verification)\n- `scope.blocked_paths`: `plan.yaml`,\
+      \ `package.json`, `tsconfig.json`, `package-lock.json`\n- Rollback class: read-only\
+      \ (`no_repo_change`)\n\nAdmit:\n- Witnessed inputs: completed evidence of `nunc-reload-split-brain-fix.reload-single-unit-extension-bundle`\
+      \ and live command outputs.\n- Executable checks: `npm run build && node scripts/check.mjs\
+      \ engine && node --test dist/tests/pi/*.test.js && npm pack --dry-run`.\n\n\
+      Recovery:\n- If any check or contract assertion fails, do not modify repository\
+      \ files; report exact failure to Orchestrator for bounded producer remediation."
+    verification: npm run build && node scripts/check.mjs engine && node --test dist/tests/pi/*.test.js
+      && npm pack --dry-run
+    evidence_template: 'Exact owner: gate-reviewer; npm run build; node scripts/check.mjs
+      engine; node --test dist/tests/pi/*.test.js; npm pack --dry-run; real jiti /reload
+      upgrade test verification'
+    refs:
+    - src/index.ts
+    - package.json
+    - scripts/check.mjs
+    - tests/pi/compat.test.ts
+    depends_on:
+    - nunc-reload-split-brain-fix.reload-single-unit-extension-bundle
+    agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-23T11:08:38.893526Z'
+    done_at: '2026-11-23T11:09:22.895200+00:00'
+    evidence: 'Gate PASS (PHASE_GATE / FULL) on pinned commit git:7c99d7d6af0657c6275a03202520188b1f1bef6f
+      via fresh gate-reviewer session (2026-11-23T11-09-01-073Z_01a20818-510d-76a5-be43-40f74e5cfa7d.jsonl).
+      Validator exit 0: {"valid":true,"binding_checked":true,"kind":"gate","schema_version":"gate.report.v2","evidence_disposition":"POSITIVE_GATE_EVIDENCE","errors":[]}.
+      All 4 requirements PROVEN (RSB-1, RSB-2, RSB-3, BUILD-ENGINE-PI-PACK-VERIFICATION).
+      Build exit 0; check.mjs engine 297/297 pass; dist/tests/pi/*.test.js + dist/tests/live/build.test.js
+      584/584 pass (2 skipped); npm pack --dry-run 132 files exit 0.'

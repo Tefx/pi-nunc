@@ -3,11 +3,12 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import ts from "typescript";
 import { requireValue } from "./contract.js";
+import { bundleExtension } from "../build/bundle.js";
 
 // A receipt digest binds every input and runtime byte; reuse parity only for identical bytes.
 let verifiedBuild: string | undefined;
 
-/** Freeze only a runtime that matches the current locked compiler emission. */
+/** Freeze only a runtime that matches the current locked compiler and bundle emission. */
 export function buildReceipt(compiledSource: string): { compiledSource: string; digest: string } {
   const entry = realpathSync(compiledSource);
   const repository = resolve(dirname(entry), "../..");
@@ -17,7 +18,7 @@ export function buildReceipt(compiledSource: string): { compiledSource: string; 
     if (statSync(path).isDirectory()) for (const name of readdirSync(path).sort()) bind(join(path, name));
     else { hash.update(relative(repository, path)); hash.update(readFileSync(path)); }
   };
-  for (const name of ["src", "dist/src", "policies", "package.json", "package-lock.json", "tsconfig.json"]) bind(join(repository, name));
+  for (const name of ["src", "scripts/bundle.mjs", "dist/src", "policies", "package.json", "package-lock.json", "tsconfig.json"]) bind(join(repository, name));
   const digest = hash.digest("hex");
   const key = `${entry}:${digest}`;
   if (verifiedBuild !== key) {
@@ -27,7 +28,7 @@ export function buildReceipt(compiledSource: string): { compiledSource: string; 
   return { compiledSource: entry, digest };
 }
 
-/** Execution consumes dist. Compare the actual locked compiler emission, held in memory; never write build files in preflight. */
+/** Compare compiler plus bundle emission in memory; never write build files in preflight. */
 export async function assertBuildParity(repository: string): Promise<void> {
   checkBuildParity(repository);
 }
@@ -43,6 +44,7 @@ function checkBuildParity(repository: string): void {
     if (file.startsWith(join(repository, "dist/src") + "/") && file.endsWith(".js")) outputs.set(relative(join(repository, "dist/src"), file), content);
   });
   requireValue(!emitted.emitSkipped && !emitted.diagnostics.some(d => d.category === ts.DiagnosticCategory.Error) && outputs.size > 0, "BUILD", "Source cannot emit the tracked runtime; run the full check separately");
+  outputs.set("index.js", bundleExtension(outputs));
   for (const [file, content] of outputs) requireValue(readFileSync(join(repository, "dist/src", file), "utf8") === content, "BUILD", `Compiled runtime JS ${file} differs from current source; run the tracked build/check separately`);
   function checkExtras(dir: string): void {
     for (const name of readdirSync(dir)) {
