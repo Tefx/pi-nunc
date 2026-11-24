@@ -8,6 +8,7 @@ import { repository } from "./fixtures.js";
 test("verify-live completes every stable-memory scenario through real loader, HTTP serializer, tools, ledger and native compaction", { timeout: 540000 }, async t => {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 520000 });
+  try {
   const provider = "openrouter", model = "google/gemini-stable-memory-fixture";
   await writeFile(join(f.state, "agent/models.json"), JSON.stringify({ providers: { [provider]: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ id: model, api: "openai-completions", reasoning: false, input: ["text"], contextWindow: 60000, maxTokens: 20000 }] } } }));
   f.limits = { ...f.limits, maxCalls: 160, maxTotalTokens: 12800000 };
@@ -91,7 +92,6 @@ test("verify-live completes every stable-memory scenario through real loader, HT
     if (n === 0) return write(...files[key]!);
     return stop();
   };
-  try {
     const preflight = await run(["--preflight"]);
     assert.equal(preflight.code, 0, JSON.stringify(preflight));
     const astra = structuredClone(selection); astra.overrides[0].model = { provider: "openai-codex", id: "gpt-6-astra" };

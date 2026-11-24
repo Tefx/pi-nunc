@@ -322,6 +322,16 @@ test("artifact oracle rejects region, null, zero, negative, graph and recursive-
       await setupWorkspace(dir, { ...FIXTURES, "solution.py": solution });
       assert.equal(executeMetricsOracle(dir, FIXTURES).status, "DISPROVEN");
     }
+    for (const { solution, failedOp } of [
+      { solution: metricsSolution.replace("for k, rs in q['series'].items()", "for k, rs in q['series'].items() if rs"), failedOp: "history" },
+      { solution: metricsSolution.replace("result['values'] = {n: values[n] for n in nodes}", "result['values'] = {n: (0 if values[n] is None else values[n]) for n in nodes} if q['metric'] == 'net' else {n: values[n] for n in nodes}"), failedOp: "trace_net_3" },
+    ]) {
+      assert.notEqual(solution, metricsSolution);
+      await setupWorkspace(dir, { ...FIXTURES, "solution.py": solution });
+      const report = executeMetricsOracle(dir, FIXTURES);
+      assert.equal(report.status, "DISPROVEN");
+      assert.equal(report.operations?.find(op => !op.passed)?.op, failedOp, JSON.stringify(report));
+    }
     await setupWorkspace(dir, { ...FIXTURES, "solution.py": metricsSolution, "test_solution.py": metricsTests });
     assert.equal(executeMetricsOracle(dir, FIXTURES).status, "PROVEN");
     await writeFile(join(dir, "build.py"), "print('success')\n");
@@ -396,7 +406,9 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
         void (async () => {
           try {
             assert.equal(opts.reasoningEffort, "low", "maintenance override must reach the raw provider option");
-            await opts.onPayload({ stream: true, model: m.id, max_tokens: 1000, reasoning: { effort: opts.reasoningEffort } }, m);
+            const payload = { stream: true, model: m.id, max_tokens: 1000, reasoning: { effort: opts.reasoningEffort } };
+            await opts.onPayload(payload, m);
+            await opts.fetch(m.baseUrl, { method: "POST", body: JSON.stringify(payload) });
             const message: any = { role: "assistant", api: m.api, provider: m.provider, model: m.id, content: [], usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() };
             stream.push({ type: "done", reason: "stop", message });
             stream.end(message);
@@ -416,7 +428,6 @@ test("boundedProvider verifies required thinking level and blocks unapplied main
       requireThinkingLevel: "low",
       maintenanceThinking: "low",
       fetch: async () => new Response(""),
-      controlled: true,
     });
 
     const streamApplied = boundedApplied.stream(mockModel, { messages: [] } as any, { maxTokens: 1000 });

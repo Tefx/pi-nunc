@@ -12,8 +12,10 @@ import { readLedger, ledgerSummary } from "../dist/src/live/budget.js";
 
 const quota = process.argv[2] === "--quota";
 const unlimited = process.argv[2] === "--unlimited";
+let result = { status: "FAIL", case: unlimited ? "unlimited" : quota ? "quota" : "continue" }, stateRoot;
 const f = await new StockFixture().setup({ compaction: { enabled: false, reserveTokens: 50000 } });
-const stateRoot = join(f.dir, "nunc-live-independent");
+try {
+stateRoot = join(f.dir, "nunc-live-independent");
 const settings = { ...f.settings, defaultProvider: "groq", defaultModel: "nunc-native" };
 await writeFile(join(f.state, "agent/settings.json"), JSON.stringify(settings));
 const write = (path, content) => [{ tool: { name: "write", input: { path, content: JSON.stringify(content) } } }, "Saved."];
@@ -45,8 +47,6 @@ function run(flags = []) {
     child.once("close", code => resolve({ code, stdout, stderr }));
   });
 }
-let result = { status: "FAIL", case: unlimited ? "unlimited" : quota ? "quota" : "continue" };
-try {
   const preflight = await run(["--preflight"]);
   assert.equal(preflight.code, 0, preflight.stderr);
   assert.equal(f.requests.length, 0);
@@ -90,7 +90,7 @@ try {
   result.error = { message: error.message, stack: error.stack };
   process.exitCode = 1;
 } finally {
-  await rm(stateRoot, { recursive: true, force: true });
+  if (stateRoot) await rm(stateRoot, { recursive: true, force: true });
   await f.close(result);
   console.log(JSON.stringify({ ...result, ...f.artifactReceipt() }));
 }

@@ -5,7 +5,7 @@ import { normalizeContext, type Context, type Model, type Provider, type Transcr
 import { ModelRegistry, type ExtensionContext, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
-import { admissionEstimate, memoryTokens, textTokens } from "../../src/engine/accounting.js";
+import { requestTokens, memoryTokens, textTokens } from "../../src/engine/accounting.js";
 import { isNuncCarrier } from "../../src/pi/projection.js";
 import { contextSurface, type ContextSurface } from "../../src/pi/context.js";
 import { fixture } from "./fixtures.js";
@@ -151,7 +151,7 @@ test("native later context hook edits the identical carrier before serialization
   assert.equal(changed.estimator, "pi-heuristic");
   assert.equal(changed.estimateReason, "messages-mismatch");
   assert.equal(changed.payload?.mode, "identity", "onPayload cannot detect an earlier Context mutation");
-  assert.equal(changed.inputTokens, admissionEstimate(n.contexts.at(-1)!, n.model).tokens + textTokens("{}"));
+  assert.equal(changed.inputTokens, requestTokens(n.contexts.at(-1)!) + textTokens("{}"));
   const mutatedText = replacement ?? "";
   assert(JSON.stringify(n.bodies.at(-1)).includes(mutatedText));
   replacement = "x".repeat(600000);

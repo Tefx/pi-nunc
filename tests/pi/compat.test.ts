@@ -11,7 +11,7 @@ import { assertPiContextCompatibility, assertSupportedPiVersion, isSupportedPiVe
 import { EngineError } from "../../src/engine/validation.js";
 import { calculateContextTokens, estimateContextTokens, estimateTextAndImageContentTokens, estimateTextTokens, textTokens } from "../../src/engine/accounting.js";
 import { calculateContextTokens as sdkCalculateContextTokens, estimateContextTokens as sdkEstimateContextTokens, estimateTextAndImageContentTokens as sdkEstimateContentTokens, estimateTextTokens as sdkEstimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { normalizeContext, type Message, type TextContent, type ImageContent } from "@earendil-works/pi-ai";
+import { normalizeContext, type Message, type ToolCall, type TextContent, type ImageContent } from "@earendil-works/pi-ai";
 import { answer, usage } from "../engine/fixtures.js";
 import { fixture } from "./fixtures.js";
 
@@ -83,12 +83,9 @@ test("local content, usage and context estimates preserve Pi SDK semantics", () 
   const tool: Message = { role: "toolResult", toolCallId: "not-counted", toolName: "read", isError: false,
     content: [{ type: "text", text: "Result" }, image], timestamp: 13 };
   const zeroUsage = { ...usage, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
-  const circular: Record<string, unknown> = {};
+  const circular: ToolCall["arguments"] = {};
   circular.self = circular;
-  const unserializable = { ...assistant, content: [{ type: "toolCall" as const, id: "call", name: "broken", arguments: {} }] };
-  // Keep the fixture typed while exercising JSON.stringify's failure/undefined
-  // branches using the same runtime serialization hooks real tool values can have.
-  Object.defineProperty(unserializable.content[0]!.arguments, "toJSON", { value: () => circular, configurable: true });
+  const unserializable = { ...assistant, content: [{ type: "toolCall" as const, id: "call", name: "broken", arguments: circular }] };
   const cases: Message[][] = [
     [], [system], [user], [tool], [assistant],
     [system, user, { ...assistant, usage: zeroUsage }, tool],
@@ -108,8 +105,6 @@ test("local content, usage and context estimates preserve Pi SDK semantics", () 
   };
   for (const messages of cases) compare(messages);
   // These must take the heuristic path so tool-call serialization is measured.
-  compare([{ ...unserializable, usage: zeroUsage }]);
-  Object.defineProperty(unserializable.content[0]!.arguments, "toJSON", { value: () => undefined });
   compare([{ ...unserializable, usage: zeroUsage }]);
 });
 

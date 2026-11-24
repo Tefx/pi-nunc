@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFile, rename, mkdir, rm, access, mkdtemp } from "node:fs/promises";
+import { writeFile, rename, mkdir, rm, access, mkdtemp, open } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { dirname, resolve, join } from "node:path";
 import { renderMemory } from "../../src/engine/memory.js";
 import { memoryTokens, messageTokens } from "../../src/engine/accounting.js";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { sourceRecords, answer } from "../engine/fixtures.js";
 import { assertOnlyCalibrationAppend, fixture, memoryPatch, surfacePort, preparedSurface } from "./fixtures.js";
-import { createNuncUi } from "../../src/ui/index.js";
+import { NuncUi } from "../../src/ui/index.js";
 import { buildContextNodes } from "../../src/ui/context-tree.js";
 import { project, MANUAL_MEMORY_TYPE } from "../../src/pi/projection.js";
 
@@ -104,6 +105,25 @@ test("public abortCompaction propagates to service and leaves saved state unchan
   await assert.rejects(compact, /cancel|abort/i);
   assert(aborted); assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
   assert.equal(f.faux.state.callCount, 1);
+});
+
+test("abortCompaction settles while policy-file reading is still pending", { timeout: 5000 }, async t => {
+  const f = await fixture(); t.after(() => f.close()); f.seed();
+  const policy = join(f.dir, "policy.fifo");
+  execFileSync("mkfifo", [policy]);
+  await writeFile(f.configFile, JSON.stringify({ ...f.config, policyFile: policy }));
+  const before = f.runtime.session.sessionManager.getEntries();
+  const compact = f.runtime.session.compact();
+  const rejected = assert.rejects(compact, /cancel|abort/i);
+  // Opening the writer proves loadPolicy reached the real FIFO reader. Keep
+  // it open without bytes so cancellation must settle before EOF.
+  const writer = await open(policy, "w");
+  try {
+    f.runtime.session.abortCompaction();
+    await rejected;
+    assert.equal(f.calls.length, 0);
+    assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before);
+  } finally { await writer.close(); }
 });
 
 for (const change of ["model", "path", "config", "settings", "thinking"] as const) test(`${change} change during extraction cannot hand off stale memory`, async t => {
@@ -261,7 +281,7 @@ test("mechanical checkpoint warning survives recovery and clears on a normal com
     theme: { ...ctx.ui.theme, fg: (_tone: string, value: string) => value },
     setStatus: (_key: string, value: string | undefined) => { status = value; },
   } } as typeof ctx;
-  const ui = createNuncUi({ memory: { ...port.memory(), beginFreeze: () => true, endFreeze() {}, noteForeignFailure: () => false },
+  const ui = new NuncUi({ memory: { ...port.memory(), beginFreeze: () => true, endFreeze() {}, noteForeignFailure: () => false },
     context: port.context(), supported() {} });
   ui.attach(paintCtx);
   assert.equal(status, "🧠 !0·roll");

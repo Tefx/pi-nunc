@@ -13084,3 +13084,1416 @@ phases:
       and updated docs/DEVELOPMENT.md line 78 (W-2). Verification: rm -rf dist &&
       npm run build -> 0; targeted/reverse-dep suite (budget, comparison, host, lifecycle,
       build, compat) -> 67/67 pass, 0 fail.'
+- id: nunc-fifth-contract-and-debloat-closure
+  name: 第五轮全量契约闭环与向下投影去膨胀（Fifth Contract & De-Bloat Closure）
+  status: done
+  gate: All 10 admitted findings (#1..#10) from the HEAD 0f30081 full-repo review
+    are closed across the two disjoint implementation tracks, tests/pi/admission-hardening.test.ts
+    is merged into tests/pi/admission.test.ts and removed from git and dist/, none
+    of the rejected Bucket 3 items (R1..R5) are introduced, and rm -rf dist && npm
+    run build && node scripts/check.mjs all passes with 0 errors.
+  context: 'Close the approved 10-item Admitted Finding Ledger (Bucket 1 #1..#6 +
+    Bucket 2 #7..#10, strictly excluding rejected Bucket 3 items R1..R5) from the
+    full-repo /cs-review at HEAD 0f30081ffaa25b3c10fc67776bfe8f55647eb7a4 across two
+    100% file-disjoint parallel implementation steps followed by a single DELTA gate.'
+  depends_on:
+  - nunc-fourth-debloat-and-contract-closure
+  steps:
+  - id: nunc-fifth-contract-and-debloat-closure.pi-ui-projection-and-debloat
+    name: 'Pi 投影锚点、UI 预览/光标重绘修复与 Pi/UI 向下投影去膨胀 (#1, #2, #3, #8, #9-Pi/UI)'
+    status: done
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\n\n\
+      [REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver:\n- [#1 FIX] `src/pi/projection.ts:currentMemoryIndex`\
+      \ & `src/pi/context.ts` — verify that the anchored boundary entry's converted\
+      \ messages (`convertToLlm(anchor.boundary.messages as never)`) uniquely match\
+      \ `active[index]!.messages` via `messageKeys()` / `sameMessage()` and have no\
+      \ pending tool calls through `index`, returning `undefined` when correspondence\
+      \ is lost (e.g., after native `appendContextEdit` modifies the boundary entry\
+      \ or cleanup toggle alters its body); add regression in `tests/pi/context-view.test.ts`.\n\
+      - [#2 FIX] `src/ui/overlay.ts:NuncOverlay.handleBrowse` — delegate `tui.select.pageUp`/`tui.editor.pageUp`\
+      \ and `tui.select.pageDown`/`tui.editor.pageDown` to `this.scrollPreview(-this.previewViewport)`\
+      \ and `this.scrollPreview(this.previewViewport)` so `previewOffset` is clamped\
+      \ on every input before `render()`; add regression in `tests/pi/overlay-contract.test.ts`\
+      \ dispatching multiple `PageDown` inputs without intermediate `render()` before\
+      \ a single `PageUp`.\n- [#3 FIX] `src/ui/overlay.ts:NuncOverlay.handleBrowse`\
+      \ — call `this.host.tui.requestRender()` when `this.search` handles any of the\
+      \ 6 `Input` cursor-navigation bindings (`tui.editor.cursorLeft`, `tui.editor.cursorRight`,\
+      \ `tui.editor.cursorLineStart`, `tui.editor.cursorLineEnd`, `tui.editor.cursorWordLeft`,\
+      \ `tui.editor.cursorWordRight`) via `this.hit(data, ...)`; extend `tests/pi/overlay-contract.test.ts`\
+      \ for `Ctrl+A`/`Ctrl+E`/word-motion and remapped bindings.\n- [#8 PRUNE_TEST\
+      \ / CONSOLIDATE] `tests/pi/admission.test.ts`, `tests/pi/projection-matching.test.ts`,\
+      \ `tests/pi/compat.test.ts` — merge valid admission contract tests from `tests/pi/admission-hardening.test.ts`\
+      \ into `tests/pi/admission.test.ts` and `git rm tests/pi/admission-hardening.test.ts`\
+      \ (replacing synthetic `{ toJSON() { throw ... } }` in `phase === \"serialize\"\
+      ` with a cyclic object or removing the synthetic `toJSON` branch); remove the\
+      \ `toJSON` call-count spy in `tests/pi/projection-matching.test.ts:13-24`; pass\
+      \ `circular` directly in `arguments` in `tests/pi/compat.test.ts:89` instead\
+      \ of custom `toJSON`.\n- [#9 DELETE / CONSOLIDATE (Pi/UI)] Delete unconsumed\
+      \ `BoundProjection.key` (`src/pi/admission.ts:82, 191-194`) and `MemoryAnchor.sessionId`\
+      \ (`src/pi/projection.ts:528, 756`); replace private `requireManual` (`src/pi/projection.ts:119-121`)\
+      \ with `requireThat(condition, \"INPUT\", message)`; delete constant-zero `ContextLayout[\"\
+      memory\"].envelopeTokens` (`src/pi/context.ts:65, 481, 516` and `tests/pi/overlay*.test.ts`\
+      \ literals); delete unconsumed `fixed`/`settings` options and unused `FixedContext`/`HostCompactionSettings`\
+      \ imports from `createMemorySurface` (`src/pi/manual.ts:4, 6, 63-64` and `tests/pi/memory-contract.test.ts:144`);\
+      \ remove unreachable `this.editBasis` branch in `NuncOverlay.readyLine` (`src/ui/overlay.ts:754`)\
+      \ and subsumed `if (unknown && ...)` branch in `tokenLabel` (`src/ui/context-tree.ts:347`);\
+      \ rename `injectedCarrierIndex` in `tests/pi/carrier-fixture.ts:5` (and callers\
+      \ in `tests/pi/{memory-contract,active-memory,stable-memory}.test.ts`) to `clonedCarrierIndex`.\n\
+      \nImplementation Notes (Non-Binding):\n- `scripts/check.mjs` dynamically discovers\
+      \ `tests/**/*.test.ts` and compiles into `dist/tests/**`; run `rm -rf dist &&\
+      \ npm run build` after `git rm tests/pi/admission-hardening.test.ts` so stale\
+      \ `dist/tests/pi/admission-hardening.test.js` is cleared.\n- Do not implement\
+      \ any rejected Bucket 3 item (`R1..R5`).\n\nBoundary:\n- owner: `node-typescript-engineer`\n\
+      - scope.allowed_paths:\n  - `src/pi/projection.ts`\n  - `src/pi/admission.ts`\n\
+      \  - `src/pi/context.ts`\n  - `src/pi/manual.ts`\n  - `src/ui/overlay.ts`\n\
+      \  - `src/ui/context-tree.ts`\n  - `tests/pi/context-view.test.ts`\n  - `tests/pi/overlay-contract.test.ts`\n\
+      \  - `tests/pi/overlay.test.ts`\n  - `tests/pi/admission-hardening.test.ts`\n\
+      \  - `tests/pi/admission.test.ts`\n  - `tests/pi/projection-matching.test.ts`\n\
+      \  - `tests/pi/compat.test.ts`\n  - `tests/pi/carrier-fixture.ts`\n  - `tests/pi/memory-contract.test.ts`\n\
+      \  - `tests/pi/active-memory.test.ts`\n  - `tests/pi/stable-memory.test.ts`\n\
+      \  - `scripts/check.mjs`\n  - Step owner is explicitly authorized to `git rm\
+      \ tests/pi/admission-hardening.test.ts` after merging its valid cases into `tests/pi/admission.test.ts`,\
+      \ and to grep and update broken import/symbol references across uncontested\
+      \ `src/**`, `tests/**`, and `scripts/**` files.\n- scope.blocked_paths:\n  -\
+      \ `plan.yaml`\n  - `package.json`\n  - `tsconfig.json`\n\nAdmit:\n- Depends\
+      \ on `[]` (runs in parallel with `engine-and-live-closure` on 100% disjoint\
+      \ files).\n\nRecovery:\n- Revert partial edits in worktree if build or targeted\
+      \ Pi/UI tests fail; preserve worktree evidence if blocked."
+    verification: rm -rf dist && npm run build && node --test dist/tests/pi/context-view.test.js
+      dist/tests/pi/overlay-contract.test.js dist/tests/pi/overlay.test.js dist/tests/pi/admission.test.js
+      dist/tests/pi/projection-matching.test.js dist/tests/pi/compat.test.js dist/tests/pi/memory-contract.test.js
+      dist/tests/pi/active-memory.test.js dist/tests/pi/stable-memory.test.js && test
+      ! -e tests/pi/admission-hardening.test.ts && test ! -e dist/tests/pi/admission-hardening.test.js
+    refs:
+    - src/pi/projection.ts
+    - src/pi/admission.ts
+    - src/pi/context.ts
+    - src/pi/manual.ts
+    - src/ui/overlay.ts
+    - src/ui/context-tree.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/overlay-contract.test.ts
+    - tests/pi/overlay.test.ts
+    - tests/pi/admission.test.ts
+    - tests/pi/projection-matching.test.ts
+    - tests/pi/compat.test.ts
+    - tests/pi/carrier-fixture.ts
+    - tests/pi/memory-contract.test.ts
+    - tests/pi/active-memory.test.ts
+    - tests/pi/stable-memory.test.ts
+    - scripts/check.mjs
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-22T17:53:17.488566Z'
+    done_at: '2026-11-22T18:03:44.333295+00:00'
+    evidence: 'Integrated commit bd26a2db (retained at refs/vectl/retained/nunc-fifth-contract-and-debloat-closure.pi-ui-projection-and-debloat)
+      from isolated worktree .vectl/worktrees/nunc-fifth-contract-and-debloat-closure.pi-ui-projection-and-debloat,
+      exact owner node-typescript-engineer; worktree removed (+12,540 KiB free). Closed
+      #1 (currentMemoryIndex boundary correspondence + pending tool guard), #2 (handleBrowse
+      pageUp/pageDown clamped via scrollPreview), #3 (6 editor cursor* bindings requestRender),
+      #8 (merged admission-hardening.test.ts into admission.test.ts, git rm tests/pi/admission-hardening.test.ts,
+      removed toJSON spies/hooks), #9-Pi/UI (removed BoundProjection.key, MemoryAnchor.sessionId,
+      requireManual, ContextLayout.memory.envelopeTokens, createMemorySurface fixed/settings
+      options, NuncOverlay.readyLine editBasis branch, tokenLabel redundant branch;
+      renamed clonedCarrierIndex). Worktree verification: rm -rf dist && npm run build
+      -> 0; 9 targeted tests 179/179 pass; 7 consumer tests 76/76 pass; admission-hardening
+      absent from git & dist/.'
+  - id: nunc-fifth-contract-and-debloat-closure.engine-and-live-closure
+    name: 'Engine/Live 工具计数闭环、Oracle 校准与去膨胀 (#4, #5, #6, #7, #9-Engine, #10)'
+    status: done
+    description: "step_type: implementation\nrepo_change_policy: modifies_repo\n\n\
+      [REQUIRES_SKILL: contract-and-simplicity]\n\nDeliver:\n- [#4 FIX] `src/live/budget.ts:boundedProvider`,\
+      \ `src/live/comparison-observation.ts`, `src/engine/accounting.ts:requestTokens`\
+      \ — unify the sanitized tool projection in `boundedProvider` (`src/live/budget.ts:465-470`)\
+      \ across `onContext` and `onRequest` (preserving `constrainedSampling` on both\
+      \ while keeping `context.tools` for downstream tool-name readers), and in `requestTokens(context,\
+      \ imageTokens)` (`src/engine/accounting.ts:179-182`), when `context.messages.some(isSystemMessage)`\
+      \ already holds, pass `{ messages: context.messages }` to `normalizeContext`\
+      \ so convenience top-level `tools`/`systemPrompt` fields attached to a `TranscriptContext`\
+      \ never synthesize a duplicate `role: \"system\"` message; add regression in\
+      \ `tests/live/budget.test.ts`.\n- [#5 REWRITE_TEST] `tests/live/budget.test.ts:140-151`\
+      \ — test `{ ...model, contextWindow: 80000 }` on a live (non-aborted) `AbortController`\
+      \ first and assert `errorMessage` matches `/Request changed its authorized model/`\
+      \ with `callCount === 0`, then abort the controller and verify aborted-signal\
+      \ rejection separately.\n- [#6 REWRITE_TEST] `src/live/metrics-oracle.ts:executeMetricsOracle`,\
+      \ `tests/live/metrics-fixture.ts`, `tests/live/task-retention-observation.test.ts:307-333`\
+      \ — extend `executeMetricsOracle` to check an empty region array in `op: \"\
+      history\"` (verifying empty-region keys are preserved as `[]`) and a null-input\
+      \ record (`HELD_OUT_RECORDS[3]`: `{ gross: null, refunds: 2, cost: 3 }`) in\
+      \ `op: \"trace\"` with `metric: \"net\"` (verifying `values: { gross: null,\
+      \ refunds: 2, net: null }`), and add corresponding negative mutants in `tests/live/task-retention-observation.test.ts:307-333`.\n\
+      - [#7 CONSOLIDATE] `src/engine/cleanup.ts:applyToolResultCleanup` — replace\
+      \ `{ ...structuredClone(entry), messages: newMessages }` with `{ ...entry, messages:\
+      \ newMessages }` so `entry.messages` is not deep-copied twice.\n- [#9 CONSOLIDATE\
+      \ (Engine test)] `tests/engine/cleanup.test.ts:1174-1191` & `tests/engine/pi-model.test.ts`\
+      \ — move raw-sampling override and HTTP-status/unit retry tests from `tests/engine/cleanup.test.ts:1174-1191`\
+      \ into `tests/engine/pi-model.test.ts` and remove unused imports from `tests/engine/cleanup.test.ts`.\n\
+      - [#10 CONSOLIDATE / PRUNE_TEST] `src/live/budget.ts:BudgetLedger.readQualifiedCalls`,\
+      \ `src/live/calibration.ts:calibrateRetention`, `src/live/comparison-observation.ts:110`,\
+      \ `scripts/compare-extraction.mjs:10-25`, `tests/live/budget.test.ts:338-408`,\
+      \ `tests/live/task-retention-native.test.ts:15`, `tests/live/task-retention-comparison.test.ts:9`\
+      \ — eliminate second `readLedger(this.path)` in `BudgetLedger.readQualifiedCalls()`\
+      \ and derive next local reservation ID from `qualifiedCalls.filter(c => c.ledgerPath\
+      \ === this.path).length + 1`; compute `currentAccounting.mainPlanningEstimate(...\
+      \ effectiveSuffix(0) ...)` once in `calibrateRetention`; simplify `const cap\
+      \ = (r: RequestObservation) => r.cap?.value ?? null;`; remove unused `parseInput`\
+      \ import and duplicate `parseComparisonInput` call in `scripts/compare-extraction.mjs`;\
+      \ make the pure terminal-charge test in `tests/live/budget.test.ts:338-408`\
+      \ synchronous in-memory without unused `fixture()`/`mkdir`/`fauxProvider`; make\
+      \ `prepareHistoricalRepository()` lazy in `tests/live/task-retention-native.test.ts`\
+      \ and `tests/live/task-retention-comparison.test.ts`.\n\nImplementation Notes\
+      \ (Non-Binding):\n- Do not implement any rejected Bucket 3 item (`R1..R5`).\n\
+      \nBoundary:\n- owner: `node-typescript-engineer`\n- scope.allowed_paths:\n \
+      \ - `src/engine/accounting.ts`\n  - `src/engine/cleanup.ts`\n  - `src/live/budget.ts`\n\
+      \  - `src/live/calibration.ts`\n  - `src/live/comparison-observation.ts`\n \
+      \ - `src/live/metrics-oracle.ts`\n  - `scripts/compare-extraction.mjs`\n  -\
+      \ `tests/engine/cleanup.test.ts`\n  - `tests/engine/pi-model.test.ts`\n  - `tests/live/budget.test.ts`\n\
+      \  - `tests/live/metrics-fixture.ts`\n  - `tests/live/task-retention-observation.test.ts`\n\
+      \  - `tests/live/task-retention-native.test.ts`\n  - `tests/live/task-retention-comparison.test.ts`\n\
+      \  - Step owner is authorized to grep and update broken import/symbol references\
+      \ across uncontested `src/**`, `tests/**`, and `scripts/**` files.\n- scope.blocked_paths:\n\
+      \  - `plan.yaml`\n  - `package.json`\n  - `tsconfig.json`\n\nAdmit:\n- Depends\
+      \ on `[]` (runs in parallel with `pi-ui-projection-and-debloat` on 100% disjoint\
+      \ files).\n\nRecovery:\n- Revert partial edits in worktree if build or targeted\
+      \ engine/live tests fail; preserve worktree evidence if blocked."
+    verification: npm run build && node --test dist/tests/engine/cleanup.test.js dist/tests/engine/pi-model.test.js
+      dist/tests/live/budget.test.js dist/tests/live/task-retention-observation.test.js
+      dist/tests/live/task-retention-native.test.js dist/tests/live/task-retention-comparison.test.js
+    refs:
+    - src/engine/accounting.ts
+    - src/engine/cleanup.ts
+    - src/live/budget.ts
+    - src/live/calibration.ts
+    - src/live/comparison-observation.ts
+    - src/live/metrics-oracle.ts
+    - scripts/compare-extraction.mjs
+    - tests/engine/cleanup.test.ts
+    - tests/engine/pi-model.test.ts
+    - tests/live/budget.test.ts
+    - tests/live/metrics-fixture.ts
+    - tests/live/task-retention-observation.test.ts
+    - tests/live/task-retention-native.test.ts
+    - tests/live/task-retention-comparison.test.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-22T17:53:17.488834Z'
+    done_at: '2026-11-22T18:11:58.556049+00:00'
+    evidence: 'Integrated commit b861a3e (rebased from candidate 4cee19c, retained
+      at refs/vectl/retained/nunc-fifth-contract-and-debloat-closure.engine-and-live-closure)
+      from isolated worktree .vectl/worktrees/nunc-fifth-contract-and-debloat-closure.engine-and-live-closure,
+      exact owner node-typescript-engineer; worktree removed (+11,520 KiB free). Closed
+      #4 (unified boundedProvider onContext/onRequest tool projection preserving constrainedSampling;
+      requestTokens passes { messages: context.messages } when system message already
+      present), #5 (separated changed-model vs aborted-signal rejection tests), #6
+      (extended executeMetricsOracle history empty-region + trace net null-input checks
+      with negative mutants), #7 (removed double structuredClone in applyToolResultCleanup),
+      #9-Engine (moved sampling/retry tests to pi-model.test.ts), #10 (eliminated
+      duplicate readLedger in readQualifiedCalls, duplicate mainPlanningEstimate in
+      calibrateRetention, tautological ternary in comparison-observation.ts, duplicate
+      parseComparisonInput/unused import in compare-extraction.mjs, unused fixture
+      in budget.test.ts, lazy prepareHistoricalRepository in task-retention-{native,comparison}.test.ts).
+      Worktree verification: rm -rf dist && npm run build -> 0; 6 targeted tests 143/143
+      pass; reverse-dep cone 332/332 pass; integrated rm -rf dist && npm run build
+      -> 0.'
+  - id: nunc-fifth-contract-and-debloat-closure.gate
+    name: 第五轮全量契约与去膨胀收敛 DELTA 门禁验收
+    status: done
+    description: 'step_type: gate
+
+      repo_change_policy: no_repo_change
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+      Gate Mode: DELTA
+
+
+      Deliver:
+
+      - Verify all 10 admitted items (`#1..#10`) across `pi-ui-projection-and-debloat`,
+      `engine-and-live-closure`, and `repair-request-tokens-mixed-context` against
+      the `git diff` from phase base `0f30081ffaa25b3c10fc67776bfe8f55647eb7a4`.
+
+      - Confirm `tests/pi/admission-hardening.test.ts` is absent from `git ls-files`
+      and `dist/`, and its valid admission contract coverage is merged into `tests/pi/admission.test.ts`.
+
+      - Confirm none of the 5 rejected Bucket 3 items (`R1..R5`) were introduced.
+
+      - Execute clean build and full repository check suite (`rm -rf dist && npm run
+      build && node scripts/check.mjs all`).
+
+
+      Boundary:
+
+      - owner: `gate-reviewer`
+
+      - Read-only verification (`no_repo_change`); do not modify repository tracked
+      files.
+
+
+      Admit:
+
+      - Depends on `nunc-fifth-contract-and-debloat-closure.pi-ui-projection-and-debloat`
+      and `nunc-fifth-contract-and-debloat-closure.repair-request-tokens-mixed-context`.
+
+
+      Recovery:
+
+      - Report any `UNCLOSED_ORIGINAL` or `REPAIR_REGRESSION` defects with exact `path:line`
+      evidence and halt gate completion.'
+    verification: rm -rf dist && npm run build && node scripts/check.mjs all && test
+      -z "$(git ls-files tests/pi/admission-hardening.test.ts)" && test ! -e dist/tests/pi/admission-hardening.test.js
+    refs:
+    - src/pi/projection.ts
+    - src/pi/admission.ts
+    - src/pi/context.ts
+    - src/pi/manual.ts
+    - src/ui/overlay.ts
+    - src/ui/context-tree.ts
+    - src/engine/accounting.ts
+    - src/engine/cleanup.ts
+    - src/live/budget.ts
+    - src/live/calibration.ts
+    - src/live/comparison-observation.ts
+    - src/live/metrics-oracle.ts
+    - scripts/compare-extraction.mjs
+    - scripts/check.mjs
+    - tests/pi/admission.test.ts
+    - tests/live/budget.test.ts
+    depends_on:
+    - nunc-fifth-contract-and-debloat-closure.pi-ui-projection-and-debloat
+    - nunc-fifth-contract-and-debloat-closure.repair-request-tokens-mixed-context
+    agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-22T18:42:08.192126Z'
+    done_at: '2026-11-22T18:55:59.459385+00:00'
+    evidence: 'DELTA PHASE_GATE PASS (gate.report.v2 validated: valid=true, binding_checked=true,
+      evidence_disposition=POSITIVE_GATE_EVIDENCE, zero blocking findings) on git:48186e1f9a4fd019611ec035a01635ecc5e7d512
+      via retained gate-reviewer session 2026-11-22T18-12-29-993Z_01a20475-aaa8-71fd-9e4f-7aedd00a2d51.jsonl
+      (/tmp/nunc-fifth-gate-delta2.report.json, building on /tmp/nunc-fifth-gate.report.json).
+      All #1..#10 items PROVEN (GATE-1 / #4 repaired in eb37ecf: requestTokens preserves
+      mixed-Context accounting & INPUT_LIMIT rejection at 68,710 tokens; rolloverFacts
+      deduplicates attached observedContext tools); tests/pi/admission-hardening.test.ts
+      absent from git ls-files & dist/ with valid cases merged into tests/pi/admission.test.ts;
+      R1..R5 zero inclusion. Verification on 48186e1f: clean rm -rf dist && npm run
+      build -> 0; targeted admission/budget suites 74/74 pass; node scripts/check.mjs
+      all 1165 pass / 0 fail / 3 skipped (107 files).'
+  - id: nunc-fifth-contract-and-debloat-closure.repair-request-tokens-mixed-context
+    name: 修复 requestTokens 混合上下文计数回归并收敛观测去重 (#4 GATE-1)
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      - [#4 GATE-1] `src/engine/accounting.ts:requestTokens` — restore `const normalized
+      = normalizeContext(context);` so SDK-supported mixed `Context` (`systemPrompt`
+      + `tools` + `role: "system"` message in `context.messages`) retains full prompt/tool
+      token accounting (`tests/pi/admission.test.ts:315` equals `220` and oversized
+      mixed-Context `BudgetLedger.reserve` rejects `INPUT_LIMIT`).
+
+      - [#4 GATE-1] `src/live/comparison-observation.ts:rolloverFacts` — avoid double-counting
+      `boundedProvider`''s attached `tools` on `observedContext` when `next.context.messages`
+      already contains a `role: "system"` message (`isSystemMessage`), computing `finalContextTokens`
+      once (`next ? requestTokens(next.context.messages.some(isSystemMessage) ? {
+      messages: next.context.messages } : next.context) : null`) and reusing `finalContextTokens`
+      for `remainingContextTokens`.
+
+      - [#4 GATE-1] `tests/live/budget.test.ts` — add/update regression verifying
+      both mixed-Context `requestTokens` / `BudgetLedger.reserve` `INPUT_LIMIT` rejection
+      and `rolloverFacts` / `observedContext` non-duplication when `next.context`
+      mixes `role: "system"` messages with attached `tools`.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Import `isSystemMessage` from `../engine/accounting.js` in `src/live/comparison-observation.ts`.
+
+
+      Boundary:
+
+      - owner: `node-typescript-engineer`
+
+      - `scope.allowed_paths`: `["src/engine/accounting.ts", "src/live/comparison-observation.ts",
+      "tests/live/budget.test.ts"]`
+
+      - `scope.blocked_paths`: `["plan.yaml", "package.json", "tsconfig.json"]`
+
+
+      Admit:
+
+      - Depends on `nunc-fifth-contract-and-debloat-closure.engine-and-live-closure`.
+
+      - Verified by targeted `tests/pi/admission.test.ts` and `tests/live/budget.test.ts`
+      suites after build.
+
+
+      Recovery:
+
+      - Preserve worktree and halt on any unexpected failure outside `scope.allowed_paths`.'
+    verification: npm run build && node --test dist/tests/pi/admission.test.js dist/tests/live/budget.test.js
+    refs:
+    - src/engine/accounting.ts
+    - src/live/comparison-observation.ts
+    - tests/live/budget.test.ts
+    - tests/pi/admission.test.ts
+    depends_on:
+    - nunc-fifth-contract-and-debloat-closure.engine-and-live-closure
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-22T18:31:21.990085Z'
+    done_at: '2026-11-22T18:42:04.652015+00:00'
+    evidence: 'Integrated commit eb37ecf (retained at refs/vectl/retained/nunc-fifth-contract-and-debloat-closure.repair-request-tokens-mixed-context)
+      from isolated worktree .vectl/worktrees/nunc-fifth-contract-and-debloat-closure.repair-request-tokens-mixed-context,
+      exact owner node-typescript-engineer; worktree removed (+12,656 KiB free). Restored
+      unconditional normalizeContext(context) in src/engine/accounting.ts:requestTokens
+      so mixed-Context prompt/tool accounting and INPUT_LIMIT admission hold; moved
+      observedContext tool-deduplication to src/live/comparison-observation.ts:rolloverFacts
+      (computing finalContextTokens once and reusing for remainingContextTokens);
+      added mixed-Context INPUT_LIMIT + rolloverFacts non-duplication regression tests
+      in tests/live/budget.test.ts. Worktree verification: rm -rf dist && npm run
+      build -> 0; 6 targeted/reverse-dep suites (admission, budget, comparison, host,
+      compact-for, cleanup) 152/152 pass; integrated rm -rf dist && npm run build
+      -> 0.'
+- id: nunc-sixth-contract-and-debloat-closure
+  name: 第六轮全量契约闭环与向下投影去膨胀（Sixth Contract & De-Bloat Closure）
+  status: done
+  gate: All 17 admitted Round 6 and Pass 2 findings (#1..#17) across pi-ui-and-index-closure
+    and live-harness-and-scripts-closure are closed with zero regressions, none of
+    the rejected synthetic Bucket 3 items (R1..R5) are introduced, and rm -rf dist
+    && npm run build && node scripts/check.mjs all passes cleanly.
+  depends_on:
+  - nunc-fifth-contract-and-debloat-closure
+  steps:
+  - id: nunc-sixth-contract-and-debloat-closure.pi-ui-and-index-closure
+    name: 'Pi 宿主接线、UI 生命周期与收据测试校准闭环（#1–#6, #11–#13）'
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      1. [#1 FIX] `src/index.ts:session_before_compact` & `tests/pi/manual-memory.test.ts`
+      — Enforce `status.unconfirmed` fence (`if (memory.read(ctx).status.unconfirmed)
+      throw new EngineError("CANCELLED", "Resource /reload does not reread the session
+      file; resume or switchSession this file before writing");`) both before `maintain()`
+      and in the post-`await` check before `pi.appendEntry(MAINTENANCE_CALIBRATION_TYPE,
+      ...)` / `{ compaction }` handoff; add regressions covering `/compact` and `/nunc
+      compact-for`.
+
+      2. [#2 FIX / P2-Pass2-#1] `src/index.ts:prepareUiCleanup,session_before_compact`,
+      `src/pi/index.ts:bindHostSettings` & `tests/pi/{ui-cleanup-update,lifecycle}.test.ts`
+      — In `prepareUiCleanup`, construct `timeout = AbortSignal.timeout(uiCleanupTimeoutMs)`
+      and `combined = AbortSignal.any([signal, controller.signal, timeout])` before
+      `loadPolicy(...)` and wrap `loadPolicy(...)` with `withCancellation(() => loadPolicy(...),
+      combined)`; in `session_before_compact`, wrap `loadPolicy(...)` with `withCancellation(()
+      => loadPolicy(...), controller.signal)`; support optional `uiCleanupTimeoutMs`
+      override via `bindHostSettings(bus, manager, options?: { uiCleanupTimeoutMs?:
+      number })` so `ui-cleanup-update.test.ts` does not monkey-patch `AbortSignal.timeout`.
+
+      3. [#3 FIX] `src/ui/index.ts:NuncUi`, `src/index.ts` & `tests/pi/reporting.test.ts`
+      — Clear `this.diagnostics = []` on session boundary transitions (`session_start`
+      before `supported(ctx)`, `session_before_switch`, `session_before_fork`, `ui.shutdown(ctx)`)
+      while preserving `recentDiagnostics` across intra-session `ui.recover()`.
+
+      4. [#4 FIX / P3-Pass2-#2] `src/ui/overlay.ts:NuncOverlay.activate` & `tests/pi/overlay-contract.test.ts`
+      — Reset `this.previewOffset = 0` when jumping from `Context` to `Slots` (`if
+      (node.jumpSlot)`).
+
+      5. [#6 REWRITE_TEST] `tests/pi/tool-call-repair.test.ts` — Assert `delegates.slice(1).every(o
+      => o.estimateReason === "matching-receipt" && o.estimator === "pi-usage-backed")`
+      in the 4-native-family repeated-ID continuation test.
+
+      6. [#12 REWRITE_TEST / P2-Pass2-#3] `tests/pi/{admission-ownership,request-receipts}.test.ts`
+      — Calibrate 8-receipt ring-buffer eviction tests to exercise `MAX_RECEIPTS =
+      8` (1st receipt reusable after 7 distinct subsequent receipts at `total = 8`
+      with `matching-receipt`, evicted after 8th subsequent receipt at `total = 9`
+      with `system-mismatch` when other receipts remain in the 8-entry ring; `no-receipt`
+      only on empty ring).
+
+      7. [#5 & #13 DELETE / CONSOLIDATE / P2-Pass2-#4 & #5] `src/pi/manual.ts`, `src/pi/projection.ts:MemorySession`,
+      `src/index.ts` & `tests/pi/projection-matching.test.ts` — Replace `rejectedFreezes:
+      [] as symbol[]` with integer counter `rejectedFreezes: 0`; delete unconsumed
+      `latestId?: string | undefined` from `MemorySession` and its `src/index.ts`
+      pass-site; ensure no `toJSON` serialization counter remains in `projection-matching.test.ts`.
+
+      8. [#11 DELETE / TIGHTEN / P3-Pass2-#2] `src/pi/payload.ts`, `src/ui/index.ts`,
+      `src/ui/status.ts`, `src/ui/overlay.ts:NuncOverlay.finishCommit`, `README.md`
+      & `tests/pi/{payload,external-dasein-append,lifecycle}.test.ts` — Delete test-only
+      `export function canonicalJson` from `payload.ts` (use `canonical(jsonView(...))`
+      in tests); remove unused barrel re-exports (`compactFooter`, `DIAGNOSTIC_LIMIT`,
+      `UNLOAD_LIMIT`, `NuncOverlay`, `CompactFooterInput`, `DiagnosticNote`, `FooterTone`)
+      and pass-through `createNuncUi` from `src/ui/index.ts` (use `new NuncUi(...)`
+      in `src/index.ts` and `lifecycle.test.ts`); make `diagnosticLines` module-private
+      in `src/ui/status.ts`; in `NuncOverlay.finishCommit()`, update `this.preferredSlot`,
+      `this.memoryView`, and `this.contextView` before `this.transition({ kind: "browse"
+      })`; remove stale `This package is "private": true and is not published to npm.`
+      line from `README.md:7`.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Target navigation: `src/index.ts:288-305, 336, 411-443, 465, 487-607`; `src/pi/index.ts:15-28`;
+      `src/pi/manual.ts:69, 97-104`; `src/pi/projection.ts:544`; `src/pi/payload.ts:44`;
+      `src/ui/index.ts:8-19, 24-67`; `src/ui/status.ts:195`; `src/ui/overlay.ts:365-374,
+      454-467`; `README.md:7`; `tests/pi/reporting.test.ts:289-301`; `tests/pi/tool-call-repair.test.ts:464-467`;
+      `tests/pi/admission-ownership.test.ts:215-248`; `tests/pi/request-receipts.test.ts:225-241`;
+      `tests/pi/projection-matching.test.ts:13-24`; `tests/pi/ui-cleanup-update.test.ts:95-100`;
+      `tests/pi/lifecycle.test.ts:10, 264`.
+
+      - Do not introduce any rejected Bucket 3 items (`R1..R5`).
+
+
+      Boundary:
+
+      - Owner: `node-typescript-engineer` (`modifies_repo`).
+
+      - `scope.allowed_paths`: `src/index.ts`, `src/pi/index.ts`, `src/pi/manual.ts`,
+      `src/pi/projection.ts`, `src/pi/payload.ts`, `src/ui/index.ts`, `src/ui/overlay.ts`,
+      `src/ui/status.ts`, `README.md`, `tests/pi/manual-memory.test.ts`, `tests/pi/reporting.test.ts`,
+      `tests/pi/lifecycle.test.ts`, `tests/pi/overlay-contract.test.ts`, `tests/pi/tool-call-repair.test.ts`,
+      `tests/pi/admission-ownership.test.ts`, `tests/pi/request-receipts.test.ts`,
+      `tests/pi/payload.test.ts`, `tests/pi/external-dasein-append.test.ts`, `tests/pi/projection-matching.test.ts`,
+      `tests/pi/ui-cleanup-update.test.ts` (plus caller-import updates across uncontested
+      `src/pi/**`, `src/ui/**`, and `tests/pi/**` if needed when removing dead exports).
+
+      - `scope.blocked_paths`: `plan.yaml`, `package.json`, `tsconfig.json`.
+
+
+      Admit:
+
+      - Clean TypeScript build (`npm run build`) and passing `tests/pi/*` unit/integration
+      suite covering all 9 obligations (`#1..#6, #11..#13`).
+
+
+      Recovery:
+
+      - Preserve worktree changes and report exact failing test or symbol dependency
+      if blocked.'
+    verification: npm run build && node --test dist/tests/pi/manual-memory.test.js
+      dist/tests/pi/ui-cleanup-update.test.js dist/tests/pi/lifecycle.test.js dist/tests/pi/reporting.test.js
+      dist/tests/pi/overlay-contract.test.js dist/tests/pi/tool-call-repair.test.js
+      dist/tests/pi/admission-ownership.test.js dist/tests/pi/request-receipts.test.js
+      dist/tests/pi/payload.test.js dist/tests/pi/external-dasein-append.test.js dist/tests/pi/projection-matching.test.js
+    evidence_template: 'Commit SHA, changed files, and test pass output for #1-#6
+      and #11-#13.'
+    refs:
+    - src/index.ts
+    - src/pi/manual.ts
+    - src/pi/projection.ts
+    - src/pi/payload.ts
+    - src/ui/index.ts
+    - src/ui/overlay.ts
+    - src/ui/status.ts
+    - README.md
+    - tests/pi/manual-memory.test.ts
+    - tests/pi/reporting.test.ts
+    - tests/pi/lifecycle.test.ts
+    - tests/pi/overlay-contract.test.ts
+    - tests/pi/tool-call-repair.test.ts
+    - tests/pi/admission-ownership.test.ts
+    - tests/pi/request-receipts.test.ts
+    - tests/pi/payload.test.ts
+    - tests/pi/external-dasein-append.test.ts
+    - tests/pi/projection-matching.test.ts
+    - tests/pi/ui-cleanup-update.test.ts
+    - src/pi/index.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T06:57:15.176083Z'
+    done_at: '2026-11-23T06:58:32.681657+00:00'
+    evidence: 'Integrated commit fa5f009 (rebased from candidate ce04457, retained
+      at refs/vectl/retained/nunc-sixth-contract-and-debloat-closure.pi-ui-and-index-closure)
+      from isolated worktree .vectl/worktrees/nunc-sixth-contract-and-debloat-closure.pi-ui-and-index-closure,
+      exact owner node-typescript-engineer; worktree removed (+12,824 KiB free). Closed
+      #1 (status.unconfirmed fence pre-maintain & post-await in session_before_compact),
+      #2/P2-Pass2-#1 (withCancellation on loadPolicy in prepareUiCleanup & session_before_compact
+      + bindHostSettings uiCleanupTimeoutMs override removing global AbortSignal.timeout
+      monkey-patch), #3 (NuncUi.resetSession clears diagnostics on session_start/switch/fork/shutdown
+      while preserving intra-session recover()), #4 (NuncOverlay.activate resets previewOffset=0
+      on jumpSlot), #6 (pi-usage-backed + matching-receipt assertions in tool-call-repair.test.ts),
+      #12 (8-receipt ring reuse at 8 / system-mismatch eviction at 9), #5&#13 (integer
+      rejectedFreezes counter; removed MemorySession.latestId), #11 (removed canonicalJson,
+      unused ui/index.ts re-exports & createNuncUi, diagnosticLines private, finishCommit
+      view update before transition, README.md private line). Worktree verification:
+      rm -rf dist && npm run build -> 0; 12-file Pi/UI batch 192 pass / 0 fail / 2
+      skipped (external Dasein).'
+  - id: nunc-sixth-contract-and-debloat-closure.live-harness-and-scripts-closure
+    name: 'Live 评测宿主、观察器序号绑定、预算去膨胀与脚本生命周期闭环（#7–#10, #14–#17）'
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      1. [#14 FIX / Round6-#3] `src/live/tool-path.ts:toolPath` & `tests/live/defensive-controls.test.ts`
+      — Apply the protected path-component predicate (`[".pi", ".agents", ".git"]`,
+      `.env*`, `auth.json`) to both the lexical path `path` and the canonical resolved
+      path `resolve(await realpath(parent), path.slice(parent.length).replace(/^\/+/,
+      ""))` so task-internal symlinks (`alias -> .pi`) cannot bypass protected-path
+      exclusion; add a regression in `defensive-controls.test.ts`.
+
+      2. [#15 FIX / Round6-#4] `src/live/contract.ts:preflight` & `tests/live/contract.test.ts`
+      — Recursively bind `join(curRepo, "src")` and `join(curRepo, "dist/src")` for
+      `input.comparison.targets.current.repository` (`curRepo`) matching `candidate`
+      (`repository`) so mutating any non-entry compiled file under `curRepo/dist/src/**`
+      invalidates `receipt.binding`; add a regression in `contract.test.ts`.
+
+      3. [#16 FIX / Round6-#5 & P4-Pass2-#2] `src/live/host.ts:NativeHost` & `tests/live/{host,native-startup-model}.test.ts`
+      — Record child `(exitCode, exitSignal)` and whether shutdown was initiated by
+      `close()` / `abort()`; if the child exits before `close()` initiates shutdown,
+      or exits with a non-zero exit code / signal not caused by `this.abort()`, record
+      `this.fail("HOST_EXIT", ...)` and throw `this.failure` in `close()` after draining
+      observer events. In `NativeHost.restoreAuthorizedStartupModel()`, re-read `state
+      = await this.command("get_state")` after `set_model` (or apply `set_thinking_level`
+      against updated state) and restore `desiredThinking === "off"` when `(state
+      as any).thinkingLevel && (state as any).thinkingLevel !== "off"` (`if (desiredThinking
+      && (state as any).thinkingLevel !== desiredThinking)`). Add regressions in `host.test.ts`
+      and `native-startup-model.test.ts`.
+
+      4. [#17 FIX / P5-Pass2-#1] `src/live/worker.ts`, `src/live/observer.ts` & `tests/live/{scenarios,same-task-history}.test.ts`
+      — Bind `turnOrdinal` (the 1-based ordinal occurrence of user turns on the branch,
+      or exact turn index in `scenario.turns`) onto `boundaries` and `guidanceControls`
+      in `worker.ts` and verify it alongside `requestText` in `observer.ts` so controls
+      scoped to a specific `duringTurn` / `afterTurn` never fire prematurely on an
+      earlier turn that shares the same prompt text; add a regression test.
+
+      5. [#7 REWRITE_TEST] `tests/live/same-task-history.test.ts` — Populate valid
+      `details.nunc` on `snap1..snap3` and complete `m-call-1..3` / `req1..3` records
+      so `checks[2]!.status === "PROVEN"` on the baseline before `badRollovers1` flips
+      `checksBad1[2]!.status` to `"UNPROVEN"`.
+
+      6. [#8 FIX] `tests/live/{guidance-native,stable-memory-native,same-task-history,task-retention-branches,task-retention-comparison,task-retention-native,tool-result-cleanup-native}.test.ts`
+      & `scripts/{observe-segment,observe-runner,observe-independent-cases,ime-fixture}.mjs`
+      — Enter `try {` immediately after `const f = await new StockFixture().setup(...)`
+      so `finally { await f.close(); }` covers all post-setup preparation.
+
+      7. [#9 DELETE] `src/live/worker.ts` — Delete unconsumed `Checkpoint.lastBeforeActive`
+      and redundant mutable `effectiveConfig` alias (reading `runConfig.nunc` directly).
+
+      8. [#10 DELETE / REWRITE_TEST] `src/live/budget.ts:boundedProvider` & `tests/live/{budget,task-retention-observation}.test.ts`
+      — Delete test-only `controlled?: boolean` from `boundedProvider` and update
+      the 5 test call sites.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Target navigation: `src/live/tool-path.ts:9-24`; `src/live/contract.ts:382-387,
+      412-422, 442`; `src/live/host.ts:296-330, 430-443`; `src/live/observer.ts:48-52,
+      250-295`; `src/live/worker.ts:26, 100, 112-121, 127-149, 162-182, 187, 406-424,
+      579-582`; `src/live/budget.ts:431, 545`; `tests/live/same-task-history.test.ts:178-247`;
+      `tests/live/budget.test.ts:144, 524, 650, 667`; `tests/live/task-retention-observation.test.ts:294`.
+
+      - Do not introduce any rejected Bucket 3 items (`R1..R5`).
+
+
+      Boundary:
+
+      - Owner: `node-typescript-engineer` (`modifies_repo`).
+
+      - `scope.allowed_paths`: `src/live/tool-path.ts`, `src/live/contract.ts`, `src/live/host.ts`,
+      `src/live/observer.ts`, `src/live/worker.ts`, `src/live/budget.ts`, `tests/live/defensive-controls.test.ts`,
+      `tests/live/contract.test.ts`, `tests/live/host.test.ts`, `tests/live/native-startup-model.test.ts`,
+      `tests/live/budget.test.ts`, `tests/live/task-retention-observation.test.ts`,
+      `tests/live/same-task-history.test.ts`, `tests/live/guidance-native.test.ts`,
+      `tests/live/stable-memory-native.test.ts`, `tests/live/task-retention-branches.test.ts`,
+      `tests/live/task-retention-comparison.test.ts`, `tests/live/task-retention-native.test.ts`,
+      `tests/live/tool-result-cleanup-native.test.ts`, `tests/live/scenarios.test.ts`,
+      `scripts/observe-segment.mjs`, `scripts/observe-runner.mjs`, `scripts/observe-independent-cases.mjs`,
+      `scripts/ime-fixture.mjs` (plus caller-import updates across uncontested `src/live/**`
+      and `tests/live/**` if needed).
+
+      - `scope.blocked_paths`: `plan.yaml`, `package.json`, `tsconfig.json`.
+
+
+      Admit:
+
+      - Clean TypeScript build (`npm run build`) and passing `tests/live/*` unit/integration
+      suite covering all 8 obligations (`#7..#10, #14..#17`).
+
+
+      Recovery:
+
+      - Preserve worktree changes and report exact failing test or symbol dependency
+      if blocked.'
+    verification: npm run build && node --test dist/tests/live/defensive-controls.test.js
+      dist/tests/live/contract.test.js dist/tests/live/host.test.js dist/tests/live/native-startup-model.test.js
+      dist/tests/live/budget.test.js dist/tests/live/task-retention-observation.test.js
+      dist/tests/live/same-task-history.test.js dist/tests/live/guidance-native.test.js
+      dist/tests/live/stable-memory-native.test.js dist/tests/live/task-retention-branches.test.js
+      dist/tests/live/task-retention-comparison.test.js dist/tests/live/task-retention-native.test.js
+      dist/tests/live/tool-result-cleanup-native.test.js dist/tests/live/scenarios.test.js
+    evidence_template: 'Commit SHA, changed files, and test pass output for #7-#10
+      and #14-#17.'
+    refs:
+    - src/live/tool-path.ts
+    - src/live/contract.ts
+    - src/live/host.ts
+    - src/live/observer.ts
+    - src/live/worker.ts
+    - src/live/budget.ts
+    - tests/live/defensive-controls.test.ts
+    - tests/live/contract.test.ts
+    - tests/live/host.test.ts
+    - tests/live/native-startup-model.test.ts
+    - tests/live/budget.test.ts
+    - tests/live/task-retention-observation.test.ts
+    - tests/live/same-task-history.test.ts
+    - tests/live/guidance-native.test.ts
+    - tests/live/stable-memory-native.test.ts
+    - tests/live/task-retention-branches.test.ts
+    - tests/live/task-retention-comparison.test.ts
+    - tests/live/task-retention-native.test.ts
+    - tests/live/tool-result-cleanup-native.test.ts
+    - tests/live/scenarios.test.ts
+    - scripts/observe-segment.mjs
+    - scripts/observe-runner.mjs
+    - scripts/observe-independent-cases.mjs
+    - scripts/ime-fixture.mjs
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T06:45:34.267962Z'
+    done_at: '2026-11-23T07:06:40.277960+00:00'
+    evidence: 'Integrated commit 49191fc (rebased from candidate 2a5c3a5, retained
+      at refs/vectl/retained/nunc-sixth-contract-and-debloat-closure.live-harness-and-scripts-closure)
+      from isolated worktree .vectl/worktrees/nunc-sixth-contract-and-debloat-closure.live-harness-and-scripts-closure,
+      exact owner node-typescript-engineer; worktree removed (+12,740 KiB free). Closed
+      #14/Round6-#3 (toolPath lexical + canonical symlink protected-path checks),
+      #15/Round6-#4 (preflight recursively binds current target src and dist/src),
+      #16/Round6-#5 & P4-Pass2-#2 (NativeHost records unexpected/non-zero child exits
+      into HOST_EXIT thrown from close() after drain; restoreAuthorizedStartupModel
+      re-reads state after set_model and restores desiredThinking === "off"), #17/P5-Pass2-#1
+      (turnOrdinal bound on boundaries & guidanceControls in worker.ts and checked
+      in observer.ts), #7 (same-task-history baseline checks[2] === "PROVEN" before
+      corruption), #8 (immediate try/finally StockFixture.close in 7 live tests and
+      4 observe/ime scripts), #9 (removed Checkpoint.lastBeforeActive and effectiveConfig
+      alias), #10 (removed boundedProvider options.controlled and updated 5 test call
+      sites including native-delegation.test.ts). Worktree verification: rm -rf dist
+      && npm run build -> 0; 14-file live suite 176/176 pass; 5 caller tests pass;
+      4 scripts node --check pass; integrated rm -rf dist && npm run build -> 0.'
+  - id: nunc-sixth-contract-and-debloat-closure.gate
+    name: '第六轮全量契约与去膨胀收敛 Delta 门禁验收（Gate: DELTA）'
+    status: done
+    description: 'step_type: gate
+
+      repo_change_policy: no_repo_change
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+      Gate Mode: DELTA
+
+
+      Deliver:
+
+      1. Verify all 17 admitted items (`#1..#17`: `#1–#6, #11–#13` in `pi-ui-and-index-closure`
+      and `#7–#10, #14–#17` in `live-harness-and-scripts-closure`) against `git diff
+      6723fb24d3b2a82c5255b4d34d59a2d0e42c9e09..HEAD`.
+
+      2. Confirm none of the rejected synthetic Bucket 3 items (`R1..R5`) were introduced.
+
+      3. Run `rm -rf dist && npm run build && node scripts/check.mjs all` and verify
+      zero regressions across the repository.
+
+
+      Boundary:
+
+      - Owner: `gate-reviewer` (`no_repo_change`).
+
+      - `scope.allowed_paths`: `[]` (read-only verification).
+
+      - `scope.blocked_paths`: `plan.yaml`, `package.json`, `tsconfig.json`.
+
+
+      Admit:
+
+      - Upstream steps `nunc-sixth-contract-and-debloat-closure.pi-ui-and-index-closure`
+      and `nunc-sixth-contract-and-debloat-closure.live-harness-and-scripts-closure`
+      are `done`, `git diff 6723fb24d3b2a82c5255b4d34d59a2d0e42c9e09..HEAD` closes
+      all 17 items cleanly without `R1..R5`, and `rm -rf dist && npm run build &&
+      node scripts/check.mjs all` exits 0.
+
+
+      Recovery:
+
+      - Do not modify repository files; report any unclosed item or regression with
+      exact `path:line` evidence for targeted remediation.'
+    verification: rm -rf dist && npm run build && node scripts/check.mjs all
+    evidence_template: 'Delta audit receipt for #1..#17, confirmation of zero R1..R5
+      additions, and full check pass output.'
+    refs:
+    - src/index.ts
+    - src/pi/manual.ts
+    - src/pi/projection.ts
+    - src/pi/payload.ts
+    - src/ui/index.ts
+    - src/ui/overlay.ts
+    - src/ui/status.ts
+    - src/live/tool-path.ts
+    - src/live/contract.ts
+    - src/live/host.ts
+    - src/live/observer.ts
+    - src/live/worker.ts
+    - src/live/budget.ts
+    - README.md
+    - src/pi/index.ts
+    depends_on:
+    - nunc-sixth-contract-and-debloat-closure.pi-ui-and-index-closure
+    - nunc-sixth-contract-and-debloat-closure.live-harness-and-scripts-closure
+    agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-23T07:06:45.878824Z'
+    done_at: '2026-11-23T07:31:21.578667+00:00'
+    evidence: 'DELTA PHASE_GATE PASS (gate.report.v2 validated: valid=true, binding_checked=true,
+      evidence_disposition=POSITIVE_GATE_EVIDENCE, zero blocking findings, all 18/18
+      bound requirements PROVEN) on git:fc6e7800cb077f204d96be67f549f7caa2379c01 via
+      retained gate-reviewer session 2026-11-23T07-07-13-993Z_01a2073a-f4c8-7306-83c5-73d99869f25f.jsonl
+      (/tmp/nunc-sixth-gate.report.json). Verified all 17 admitted items (#1..#17
+      across pi-ui-and-index-closure fa5f009 and live-harness-and-scripts-closure
+      49191fc) and zero inclusion of Bucket 3 R1..R5 (against authoritative definitions
+      from tefx/pi#e9a7). Verification on fc6e780: rm -rf dist && npm run build ->
+      0; node scripts/check.mjs all -> 1,184 passed, 0 failed, 3 skipped (107 files);
+      4/4 scripts node --check pass; 26 path-rejection + 7 allowed-path probes pass;
+      git diff --check -> 0.'
+- id: nunc-seventh-contract-and-debloat-closure
+  name: 第七轮全量契约闭环与向下投影去膨胀（Seventh Contract & De-Bloat Closure）
+  status: done
+  gate: All 21 admitted seventh-audit obligations (Bucket 1 C-1..C-12 + Bucket 2 D-1..D-9)
+    closed with zero Bucket 3 (R-1..R-8) regressions, verified via npm run build &&
+    node scripts/check.mjs all.
+  depends_on:
+  - nunc-sixth-contract-and-debloat-closure
+  steps:
+  - id: nunc-seventh-contract-and-debloat-closure.engine-pi-context-and-index-closure
+    name: Engine/Pi 上下文预算、模型设置透传与索引去膨胀闭环（C-1..C-5, D-1..D-3, D-4d）
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      - [C-1] `src/pi/context.ts:toolLayer` — return `tokens: 0` when `tools.length
+      === 0` so empty tool arrays match `estimateToolsTokens([]) === 0` in `src/engine/accounting.ts:28,77`;
+      add discriminating assertion in `tests/pi/context-view.test.ts`.
+
+      - [C-2] `src/engine/accounting.ts:mainContext,mainPlanningEstimate`, `src/pi/context.ts:352`,
+      `src/index.ts:322` — thread optional `fallback?: MechanicalFallbackInfo` and
+      render via `renderMemoryWithFallback(slots, fallback)` whenever `slots.length
+      > 0 || fallback !== undefined`; pass `mechanicalFallback` in `src/pi/context.ts`
+      and `projected.mechanicalFallback` in `src/index.ts`; add empty-M + `mechanicalFallback`
+      tests in `tests/engine/capacity-redesign.test.ts` and `tests/pi/context-view.test.ts`.
+
+      - [C-3] `src/index.ts:settings,getHostSettings` — thread optional `model?: Model<Api>`
+      so `Admission` (`src/index.ts:98`) and `ContextSurface` (`src/index.ts:210`)
+      resolve `compaction` against the passed `model` rather than `ctx.model`, and
+      consolidate repeated `engineConfig(...)` construction in `src/index.ts`.
+
+      - [C-4] `src/index.ts:nunc_memory_read,prepareUiCleanup` — extract a shared
+      helper for pure-text `cleanupCandidates` that filters `messageTextContent(message)
+      !== null` before checking `.length > 0` so `nunc_memory_read` omits `cleanupCandidates`
+      when all in-scope tool results contain only non-text blocks; add regression
+      test in `tests/pi/manual-memory.test.ts`.
+
+      - [C-5] `src/index.ts:session_before_compact`, `src/pi/context.ts:captureSentCut`
+      — call `uiRunning?.abort()` at the start of `session_before_compact`, and require
+      `retiredEntryIds.length > 0` in `captureSentCut` before recording `current.cut`;
+      add overlap test in `tests/pi/context-view.test.ts`.
+
+      - [D-1] `src/engine/accounting.ts:admissionEstimate`, `src/pi/admission.ts:681`
+      — remove dead `allowUsage` / `minimumUsageIndex` / `usageIndex` parameters and
+      branches (simplifying to heuristic `requestTokens(context, imageTokens)` or
+      inlining at `src/pi/admission.ts:681`) and remove dead-branch-only assertions
+      in `tests/engine/capacity-redesign.test.ts`, `tests/engine/replay-planning.test.ts`,
+      `tests/pi/projection-binding.test.ts`, and `tests/pi/admission-ownership.test.ts`.
+
+      - [D-2] `src/pi/projection.ts:carrierIndexIn,injectedCarrierIndex`, `src/pi/index.ts:5`,
+      `src/pi/admission.ts:624` — consolidate `injectedCarrierIndex` into `carrierIndexIn`,
+      call `carrierIndexIn(effectiveContext.messages)` in `src/pi/admission.ts:624`,
+      remove `injectedCarrierIndex` export, and update `tests/pi/stable-memory-path.test.ts`
+      and `tests/pi/projection.test.ts`.
+
+      - [D-3] `src/index.ts:55,91,412,434` — delete `dropAnchors` wrapper and call
+      `clearMemoryAnchors()` directly.
+
+      - [D-4d] `src/index.ts:327-328` — remove redundant `headroomWarned = false;
+      runwayWarned = false;` immediately before `invalidate()`.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Keep `selectReceipt` usage-backed accounting intact while removing dead `admissionEstimate`
+      usage branches.
+
+      - Strictly exclude Bucket 3 (`R-1..R-8`).
+
+
+      Boundary:
+
+      - owner: `node-typescript-engineer`
+
+      - allowed_paths: `src/index.ts`, `src/engine/accounting.ts`, `src/pi/context.ts`,
+      `src/pi/admission.ts`, `src/pi/projection.ts`, `src/pi/index.ts`, `tests/engine/capacity-redesign.test.ts`,
+      `tests/engine/replay-planning.test.ts`, `tests/pi/context-view.test.ts`, `tests/pi/projection-binding.test.ts`,
+      `tests/pi/admission-ownership.test.ts`, `tests/pi/stable-memory-path.test.ts`,
+      `tests/pi/projection.test.ts`, `tests/pi/manual-memory.test.ts`
+
+      - blocked_paths: `.git/**`, `plan.yaml`
+
+      - target_files (mutable production <= 6): `src/index.ts`, `src/engine/accounting.ts`,
+      `src/pi/context.ts`, `src/pi/admission.ts`, `src/pi/projection.ts`, `src/pi/index.ts`
+
+
+      Admit:
+
+      - Run `npm run build && node scripts/check.mjs engine` and targeted `node --test
+      --experimental-strip-types` on all 8 touched test files.
+
+
+      Recovery:
+
+      - Revert partial edits in step worktree if regression checks fail; stop and
+      report if any contract ambiguity arises.'
+    verification: npm run build && node scripts/check.mjs engine && node --test --experimental-strip-types
+      tests/engine/capacity-redesign.test.ts tests/engine/replay-planning.test.ts
+      tests/pi/context-view.test.ts tests/pi/projection-binding.test.ts tests/pi/admission-ownership.test.ts
+      tests/pi/stable-memory-path.test.ts tests/pi/projection.test.ts tests/pi/manual-memory.test.ts
+    evidence_template: Commit SHA + `npm run build && node scripts/check.mjs engine`
+      + targeted test pass receipt for C-1..C-5, D-1..D-3, D-4d.
+    refs:
+    - src/index.ts
+    - src/engine/accounting.ts
+    - src/pi/context.ts
+    - src/pi/admission.ts
+    - src/pi/projection.ts
+    - src/pi/index.ts
+    - tests/engine/capacity-redesign.test.ts
+    - tests/engine/replay-planning.test.ts
+    - tests/pi/context-view.test.ts
+    - tests/pi/projection-binding.test.ts
+    - tests/pi/admission-ownership.test.ts
+    - tests/pi/stable-memory-path.test.ts
+    - tests/pi/projection.test.ts
+    - tests/pi/manual-memory.test.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T09:09:27.712727Z'
+    done_at: '2026-11-23T09:19:02.317340+00:00'
+    evidence: 'Integrated commit 31097a0 (rebased from candidate 0af393c, retained
+      at refs/vectl/retained/nunc-seventh-contract-and-debloat-closure.engine-pi-context-and-index-closure)
+      from isolated worktree .vectl/worktrees/nunc-seventh-contract-and-debloat-closure.engine-pi-context-and-index-closure,
+      exact owner node-typescript-engineer; worktree removed (+12,704 KiB free). Closed
+      C-1 (toolLayer empty tools -> tokens: 0), C-2 (mechanicalFallback threaded through
+      mainContext/mainPlanningEstimate/src/pi/context.ts/src/index.ts), C-3 (settings/getHostSettings/configFor
+      resolve compaction against passed model), C-4 (shared textCleanupCandidates
+      helper filters messageTextContent !== null), C-5 (session_before_compact aborts
+      uiRunning; captureSentCut requires retiredEntryIds.length > 0), D-1 (removed
+      dead admissionEstimate branches & helper), D-2 (consolidated injectedCarrierIndex
+      into carrierIndexIn), D-3 (deleted dropAnchors wrapper), D-4d (removed redundant
+      headroomWarned/runwayWarned reset before invalidate). Worktree verification:
+      rm -rf dist && npm run build -> 0; node scripts/check.mjs engine -> 297/297
+      pass; 9 targeted suites -> 111/111 pass; cleanup consumer tests -> 31/31 pass.'
+  - id: nunc-seventh-contract-and-debloat-closure.live-runner-budget-and-scripts-closure
+    name: Live Runner 结算、账本校验与驱动脚本生命周期闭环（C-6, C-7, C-11, C-12, D-5, D-9）
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      - [C-6] `src/live/runner.ts:settleRun`, `src/live/comparison.ts:166-167` — wrap
+      `await finalizeRun(input, receipt, report)` inside `settleRun()` in a `try/catch`
+      that degrades `report.status = "UNPROVEN"`, sets `report.reason ??= (error instanceof
+      RunnerError ? error.code : "CLEANUP")`, sets `report.cleanup = "retained-for-reconciliation"`,
+      and best-effort persists `report.json` and `owner.json` without rethrowing from
+      `settleRun()`, while preserving direct `finalizeRun()` validation throws; add
+      regression test in `tests/live/lifecycle.test.ts`.
+
+      - [C-7] `src/live/budget.ts:readLedger,ledgerSummary` — in `readLedger()`, validate
+      `record.kind === "terminal"` fields (`at` and `latencyMs` finite non-negative
+      numbers, `stopReason` string, `object(record.usage)` with each usage field either
+      `null` or a finite non-negative number, and `totalTokens` / `cost` present as
+      `number | null`), and in `ledgerSummary.sum(key)` return `null` whenever `typeof
+      r.usage[key] !== "number" || !Number.isFinite(r.usage[key])`; add regression
+      test in `tests/live/budget.test.ts`.
+
+      - [C-11] `scripts/ime-fixture.mjs:20,47-49,66-67`, `scripts/stock-driver.mjs:196-215`
+      — when `mode === "print"` in `scripts/ime-fixture.mjs`, set `outcome = { status:
+      "READY", slot: "s12", sessionFile }` and pass `{ preserveState: true }` (or
+      close only server/watcher without removing `f.state`) so `f.state` (`work/`,
+      `sessions/`, `configFile`, `sessionFile`) survives for the emitted `LAUNCH.txt`
+      recipe until manual teardown; add regression check in `tests/pi/ime-fixture.test.ts`.
+
+      - [C-12] `scripts/stock-driver.mjs:StockFixture.wait,StockFixture.close` — wrap
+      the `setInterval` callback body (`readFileSync(this.logFile, ''utf8'')` and
+      JSON parsing) in `try/catch` calling `finish(e)`, and in `StockFixture.close()`
+      mark the fixture closing/closed and emit `''change''` to settle pending `wait()`
+      timers/promises before deleting files; add regression test in `tests/live/benchmark-repair.test.ts`.
+
+      - [D-5] `tests/live/comparison-native-fixture.ts:8-12` — replace eager top-level
+      `const baseline = await temporaryBaseline();` with lazy memoized `let baseline:
+      Promise<string> | undefined; export const comparisonBaseline = () => (baseline
+      ??= temporaryBaseline());`.
+
+      - [D-9] `tests/live/defaults.test.ts:36-43` — remove duplicate `omittedTotals`
+      and `explicitNull` subprocess preflight checks already covered in `tests/live/optional-quotas.test.ts:48-76`.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Keep direct calls to `finalizeRun()` throwing `RunnerError` as tested by existing
+      unit contracts; only `settleRun()` catches and degrades to `UNPROVEN`.
+
+      - Strictly exclude Bucket 3 (`R-1..R-8`).
+
+
+      Boundary:
+
+      - owner: `node-typescript-engineer`
+
+      - allowed_paths: `src/live/runner.ts`, `src/live/comparison.ts`, `src/live/budget.ts`,
+      `scripts/ime-fixture.mjs`, `scripts/stock-driver.mjs`, `tests/live/lifecycle.test.ts`,
+      `tests/live/budget.test.ts`, `tests/live/benchmark-repair.test.ts`, `tests/pi/ime-fixture.test.ts`,
+      `tests/live/comparison-native-fixture.ts`, `tests/live/defaults.test.ts`
+
+      - blocked_paths: `.git/**`, `plan.yaml`
+
+      - target_files (mutable production/script <= 6): `src/live/runner.ts`, `src/live/comparison.ts`,
+      `src/live/budget.ts`, `scripts/ime-fixture.mjs`, `scripts/stock-driver.mjs`
+
+
+      Admit:
+
+      - Run `npm run build && node scripts/check.mjs engine` and targeted `node --test
+      --experimental-strip-types` on the touched live/UI test suites.
+
+
+      Recovery:
+
+      - Clean up any temporary state roots created during test runs; revert partial
+      edits on failure.'
+    verification: npm run build && node scripts/check.mjs engine && node --test --experimental-strip-types
+      tests/live/lifecycle.test.ts tests/live/budget.test.ts tests/live/benchmark-repair.test.ts
+      tests/pi/ime-fixture.test.ts tests/live/defaults.test.ts
+    evidence_template: Commit SHA + `npm run build && node scripts/check.mjs engine`
+      + targeted test pass receipt for C-6, C-7, C-11, C-12, D-5, D-9.
+    refs:
+    - src/live/runner.ts
+    - src/live/comparison.ts
+    - src/live/budget.ts
+    - scripts/ime-fixture.mjs
+    - scripts/stock-driver.mjs
+    - tests/live/lifecycle.test.ts
+    - tests/live/budget.test.ts
+    - tests/live/benchmark-repair.test.ts
+    - tests/pi/ime-fixture.test.ts
+    - tests/live/comparison-native-fixture.ts
+    - tests/live/defaults.test.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T09:09:27.712976Z'
+    done_at: '2026-11-23T09:17:49.275543+00:00'
+    evidence: 'Integrated commit c80c3fc (rebased from candidate 97c3e68, retained
+      at refs/vectl/retained/nunc-seventh-contract-and-debloat-closure.live-runner-budget-and-scripts-closure)
+      from isolated worktree .vectl/worktrees/nunc-seventh-contract-and-debloat-closure.live-runner-budget-and-scripts-closure,
+      exact owner node-typescript-engineer; worktree removed (+12,876 KiB free). Closed
+      C-6 (settleRun degrades finalizeRun failures to UNPROVEN + best-effort report/owner
+      persistence while direct finalizeRun still throws), C-7 (readLedger terminal
+      field validation + ledgerSummary finite numeric usage check), C-11 (ime-fixture
+      print mode READY + preserveState: true), C-12 (StockFixture.wait poll try/catch
+      + close() closing/change settle), D-5 (lazy memoized comparisonBaseline), D-9
+      (removed duplicate omittedTotals/explicitNull checks in defaults.test.ts). Worktree
+      verification: rm -rf dist && npm run build -> 0; node scripts/check.mjs engine
+      -> 297/297 pass; 5 targeted suites -> 42/42 pass; scripts node --check -> 0.'
+  - id: nunc-seventh-contract-and-debloat-closure.live-observer-scenarios-and-oracle-closure
+    name: Live Observer 写入配额、Oracle 截止期透传与控制校验闭环（C-8, C-9, C-10）
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      - [C-8] `src/live/observer.ts:306-312`, `src/live/scenarios.ts:464-474` — enforce
+      the `1,000,000`-byte `WRITE_SIZE` admission cap on `edit` tool mutations in
+      `src/live/observer.ts` (computing/checking resulting byte size before allowing
+      the edit or blocking edits that would exceed `1,000,000` bytes with `WRITE_SIZE`),
+      matching `write` and downstream `scoreArtifacts`; add regression test in `tests/live/defensive-controls.test.ts`.
+
+      - [C-9] `src/live/metrics-oracle.ts:50-76,93-140,151-337`, `src/live/guidance.ts:80,93`,
+      `src/live/worker.ts:728-752` — thread optional `{ deadline?: number; signal?:
+      AbortSignal }` from `src/live/worker.ts` through `scoreGuidance` into `executeMetricsOracle`,
+      checking `signal?.aborted` and remaining deadline before each `spawnSync` call,
+      bounding each subprocess timeout to `Math.min(limitMs, Math.max(1, deadline
+      - Date.now()))`, and preventing `runSegment` from marking `OBSERVED` if `deadline`
+      or `signal` expired during oracle evaluation; add regression test in `tests/live/memory-guidance-observation.test.ts`.
+
+      - [C-10] `src/live/scenarios.ts:validateControl` — require `value.duringTurn
+      === undefined && value.trigger === undefined` on the `afterTurn` branch so external
+      controls cannot supply both `afterTurn` and `duringTurn`/`trigger`; add regression
+      test in `tests/live/scenarios.test.ts`.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Preserve existing `executeMetricsOracle` behavior when `{ deadline, signal
+      }` is omitted by standalone callers.
+
+      - Strictly exclude Bucket 3 (`R-1..R-8`).
+
+
+      Boundary:
+
+      - owner: `node-typescript-engineer`
+
+      - allowed_paths: `src/live/observer.ts`, `src/live/scenarios.ts`, `src/live/metrics-oracle.ts`,
+      `src/live/guidance.ts`, `src/live/worker.ts`, `tests/live/defensive-controls.test.ts`,
+      `tests/live/scenarios.test.ts`, `tests/live/memory-guidance-observation.test.ts`
+
+      - blocked_paths: `.git/**`, `plan.yaml`
+
+      - target_files (mutable production <= 6): `src/live/observer.ts`, `src/live/scenarios.ts`,
+      `src/live/metrics-oracle.ts`, `src/live/guidance.ts`, `src/live/worker.ts`
+
+
+      Admit:
+
+      - Run `npm run build && node scripts/check.mjs engine` and targeted `node --test
+      --experimental-strip-types` on `tests/live/defensive-controls.test.ts`, `tests/live/scenarios.test.ts`,
+      and `tests/live/memory-guidance-observation.test.ts`.
+
+
+      Recovery:
+
+      - Revert partial edits in step worktree if tests fail; stop and report if any
+      contract ambiguity arises.'
+    verification: npm run build && node scripts/check.mjs engine && node --test --experimental-strip-types
+      tests/live/defensive-controls.test.ts tests/live/scenarios.test.ts tests/live/memory-guidance-observation.test.ts
+    evidence_template: Commit SHA + `npm run build && node scripts/check.mjs engine`
+      + targeted test pass receipt for C-8, C-9, C-10.
+    refs:
+    - src/live/observer.ts
+    - src/live/scenarios.ts
+    - src/live/metrics-oracle.ts
+    - src/live/guidance.ts
+    - src/live/worker.ts
+    - tests/live/defensive-controls.test.ts
+    - tests/live/scenarios.test.ts
+    - tests/live/memory-guidance-observation.test.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T09:09:27.713061Z'
+    done_at: '2026-11-23T09:19:27.642212+00:00'
+    evidence: 'Integrated commit 2613b49 (rebased from candidate 27cb1de, retained
+      at refs/vectl/retained/nunc-seventh-contract-and-debloat-closure.live-observer-scenarios-and-oracle-closure)
+      from isolated worktree .vectl/worktrees/nunc-seventh-contract-and-debloat-closure.live-observer-scenarios-and-oracle-closure,
+      exact owner node-typescript-engineer; worktree removed (+13,048 KiB free). Closed
+      C-8 (observer edit admission previews resulting content via createEditTool with
+      1,000,000-byte WRITE_SIZE cap), C-9 (threaded OracleBounds deadline/signal from
+      worker -> scoreArtifacts -> scoreGuidance -> executeMetricsOracle with pre/post
+      subprocess checks and bounded timeout, plus worker expiration check before OBSERVED),
+      C-10 (validateControl afterTurn rejects duringTurn !== undefined || trigger
+      !== undefined). Worktree verification: rm -rf dist && npm run build -> 0; node
+      scripts/check.mjs engine -> 297/297 pass; 3 targeted suites -> 38/38 pass; reverse-dep
+      15/15 + 1/1 pass; integrated rm -rf dist && npm run build -> 0.'
+  - id: nunc-seventh-contract-and-debloat-closure.engine-pi-inline-and-test-fixture-debloat
+    name: Engine/Pi 内联去重与测试夹具合并（D-4a..D-4c, D-6..D-8）
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      - [D-4a] `src/pi/payload.ts:3,386` — remove duplicate `estimateTextTokens` import
+      and use `textTokens` consistently.
+
+      - [D-4b] `src/engine/engine.ts:121,134` — reuse `survivingCleanup` at `src/engine/engine.ts:134`
+      instead of recomputing `retainedToolResultCleanup(fallbackCandidate.kept, priorCleanup)`.
+
+      - [D-4c] `src/pi/manual.ts:228` — bind `const active = effectiveActive(before,
+      true)` once and pass `active, retainedEntries: active` (or `retainedEntries:
+      structuredClone(active)`) instead of calling `effectiveActive(before, true)`
+      twice.
+
+      - [D-6] `tests/pi/payload-append.test.ts:43-112` — consolidate `nativeCatalogAppend`
+      and `nativeAppend` into one configurable local helper.
+
+      - [D-7] `tests/pi/fixtures.ts`, `tests/pi/active-memory.test.ts:12-14`, `tests/pi/request-receipts.test.ts:40-42`
+      — export shared `mains(observations)` from `tests/pi/fixtures.ts` and import
+      it in both test files.
+
+      - [D-8] `tests/pi/config.test.ts:220-254`, `tests/pi/reporting.test.ts:14-55`
+      — merge unique `/nunc` reporting assertions from `tests/pi/config.test.ts:220-254`
+      into `tests/pi/reporting.test.ts:14-55` and remove the duplicate test from `tests/pi/config.test.ts`.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Preserve all existing behavioral assertions when merging `/nunc` reporting
+      checks into `tests/pi/reporting.test.ts`.
+
+      - Strictly exclude Bucket 3 (`R-1..R-8`).
+
+
+      Boundary:
+
+      - owner: `node-typescript-engineer`
+
+      - allowed_paths: `src/engine/engine.ts`, `src/pi/manual.ts`, `src/pi/payload.ts`,
+      `tests/pi/payload-append.test.ts`, `tests/pi/active-memory.test.ts`, `tests/pi/request-receipts.test.ts`,
+      `tests/pi/fixtures.ts`, `tests/pi/config.test.ts`, `tests/pi/reporting.test.ts`
+
+      - blocked_paths: `.git/**`, `plan.yaml`
+
+      - target_files (mutable production <= 6): `src/engine/engine.ts`, `src/pi/manual.ts`,
+      `src/pi/payload.ts`
+
+
+      Admit:
+
+      - Run `npm run build && node scripts/check.mjs engine` and targeted `node --test
+      --experimental-strip-types` on all touched `tests/pi/*.test.ts` files.
+
+
+      Recovery:
+
+      - Revert partial edits in step worktree if tests fail; stop and report if any
+      contract ambiguity arises.'
+    verification: npm run build && node scripts/check.mjs engine && node --test --experimental-strip-types
+      tests/pi/payload-append.test.ts tests/pi/active-memory.test.ts tests/pi/request-receipts.test.ts
+      tests/pi/config.test.ts tests/pi/reporting.test.ts
+    evidence_template: Commit SHA + `npm run build && node scripts/check.mjs engine`
+      + targeted test pass receipt for D-4a..D-4c, D-6..D-8.
+    refs:
+    - src/engine/engine.ts
+    - src/pi/manual.ts
+    - src/pi/payload.ts
+    - tests/pi/payload-append.test.ts
+    - tests/pi/active-memory.test.ts
+    - tests/pi/request-receipts.test.ts
+    - tests/pi/fixtures.ts
+    - tests/pi/config.test.ts
+    - tests/pi/reporting.test.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T09:09:27.713138Z'
+    done_at: '2026-11-23T09:15:43.452271+00:00'
+    evidence: 'Integrated commit 0caa91d (retained at refs/vectl/retained/nunc-seventh-contract-and-debloat-closure.engine-pi-inline-and-test-fixture-debloat)
+      from isolated worktree .vectl/worktrees/nunc-seventh-contract-and-debloat-closure.engine-pi-inline-and-test-fixture-debloat,
+      exact owner node-typescript-engineer. Closed D-4a (removed duplicate estimateTextTokens
+      import in src/pi/payload.ts, using textTokens), D-4b (reused survivingCleanup
+      in src/engine/engine.ts), D-4c (bound effectiveActive(before, true) once in
+      src/pi/manual.ts), D-6 (consolidated nativeCatalogAppend/nativeAppend in tests/pi/payload-append.test.ts),
+      D-7 (shared mains(observations) in tests/pi/fixtures.ts), D-8 (merged /nunc
+      reporting assertions into tests/pi/reporting.test.ts and removed duplicate in
+      tests/pi/config.test.ts). Worktree verification: rm -rf dist && npm run build
+      -> 0; node scripts/check.mjs engine -> 297/297 pass; 5 Pi suites -> 96/96 pass.'
+  - id: nunc-seventh-contract-and-debloat-closure.seventh-closure-delta-gate
+    name: 第七轮契约与去膨胀全量回归 DELTA 门禁验收（C-1..C-12, D-1..D-9）
+    status: done
+    description: "step_type: gate\nrepo_change_policy: no_repo_change\ngate_kind:\
+      \ DELTA\n\nDeliver:\n- Execute `npm run build && node scripts/check.mjs all`\
+      \ and verify that all 21 admitted seventh-audit obligations (`C-1..C-12`, `D-1..D-9`,\
+      \ including `d5-baseline-lifetime-repair`) across the upstream steps are closed\
+      \ in integrated `HEAD` with zero `Bucket 3` (`R-1..R-8`) regressions and zero\
+      \ untracked scratch artifacts.\n- Verify `NO-BUCKET-3-R1-TO-R8` against the\
+      \ authoritative Round 7 `Bucket 3 (R-1..R-8)` definitions:\n  - `R-1` (`src/pi/payload.ts:177-178`):\
+      \ keep `grewTokens` full-payload net serialized delta.\n  - `R-2` (`src/pi/admission.ts:698-699`):\
+      \ keep `memoryContent` on `nunc:admission` when projection binding is non-empty.\n\
+      \  - `R-3` (`src/live/defaults.ts:23`): keep `resolveInput` baseline `nunc:\
+      \ {}` without reading host `~/.pi/agent/settings.json`.\n  - `R-4` (`src/live/defaults.ts:43-51`,\
+      \ `src/live/runner.ts:23`): keep existing `overrides` / 512 KB stdin limits\
+      \ without artificial `overrides` count caps.\n  - `R-5` (`src/engine/accounting.ts:226`):\
+      \ keep `memoryTokens(slots, imageTokens?, fallback?)` 3-parameter signature.\n\
+      \  - `R-6` (`src/engine/calibration.ts:17-27`, `src/engine/accounting.ts:19,\
+      \ 71`, `src/engine/pi-model.ts:94-103`): keep `limitsDigest` v1 schema, `estimateTextTokens`/`textTokens`\
+      \ parity exports, and `maintenanceThinkingOptions` SDK parity.\n  - `R-7` (`src/index.ts:212-279`):\
+      \ keep `prepareUiCleanup` at `cut = 0` and `lastSentMemory` precondition.\n\
+      \  - `R-8` (`src/live/comparison.ts:38-43` vs `src/live/worker.ts:680-687`):\
+      \ keep `scopedUsage` and `segmentUsage` independent (`KEEP_SEPARATE`).\n\nImplementation\
+      \ Notes (Non-Binding):\n- Inspect `git diff ca090dc7180dab434e5d35d1bd926c0e65298497..HEAD`\
+      \ against the 21 admitted items and the embedded `Bucket 3 (R-1..R-8)` definitions\
+      \ above, confirming no LOC-quota gates or Bucket 3 items were introduced.\n\n\
+      Boundary:\n- owner: `gate-reviewer`\n- allowed_paths: read-only inspection of\
+      \ repository and test runner execution\n- blocked_paths: `.git/**`, `plan.yaml`,\
+      \ `src/**`, `scripts/**`, `tests/**`\n\nAdmit:\n- Clean `git status --short`,\
+      \ zero-error `npm run build && node scripts/check.mjs all`, item-by-item verification\
+      \ receipt for `C-1..C-12` and `D-1..D-9`, and explicit `NO-BUCKET-3-R1-TO-R8`\
+      \ verification against `R-1..R-8`.\n\nRecovery:\n- Read-only gate; on any obligation\
+      \ gap or regression failure, report exact failing obligation ID and file:line\
+      \ without modifying repository files."
+    verification: npm run build && node scripts/check.mjs all
+    evidence_template: Integrated HEAD SHA + `npm run build && node scripts/check.mjs
+      all` exit 0 receipt + 21/21 obligation verification table (C-1..C-12, D-1..D-9)
+      + Bucket 3 exclusion confirmation.
+    refs:
+    - src/index.ts
+    - src/engine/accounting.ts
+    - src/engine/engine.ts
+    - src/pi/context.ts
+    - src/pi/admission.ts
+    - src/pi/projection.ts
+    - src/pi/index.ts
+    - src/pi/manual.ts
+    - src/pi/payload.ts
+    - src/live/runner.ts
+    - src/live/comparison.ts
+    - src/live/budget.ts
+    - src/live/observer.ts
+    - src/live/scenarios.ts
+    - src/live/metrics-oracle.ts
+    - src/live/guidance.ts
+    - src/live/worker.ts
+    - scripts/ime-fixture.mjs
+    - scripts/stock-driver.mjs
+    - tests/live/comparison-native-fixture.ts
+    - tests/live/comparison-native.test.ts
+    - tests/live/observation-method.test.ts
+    depends_on:
+    - nunc-seventh-contract-and-debloat-closure.engine-pi-context-and-index-closure
+    - nunc-seventh-contract-and-debloat-closure.live-runner-budget-and-scripts-closure
+    - nunc-seventh-contract-and-debloat-closure.live-observer-scenarios-and-oracle-closure
+    - nunc-seventh-contract-and-debloat-closure.engine-pi-inline-and-test-fixture-debloat
+    - nunc-seventh-contract-and-debloat-closure.d5-baseline-lifetime-repair
+    agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-23T09:57:27.625237Z'
+    done_at: '2026-11-23T10:14:12.796644+00:00'
+    evidence: 'Gate PASS (PHASE_GATE / DELTA) on pinned commit git:1756ca4095d296b89361076d50dc4ce59fc19dfe
+      via fresh gate-reviewer session (2026-11-23T09-20-08-387Z_01a207b4-a2c1-75fd-999b-3ceea3ae96e5.jsonl).
+      Validator exit 0: {"valid":true,"binding_checked":true,"kind":"gate","schema_version":"gate.report.v2","evidence_disposition":"POSITIVE_GATE_EVIDENCE","errors":[]}
+      (/tmp/nunc-seventh-gate.binding.json + /tmp/nunc-seventh-gate.report.json).
+      All 26 binding requirements PROVEN (C-1..C-12, D-1..D-9 including D-5 suite-lifetime
+      repair d52afb5, NO-BUCKET-3-R1-TO-R8 across R-1..R-8, BUILD-AND-OFFLINE-CHECK-ALL,
+      zero LOC-quota gates). Clean rm -rf dist && npm run build exit 0; /usr/bin/env
+      -u NODE_OPTIONS PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0 node scripts/check.mjs
+      all exit 0 (107 files, 1,196 tests: 1,193 passed, 0 failed, 3 skipped, 677,746
+      ms). git status --short empty; git diff --check exit 0.'
+  - id: nunc-seventh-contract-and-debloat-closure.d5-baseline-lifetime-repair
+    name: D-5 共享基线夹具套件级生命周期修复（comparisonBaseline Suite-Lifetime Closure）
+    status: done
+    description: 'step_type: implementation
+
+      repo_change_policy: modifies_repo
+
+
+      [REQUIRES_SKILL: contract-and-simplicity]
+
+
+      Deliver:
+
+      - [D-5] `tests/live/comparison-native-fixture.ts:comparisonBaseline` (and `tests/live/comparison-native.test.ts`,
+      `tests/live/observation-method.test.ts` if needed) — preserve `D-5` shared fixture
+      helper deduplication (`comparisonBaseline()`) while binding `temporaryBaseline()`
+      initialization and `node:test` `after(cleanup)` registration to the root file-suite
+      lifetime rather than the first consuming `test(...)`''s subtest scope, so subsequent
+      tests in `tests/live/comparison-native.test.ts` and `tests/live/observation-method.test.ts`
+      never hit `ENOENT` on a prematurely deleted baseline checkout and non-baseline
+      consumers (`guidance-native.test.ts`, `commit-association.test.ts`) do not eagerly
+      allocate a baseline worktree.
+
+
+      Implementation Notes (Non-Binding):
+
+      - Root cause on `git:4b371ee`: `temporaryBaseline()` (`tests/live/fixtures.ts:13-33`)
+      registers `after(cleanup)` inside `node:test`''s `AsyncLocalStorage` context.
+      When `comparisonBaseline()` lazily invokes `temporaryBaseline()` inside the
+      first `test(...)` body, `after(cleanup)` attaches to that single subtest and
+      removes the git worktree as soon as the first test finishes, while `baseline`
+      remains memoized for the remaining tests in the file.
+
+      - Capturing the module-evaluation root async context via `AsyncResource.bind`
+      from `node:async_hooks` (e.g., `const startBaseline = AsyncResource.bind(()
+      => temporaryBaseline()); export const comparisonBaseline = () => (baseline ??=
+      startBaseline());`) or initializing at suite scope ensures `after(cleanup)`
+      registers on the file-level test runner while keeping `comparisonBaseline()`
+      lazy for files that never call it.
+
+      - Treat `tests/live/fixtures.ts` as read-only reference. Strictly exclude Bucket
+      3 (`R-1..R-8`).
+
+
+      Boundary:
+
+      - owner: `node-typescript-engineer`
+
+      - allowed_paths: `tests/live/comparison-native-fixture.ts`, `tests/live/comparison-native.test.ts`,
+      `tests/live/observation-method.test.ts`
+
+      - blocked_paths: `.git/**`, `plan.yaml`, `package.json`, `tsconfig.json`
+
+
+      Admit:
+
+      - Run `npm run build && node scripts/check.mjs engine` and `node --test --experimental-strip-types
+      tests/live/comparison-native.test.ts tests/live/observation-method.test.ts tests/live/script-authorization.test.ts
+      tests/live/guidance-native.test.ts tests/live/commit-association.test.ts`, and
+      verify `git worktree list` leaves no leaked `nunc-baseline-*` worktrees.
+
+
+      Recovery:
+
+      - Clean up any temporary state roots or worktrees created during test runs;
+      revert partial edits on failure.'
+    verification: npm run build && node scripts/check.mjs engine && node --test --experimental-strip-types
+      tests/live/comparison-native.test.ts tests/live/observation-method.test.ts tests/live/script-authorization.test.ts
+      tests/live/guidance-native.test.ts tests/live/commit-association.test.ts
+    evidence_template: Commit SHA + `npm run build && node scripts/check.mjs engine`
+      + targeted live test pass receipt (`comparison-native.test.ts`, `observation-method.test.ts`,
+      `script-authorization.test.ts`, `guidance-native.test.ts`, `commit-association.test.ts`)
+      with zero leaked baseline worktrees.
+    refs:
+    - tests/live/comparison-native-fixture.ts
+    - tests/live/comparison-native.test.ts
+    - tests/live/observation-method.test.ts
+    - tests/live/fixtures.ts
+    depends_on:
+    - nunc-seventh-contract-and-debloat-closure.live-runner-budget-and-scripts-closure
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T09:48:35.650929Z'
+    done_at: '2026-11-23T09:57:18.696252+00:00'
+    evidence: 'Integrated commit d52afb5 (retained at refs/vectl/retained/nunc-seventh-contract-and-debloat-closure.d5-baseline-lifetime-repair)
+      from isolated worktree .vectl/worktrees/nunc-seventh-contract-and-debloat-closure.d5-baseline-lifetime-repair,
+      exact owner node-typescript-engineer; worktree removed (+12,772 KiB free). Bound
+      lazy comparisonBaseline() to module-evaluation async context via AsyncResource.bind
+      in tests/live/comparison-native-fixture.ts so temporaryBaseline() after(cleanup)
+      registers at file-suite lifetime, and added cross-test survival regression in
+      tests/live/comparison-native.test.ts. Worktree verification: rm -rf dist &&
+      npm run build -> 0; node scripts/check.mjs engine -> 297/297 pass; 5 live suites
+      (comparison-native, observation-method, script-authorization, guidance-native,
+      commit-association) -> 31/31 pass; zero leaked worktrees; integrated rm -rf
+      dist && npm run build -> 0.'

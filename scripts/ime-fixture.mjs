@@ -16,7 +16,9 @@ const memory = {
   version: 1, nextId: 20,
   slots: [{ id: "s12", text: "IME fixture slot. Type CJK here after F7 or /nunc Enter." }],
 };
+let outcome = { status: "FAIL" };
 const f = await new StockFixture().setup({ artifactParent: join(root, ".scratch/ime-fixture") });
+try {
 const sessions = f.env.PI_CODING_AGENT_DIR.replace(/agent$/, "sessions");
 const sm = SessionManager.create(f.env.HOME.replace(/home$/, "work"), sessions);
 const userId = sm.appendMessage({ role: "user", content: "IME fixture seed.", timestamp: Date.now() });
@@ -43,13 +45,11 @@ env ${envLines} \\\n${process.execPath} ${args.map(a => JSON.stringify(a)).join(
 `;
 await writeFile(join(f.dir, "LAUNCH.txt"), recipe);
 if (mode === "print") {
+  outcome = { status: "READY", slot: "s12", sessionFile };
   console.log(recipe);
   console.log(JSON.stringify({ status: "READY", recipe: join(f.dir, "LAUNCH.txt"), sessionFile, slot: "s12", teardown: `rm -rf ${f.dir}` }));
-  process.exit(0);
-}
+} else {
 const strip = text => text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-let outcome = { status: "FAIL" };
-try {
   const p = f.start("tui", sessionFile);
   await f.wait(() => f.log.some(e => e.type === "start" && e.data.mode === "tui"), "tui start");
   p.keys("\x1b[18~");
@@ -60,10 +60,11 @@ try {
   await new Promise(resolve => setTimeout(resolve, 200));
   await p.quit();
   outcome = { status: "PASS", slot: "s12", opened: true };
+}
 } catch (error) {
   outcome = { status: "FAIL", error: error instanceof Error ? error.message : String(error) };
   throw error;
 } finally {
-  await f.close(outcome);
-  console.log(JSON.stringify({ ...outcome, dir: f.dir }, null, 2));
+  await f.close(outcome, { preserveState: outcome.status === "READY" });
+  if (mode !== "print") console.log(JSON.stringify({ ...outcome, dir: f.dir }, null, 2));
 }

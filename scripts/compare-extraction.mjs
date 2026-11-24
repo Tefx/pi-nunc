@@ -7,7 +7,7 @@ const script = fileURLToPath(import.meta.url), repository = resolve(dirname(scri
 const flags = process.argv.slice(2);
 try {
   if (flags.length > 1 || (flags.length === 1 && !["--preflight", "--worker"].includes(flags[0]))) throw new Error("ARGUMENTS");
-  const { parseInput, preflight } = await import("../dist/src/live/contract.js");
+  const { parseComparisonInput, preflight } = await import("../dist/src/live/contract.js");
   let value = await readInput(flags[0] === "--worker");
   if (flags[0] !== "--worker") {
     if (!value || typeof value !== "object" || !("comparison" in value)) {
@@ -16,12 +16,10 @@ try {
     }
     const { resolveInput } = await import("../dist/src/live/defaults.js");
     value = await resolveInput(value);
-    const { parseComparisonInput } = await import("../dist/src/live/contract.js");
-    parseComparisonInput(value);
+    value = parseComparisonInput(value);
   }
   if (flags[0] === "--preflight") {
-    const { parseComparisonInput } = await import("../dist/src/live/contract.js");
-    const input = parseComparisonInput(value);
+    const input = value;
     const receipt = await preflight(input, repository);
     const limitations = [
       "No task state created, credentials resolved, or model calls made. Internal binding protects candidate/target identity; no receipt must be returned by the caller."

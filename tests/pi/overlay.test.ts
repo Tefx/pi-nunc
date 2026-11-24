@@ -582,7 +582,7 @@ test("context nodes distinguish unobserved memory and expose fallback carrier an
   const unobserved = buildContextNodes({ current: { ...observed.current, layout: withoutMemory } }).get("current:M")!;
   assert.equal(unobserved.description, "not observed");
   assert.equal(unobserved.preview, "M not in this observation");
-  const layout: ContextLayout = { ...withoutMemory, memory: { slots: [], tokens: 20, envelopeTokens: 20 }, memoryIndex: 0 };
+  const layout: ContextLayout = { ...withoutMemory, memory: { slots: [], tokens: 20 }, memoryIndex: 0 };
   const last: LastMainContext = { scope: "last-main", observedAt: 0, sessionId: "test", leafId: null,
     model: { provider: "test", id: "test", api: "test" }, outcome: "delegate", layout,
     payload: { mode: "identity", categories: [], transform: "codex-system-instructions" } };

@@ -12,15 +12,13 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { repository, temporaryBaseline } from "./fixtures.js";
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 
-const baseline = await temporaryBaseline("1d4fc4a210b64f71871ab3f5c10093215a25990c");
-
 test("real native serializer refuses missing/off/wrong thinking and wrong model before transport", { timeout: 30000 }, async () => {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const { openrouterProvider } = await import("@earendil-works/pi-ai/providers/openrouter");
   const f = await new StockFixture().setup({ timeoutMs: 25000 });
+  try {
   const model: Model<"openai-completions"> = { id: "openai/gpt-5.6-luna", name: "Controlled serializer", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint, reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const ledger = new BudgetLedger(join(f.dir, "ledger.jsonl"), { maxCalls: 20, maxTotalTokens: 1600000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 25000 }, Date.now() + 25000, new AbortController().signal);
-  try {
     const rawLedger = new BudgetLedger(ledger.path, ledger.limits, ledger.deadline, ledger.signal, "raw-maintenance-default");
     const raw = await boundedProvider(openrouterProvider(), [model], rawLedger, { requireThinkingLevel: "low" }).stream(model, normalizeContext({ messages: [] }), { apiKey: "isolated-nunc-fixture", maxTokens: 1000 }).result();
     assert.equal(raw.stopReason, "error"); assert.match(raw.errorMessage!, /THINKING_UNAPPLIED/); assert.equal(f.requests.length, 0);
@@ -46,14 +44,16 @@ test("real native serializer refuses missing/off/wrong thinking and wrong model 
 // No model calls: stock serialization, HTTP, tool effects, reload, compaction and JSONL all execute.
 // Controlled usage intentionally supplies the positive threshold premise; the low-usage case falsifies it.
 async function taskFileHost(group: "native" | "current" | "candidate", tools = true, lowUsage: boolean | "infeasible" | "reachable" | "defer-then-progress" = false, ordinaryExtra = false) {
+  const currentRepository = group === "current" ? await temporaryBaseline("1d4fc4a210b64f71871ab3f5c10093215a25990c") : repository;
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 160000 });
+  try {
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
-    comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: baseline, ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" } } },
+    comparison: { modes: ["defaults"], targets: { native: { repository }, candidate: { repository }, current: { repository: currentRepository, ref: "1d4fc4a210b64f71871ab3f5c10093215a25990c" } } },
     overrides: [{ requirement: "maintenance-thinking", maintenanceThinking: "low", reason: "Controlled low-effort native serializer proof" }, ...(tools ? [] : [{ requirement: "memory-tools-off", memoryTools: false, reason: "Actual tools-off comparison" }])],
     limits: { maxCalls: 40, maxTotalTokens: 3200000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
     scenarios: [{ id: "g4", variant: "task-file", config: { compaction: { enabled: ordinaryExtra, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
@@ -84,7 +84,6 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
     }
     assert(step < sequence.length, "no repeated main effects"); return sequence[step++];
   };
-  try {
     const report = await runSegment({ input, scenarioIndex: 0, deadline: Date.now() + 150000, resume: false, group }, {
       models: [model], controlledModels: { providers: { openrouter: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [model] } } },
     });
@@ -96,7 +95,7 @@ async function taskFileHost(group: "native" | "current" | "candidate", tools = t
     if (lowUsage === "defer-then-progress") {
       assert(report.preparations!.some((p: any) => p.deferred === true), "first read was genuinely deferred when insufficient");
     }
-    assert.equal(report.status, "OBSERVED", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic, prerequisites: report.prerequisites }));
+    assert.equal(report.status, "OBSERVED", JSON.stringify({ status: report.status, reason: report.reason, diagnostic: report.diagnostic, preparations: report.preparations, prerequisites: report.prerequisites }));
     assert.equal(report.nextTurn, 1);
     assert.equal(report.observedFacts!.guardApplicability, group === "native" ? "NOT_APPLICABLE" : "APPLICABLE", "actual prechange retains the required-item protocol");
     assert.equal(step, sequence.length); assert.equal(maintenance, group === "native" ? 0 : ordinaryExtra ? 4 : 3);
@@ -134,6 +133,7 @@ test("task-file genuinely insufficient first read defers and then succeeds when 
 test("task-file actual blocked command receives truthful diagnostic, recovers with permitted task command, and completes self-verification", { timeout: 45000 }, async () => {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 40000 });
+  try {
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
@@ -166,7 +166,6 @@ test("task-file actual blocked command receives truthful diagnostic, recovers wi
     }
     assert(step < sequence.length); return sequence[step++];
   };
-  try {
     const report = await runSegment({ input, scenarioIndex: 0, deadline: Date.now() + 40000, resume: false, group: "candidate" }, {
       models: [model], controlledModels: { providers: { openrouter: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [model] } } },
     });

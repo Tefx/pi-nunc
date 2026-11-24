@@ -4,9 +4,9 @@ import { isDeepStrictEqual } from "node:util";
 import { createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools, getInitialSystemMessage, normalizeContext, type Api, type AssistantMessage, type Context, type Model, type Provider, type SimpleStreamOptions, type SystemMessage, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { MechanicalFallbackInfo, Complete, EngineConfig, Memory, ActiveEntry } from "../engine/index.js";
-import { admissionEstimate, inputLimit, isSystemMessage, mainAdmissionLimit, memoryTokens, messageTokens, outputFloor, requestTokens, textTokens, usableAssistantUsageTokens } from "../engine/accounting.js";
+import { inputLimit, isSystemMessage, mainAdmissionLimit, memoryTokens, messageTokens, outputFloor, requestTokens, textTokens, usableAssistantUsageTokens } from "../engine/accounting.js";
 import { renderMemoryWithFallback } from "../engine/memory.js";
-import { isNuncCarrier, peekMemoryAnchor } from "./projection.js";
+import { carrierIndexIn, isNuncCarrier, peekMemoryAnchor } from "./projection.js";
 import { EngineError, integer, legalCuts, record } from "../engine/validation.js";
 import { omitsRouteOutputCap } from "../engine/pi-model.js";
 import { authorizePayload, classifyPayloadChange, codexSystemInstructionRewrite, jsonView, lastUserTextAppend, outputCapPaths, outputCapState, payloadMode, type PayloadObservation } from "./payload.js";
@@ -79,7 +79,7 @@ export interface RequestProjectionBinding {
   mechanicalFallback?: MechanicalFallbackInfo;
   memoryIndex?: number;
 }
-type BoundProjection = RequestProjectionBinding & { key: object; identities: ReadonlySet<object>; convertedSnapshots: unknown[]; carrierSnapshot: unknown; memoryIndex?: number };
+type BoundProjection = RequestProjectionBinding & { identities: ReadonlySet<object>; convertedSnapshots: unknown[]; carrierSnapshot: unknown; memoryIndex?: number };
 function systemHistory(context: Context): unknown {
   let after = 0;
   return jsonView(context.messages.flatMap(message => {
@@ -188,10 +188,9 @@ export class Admission {
   private activeProjections = new WeakMap<object, BoundProjection>();
   bindProjection(binding: RequestProjectionBinding): void {
     const identities = new Set(binding.identityMessages ?? binding.messages);
-    const key = binding.messages.find(message => !isSystemMessage(message) && identities.has(message));
-    if (!key) return; // No surviving object provenance: fresh accounting, no receipt.
+    if (!binding.messages.some(message => !isSystemMessage(message) && identities.has(message))) return; // No surviving object provenance: fresh accounting, no receipt.
     const bound: BoundProjection = {
-      ...binding, key, identities,
+      ...binding, identities,
       convertedSnapshots: binding.messages.map(message => identities.has(message) ? undefined : jsonView(message)),
       model: structuredClone(binding.model),
       messages: [...binding.messages],
@@ -671,7 +670,7 @@ export class Admission {
             + Math.max(initialMetadataTokens, JSON.stringify(options?.metadata ?? {}).length) + growth;
         };
         const deliveredMemoryIndex = selected.validAssociation && selected.hasM
-          ? effectiveContext.messages.findIndex(isNuncCarrier) : undefined;
+          ? carrierIndexIn(effectiveContext.messages) : undefined;
         let estimateTokens: number;
         let estimator: "pi-heuristic" | "pi-usage-backed";
         if (selected.receipt) {
@@ -679,7 +678,7 @@ export class Admission {
           estimateTokens = selected.receiptTokens;
         } else {
           estimator = "pi-heuristic";
-          estimateTokens = admissionEstimate(effectiveContext, model, config.imageTokens).tokens;
+          estimateTokens = requestTokens(effectiveContext, config.imageTokens);
         }
         inputTokens = estimateTokens + config.main.extraInputTokens + initialMetadataTokens;
         const plannedInputLimit = inputLimit(model, config.main);

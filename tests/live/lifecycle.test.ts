@@ -5,7 +5,7 @@ import { lstat, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { openHost } from "../../src/live/host.js";
-import { finalizeRun, launchWorker, type RunReport } from "../../src/live/runner.js";
+import { finalizeRun, settleRun, launchWorker, type RunReport } from "../../src/live/runner.js";
 import { ledgerSummary } from "../../src/live/budget.js";
 import { preflight, type Receipt } from "../../src/live/contract.js";
 import { fixture, repository } from "./fixtures.js";
@@ -106,6 +106,32 @@ test("actual worker target/binding rejection returns bounded diagnostics and rec
       assert.equal(saved.children[0].diagnostic.code, code); assert.equal(saved.usage.calls, 0);
     }
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+test("settlement contains cleanup failures while direct finalization still rejects", async () => {
+  for (const failure of ["ownership", "session", "persistence"] as const) {
+    const input = await fixture(); input.target.cleanup = "remove"; await mkdir(input.target.stateRoot);
+    const receipt: Receipt = { version: 1, binding: "owned", candidate: "fixture", node: process.versions.node, pi: VERSION, callsMade: 0 };
+    const boundReceipt = failure === "ownership" ? { ...receipt, binding: "changed" } : receipt;
+    await writeFile(join(input.target.stateRoot, "owner.json"), JSON.stringify({ receipt: boundReceipt }));
+    const file = join(input.target.stateRoot, "session.jsonl"); await writeFile(file, '{"incomplete":true}');
+    const report: RunReport = { version: 1, status: "OBSERVED", selection: input, segments: [], children: [], usage: ledgerSummary([]), elapsedMs: 0, cleanup: "retained", limitations: [] };
+    if (failure === "session") report.segments.push({ pid: 1, scenario: "c2", status: "OBSERVED", prerequisites: [], sessionFile: file, nextTurn: 1, contexts: [], maintenance: [], actions: [], calibrations: [] });
+    if (failure === "persistence") {
+      report.status = "UNPROVEN"; report.reason = "WORKER";
+      await mkdir(join(input.target.stateRoot, "report.json"));
+    }
+    try {
+      await assert.rejects(finalizeRun(input, receipt, report));
+      await settleRun(input, receipt, report, () => [], Date.now() - 10);
+      assert.equal(report.status, "UNPROVEN"); assert.equal(report.cleanup, "retained-for-reconciliation");
+      assert.equal(report.reason, failure === "session" ? "RECONCILIATION" : failure === "persistence" ? "WORKER" : "CLEANUP");
+      assert(report.elapsedMs >= 10);
+      const owner = JSON.parse(await readFile(join(input.target.stateRoot, "owner.json"), "utf8"));
+      assert.deepEqual(owner.receipt, boundReceipt); assert.equal(owner.result, "UNPROVEN"); assert.equal(owner.cleanup, report.cleanup);
+      if (failure !== "persistence") assert.equal(JSON.parse(await readFile(join(input.target.stateRoot, "report.json"), "utf8")).reason, report.reason);
+      assert.equal(await readFile(file, "utf8"), '{"incomplete":true}');
+    } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
+  }
 });
 test("an already-created target is never implicitly resumed or overwritten", async () => {
   const input = await fixture();

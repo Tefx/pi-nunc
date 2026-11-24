@@ -4,7 +4,7 @@ import { createAssistantMessageEventStream, fauxAssistantMessage, fauxProvider, 
 import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Admission } from "../../src/pi/admission.js";
 import { engineConfig } from "../../src/pi/config.js";
-import { admissionEstimate, usableAssistantUsageTokens } from "../../src/engine/accounting.js";
+import { usableAssistantUsageTokens } from "../../src/engine/accounting.js";
 import { piComplete } from "../../src/engine/pi-model.js";
 
 async function env() {
@@ -244,6 +244,27 @@ test("repeated same-length completed calls keep a bounded receipt and bind the a
   e.admission.close(e.ctx);
 });
 
+for (const total of [8, 9]) test(`component receipt ring retains eight distinct responses: total=${total}`, async t => {
+  const e = await env(); t.after(() => e.admission.close(e.ctx));
+  const provider = e.registry.getProvider(e.model.provider)!;
+  const bind = (context: TranscriptContext) => e.admission.bindProjection({ ...e.options, model: e.model,
+    messages: context.messages, memory: { version: 1, nextId: 1, slots: [] } });
+  bind(e.context);
+  const first = await provider.streamSimple(e.model, e.context, e.options).result();
+  assert.equal(first.stopReason, "stop");
+  for (let i = 1; i < total; i++) {
+    const distinct = normalizeContext({ systemPrompt: `F${i}`, messages: [{ role: "user", content: `distinct-${i}`, timestamp: i }] });
+    bind(distinct);
+    assert.equal((await provider.streamSimple(e.model, distinct, e.options).result()).stopReason, "stop");
+  }
+  const follow = normalizeContext({ messages: [...e.context.messages, first, { role: "user", content: "continue first", timestamp: total }] });
+  bind(follow);
+  assert.equal((await provider.streamSimple(e.model, follow, e.options).result()).stopReason, "stop");
+  const last = e.observations.filter(o => o.kind === "main").at(-1) as { estimator?: string; estimateReason?: string };
+  assert.equal(last.estimator, total === 8 ? "pi-usage-backed" : "pi-heuristic");
+  assert.equal(last.estimateReason, total === 8 ? "matching-receipt" : "system-mismatch");
+});
+
 test("receipt U sums real input/cache/output components instead of inconsistent totalTokens", async () => {
   const e = await env();
   // Controlled Provider result only; this is an admission component check, not
@@ -267,13 +288,11 @@ test("receipt U sums real input/cache/output components instead of inconsistent 
   e.admission.close(e.ctx);
 });
 
-test("shared assistant usage validation and both accounting anchor paths use component sums", async t => {
+test("shared assistant usage validation uses component sums", async t => {
   const e = await env(); t.after(() => e.admission.close(e.ctx));
   const message = { ...fauxAssistantMessage("usage"), api: e.model.api, provider: e.model.provider, model: e.model.id,
     usage: { ...fauxAssistantMessage("").usage, input: 100, cacheRead: 20, cacheWrite: 5, output: 10, totalTokens: 1 } };
   assert.equal(usableAssistantUsageTokens(message), 135);
-  const context = normalizeContext({ messages: [message] });
-  for (const index of [undefined, 0]) assert.equal(admissionEstimate(context, e.model, undefined, true, 0, index).tokens, 135);
   for (const stopReason of ["error", "aborted"] as const) assert.equal(usableAssistantUsageTokens({ ...message, stopReason }), undefined);
   for (const input of [-1, NaN, Infinity, 0.5, "100"]) assert.equal(usableAssistantUsageTokens({ ...message, usage: { ...message.usage, input } }), undefined);
   assert.equal(usableAssistantUsageTokens({ ...message, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 100 } }), undefined);

@@ -278,7 +278,7 @@ export function validateControl(value: unknown, turns: string[]): asserts value 
     requireValue(ex.turn === value.duringTurn, "SCENARIO", "retainToolExchange turn must match duringTurn");
     return;
   }
-  requireValue(nonempty(value.afterTurn) && turns.includes(value.afterTurn), "SCENARIO", "Invalid control afterTurn");
+  requireValue(nonempty(value.afterTurn) && turns.includes(value.afterTurn) && value.duringTurn === undefined && value.trigger === undefined, "SCENARIO", "Invalid control afterTurn or mixed timing fields");
   const after = turns.indexOf(value.afterTurn);
   if (value.action !== "rollover") { requireValue(value.placement === undefined && value.capacity === undefined && value.steer === undefined, "SCENARIO", "Placement/capacity/steer apply only to rollover"); return; }
   requireValue(value.capacity === undefined || nonempty(value.capacity), "SCENARIO", "Invalid capacity condition");
@@ -461,7 +461,7 @@ function readContextRecords(ctx: Context, region: "B" | "K"): Array<{ region: st
   }
   return records;
 }
-export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean; artifactSnapshots?: Record<string, unknown>; fixtures?: Record<string, string> }) {
+export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, prerequisites: CheckResult[], context?: { actions?: unknown[]; turns?: Record<string, string[]>; requireVerificationReceipt?: boolean; artifactSnapshots?: Record<string, unknown>; fixtures?: Record<string, string>; deadline?: number; signal?: AbortSignal }) {
   const artifacts: Record<string, unknown> = { ...context?.artifactSnapshots };
   const unavailable = new Set<string>();
   for (const check of observer.artifactChecks) {
@@ -476,7 +476,7 @@ export async function scoreArtifacts(cwd: string, observer: ScenarioObserver, pr
   const rawActions = (context?.actions ?? []) as Array<{ turn?: string; event?: any }>;
   const actionReview: CheckResult[] = observer.actionChecks.map(check => {
     if (observer.id.startsWith("g")) {
-      return scoreGuidance(observer.id, check, rawActions, prerequisites, cwd, context?.fixtures);
+      return scoreGuidance(observer.id, check, rawActions, prerequisites, cwd, context?.fixtures, context);
     }
     if (check.includes("python3 verify.py")) {
       const requiredTurn = observer.id === "e1" ? "e" : observer.id === "e3" ? "b" : undefined;

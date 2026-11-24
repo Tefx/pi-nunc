@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { CheckResult } from "./scenarios.js";
 import { deriveExpectedRecords } from "./task-retention.js";
-import { executeMetricsOracle } from "./metrics-oracle.js";
+import { executeMetricsOracle, type OracleBounds } from "./metrics-oracle.js";
 
 export interface GuidanceAction { turn?: string; event?: any }
 import { pathIs, metricsCommand, VERIFY_COMMANDS } from "./tool-path.js";
@@ -37,7 +37,7 @@ export function verifyReceiptEffects(exchange: ReturnType<typeof guidanceExchang
 
 /** Mechanical checks deliberately do not classify arbitrary natural-language notes. */
 export function scoreGuidance(
-  caseId: string, check: string, actions: GuidanceAction[], prerequisites: CheckResult[], cwd: string, fixtures?: Record<string, string>,
+  caseId: string, check: string, actions: GuidanceAction[], prerequisites: CheckResult[], cwd: string, fixtures?: Record<string, string>, bounds?: OracleBounds,
 ): CheckResult {
   const result = (status: CheckResult["status"], reason: string, observed?: unknown): CheckResult => ({ check, status, reason, ...(observed === undefined ? {} : { observed }) });
   const proven = (name: string) => prerequisites.some(p => p.check === name && p.status === "PROVEN");
@@ -77,7 +77,7 @@ export function scoreGuidance(
         if (!isDeepStrictEqual(JSON.parse(recordsRaw), records)) return result("DISPROVEN", "Final records.json differs from the regional source feeds");
       } catch { return result("DISPROVEN", "Missing or invalid final records.json"); }
     }
-    const oracle = executeMetricsOracle(cwd, recordsRaw === undefined ? fixtures : { ...fixtures, "records.json": recordsRaw });
+    const oracle = executeMetricsOracle(cwd, recordsRaw === undefined ? fixtures : { ...fixtures, "records.json": recordsRaw }, bounds);
     return result(oracle.status, oracle.reason ?? "Executed final artifact with independent held-out operations; test adequacy and retention remain semantic", { ...oracle.observed, operations: oracle.operations });
   }
   if (check.startsWith("semantic:")) {
@@ -90,7 +90,7 @@ export function scoreGuidance(
       if (!existsSync(solutionPath)) {
         return result("DISPROVEN", "Missing final solution.py artifact");
       }
-      const oracle = executeMetricsOracle(cwd, fixtures);
+      const oracle = executeMetricsOracle(cwd, fixtures, bounds);
       if (oracle.status === "DISPROVEN") {
         return result("DISPROVEN", oracle.reason ?? "Metrics oracle rejected candidate behavior", oracle.observed);
       }

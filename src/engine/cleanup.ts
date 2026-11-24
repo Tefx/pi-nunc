@@ -879,7 +879,7 @@ export function applyToolResultCleanup(entries: ActiveEntry[], decisions: ToolRe
     });
 
     result.push({
-      ...structuredClone(entry),
+      ...entry,
       messages: newMessages,
     });
   }

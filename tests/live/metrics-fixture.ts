@@ -30,10 +30,10 @@ class Regression(unittest.TestCase):
     def test_modes(self):
         series = {'north': [{'gross': 0, 'refunds': 0, 'cost': 0}],
                   'south': [{'gross': None, 'refunds': 1, 'cost': 2}],
-                  'west': [{'gross': -2, 'refunds': 3, 'cost': 4}]}
+                  'west': [{'gross': -2, 'refunds': 3, 'cost': 4}], 'empty': []}
         history = run({'op': 'history', 'series': series})
         self.assertEqual(set(history), set(series))
-        expected = {'north': [{'net': 0, 'margin': 0}], 'south': [{'net': None, 'margin': None}], 'west': [{'net': -5, 'margin': -9}]}
+        expected = {'north': [{'net': 0, 'margin': 0}], 'south': [{'net': None, 'margin': None}], 'west': [{'net': -5, 'margin': -9}], 'empty': []}
         self.assertEqual(history, expected)
         for name, records in series.items():
             batch = run({'op': 'batch', 'records': records})

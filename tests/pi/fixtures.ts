@@ -12,6 +12,10 @@ import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/projection.js";
 
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 
+export function mains(observations: AdmissionObservation[]) {
+  return observations.filter(o => o.kind === "main");
+}
+
 export function responsesSSE(modelId: string, text: string, options: {
   inputTokens?: number; outputTokens?: number; cachedTokens?: number; reasoningTokens?: number;
   reasoningContext?: "current_turn" | "all_turns" | undefined;

@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ExtensionContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createMemorySurface, memorySurface, type MemorySurface } from "../../src/pi/manual.js";
-import { injectedCarrierIndex } from "./carrier-fixture.js";
+import { clonedCarrierIndex } from "./carrier-fixture.js";
 import { MANUAL_MEMORY_TYPE, project } from "../../src/pi/projection.js";
 import { legacyRenderMemory, renderMemory } from "../../src/engine/memory.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
@@ -86,7 +86,7 @@ test("legacy checkpoint and later revision retain IDs/order/nextId across repeat
     await f.runtime.session.prompt(label);
     const messages = f.calls.at(-1)!.messages;
     assert.deepEqual(e.surface().read(e.ctx()).memory, expected);
-    const carrier = injectedCarrierIndex(messages);
+    const carrier = clonedCarrierIndex(messages);
     if (expected.slots.length) {
       assert.equal(typeof carrier, "number");
       assert.deepEqual(messages[carrier!], { role: "user", content: [{ type: "text", text: renderMemory(expected.slots) }], timestamp: 0 });
@@ -141,7 +141,7 @@ test("cancellation observed after confirmed public append reports the committed 
   const controller = new AbortController();
   // Exercise the shared commit boundary with its real appendEntry; only the
   // notification callback supplies the post-confirmation cancellation timing.
-  const surface = createMemorySurface({ pi: e.api(), fixed: ctx => ({ systemPrompt: ctx.getSystemPrompt(), tools: [] }), settings: () => ({ compaction: e.f.settings.getCompactionSettings(), blockImages: false }), onCommitted: () => controller.abort() });
+  const surface = createMemorySurface({ pi: e.api(), onCommitted: () => controller.abort() });
   const result = surface.patch(e.ctx(), { expectedRevision: surface.read(e.ctx()).revision, add: [{ key: "confirmed", text: "committed before cancellation" }] }, controller.signal);
   assert.equal(controller.signal.aborted, true);
   assert(result.ok);

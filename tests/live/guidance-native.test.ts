@@ -12,7 +12,9 @@ import { readSourceRecords } from "../../src/engine/request.js";
 // public CLI -> supervisor -> worker -> stock Pi -> original tools and filesystem.
 async function guidanceNative(lowUsage = false) {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
+  let observed: any;
   const f = await new StockFixture().setup({ timeoutMs: 280000 });
+  try {
   const provider = "openrouter", model = "google/gemini-3.8-flash";
   await writeFile(join(f.state, "agent/models.json"), JSON.stringify({ providers: { [provider]: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [{ id: model, api: "openai-completions", reasoning: false, input: ["text"], contextWindow: 60000, maxTokens: 20000 }] } } }));
   f.limits = { ...f.limits, maxCalls: 160, maxTotalTokens: 24000000 };
@@ -91,8 +93,6 @@ async function guidanceNative(lowUsage = false) {
     const code = await new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
     return { code, stderr, report: stdout ? JSON.parse(stdout) : undefined };
   };
-  let observed: any;
-  try {
     const preflight = await run(["--preflight"]);
     assert.equal(preflight.code, 0, JSON.stringify(preflight)); assert.equal(preflight.report.receipt.callsMade, 0); assert.equal(f.requests.length, 0);
     await assert.rejects(stat(selection.target.stateRoot));

@@ -17,7 +17,7 @@ import { contextSurface, memorySurface, type MemorySurface } from "pi-nunc/pi";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture } from "./fixtures.js";
 import { readSourceRecords } from "../../src/engine/request.js";
-import { injectedCarrierIndex } from "./carrier-fixture.js";
+import { clonedCarrierIndex } from "./carrier-fixture.js";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 function sourceSession(sessionId: string, content: string) {
   return { sessionId, entries: [{ type: "message", id: "a", parentId: null, timestamp: "2026-01-01", message: user(content) }] as SessionEntry[] };
@@ -38,10 +38,10 @@ test("withEffectiveMemory: first construction uses the legal tail; later history
   const session = sourceSession("s-stable", "one");
   const note = memory([{ id: "s1", text: "fixed note" }]);
   const first = withEffectiveMemory([user("one")], note, session);
-  assert.equal(injectedCarrierIndex(first), 1);
+  assert.equal(clonedCarrierIndex(first), 1);
   const second = withEffectiveMemory([user("one"), assistant("ok"), user("two", 3)], note, session);
-  assert.equal(injectedCarrierIndex(second), 1);
-  assert.notEqual(injectedCarrierIndex(second), second.length - 1);
+  assert.equal(clonedCarrierIndex(second), 1);
+  assert.notEqual(clonedCarrierIndex(second), second.length - 1);
   assert.equal(JSON.stringify(second[1]), JSON.stringify(first[1]));
   clearMemoryAnchors();
 });
@@ -54,7 +54,7 @@ test("withEffectiveMemory: initial and updated carriers precede an unanswered to
   const source = [user("q"), call, result];
   for (const text of ["initial note", "updated note"]) {
     const placed = withEffectiveMemory(source, memory([{ id: "s1", text }]), session);
-    assert.equal(injectedCarrierIndex(placed), 1);
+    assert.equal(clonedCarrierIndex(placed), 1);
     assert.equal(placed[2], call);
     assert.equal(placed.at(-1), result);
   }
@@ -66,9 +66,9 @@ test("withEffectiveMemory: same timestamp with replaced prefix content rebuilds 
   const session = sourceSession("s-collide", "original");
   const note = memory([{ id: "s1", text: "fixed note" }]);
   const first = withEffectiveMemory([user("original", 1)], note, session);
-  assert.equal(injectedCarrierIndex(first), 1);
+  assert.equal(clonedCarrierIndex(first), 1);
   const next = withEffectiveMemory([user("different history", 1), user("later", 2)], note, session);
-  assert.equal(injectedCarrierIndex(next), 2);
+  assert.equal(clonedCarrierIndex(next), 2);
   clearMemoryAnchors();
 });
 
@@ -76,9 +76,9 @@ test("withEffectiveMemory: content change rebuilds at the new request tail", () 
   clearMemoryAnchors();
   const session = sourceSession("s-update", "one");
   const first = withEffectiveMemory([user("one")], memory([{ id: "s1", text: "old" }]), session);
-  assert.equal(injectedCarrierIndex(first), 1);
+  assert.equal(clonedCarrierIndex(first), 1);
   const next = withEffectiveMemory([user("one"), assistant("ok"), user("two", 3)], memory([{ id: "s1", text: "new" }]), session);
-  assert.equal(injectedCarrierIndex(next), next.length - 1);
+  assert.equal(clonedCarrierIndex(next), next.length - 1);
   clearMemoryAnchors();
 });
 
@@ -87,13 +87,13 @@ test("withEffectiveMemory: empty M drops the carrier; observer moving layout alw
   const session = sourceSession("s-empty", "one");
   withEffectiveMemory([user("one")], memory([{ id: "s1", text: "note" }]), session);
   const emptied = withEffectiveMemory([user("one"), assistant("ok")], emptyMemory(), session);
-  assert.equal(injectedCarrierIndex(emptied), undefined);
+  assert.equal(clonedCarrierIndex(emptied), undefined);
   assert.equal(peekMemoryAnchor("s-empty"), undefined);
   setObserverMemoryLayout("moving");
   const moving = withEffectiveMemory([user("one")], memory([{ id: "s1", text: "note" }]), { sessionId: "s-move" });
   const moved = withEffectiveMemory([user("one"), assistant("ok"), user("two", 3)], memory([{ id: "s1", text: "note" }]), { sessionId: "s-move" });
-  assert.equal(injectedCarrierIndex(moving), moving.length - 1);
-  assert.equal(injectedCarrierIndex(moved), moved.length - 1);
+  assert.equal(clonedCarrierIndex(moving), moving.length - 1);
+  assert.equal(clonedCarrierIndex(moved), moved.length - 1);
   setObserverMemoryLayout("stable");
   clearMemoryAnchors();
 });
@@ -103,7 +103,7 @@ test("withEffectiveMemory: reused M stays before a later complete parallel tool 
   const session = sourceSession("s-tools", "go");
   const note = memory([{ id: "s1", text: "note" }]);
   const first = withEffectiveMemory([user("go")], note, session);
-  assert.equal(injectedCarrierIndex(first), 1);
+  assert.equal(clonedCarrierIndex(first), 1);
   const call = {
     role: "assistant" as const,
     content: [
@@ -116,7 +116,7 @@ test("withEffectiveMemory: reused M stays before a later complete parallel tool 
   const r1 = { role: "toolResult" as const, toolCallId: "a", toolName: "one", content: [{ type: "text" as const, text: "A" }], isError: false, timestamp: 3 };
   const r2 = { role: "toolResult" as const, toolCallId: "b", toolName: "two", content: [{ type: "text" as const, text: "B" }], isError: false, timestamp: 4 };
   const placed = withEffectiveMemory([user("go"), call, r1, r2], note, session);
-  assert.equal(injectedCarrierIndex(placed), 1);
+  assert.equal(clonedCarrierIndex(placed), 1);
   assert.equal(placed[2], call);
   assert.equal(placed[3], r1);
   assert.equal(placed[4], r2);
@@ -138,11 +138,11 @@ test("ordinary leaf/revision growth does not move unchanged rendered M", async t
   assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "stable body" }] }).ok, true);
   const revision1 = surface.read(ctx).revision;
   await f.runtime.session.prompt("first");
-  const index1 = injectedCarrierIndex(f.calls[0]!.messages);
+  const index1 = clonedCarrierIndex(f.calls[0]!.messages);
   const rendered1 = renderMemory(surface.read(ctx).memory.slots);
   await f.runtime.session.prompt("second");
   const revision2 = surface.read(ctx).revision;
-  const index2 = injectedCarrierIndex(f.calls[1]!.messages);
+  const index2 = clonedCarrierIndex(f.calls[1]!.messages);
   assert.notEqual(revision1, revision2);
   assert.match(revision2, /\n/);
   assert.equal(renderMemory(surface.read(ctx).memory.slots), rendered1);
@@ -166,7 +166,7 @@ test("no-op, invalid, conflict and cancelled patches do not relocate a stable M"
   const patchTool = (f.runtime.session as any).getToolDefinition("nunc_memory_patch");
   assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "keep" }] }).ok, true);
   await f.runtime.session.prompt("anchor");
-  const index = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const index = clonedCarrierIndex(f.calls.at(-1)!.messages);
   const revision = surface.read(ctx).revision;
   const noop = surface.patch(ctx, { expectedRevision: revision, update: [{ id: "s1", text: "keep" }] });
   assert.equal(noop.ok, true);
@@ -181,7 +181,7 @@ test("no-op, invalid, conflict and cancelled patches do not relocate a stable M"
   const cancelled = await patchTool.execute("cancel-1", { expectedRevision: surface.read(ctx).revision, add: [{ key: "y", text: "no" }] }, controller.signal, undefined, ctx);
   assert.equal(cancelled.isError, true);
   await f.runtime.session.prompt("still stable");
-  assert.equal(injectedCarrierIndex(f.calls.at(-1)!.messages), index);
+  assert.equal(clonedCarrierIndex(f.calls.at(-1)!.messages), index);
   assert.equal(renderMemory(surface.read(ctx).memory.slots), renderMemory([{ id: "s1", text: "keep" }]));
 });
 
@@ -233,7 +233,7 @@ test("native transformMessages does not synthesize missing results when M sits b
   const r1 = { role: "toolResult" as const, toolCallId: "a", toolName: "one", content: [{ type: "text" as const, text: "A" }], isError: false, timestamp: 3 };
   const r2 = { role: "toolResult" as const, toolCallId: "b", toolName: "two", content: [{ type: "text" as const, text: "B" }], isError: false, timestamp: 4 };
   const placed = withEffectiveMemory([user("go"), call, r1, r2], note, session);
-  assert.equal(injectedCarrierIndex(placed), 1);
+  assert.equal(clonedCarrierIndex(placed), 1);
   const serialized = transformMessages(placed as Message[], model);
   assert.equal(serialized.filter(message => JSON.stringify(message).includes("No result provided")).length, 0);
   assert.equal(serialized.filter(message => message.role === "toolResult").length, 2);
@@ -308,7 +308,7 @@ test("lookalike user text stays in R while the unique injected carrier is M", as
   await f.runtime.session.prompt(lookalike);
   await f.runtime.session.prompt("follow");
   const follow = f.calls.at(-1)!;
-  const carrier = injectedCarrierIndex(follow.messages);
+  const carrier = clonedCarrierIndex(follow.messages);
   assert.equal(typeof carrier, "number");
   assert(JSON.stringify(follow.messages[carrier!]).includes("real note"));
   assert(follow.messages.some((m, i) => i !== carrier && JSON.stringify(m).includes("I am a genuine user instruction")));
@@ -334,13 +334,13 @@ test("cancelled tree navigation does not drop a still-valid anchor", async t => 
   assert(ctx && surface);
   assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "stay" }] }).ok, true);
   await f.runtime.session.prompt("anchor");
-  const index = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const index = clonedCarrierIndex(f.calls.at(-1)!.messages);
   const parent = f.runtime.session.sessionManager.getBranch()[0]?.id;
   assert(parent);
   const result = await f.runtime.session.navigateTree(parent, { summarize: false });
   assert.equal(result.cancelled, true);
   await f.runtime.session.prompt("after cancelled tree");
-  assert.equal(injectedCarrierIndex(f.calls.at(-1)!.messages), index);
+  assert.equal(clonedCarrierIndex(f.calls.at(-1)!.messages), index);
 });
 
 test("real compaction retires older prefix entries but preserves the surviving boundary of unchanged M", async t => {
@@ -359,7 +359,7 @@ test("real compaction retires older prefix entries but preserves the surviving b
   const seeded = f.seed();
   assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "kept-prefix" }] }).ok, true);
   await f.runtime.session.prompt("recent keep");
-  const before = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const before = clonedCarrierIndex(f.calls.at(-1)!.messages);
   const keepId = f.runtime.session.sessionManager.getBranch().find(e => e.type === "message" && e.message.role === "user" && JSON.stringify(e.message.content).includes("recent keep"))?.id;
   f.respond(context => {
     const source = context.messages.flatMap(m => readSourceRecords(typeof m.content === "string" ? m.content : m.content.filter(b => b.type === "text").map(b => b.text).join("\n"))).find(r => r.source === "F/M") as any;
@@ -368,7 +368,7 @@ test("real compaction retires older prefix entries but preserves the surviving b
   await f.runtime.session.compact();
   const projected = project(f.runtime.session.sessionManager.buildContextEntries());
   await f.runtime.session.prompt("after compact");
-  const after = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const after = clonedCarrierIndex(f.calls.at(-1)!.messages);
   assert(projected.latestId, "native compaction must have committed");
   assert(!projected.active.some(e => e.entryId === seeded.first), "older prefix must actually retire");
   assert(keepId && projected.active.some(e => e.entryId === keepId), "actual insertion boundary must survive");
@@ -394,9 +394,9 @@ test("genuine branch change rebuilds M when prefix entries leave the selected pa
   f.runtime.session.sessionManager.appendMessage({ role: "assistant", content: [{ type: "text", text: "old reply" }], timestamp: 2, api: "openai-completions", provider: "nunc-pi-fixture", model: "large", stopReason: "stop", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
   assert.equal(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision, add: [{ key: "k", text: "branch-note" }] }).ok, true);
   await f.runtime.session.prompt("on new leaf");
-  const index = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const index = clonedCarrierIndex(f.calls.at(-1)!.messages);
   await f.runtime.session.navigateTree(firstUser, { summarize: false });
   await f.runtime.session.prompt("on old leaf");
-  const moved = injectedCarrierIndex(f.calls.at(-1)!.messages);
+  const moved = clonedCarrierIndex(f.calls.at(-1)!.messages);
   assert(moved === undefined || moved !== index);
 });

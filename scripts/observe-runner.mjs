@@ -8,11 +8,13 @@ import { readFile, writeFile, rm, lstat, mkdtemp, realpath } from 'node:fs/promi
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { StockFixture, root } from './stock-driver.mjs';
-const f = await new StockFixture().setup({ api: 'openai-codex-responses', compaction: { enabled: false, reserveTokens: 200000 } });
 const systemTemp = process.argv[2] === '--system-temp';
+let result = { status: 'FAIL' }, targetParent, stateRoot;
+const f = await new StockFixture().setup({ api: 'openai-codex-responses', compaction: { enabled: false, reserveTokens: 200000 } });
+try {
 const originalTemp = systemTemp ? await realpath(tmpdir()) : undefined;
-const targetParent = systemTemp ? await mkdtemp(join(originalTemp, 'nunc-runner-test-')) : f.dir;
-const stateRoot = join(targetParent, 'nunc-live-runner');
+targetParent = systemTemp ? await mkdtemp(join(originalTemp, 'nunc-runner-test-')) : f.dir;
+stateRoot = join(targetParent, 'nunc-live-runner');
 if (systemTemp) assert(!stateRoot.startsWith(join(root, '.scratch') + '/'));
 const settings = { ...f.settings, defaultProvider: 'openai-codex', defaultModel: 'gpt-6-astra' };
 await writeFile(join(f.state, 'agent/settings.json'), JSON.stringify(settings));
@@ -29,8 +31,6 @@ async function run(flags = []) {
   const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
   return { code, stdout, stderr };
 }
-let result = { status: 'FAIL' };
-try {
   const preflight = await run(['--preflight']); assert.equal(preflight.code, 0, preflight.stderr);
   assert.equal(f.requests.length, 0); await assert.rejects(lstat(stateRoot), { code: 'ENOENT' });
   const defaults = JSON.parse(preflight.stdout); assert.equal(defaults.models[0].baseUrl, f.endpoint); assert.equal(defaults.effective.thinking, 'medium');
@@ -49,4 +49,4 @@ try {
   await writeFile(join(f.dir, 'runner-report.json'), execution.stdout);
   result = { status: 'PROVEN_CONTROLLED', calls: report.usage.calls, nativeWorkers: report.children.length, targetClass: systemTemp ? 'system-temp' : 'checkout-scratch', memoryQuality: 'UNPROVEN: scripted service' };
 } catch (error) { result.error = { message: error.message, stack: error.stack }; process.exitCode = 1; }
-finally { await rm(stateRoot, { recursive: true, force: true }); if (systemTemp) { await rm(targetParent, { recursive: true }); await assert.rejects(lstat(targetParent), { code: 'ENOENT' }); } await f.close(result); console.log(JSON.stringify({ ...result, ...f.artifactReceipt() })); }
+finally { if (stateRoot) await rm(stateRoot, { recursive: true, force: true }); if (systemTemp && targetParent) { await rm(targetParent, { recursive: true }); await assert.rejects(lstat(targetParent), { code: 'ENOENT' }); } await f.close(result); console.log(JSON.stringify({ ...result, ...f.artifactReceipt() })); }

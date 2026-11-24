@@ -127,7 +127,7 @@ test("missing model baseUrl fails as a missing destination field; Responses opt-
     model.cost = { input: 10, output: 10, cacheRead: 5, cacheWrite: 20 };
     const ledger = new BudgetLedger(join(input.target.stateRoot, "calls.jsonl"), { ...input.limits, maxOutputTokens: 8192 }, Date.now() + 10000, new AbortController().signal);
     const missing = { ...model, baseUrl: "" };
-    const blocked = boundedProvider(faux.provider, [missing], ledger, { controlled: true });
+    const blocked = boundedProvider(faux.provider, [missing], ledger);
     assert.equal((await blocked.streamSimple(missing, context, { maxTokens: 1000 }).result()).stopReason, "error");
     assert.equal(faux.state.callCount, 0);
     const opted = { ...model, api: "openai-responses" as const, compat: { supportsMaxOutputTokens: false } };

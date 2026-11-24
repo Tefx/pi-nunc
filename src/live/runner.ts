@@ -169,7 +169,19 @@ export async function settleRun(input: RunInput, receipt: Receipt, report: RunRe
   try { report.usage = ledgerSummary(readAll(), input.limits); }
   catch { report.status = "UNPROVEN"; report.reason = "LEDGER_RECONCILIATION"; report.cleanup = "retained-for-reconciliation"; }
   report.elapsedMs = Date.now() - started;
-  await finalizeRun(input, receipt, report);
+  try { await finalizeRun(input, receipt, report); }
+  catch (error) {
+    report.status = "UNPROVEN";
+    report.reason ??= error instanceof RunnerError ? error.code : "CLEANUP";
+    report.cleanup = "retained-for-reconciliation";
+    const root = input.target.stateRoot;
+    try { await writeFile(join(root, "report.json"), JSON.stringify(report, null, 2), { mode: 0o600 }); }
+    catch { /* Persistence failure must not hide the returned reconciliation report. */ }
+    try {
+      const bound = JSON.parse(await readFile(join(root, "owner.json"), "utf8"));
+      await writeFile(join(root, "owner.json"), JSON.stringify({ ...bound, status: "terminal", result: report.status, reason: report.reason, cleanup: report.cleanup }), { mode: 0o600 });
+    } catch { /* Retain unreadable ownership evidence for manual reconciliation. */ }
+  }
 }
 
 /** Called only after every child has exited. Failed/uncertain runs retain their evidence and are never replayed. */

@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { renderMemory } from "../../src/engine/memory.js";
-import { withEffectiveMemory, carrierIndexIn, clearMemoryAnchors, injectedCarrierIndex } from "../../src/pi/projection.js";
+import { withEffectiveMemory, carrierIndexIn, clearMemoryAnchors } from "../../src/pi/projection.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture } from "./fixtures.js";
@@ -78,11 +78,11 @@ test("actual admission distinguishes identical timestamp-zero user lookalikes fr
   assert.equal(a.memoryPresent, true, JSON.stringify({ a, calls: f.calls })); assert.equal(a.memoryCarrierCount, 1); assert.equal(a.memoryIndex, 4);
   assert.equal(f.calls.at(-1)!.messages.length, 5);
   assert.equal(f.calls.at(-1)!.messages.filter(m => JSON.stringify(m.content).includes("retained")).length, 3);
-  assert.equal(injectedCarrierIndex(f.calls.at(-1)!.messages), undefined, "clone has no process-local provenance even with a recognizable envelope");
+  assert.equal(carrierIndexIn(f.calls.at(-1)!.messages), undefined, "clone has no process-local provenance even with a recognizable envelope");
   const noTimestamp = { role: "user", content: body };
   const projected = withEffectiveMemory([noTimestamp], memory);
   assert.equal(projected[0], noTimestamp);
-  assert.equal(injectedCarrierIndex(projected), 1, "a timestampless lookalike has no carrier provenance");
+  assert.equal(carrierIndexIn(projected), 1, "a timestampless lookalike has no carrier provenance");
 });
 
 test("native same-session recovery has no reusable anchor and establishes a new legal tail", async t => {

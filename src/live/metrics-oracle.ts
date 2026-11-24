@@ -47,18 +47,29 @@ export interface MetricsOracleReport {
   operations?: Array<{ op: string; passed: boolean; error?: string }>;
 }
 
-function runSolutionSubprocess(cwd: string, requestPayload: unknown): { status: number; stdout: unknown; error?: string } {
+export interface OracleBounds { deadline?: number | undefined; signal?: AbortSignal | undefined }
+
+function runOracleProcess(cwd: string, args: string[], limitMs: number, bounds?: OracleBounds, input?: string) {
+  const check = () => {
+    bounds?.signal?.throwIfAborted();
+    if (bounds?.deadline !== undefined && Date.now() >= bounds.deadline) throw new DOMException("Metrics oracle deadline expired", "TimeoutError");
+  };
+  check();
+  const timeout = bounds?.deadline === undefined ? limitMs : Math.min(limitMs, Math.max(1, bounds.deadline - Date.now()));
+  const proc = spawnSync("python3", args, {
+    cwd, encoding: "utf8", timeout, ...(input === undefined ? {} : { input }),
+    env: { ...process.env, PATH: "/usr/bin:/bin:/opt/homebrew/bin" },
+  });
+  check();
+  return proc;
+}
+
+function runSolutionSubprocess(cwd: string, requestPayload: unknown, bounds?: OracleBounds): { status: number; stdout: unknown; error?: string } {
   const solutionPath = join(cwd, "solution.py");
   if (!existsSync(solutionPath)) {
     return { status: 1, stdout: null, error: "solution.py does not exist in workspace" };
   }
-  const proc = spawnSync("python3", ["solution.py"], {
-    cwd,
-    input: JSON.stringify(requestPayload) + "\n",
-    encoding: "utf8",
-    timeout: 10000,
-    env: { ...process.env, PATH: "/usr/bin:/bin:/opt/homebrew/bin" },
-  });
+  const proc = runOracleProcess(cwd, ["solution.py"], 10000, bounds, JSON.stringify(requestPayload) + "\n");
   if (proc.error) {
     return { status: 1, stdout: null, error: `Subprocess execution error: ${proc.error.message}` };
   }
@@ -90,7 +101,7 @@ function compareNodes(actualNodes: unknown, expectedNodes: Set<string>): boolean
   return isDeepStrictEqual(actualSet, expectedNodes);
 }
 
-export function executeMetricsOracle(cwd: string, fixtures?: Record<string, string>): MetricsOracleReport {
+export function executeMetricsOracle(cwd: string, fixtures?: Record<string, string>, bounds?: OracleBounds): MetricsOracleReport {
   const operations: Array<{ op: string; passed: boolean; error?: string }> = [];
   const frozen = new Map<string, string>();
   for (const name of [...Object.keys(fixtures ?? {}), "solution.py", "test_solution.py"]) {
@@ -114,12 +125,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   }
 
   // 2. Build verification: python3 build.py
-  const buildProc = spawnSync("python3", ["build.py"], {
-    cwd,
-    encoding: "utf8",
-    timeout: 10000,
-    env: { ...process.env, PATH: "/usr/bin:/bin:/opt/homebrew/bin" },
-  });
+  const buildProc = runOracleProcess(cwd, ["build.py"], 10000, bounds);
   if (buildProc.status !== 0) {
     const error = `python3 build.py failed with exit code ${buildProc.status}: ${buildProc.stderr?.slice(0, 500)}`;
     operations.push({ op: "build.py", passed: false, error });
@@ -131,12 +137,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   const testSolutionPath = join(cwd, "test_solution.py");
   let testSuiteChecked = false;
   if (existsSync(testSolutionPath)) {
-    const unittestProc = spawnSync("python3", ["-m", "unittest", "test_solution.py"], {
-      cwd,
-      encoding: "utf8",
-      timeout: 15000,
-      env: { ...process.env, PATH: "/usr/bin:/bin:/opt/homebrew/bin" },
-    });
+    const unittestProc = runOracleProcess(cwd, ["-m", "unittest", "test_solution.py"], 15000, bounds);
     if (unittestProc.status !== 0) {
       const error = `python3 -m unittest test_solution.py failed: ${unittestProc.stderr?.slice(0, 500)}`;
       operations.push({ op: "test_solution.py", passed: false, error });
@@ -151,7 +152,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   for (let i = 0; i < HELD_OUT_RECORDS.length; i++) {
     const record = HELD_OUT_RECORDS[i]!;
     const expected = EXPECTED_HELD_OUT_RESULTS[i]!;
-    const res = runSolutionSubprocess(cwd, { op: "single", record });
+    const res = runSolutionSubprocess(cwd, { op: "single", record }, bounds);
     if (res.status !== 0 || !res.stdout || typeof res.stdout !== "object") {
       const error = `op: single for record ${i} (${JSON.stringify(record)}) failed: ${res.error ?? "invalid response"}`;
       operations.push({ op: `single_${i}`, passed: false, error });
@@ -167,7 +168,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   }
 
   // 5. Held-out batch evaluation (ordered array + empty array)
-  const batchRes = runSolutionSubprocess(cwd, { op: "batch", records: HELD_OUT_RECORDS });
+  const batchRes = runSolutionSubprocess(cwd, { op: "batch", records: HELD_OUT_RECORDS }, bounds);
   if (batchRes.status !== 0 || !Array.isArray(batchRes.stdout)) {
     const error = `op: batch for held-out records failed: ${batchRes.error ?? "did not return array"}`;
     operations.push({ op: "batch", passed: false, error });
@@ -180,7 +181,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   }
   operations.push({ op: "batch", passed: true });
 
-  const emptyBatchRes = runSolutionSubprocess(cwd, { op: "batch", records: [] });
+  const emptyBatchRes = runSolutionSubprocess(cwd, { op: "batch", records: [] }, bounds);
   if (emptyBatchRes.status !== 0 || !Array.isArray(emptyBatchRes.stdout) || emptyBatchRes.stdout.length !== 0) {
     const error = `op: batch for empty records array must return empty array, got: ${JSON.stringify(emptyBatchRes.stdout)}`;
     operations.push({ op: "batch_empty", passed: false, error });
@@ -188,29 +189,30 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   }
   operations.push({ op: "batch_empty", passed: true });
 
-  // 6. Held-out history evaluation (north first 2, south next 2, west last 2)
+  // 6. Held-out history evaluation, including an empty region whose key must survive.
   const historySeries = {
     north: HELD_OUT_RECORDS.slice(0, 2),
     south: HELD_OUT_RECORDS.slice(2, 4),
     west: HELD_OUT_RECORDS.slice(4, 6),
+    empty: [],
   };
-  const historyRes = runSolutionSubprocess(cwd, { op: "history", series: historySeries });
+  const historyRes = runSolutionSubprocess(cwd, { op: "history", series: historySeries }, bounds);
   if (historyRes.status !== 0 || !historyRes.stdout || typeof historyRes.stdout !== "object") {
     const error = `op: history failed: ${historyRes.error ?? "did not return object"}`;
     operations.push({ op: "history", passed: false, error });
     return { status: "DISPROVEN", reason: error, operations };
   }
   const hist = historyRes.stdout as Record<string, unknown>;
-  for (const region of ["north", "south", "west"] as const) {
+  for (const region of ["north", "south", "west", "empty"] as const) {
     if (!Array.isArray(hist[region])) {
       const error = `op: history missing or invalid series key "${region}"`;
       operations.push({ op: "history", passed: false, error });
       return { status: "DISPROVEN", reason: error, operations };
     }
   }
-  if (!isDeepStrictEqual(Object.keys(hist).sort(), ["north", "south", "west"]) || !isDeepStrictEqual(hist.north, EXPECTED_HELD_OUT_RESULTS.slice(0, 2)) ||
+  if (!isDeepStrictEqual(Object.keys(hist).sort(), ["empty", "north", "south", "west"]) || !isDeepStrictEqual(hist.north, EXPECTED_HELD_OUT_RESULTS.slice(0, 2)) ||
       !isDeepStrictEqual(hist.south, EXPECTED_HELD_OUT_RESULTS.slice(2, 4)) ||
-      !isDeepStrictEqual(hist.west, EXPECTED_HELD_OUT_RESULTS.slice(4, 6))) {
+      !isDeepStrictEqual(hist.west, EXPECTED_HELD_OUT_RESULTS.slice(4, 6)) || !isDeepStrictEqual(hist.empty, [])) {
     const error = "op: history results do not match expected series computations";
     operations.push({ op: "history", passed: false, error });
     return { status: "DISPROVEN", reason: error, operations };
@@ -218,7 +220,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   operations.push({ op: "history", passed: true });
 
   // 7. Graph evaluation: nodes and edges sets
-  const graphRes = runSolutionSubprocess(cwd, { op: "graph" });
+  const graphRes = runSolutionSubprocess(cwd, { op: "graph" }, bounds);
   if (graphRes.status !== 0 || !graphRes.stdout || typeof graphRes.stdout !== "object") {
     const error = `op: graph failed: ${graphRes.error ?? "did not return object"}`;
     operations.push({ op: "graph", passed: false, error });
@@ -239,7 +241,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
 
   // 8. Trace evaluation: margin and net for first record and last record
   // 8a. Trace margin (first record: gross=23, refunds=5, cost=7) -> all 5 nodes, 4 edges, full values
-  const traceMarginFirst = runSolutionSubprocess(cwd, { op: "trace", metric: "margin", record: HELD_OUT_RECORDS[0] });
+  const traceMarginFirst = runSolutionSubprocess(cwd, { op: "trace", metric: "margin", record: HELD_OUT_RECORDS[0] }, bounds);
   if (traceMarginFirst.status !== 0 || !traceMarginFirst.stdout || typeof traceMarginFirst.stdout !== "object") {
     const error = `op: trace margin record 0 failed: ${traceMarginFirst.error}`;
     operations.push({ op: "trace_margin_0", passed: false, error });
@@ -260,7 +262,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   operations.push({ op: "trace_margin_0", passed: true });
 
   // 8b. Trace margin (last record: gross=8, refunds=3, cost=null) -> all 5 nodes, 4 edges, null margin
-  const traceMarginLast = runSolutionSubprocess(cwd, { op: "trace", metric: "margin", record: HELD_OUT_RECORDS[5] });
+  const traceMarginLast = runSolutionSubprocess(cwd, { op: "trace", metric: "margin", record: HELD_OUT_RECORDS[5] }, bounds);
   if (traceMarginLast.status !== 0 || !traceMarginLast.stdout || typeof traceMarginLast.stdout !== "object") {
     const error = `op: trace margin record 5 failed: ${traceMarginLast.error}`;
     operations.push({ op: "trace_margin_5", passed: false, error });
@@ -286,7 +288,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
     ["gross", "net"],
     ["refunds", "net"],
   ];
-  const traceNetFirst = runSolutionSubprocess(cwd, { op: "trace", metric: "net", record: HELD_OUT_RECORDS[0] });
+  const traceNetFirst = runSolutionSubprocess(cwd, { op: "trace", metric: "net", record: HELD_OUT_RECORDS[0] }, bounds);
   if (traceNetFirst.status !== 0 || !traceNetFirst.stdout || typeof traceNetFirst.stdout !== "object") {
     const error = `op: trace net record 0 failed: ${traceNetFirst.error}`;
     operations.push({ op: "trace_net_0", passed: false, error });
@@ -311,26 +313,30 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
   }
   operations.push({ op: "trace_net_0", passed: true });
 
-  // 8d. Trace net (last record: gross=8, refunds=3, cost=null) -> exactly {gross, refunds, net}, 2 edges, excludes cost and margin
-  const traceNetLast = runSolutionSubprocess(cwd, { op: "trace", metric: "net", record: HELD_OUT_RECORDS[5] });
-  if (traceNetLast.status !== 0 || !traceNetLast.stdout || typeof traceNetLast.stdout !== "object") {
-    const error = `op: trace net record 5 failed: ${traceNetLast.error}`;
-    operations.push({ op: "trace_net_5", passed: false, error });
-    return { status: "DISPROVEN", reason: error, operations };
+  // 8d. A null net input must propagate; a null cost must not affect net.
+  for (const { index, values } of [
+    { index: 3, values: { gross: null, refunds: 2, net: null } },
+    { index: 5, values: { gross: 8, refunds: 3, net: 5 } },
+  ]) {
+    const trace = runSolutionSubprocess(cwd, { op: "trace", metric: "net", record: HELD_OUT_RECORDS[index] }, bounds);
+    if (trace.status !== 0 || !trace.stdout || typeof trace.stdout !== "object") {
+      const error = `op: trace net record ${index} failed: ${trace.error}`;
+      operations.push({ op: `trace_net_${index}`, passed: false, error });
+      return { status: "DISPROVEN", reason: error, operations };
+    }
+    const actual = trace.stdout as Record<string, unknown>;
+    if (!compareNodes(actual.nodes, expectedNetNodes) || !compareEdges(actual.edges, expectedNetEdges)) {
+      const error = `op: trace net record ${index} must return exactly gross, refunds, net and exclude cost/margin; got nodes ${JSON.stringify(actual.nodes)}`;
+      operations.push({ op: `trace_net_${index}`, passed: false, error });
+      return { status: "DISPROVEN", reason: error, operations };
+    }
+    if (!isDeepStrictEqual(actual.values, values)) {
+      const error = `op: trace net record ${index} values mismatch: got ${JSON.stringify(actual.values)}, expected ${JSON.stringify(values)}`;
+      operations.push({ op: `trace_net_${index}`, passed: false, error });
+      return { status: "DISPROVEN", reason: error, operations };
+    }
+    operations.push({ op: `trace_net_${index}`, passed: true });
   }
-  const tnl = traceNetLast.stdout as Record<string, unknown>;
-  if (!compareNodes(tnl.nodes, expectedNetNodes) || !compareEdges(tnl.edges, expectedNetEdges)) {
-    const error = `op: trace net record 5 must return exactly gross, refunds, net and exclude cost/margin; got nodes ${JSON.stringify(tnl.nodes)}`;
-    operations.push({ op: "trace_net_5", passed: false, error });
-    return { status: "DISPROVEN", reason: error, operations };
-  }
-  const expectedValuesNetLast = { gross: 8, refunds: 3, net: 5 };
-  if (!isDeepStrictEqual(tnl.values, expectedValuesNetLast)) {
-    const error = `op: trace net record 5 values mismatch: got ${JSON.stringify(tnl.values)}, expected ${JSON.stringify(expectedValuesNetLast)}`;
-    operations.push({ op: "trace_net_5", passed: false, error });
-    return { status: "DISPROVEN", reason: error, operations };
-  }
-  operations.push({ op: "trace_net_5", passed: true });
 
   const mutated = [...frozen].find(([name, before]) => !existsSync(join(cwd, name)) || readFileSync(join(cwd, name), "utf8") !== before);
   if (mutated) return { status: "DISPROVEN", reason: `Oracle execution modified its input: ${mutated[0]}`, operations };
@@ -344,7 +350,7 @@ export function executeMetricsOracle(cwd: string, fixtures?: Record<string, stri
       singleRecords: HELD_OUT_RECORDS.length,
       batch: true,
       batchEmpty: true,
-      history: ["north", "south", "west"],
+      history: ["north", "south", "west", "empty"],
       graph: { nodeCount: EXPECTED_GRAPH_NODES.size, edgeCount: EXPECTED_GRAPH_EDGES.length },
       trace: { margin: true, netExcludesMarginAndCost: true },
       buildSuccess: true,

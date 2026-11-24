@@ -135,8 +135,9 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
   const summaryBodyTokens = snap ? textTokens(snap.summary) : null;
   const model = row.model;
   const calls = row.callIds.map(id => requests.find(r => r.callId === id)).filter((r): r is RequestObservation => Boolean(r));
-  const cap = (r: RequestObservation) => r.cap?.kind === "known" || r.cap?.kind === "value" ? r.cap.value ?? null : r.cap?.value ?? null;
+  const cap = (r: RequestObservation) => r.cap?.value ?? null;
   const next = requests.find(r => r.callId === row.continuationCallId);
+  const finalContextTokens = next ? requestTokens(next.context.messages.some(m => m.role === "system") ? { messages: next.context.messages } : next.context) : null;
   const accounting = row.result?.observations.accounting;
   const fileLists = native && snap && Array.isArray(details?.readFiles) && Array.isArray(details?.modifiedFiles) ? { read: details.readFiles as string[], modified: details.modifiedFiles as string[] } : native || !snap ? null : { read: [], modified: [] };
   const nativeSources = [row.preparation.messagesToSummarize, row.preparation.turnPrefixMessages].filter(m => m.length > 0);
@@ -158,8 +159,8 @@ export function rolloverFacts(row: RolloverObservation, requests: RequestObserva
     mainPlanningInputLimit: accounting?.mainInputLimit ?? null,
     mainOutputCap: next ? cap(next) : null,
     mainAdmission: next?.admission ?? null,
-    finalContextTokens: next ? requestTokens(next.context) : null,
-    remainingContextTokens: next ? model.contextWindow - requestTokens(next.context) : null,
+    finalContextTokens,
+    remainingContextTokens: finalContextTokens !== null ? model.contextWindow - finalContextTokens : null,
     accounting: accounting ?? null,
     overhead: { wrapperOverheadTokens: snap && mTokens !== null ? native ? mTokens - summaryBodyTokens! : memoryTokens(slots, undefined, details.mechanicalFallback) - textTokens(slots.map((s: any) => s.text).join("")) : null,
       fileLists, fileListCount: fileLists ? fileLists.read.length + fileLists.modified.length : null,

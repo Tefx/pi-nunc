@@ -344,7 +344,6 @@ function meter(value: number | null, cap: number | null): string {
 }
 
 function tokenLabel(tokens: number | null | undefined, unknown: boolean): string {
-  if (unknown && (tokens === null || tokens === undefined)) return "unknown";
   if (tokens === null || tokens === undefined) return "unknown";
   return unknown ? `${thousands(tokens)} + unknown` : `${thousands(tokens)} tok`;
 }

@@ -1,17 +1,99 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Type } from "typebox";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, normalizeContext, type TranscriptContext } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { googleVertexProvider } from "@earendil-works/pi-ai/providers/google-vertex";
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, readQualifiedLedgers, type CallRecord, type CallEnd } from "../../src/live/budget.js";
 import { selectedModels } from "../../src/live/contract.js";
+import { requestTokens } from "../../src/engine/accounting.js";
+import { rolloverFacts, type RequestObservation, type RolloverObservation } from "../../src/live/comparison-observation.js";
 import { fixture, repository } from "./fixtures.js";
+function anthropicResponse(model: string, outputTokens = 4): Response {
+  const events = [
+    { type: "message_start", message: { id: "fixture", type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 12, output_tokens: 0 } } },
+    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Observed fixture." } },
+    { type: "content_block_stop", index: 0 },
+    { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: outputTokens } }, { type: "message_stop" },
+  ];
+  return new Response(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+}
 const context: TranscriptContext = normalizeContext({ systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] });
+
+test("bounded observations preserve sanitized tool sampling and count transcript system state once", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const model = selectedModels(input)[0]!;
+    let sends = 0;
+    const tools = [
+      { name: "read", description: "Read evidence", parameters: Type.Object({}), constrainedSampling: { type: "json_schema" as const, strict: "require" as const } },
+      { name: "write", description: "Write evidence", parameters: Type.Object({}), constrainedSampling: false as const },
+      { name: "list", description: "List evidence", parameters: Type.Object({}) },
+    ];
+    const legacy = { systemPrompt: "Use available evidence.", tools, messages: context.messages.filter(m => m.role !== "system") } satisfies Context;
+    const transcript = normalizeContext(legacy);
+    const enriched = { ...transcript, tools: tools.map(tool => ({ ...tool, execute: async () => "local only" })) };
+    const expectedTokens = requestTokens(transcript);
+    assert.equal(requestTokens(legacy), expectedTokens);
+    assert(requestTokens(enriched) > expectedTokens, "mixed Context accounts for its top-level tools");
+    const contexts: Context[] = [], requests: RequestObservation[] = [];
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "observations.jsonl"), input.limits, Date.now() + 10000, new AbortController().signal);
+    const provider = boundedProvider(anthropicProvider(), [model], ledger, {
+      fetch: async () => { sends++; return anthropicResponse(model.id); },
+      onContext: (_model, observed) => { contexts.push(observed); },
+      onRequest: data => { requests.push({ ...data, turn: "a", thinking: null }); },
+    });
+    for (const simple of [true, false]) {
+      const response = await (simple ? provider.streamSimple(model, enriched, { maxTokens: 1000, apiKey: "offline-fixture-key" }) : provider.stream(model, transcript, { maxTokens: 1000, apiKey: "offline-fixture-key" })).result();
+      assert.equal(response.stopReason, "stop", response.errorMessage ?? "");
+    }
+    assert.equal(sends, 2);
+    for (const observed of [...contexts, ...requests.map(r => r.context)]) {
+      assert.deepEqual(observed.tools, structuredClone(tools));
+      assert.equal(observed.messages.filter(m => m.role === "system").length, 1);
+      assert.equal(requestTokens({ messages: observed.messages }), expectedTokens);
+      assert(requestTokens(observed) > expectedTokens, "observation tools duplicate the transcript tool state");
+    }
+    assert.deepEqual(readLedger(ledger.path).filter(r => r.kind === "reserve").map(r => r.inputEstimate), [requestTokens(enriched), expectedTokens]);
+    const settings = { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 };
+    const row: RolloverObservation = { turn: "a", reason: "threshold", model, thinking: null, branch: [], active: [],
+      config: { nunc: {}, compaction: settings },
+      preparation: { firstKeptEntryId: "kept", settings, isSplitTurn: false, messagesToSummarize: [], turnPrefixMessages: [], tokensBefore: 0 },
+      callIds: [1], continuationCallId: 2 };
+    const facts = rolloverFacts(row, requests, "candidate");
+    assert.equal(facts.finalContextTokens, expectedTokens);
+    assert.equal(facts.remainingContextTokens, model.contextWindow - expectedTokens);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("mixed legacy prompt and tools with a later system message reject oversized input before reservation", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  try {
+    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 1000, maxTokens: 8192 }] });
+    const model = faux.getModel();
+    const ledger = new BudgetLedger(join(input.target.stateRoot, "mixed.jsonl"), input.limits, Date.now() + 10000, new AbortController().signal);
+    const mixed: Context = {
+      systemPrompt: "x".repeat(3500),
+      tools: [{ name: "read", description: "y".repeat(3500), parameters: Type.Object({}) }],
+      messages: [
+        { role: "user", content: "Inspect evidence.", timestamp: 1 },
+        { role: "system", content: "Later instruction.", timestamp: 2 },
+      ],
+    };
+    assert(requestTokens({ messages: mixed.messages }) < model.contextWindow);
+    assert(requestTokens({ ...mixed, tools: [] }) > model.contextWindow, "legacy prompt contributes to admission");
+    assert(requestTokens({ ...mixed, systemPrompt: "" }) > model.contextWindow, "legacy tools contribute to admission");
+    assert.throws(() => ledger.reserve(model, mixed, 16), { code: "INPUT_LIMIT" });
+    assert.deepEqual(ledger.readQualifiedCalls().calls, [], "rejected input creates no reservation");
+    assert.equal(faux.state.callCount, 0);
+  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
 
 test("orphan terminals reject raw and qualified ledger reads; aggregate unresolved IDs retain ledger identity", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
@@ -62,7 +144,7 @@ test("call/token/cost/time/output and unresolved-request ceilings reject before 
       const limits = { ...input.limits, maxCalls: 1, maxOutputTokens: 4096, ...(limit === "token" ? { maxTotalTokens: 10 } : {}), ...(limit === "cost" ? { maxCostUsd: 0.001 } : {}) };
       const ledger = new BudgetLedger(join(input.target.stateRoot, "calls.jsonl"), limits, limit === "time" ? Date.now() - 1 : Date.now() + 10000, new AbortController().signal);
       if (limit === "call" || limit === "unresolved") { const reservation = ledger.reserve(model, context, 1000); if (limit === "call") ledger.finish(reservation, fauxAssistantMessage("finished")); }
-      const provider = boundedProvider(faux.provider, [model], ledger, { controlled: true });
+      const provider = boundedProvider(faux.provider, [model], ledger);
       const result = await provider.streamSimple(model, context, { maxTokens: limit === "output" ? 8192 : 1000 }).result();
       assert.equal(result.stopReason, "error"); assert.equal(faux.state.callCount, 0, limit);
     } finally { await rm(input.target.stateRoot, { recursive: true }); }
@@ -82,13 +164,13 @@ test("null call/token totals allow multiple reserves; explicit finite caps refus
     assert.deepEqual(readLedger(ledger.path).filter(r => r.kind === "reserve").map(r => r.id), [1, 2, 3]);
     const callCap = new BudgetLedger(join(input.target.stateRoot, "call.jsonl"), { ...open, maxCalls: 1 }, Date.now() + 10000, new AbortController().signal);
     let callSends = 0;
-    const callProvider = boundedProvider(faux.provider, [model], callCap, { controlled: true, fetch: async () => { callSends++; return new Response("no", { status: 400 }); } });
+    const callProvider = boundedProvider(faux.provider, [model], callCap, { fetch: async () => { callSends++; return new Response("no", { status: 400 }); } });
     callCap.finish(callCap.reserve(model, context, 1000), fauxAssistantMessage("ok"));
     assert.equal((await callProvider.streamSimple(model, context, { maxTokens: 1000 }).result()).stopReason, "error");
     assert.equal(callSends, 0); assert.equal(faux.state.callCount, 0);
     const tokenCap = new BudgetLedger(join(input.target.stateRoot, "token.jsonl"), { ...open, maxTotalTokens: 10 }, Date.now() + 10000, new AbortController().signal);
     let tokenSends = 0;
-    const tokenProvider = boundedProvider(faux.provider, [model], tokenCap, { controlled: true, fetch: async () => { tokenSends++; return new Response("no", { status: 400 }); } });
+    const tokenProvider = boundedProvider(faux.provider, [model], tokenCap, { fetch: async () => { tokenSends++; return new Response("no", { status: 400 }); } });
     assert.equal((await tokenProvider.streamSimple(model, context, { maxTokens: 1000 }).result()).stopReason, "error");
     assert.equal(tokenSends, 0);
     const mixedCalls = new BudgetLedger(join(input.target.stateRoot, "mixed-calls.jsonl"), { ...open, maxCalls: 1, maxTotalTokens: null }, Date.now() + 10000, new AbortController().signal);
@@ -141,11 +223,17 @@ test("aborted authorization and changed model cannot call even controlled provid
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
     const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "test", contextWindow: 60000, maxTokens: 8192 }] }), model = faux.getModel();
-    const controller = new AbortController(); controller.abort();
+    const controller = new AbortController();
     const ledger = new BudgetLedger(join(input.target.stateRoot, "calls.jsonl"), input.limits, Date.now() + 10000, controller.signal);
-    const provider = boundedProvider(faux.provider, [model], ledger, { controlled: true });
-    assert.equal((await provider.streamSimple(model, context).result()).stopReason, "error");
-    assert.equal((await provider.streamSimple({ ...model, contextWindow: 80000 }, context).result()).stopReason, "error");
+    const provider = boundedProvider(faux.provider, [model], ledger);
+    const changed = await provider.streamSimple({ ...model, contextWindow: 80000 }, context).result();
+    assert.equal(changed.stopReason, "error");
+    assert.match(changed.errorMessage ?? "", /Request changed its authorized model/);
+    assert.equal(faux.state.callCount, 0);
+    controller.abort();
+    const aborted = await provider.streamSimple(model, context).result();
+    assert.equal(aborted.stopReason, "error");
+    assert.match(aborted.errorMessage ?? "", /CANCELLED/);
     assert.equal(faux.state.callCount, 0);
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
@@ -335,76 +423,70 @@ test("unknown cost never settles to 0; token settlement does not imply known cos
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
 });
 
-test("duplicate or inconsistent terminal records cannot undercharge and keep worst-case reservation", async () => {
-  const input = await fixture(); await mkdir(input.target.stateRoot);
-  try {
-    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "dup-model", contextWindow: 60000, maxTokens: 8192 }] });
-    const model = faux.getModel();
-    model.cost = { input: 10, output: 10, cacheRead: 0, cacheWrite: 0 };
-    const r: import("../../src/live/budget.js").CallRecord = {
-      kind: "reserve", id: 1, model: "test/model", inputEstimate: 100, outputCeiling: 8192,
-      reservedTokens: 68192, reservedCostUsd: 0.68192, at: Date.now()
-    };
+test("duplicate or inconsistent terminal records cannot undercharge and keep worst-case reservation", () => {
+  const r: CallRecord = {
+    kind: "reserve", id: 1, model: "test/model", inputEstimate: 100, outputCeiling: 8192,
+    reservedTokens: 68192, reservedCostUsd: 0.68192, at: Date.now()
+  };
 
-    // Single trustworthy terminal settles
-    const tClean: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
-      usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, contextInput: 50, reasoning: null, totalTokens: 100, cost: 0.001 }
-    };
-    assert.equal(callChargedTokens(r, [tClean]), 100);
-    assert.equal(callChargedCost(r, [tClean]), 0.001);
+  // Single trustworthy terminal settles
+  const tClean: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+    usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, contextInput: 50, reasoning: null, totalTokens: 100, cost: 0.001 }
+  };
+  assert.equal(callChargedTokens(r, [tClean]), 100);
+  assert.equal(callChargedCost(r, [tClean]), 0.001);
 
-    // Duplicate terminals cannot undercharge: must return worst-case reservedTokens
-    const tDup: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 200, stopReason: "stop",
-      usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: 20, cost: 0.0002 }
-    };
-    assert.equal(callChargedTokens(r, [tClean, tDup]), 68192);
-    assert.equal(callChargedCost(r, [tClean, tDup]), 0.68192);
+  // Duplicate terminals cannot undercharge: must return worst-case reservedTokens
+  const tDup: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 200, stopReason: "stop",
+    usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: 20, cost: 0.0002 }
+  };
+  assert.equal(callChargedTokens(r, [tClean, tDup]), 68192);
+  assert.equal(callChargedCost(r, [tClean, tDup]), 0.68192);
 
-    // Inconsistent / invalid terminal (tokens exceed reservation)
-    const tExceed: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
-      usage: { input: 100000, output: 100000, cacheRead: 0, cacheWrite: 0, contextInput: 100000, reasoning: null, totalTokens: 200000, cost: 2.0 }
-    };
-    assert.equal(callChargedTokens(r, [tExceed]), 68192);
-    assert.equal(callChargedCost(r, [tExceed]), 2.0, "actual cost above reserve must remain charged");
+  // Inconsistent / invalid terminal (tokens exceed reservation)
+  const tExceed: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+    usage: { input: 100000, output: 100000, cacheRead: 0, cacheWrite: 0, contextInput: 100000, reasoning: null, totalTokens: 200000, cost: 2.0 }
+  };
+  assert.equal(callChargedTokens(r, [tExceed]), 68192);
+  assert.equal(callChargedCost(r, [tExceed]), 2.0, "actual cost above reserve must remain charged");
 
-    // Incomplete or zero-default usage: { totalTokens: 0, contextInput: null, output: null }
-    const tZeroDefault: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
-      usage: { input: null, output: null, cacheRead: null, cacheWrite: null, contextInput: null, reasoning: null, totalTokens: 0, cost: null }
-    };
-    assert.equal(callChargedTokens(r, [tZeroDefault]), 68192, "zero-default usage cannot release reserve");
+  // Incomplete or zero-default usage: { totalTokens: 0, contextInput: null, output: null }
+  const tZeroDefault: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+    usage: { input: null, output: null, cacheRead: null, cacheWrite: null, contextInput: null, reasoning: null, totalTokens: 0, cost: null }
+  };
+  assert.equal(callChargedTokens(r, [tZeroDefault]), 68192, "zero-default usage cannot release reserve");
 
-    // Inconsistent components: contextInput + output !== totalTokens
-    const tInconsistentSum: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
-      usage: { input: null, output: 400, cacheRead: null, cacheWrite: null, contextInput: 500, reasoning: null, totalTokens: 1000, cost: 0.001 }
-    };
-    assert.equal(callChargedTokens(r, [tInconsistentSum]), 68192, "inconsistent total sum cannot release reserve");
+  // Inconsistent components: contextInput + output !== totalTokens
+  const tInconsistentSum: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+    usage: { input: null, output: 400, cacheRead: null, cacheWrite: null, contextInput: 500, reasoning: null, totalTokens: 1000, cost: 0.001 }
+  };
+  assert.equal(callChargedTokens(r, [tInconsistentSum]), 68192, "inconsistent total sum cannot release reserve");
 
-    // Inconsistent subcomponents: input + cacheRead + cacheWrite !== contextInput
-    const tInconsistentSub: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
-      usage: { input: 500, output: 200, cacheRead: 100, cacheWrite: 100, contextInput: 800, reasoning: null, totalTokens: 1000, cost: 0.001 }
-    };
-    assert.equal(callChargedTokens(r, [tInconsistentSub]), 68192, "inconsistent cache subcomponents cannot release reserve");
+  // Inconsistent subcomponents: input + cacheRead + cacheWrite !== contextInput
+  const tInconsistentSub: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+    usage: { input: 500, output: 200, cacheRead: 100, cacheWrite: 100, contextInput: 800, reasoning: null, totalTokens: 1000, cost: 0.001 }
+  };
+  assert.equal(callChargedTokens(r, [tInconsistentSub]), 68192, "inconsistent cache subcomponents cannot release reserve");
 
-    // Partial subcomponents: missing input
-    const tPartialSub: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
-      usage: { input: null, output: 200, cacheRead: 100, cacheWrite: 100, contextInput: 800, reasoning: null, totalTokens: 1000, cost: 0.001 }
-    };
-    assert.equal(callChargedTokens(r, [tPartialSub]), 68192, "partial subcomponent metadata cannot release reserve");
+  // Partial subcomponents: missing input
+  const tPartialSub: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+    usage: { input: null, output: 200, cacheRead: 100, cacheWrite: 100, contextInput: 800, reasoning: null, totalTokens: 1000, cost: 0.001 }
+  };
+  assert.equal(callChargedTokens(r, [tPartialSub]), 68192, "partial subcomponent metadata cannot release reserve");
 
-    // Unknown or zero cost when rate is non-zero
-    const tZeroCost: import("../../src/live/budget.js").CallEnd = {
-      kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
-      usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, contextInput: 50, reasoning: null, totalTokens: 100, cost: 0 }
-    };
-    assert.equal(callChargedCost(r, [tZeroCost]), 0.68192, "unknown zero cost cannot settle against positive reservation");
-  } finally { await rm(input.target.stateRoot, { recursive: true }); }
+  // Unknown or zero cost when rate is non-zero
+  const tZeroCost: CallEnd = {
+    kind: "terminal", id: 1, at: Date.now(), latencyMs: 100, stopReason: "stop",
+    usage: { input: 50, output: 50, cacheRead: 0, cacheWrite: 0, contextInput: 50, reasoning: null, totalTokens: 100, cost: 0 }
+  };
+  assert.equal(callChargedCost(r, [tZeroCost]), 0.68192, "unknown zero cost cannot settle against positive reservation");
 });
 
 test("shared batch accounting across invocations/comparison preserves cumulative usage and caps", async () => {
@@ -592,12 +674,10 @@ test("duplicate terminal on one call cannot conceal another call's missing termi
 test("controlled usage overflow preserves an unresolved reservation without a synthetic local terminal", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   try {
-    const faux = fauxProvider({ provider: "nunc-live-controlled", models: [{ id: "overflow", contextWindow: 60000, maxTokens: 8192 }] });
-    faux.setResponses([fauxAssistantMessage("x".repeat(5000))]); // Native faux reports 1250 output tokens, beyond the 1000 authorization.
-    const model = faux.getModel();
+    const model = selectedModels(input)[0]!;
     const ledger = new BudgetLedger(join(input.target.stateRoot, "overflow.jsonl"), input.limits, Date.now() + 10000, new AbortController().signal);
-    const provider = boundedProvider(faux.provider, [model], ledger, { controlled: true });
-    const response = await provider.streamSimple(model, context, { maxTokens: 1000 }).result();
+    const provider = boundedProvider(anthropicProvider(), [model], ledger, { fetch: async () => anthropicResponse(model.id, 1250) });
+    const response = await provider.streamSimple(model, context, { maxTokens: 1000, apiKey: "offline-fixture-key" }).result();
     assert.equal(response.stopReason, "error");
     assert.match(response.errorMessage ?? "", /USAGE_LIMIT/);
     assert.equal(readLedger(ledger.path).length, 1);
@@ -793,6 +873,44 @@ test("persisted invalid reservation values reject reads and new reservations wit
       assert.deepEqual(ledgerSummary(ledger.readQualifiedCalls().calls).unreconciledCallIds, []);
     }
   } finally { await rm(input.target.stateRoot, { recursive: true }); }
+});
+
+test("persisted terminal schema rejects invalid receipts and keeps absent optional usage unknown", async () => {
+  const input = await fixture(); await mkdir(input.target.stateRoot);
+  const path = join(input.target.stateRoot, "calls.jsonl");
+  const reserve: CallRecord = { kind: "reserve", id: 1, model: "fixture", at: 1, inputEstimate: 10, outputCeiling: 16, reservedTokens: 100, reservedCostUsd: 1 };
+  const terminal = { kind: "terminal", id: 1, at: 2, latencyMs: 1, stopReason: "stop", usage: { totalTokens: 30, cost: 0.1 } };
+  const persist = async (row: string) => writeFile(path, `${JSON.stringify(reserve)}\n${row}\n`);
+  try {
+    for (const field of ["at", "latencyMs", "stopReason", "usage"]) {
+      for (const raw of [undefined, "null", "true", '"1"', "-1", "1e400", "{}", "[]"]) {
+        if (field === "stopReason" && raw === '"1"') continue;
+        const rest = Object.fromEntries(Object.entries(terminal).filter(([key]) => key !== field));
+        const json = JSON.stringify(rest);
+        await persist(raw === undefined ? json : `${json.slice(0, -1)},"${field}":${raw}}`);
+        assert.throws(() => readLedger(path), { code: "LEDGER_RECONCILIATION" }, `${field}=${raw}`);
+      }
+    }
+    for (const field of ["totalTokens", "cost", "input", "output", "cacheRead", "cacheWrite", "contextInput", "reasoning"]) {
+      for (const raw of [undefined, '"1"', "true", "{}", "-1", "1e400"]) {
+        if (raw === undefined && field !== "totalTokens" && field !== "cost") continue;
+        const usage = Object.fromEntries(Object.entries(terminal.usage).filter(([key]) => key !== field));
+        const json = JSON.stringify(usage);
+        const row = JSON.stringify({ ...terminal, usage: undefined });
+        await persist(`${row.slice(0, -1)},"usage":${raw === undefined ? json : `${json.slice(0, -1)},"${field}":${raw}}`}}`);
+        assert.throws(() => readQualifiedLedgers([path]), { code: "LEDGER_RECONCILIATION" }, `${field}=${raw}`);
+      }
+    }
+    await persist(JSON.stringify(terminal));
+    const summary = ledgerSummary(readLedger(path));
+    assert.equal(summary.actualTokens, 30); assert.equal(summary.actualCostUsd, 0.1);
+    assert.equal(summary.input, null); assert.equal(summary.output, null);
+    await persist(JSON.stringify({ ...terminal, at: 0, latencyMs: 0, usage: { totalTokens: null, cost: null, input: null } }));
+    assert.equal(ledgerSummary(readLedger(path)).actualTokens, null);
+    const typedTerminal: CallEnd = { ...terminal, kind: "terminal", usage: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0, contextInput: 10, reasoning: null, totalTokens: Infinity, cost: NaN } };
+    const nonfinite = ledgerSummary([reserve, typedTerminal]);
+    assert.equal(nonfinite.actualTokens, null); assert.equal(nonfinite.actualCostUsd, null);
+  } finally { await rm(input.target.stateRoot, { recursive: true, force: true }); }
 });
 
 test("persisted duplicate reservation IDs reject at the ledger read boundary", async () => {

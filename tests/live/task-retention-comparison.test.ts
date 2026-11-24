@@ -6,11 +6,11 @@ import { join } from "node:path";
 import { repository, temporaryBaseline } from "./fixtures.js";
 import { loadScenario } from "../../src/live/scenarios.js";
 
-const baseline = await temporaryBaseline("1d4fc4a210b64f71871ab3f5c10093215a25990c");
-
 test("public comparison binds explicit pre-change ref and executes scoped-task hosts in both modes", { timeout: 160000 }, async () => {
+  const baseline = await temporaryBaseline("1d4fc4a210b64f71871ab3f5c10093215a25990c");
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 150000 });
+  try {
   const model = { id: "openai/gpt-5.6-luna", api: "openai-completions", reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000 };
   await writeFile(join(f.state, "agent/models.json"), JSON.stringify({ providers: { openrouter: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [model] } } }));
   const config = { nunc: { extraction: { outputTokens: 1024 } }, compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, retentionCalibration: { minFraction: 0.000001, maxFraction: 0.999999 } };
@@ -41,7 +41,6 @@ test("public comparison binds explicit pre-change ref and executes scoped-task h
     const code = await new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
     return { code, stderr, report: stdout ? JSON.parse(stdout) : undefined };
   };
-  try {
     const preflight = await run(selection, true);
     assert.equal(preflight.code, 0, JSON.stringify(preflight)); assert.equal(f.requests.length, 0);
     assert.equal(preflight.report.receipt.callsMade, 0);

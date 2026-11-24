@@ -6,7 +6,7 @@ import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, isAbsolute } from "node:path";
-import { childEnvironment } from "../../src/live/host.js";
+import { childEnvironment, openHost } from "../../src/live/host.js";
 import { toolPath } from "../../src/live/tool-path.js";
 import { fixture, repository } from "./fixtures.js";
 function assertRemovedReceipts(result: SpawnSyncReturns<string>): void {
@@ -107,6 +107,41 @@ test("stock RPC receipts remove temporary artifacts and retain explicit-parent e
     }
   } finally { await rm(parent, { recursive: true, force: true }); }
 });
+test("host close rejects early clean exits and abnormal shutdowns after draining final observations", { timeout: 30000 }, async () => {
+  for (const mode of ["early-zero", "early-one", "quit-one", "quit-signal", "quit-zero", "abort"]) {
+    const input = await fixture();
+    const caseRoot = join(input.target.stateRoot, "c2");
+    await mkdir(join(caseRoot, "task"), { recursive: true });
+    const signal = new AbortController();
+    const observations: string[] = [];
+    const script = `
+      const fs = require('node:fs');
+      const binding = JSON.parse(fs.readFileSync(process.env.NUNC_LIVE_OBSERVER, 'utf8'));
+      const mode = ${JSON.stringify(mode)};
+      if (mode === 'abort') process.on('SIGTERM', () => process.exit(1));
+      require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+        const msg = JSON.parse(line);
+        if (msg.type === 'exit' || msg.message === '/nunc-observer-quit') {
+          fs.appendFileSync(binding.events, JSON.stringify({ type: 'final', data: {} }) + '\\n');
+          if (mode === 'quit-signal') process.kill(process.pid, 'SIGTERM');
+          else process.exit(mode.endsWith('one') ? 1 : 0);
+          return;
+        }
+        const data = msg.type === 'get_state' ? { sessionId: 'fixture', model: binding.models[0] } : {};
+        process.stdout.write(JSON.stringify({ type: 'response', id: msg.id, success: true, data }) + '\\n');
+      });`;
+    const host = await openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: input.resolvedModels!, deadline: Date.now() + 10000,
+      signal: signal.signal, testCommand: { command: process.execPath, args: ["-e", script] }, onObservation: type => observations.push(type) });
+    try {
+      if (mode.startsWith("early")) await assert.rejects(host.command("exit"), { code: "HOST_EXIT" });
+      if (mode === "abort") signal.abort();
+      if (mode.startsWith("early") || ["quit-one", "quit-signal"].includes(mode)) await assert.rejects(host.close(), { code: "HOST_EXIT" });
+      else await host.close();
+      if (mode !== "abort") assert(observations.includes("final"), "final observer events are drained even for failed exits");
+    } finally { await host.close().catch(() => {}); }
+  }
+});
+
 test("scenario-local tool paths reject traversal, protected names and external symlinks", async () => {
   const input = await fixture(); await mkdir(input.target.stateRoot);
   const cwd = join(input.target.stateRoot, "task"); await mkdir(cwd); await writeFile(join(cwd, "valid.txt"), "ok");

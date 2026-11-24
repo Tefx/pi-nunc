@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import { ModelRegistry, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface } from "pi-nunc/pi";
-import { responsesSSE, fixture, memoryPatch } from "./fixtures.js";
+import { responsesSSE, fixture, mains, memoryPatch } from "./fixtures.js";
 import { mainPlanningEstimate, messageTokens } from "../../src/engine/accounting.js";
 import { project } from "../../src/pi/projection.js";
 
@@ -37,10 +37,6 @@ function userMessages(f: Awaited<ReturnType<typeof fixture>>) {
 function customMessages(f: Awaited<ReturnType<typeof fixture>>, customType: string) {
   return f.runtime.session.sessionManager.getEntries().filter(entry => entry.type === "custom_message" && entry.customType === customType);
 }
-function mains(observations: AdmissionObservation[]) {
-  return observations.filter(o => o.kind === "main");
-}
-
 async function receiptsFixture(t: { after: (fn: () => Promise<void>) => void }, extra?: {
   inputLimit?: number;
   onStart?: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined;
@@ -222,22 +218,23 @@ test("failed and unissued responses do not become receipts", async t => {
   assert.equal(follow?.estimator, "pi-heuristic");
 });
 
-test("newer incompatible F does not erase an earlier receipt, and eviction drops the oldest", async t => {
+for (const total of [8, 9]) test(`receipt ring retains exactly eight distinct receipts: total=${total}`, async t => {
   let tag = 0;
   const env = await receiptsFixture(t, { onStart: event => ({ systemPrompt: event.systemPrompt + `\nF${tag}` }) });
   tag = 0;
   await env.f.runtime.session.prompt("keep-f0");
   const first = mains(env.observations).at(-1);
   assert.equal(first?.estimator, "pi-heuristic");
-  for (let i = 1; i <= 8; i++) {
+  for (let i = 1; i < total; i++) {
     tag = i;
     await env.f.runtime.session.prompt(`turn-${i}`);
   }
   tag = 0;
   await env.f.runtime.session.prompt("return-f0");
   const returned = mains(env.observations).at(-1);
-  assert.equal(returned?.estimator, "pi-heuristic", "oldest receipt must be evicted after the in-process bound");
-  assert.notEqual(returned?.estimateReason, "matching-receipt");
+  assert.equal(returned?.estimator, total === 8 ? "pi-usage-backed" : "pi-heuristic");
+  assert.equal(returned?.estimateReason, total === 8 ? "matching-receipt" : "system-mismatch",
+    "the first receipt survives seven subsequent receipts and is evicted by the eighth");
 });
 
 test("payload non-output change does not authorize that request or destroy an earlier receipt", async t => {

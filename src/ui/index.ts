@@ -5,18 +5,7 @@ import type { Memory } from "../engine/index.js";
 import { NuncOverlay } from "./overlay.js";
 import { compactFooter, DIAGNOSTIC_LIMIT, type DiagnosticNote } from "./status.js";
 
-export { COMMAND_USAGE, commandCompletions, compactFooter, detailsLines, DIAGNOSTIC_LIMIT, UNLOAD_LIMIT } from "./status.js";
-export { NuncOverlay } from "./overlay.js";
-export type { CompactFooterInput, DiagnosticNote, FooterTone } from "./status.js";
-
-export function createNuncUi(options: {
-  memory: MemoryFreeze;
-  context: ContextSurface;
-  supported: (ctx: ExtensionContext) => void;
-  prepareSave?: (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal) => Promise<{ edits?: unknown; warning?: string; stale?: boolean }>;
-}): NuncUi {
-  return new NuncUi(options);
-}
+export { COMMAND_USAGE, commandCompletions, detailsLines } from "./status.js";
 
 export class NuncUi {
   private warning: string | undefined;
@@ -48,6 +37,11 @@ export class NuncUi {
     this.unavailable = undefined;
   }
 
+  resetSession(): void {
+    this.diagnostics = [];
+    this.recover();
+  }
+
   attach(ctx: ExtensionContext): void {
     this.lastCtx = ctx;
     try {
@@ -60,6 +54,7 @@ export class NuncUi {
   }
 
   shutdown(ctx: ExtensionContext): void {
+    this.resetSession();
     this.overlay?.dispose();
     this.overlay = undefined;
     if (ctx.hasUI) ctx.ui.setStatus("nunc", undefined);

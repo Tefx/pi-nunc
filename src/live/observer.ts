@@ -2,7 +2,8 @@ import { appendFileSync, chmodSync, existsSync, readFileSync, statSync } from "n
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Api, Model, Provider } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createEditTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { access, readFile } from "node:fs/promises";
 import type { Control, ToolTrigger } from "./scenarios.js";
 import { memorySurface } from "../pi/manual.js";
 import { setObserverMemoryLayout } from "../pi/projection.js";
@@ -51,13 +52,17 @@ export default async function observer(pi: ExtensionAPI): Promise<void> {
   if (!source) throw new Error("Missing task-owned observer binding");
   // This private child file is written from the validated supervisor input. It
   // contains no credentials and is never passed to the model.
-  const binding = JSON.parse(readFileSync(source, "utf8")) as { productExtension?: string; input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; selection?: Selection; taskFiles?: Record<string, string>; larvaCompaction?: { owner: "nunc"; configFile: string }; boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }>; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving"; priorLedgers?: string[] };
+  const binding = JSON.parse(readFileSync(source, "utf8")) as { productExtension?: string; input: RunInput; models: Model<Api>[]; deadline: number; events: string; ledger: string; cwd: string; caseKey?: string; selection?: Selection; taskFiles?: Record<string, string>; larvaCompaction?: { owner: "nunc"; configFile: string }; boundaries?: Array<{ control: Control; turnOrdinal: number; requestText: string; fixtureContent: string }>; boundaryCompleted?: boolean; verification?: { script: string; artifact: string }; guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; turnOrdinal: number; requestText: string; turn?: string; trigger?: ToolTrigger }>; memoryLayout?: "stable" | "moving"; priorLedgers?: string[] };
   const boundaries = binding.boundaries ?? [];
   const activeBoundary = () => boundaries[state.boundary.boundaryIndex ?? 0];
+  const currentTurn = (ctx: ExtensionContext) => {
+    const users = ctx.sessionManager.getBranch().filter(e => e.type === "message" && e.message.role === "user");
+    const user = users.at(-1);
+    return { text: user ? userText(user) : undefined, ordinal: users.length };
+  };
   const controlFor = (action: "revision_conflict" | "unconfirmed_save", ctx: ExtensionContext) => {
-    const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
-    const text = user ? userText(user) : undefined;
-    return binding.guidanceControls?.find(c => c.action === action && c.requestText === text);
+    const turn = currentTurn(ctx);
+    return binding.guidanceControls?.find(c => c.action === action && c.requestText === turn.text && c.turnOrdinal === turn.ordinal);
   };
   const signal = AbortSignal.timeout(Math.max(1, binding.deadline - Date.now()));
   const log = (type: string, data: unknown) => appendFileSync(binding.events, JSON.stringify({ type, data }) + "\n", { mode: 0o600 });
@@ -249,9 +254,8 @@ export default async function observer(pi: ExtensionAPI): Promise<void> {
     const currentBnd = activeBoundary();
     if (currentBnd && (state.boundary.phase === "idle" || state.boundary.phase === "deferred") && (event.toolName === currentBnd.control.trigger?.toolName || event.toolName === currentBnd.control.trigger?.alternateToolName) &&
         typeof (event.input as any).path === "string" && currentBnd.control.trigger?.pathArgument && resolveScenarioPath(binding.cwd, (event.input as any).path) === resolveScenarioPath(binding.cwd, currentBnd.control.trigger.pathArgument)) {
-      const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message.role === "user");
-      const text = user ? userText(user) : undefined;
-      if (text === currentBnd.requestText && ++state.boundary.occurrence === currentBnd.control.trigger.occurrence) {
+      const turn = currentTurn(ctx);
+      if (turn.text === currentBnd.requestText && turn.ordinal === currentBnd.turnOrdinal && ++state.boundary.occurrence === currentBnd.control.trigger.occurrence) {
         state.boundary.triggerId = event.toolCallId;
       }
     }
@@ -305,6 +309,17 @@ export default async function observer(pi: ExtensionAPI): Promise<void> {
         requireValue(["read", "write", "edit"].includes(event.toolName), "TOOL_KIND", "Only scenario-local read/write/edit/bash(verify.py) and nunc_memory_* tools are authorized");
         await toolPath(binding.cwd, "path" in event.input ? event.input.path : undefined, event.toolName as "read" | "write" | "edit");
         if (event.toolName === "write") requireValue(typeof event.input.content === "string" && Buffer.byteLength(event.input.content) <= 1_000_000, "WRITE_SIZE", "Artifact write exceeds bound");
+        if (event.toolName === "edit") {
+          // Use the host's matching, BOM and line-ending semantics without writing.
+          const preview = createEditTool(binding.cwd, { operations: {
+            access,
+            readFile,
+            writeFile: async (_path, content) => {
+              requireValue(Buffer.byteLength(content) <= 1_000_000, "WRITE_SIZE", "Artifact write exceeds bound");
+            },
+          } });
+          await preview.execute(event.toolCallId, event.input as { path: string; edits: Array<{ oldText: string; newText: string }> }, signal);
+        }
         log("action", { type: "tool_call", toolName: event.toolName, toolCallId: event.toolCallId, input: event.input });
       }
     } catch (error) {

@@ -37,7 +37,11 @@ export class StockFixture {
     this.state = join(this.dir, 'isolated');
     for (const d of ['home', 'agent', 'sessions', 'work', 'tmp', 'xdg']) await mkdir(join(this.state, d), { recursive: true });
     this.logFile = join(this.dir, 'events.jsonl'); await writeFile(this.logFile, '');
-    this.watcher = watch(this.logFile, () => { const lines = readFileSync(this.logFile, 'utf8').split('\n'); lines.pop(); this.log = lines.map(s => JSON.parse(s)); this.changes.emit('change'); });
+    this.watcher = watch(this.logFile, () => {
+      try { const lines = readFileSync(this.logFile, 'utf8').split('\n'); lines.pop(); this.log = lines.map(s => JSON.parse(s)); }
+      catch (error) { this.error = error; }
+      this.changes.emit('change');
+    });
     this.env = { PATH: `${dirname(process.execPath)}:/opt/homebrew/bin:/usr/bin:/bin`, HOME: join(this.state, 'home'), PI_CODING_AGENT_DIR: join(this.state, 'agent'), TMPDIR: join(this.state, 'tmp'), XDG_CONFIG_HOME: join(this.state, 'xdg'), PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0', DO_NOT_TRACK: '1', JITI_FS_CACHE: 'false', TERM: 'xterm-256color', NUNC_OBSERVATION_LOG: this.logFile, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? '/Library/Developer/CommandLineTools' };
     this.server = createServer((req, res) => {
       const chunks = []; let bytes = 0; req.setTimeout(15000, () => req.destroy());
@@ -138,10 +142,13 @@ export class StockFixture {
   wait(predicate, label, ms = 15000) {
     return new Promise((resolve, reject) => {
       const finish = (err, value) => { clearTimeout(timer); clearInterval(poll); this.changes.off('change', check); err ? reject(err) : resolve(value); };
-      const check = () => { try { if (this.error) throw this.error; const v = predicate(); if (v) finish(null, v); } catch (e) { finish(e); } };
+      const check = () => { try { if (this.closing || this.closed) throw new Error('Stock fixture closed'); if (this.error) throw this.error; const v = predicate(); if (v) finish(null, v); } catch (e) { finish(e); } };
       const timer = setTimeout(() => finish(new Error(`deadline: ${label}; last=${JSON.stringify(this.log.at(-1))?.slice(0, 500)}`)), ms);
       // fs.watch can coalesce consecutive appends before the final JSONL row.
-      const poll = setInterval(() => { const lines = readFileSync(this.logFile, 'utf8').split('\n'); lines.pop(); this.log = lines.map(s => JSON.parse(s)); check(); }, 25);
+      const poll = setInterval(() => {
+        try { const lines = readFileSync(this.logFile, 'utf8').split('\n'); lines.pop(); this.log = lines.map(s => JSON.parse(s)); check(); }
+        catch (e) { finish(e); }
+      }, 25);
       this.changes.on('change', check); check();
     });
   }
@@ -193,8 +200,10 @@ export class StockFixture {
     assert.equal(existsSync(this.dir), !this.removeArtifacts, 'Artifact receipt must match completed cleanup');
     return this.removeArtifacts ? { cleanup: 'removed' } : { evidence: this.dir };
   }
-  async close(outcome = {}) {
+  async close(outcome = {}, { preserveState = false } = {}) {
     if (this.closed) return;
+    this.closing = true;
+    this.changes.emit('change');
     clearTimeout(this.timer); for (const k of this.holds.keys()) this.release(k);
     for (const p of this.processes) if (!p.exit) {
       p.child.kill('SIGTERM'); const timer = setTimeout(() => p.child.kill('SIGKILL'), 2000);
@@ -209,8 +218,8 @@ export class StockFixture {
     await writeFile(join(this.dir, 'wire.json'), JSON.stringify(this.requests, null, 2));
     await writeFile(join(this.dir, 'processes.json'), JSON.stringify(this.processes.map(({ child, command, ...p }) => ({ pid: child.pid, ...p })), null, 2));
     await writeFile(join(this.dir, 'timeline.json'), JSON.stringify(this.timeline, null, 2));
-    if (this.state) await rm(this.state, { recursive: true, force: true });
-    await writeFile(join(this.dir, 'result.json'), JSON.stringify({ ...outcome, cleanup: { childrenExited: this.processes.every(p => p.exit), serverClosed: !this.server?.listening, isolatedStateRemoved: true } }, null, 2));
+    if (this.state && !preserveState) await rm(this.state, { recursive: true, force: true });
+    await writeFile(join(this.dir, 'result.json'), JSON.stringify({ ...outcome, cleanup: { childrenExited: this.processes.every(p => p.exit), serverClosed: !this.server?.listening, isolatedStateRemoved: !preserveState } }, null, 2));
     if (this.removeArtifacts) await rm(this.dir, { recursive: true, force: true });
     this.closed = true;
   }

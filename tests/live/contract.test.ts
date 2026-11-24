@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { lstat, mkdir, rm, symlink } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { canResumeScenario, assertBatchConsistency, parseInput, preflight, readBoundedJson, selectedModels, validateTarget } from "../../src/live/contract.js";
 import { execute } from "../../src/live/runner.js";
 import { childEnvironment } from "../../src/live/host.js";
-import { fixture, publicSelection, repository } from "./fixtures.js";
+import { fixture, publicSelection, repository, temporaryBaseline } from "./fixtures.js";
 
 test("bounded stdin rejects empty/malformed/oversized JSON and accepts one complete object", async () => {
   for (const content of ["", "{", "{} {}", " ".repeat(65537)]) await assert.rejects(readBoundedJson([Buffer.from(content)]));
@@ -117,6 +117,24 @@ test("tracked fixture yields effect-free receipt bound to scenario/config/limits
   const target = structuredClone(input); target.target.stateRoot += "-other";
   await assert.rejects(preflight(target, repository), /does not match/);
 });
+test("worker receipt binds non-entry compiled modules in the current comparison target", { timeout: 120000 }, async () => {
+  const baseline = await temporaryBaseline();
+  const input = await fixture();
+  await mkdir(input.target.stateRoot);
+  input.comparison = { modes: ["defaults"], targets: { native: { repository }, current: { repository: baseline, ref: "70dacad" }, candidate: { repository } } };
+  const compiled = join(baseline, "dist/src");
+  const name = (await readdir(compiled, { recursive: true })).find(name => name.endsWith(".js") && name.includes("/") && !name.endsWith("index.js"));
+  assert(name, "baseline must contain a non-entry compiled module");
+  const path = join(compiled, name), original = await readFile(path);
+  const receipt = await preflight(input, repository, true);
+  try {
+    await writeFile(path, Buffer.concat([original, Buffer.from("\n// Changed compiled dependency\n")]));
+    assert.notEqual((await preflight(input, repository, true)).binding, receipt.binding);
+    await assert.rejects(preflight({ ...input, receipt }, repository, true), { code: "RECEIPT" });
+  } finally { await writeFile(path, original); }
+  assert.deepEqual(await preflight({ ...input, receipt }, repository, true), receipt);
+});
+
 test("preflight accepts compatible Node versions and binds each observed runtime into its receipt", async () => {
   const descriptor = Object.getOwnPropertyDescriptor(process.versions, "node")!;
   const input = await fixture();

@@ -4,8 +4,6 @@ Nunc is a [Pi](https://pi.dev) extension designed to keep a **single long-runnin
 
 Scope stays strictly within the active session branch: `/new` starts with empty memory, and `/tree`, `/fork`, and `/clone` follow the selected branch. Nunc avoids cross-session memory databases, user profiling, or background document indexing—durable project knowledge belongs in code, docs, and commits.
 
-This package is `"private": true` and is not published to npm.
-
 ## How It Works
 
 Stock compaction replaces older conversation history with a single flat summary, which often drops exact constraints, parameters, or mid-task state over multiple compactions, and invalidates prompt caches when summaries move. Nunc replaces that summary with incremental working-memory slots (`M`) and a cache-friendly context layout:

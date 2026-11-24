@@ -5,7 +5,8 @@ import { pathToFileURL } from "node:url";
 import type { Model, Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, type InlineExtension } from "@earendil-works/pi-coding-agent";
-import { SYNTHETIC_LAST_USER_APPEND, applyLastUserTextAppend, canonicalJson } from "../../src/pi/payload.js";
+import { SYNTHETIC_LAST_USER_APPEND, applyLastUserTextAppend, jsonView } from "../../src/pi/payload.js";
+import { canonical } from "../../src/engine/validation.js";
 import { responsesSSE, fixture } from "./fixtures.js";
 
 const DASEIN_INJECTOR = process.env.NUNC_DASEIN_INJECTOR ?? "/Users/tefx/Projects/dasein-pi-extension/src/core/provider-payload-injector.ts";
@@ -32,8 +33,8 @@ test("named external Dasein injector matches tracked last-user append", { skip: 
   for (const payload of cases) {
     const ours = applyLastUserTextAppend(payload, SYNTHETIC);
     const theirs = dasein.injectAmbientProviderPayload({ payload, content: SYNTHETIC });
-    assert.equal(ours.changed, theirs.changed, canonicalJson(payload));
-    assert.equal(canonicalJson(ours.payload), canonicalJson(theirs.payload), canonicalJson(payload));
+    assert.equal(ours.changed, theirs.changed, canonical(jsonView(payload)));
+    assert.equal(canonical(jsonView(ours.payload)), canonical(jsonView(theirs.payload)), canonical(jsonView(payload)));
   }
 });
 

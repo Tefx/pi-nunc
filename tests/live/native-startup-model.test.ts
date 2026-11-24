@@ -15,6 +15,33 @@ function groqPair(endpoint: string): { authorized: Model<Api>; other: Model<Api>
   return { authorized, other, controlledModels: { providers: { groq: { baseUrl: endpoint, apiKey: "isolated-nunc-fixture", models: [{ ...authorized, provider: undefined, cost: undefined }, { ...other, provider: undefined, cost: undefined }] } } } };
 }
 
+test("startup thinking restoration uses post-model state and restores explicit off", { timeout: 15000 }, async () => {
+  for (const desired of ["off", "low"]) {
+    const input = await fixture();
+    const model = input.resolvedModels![0]!;
+    input.effective = { source: "standalone-defaults", provider: model.provider, model: model.id, thinking: desired, transport: "sse", compaction: input.scenarios[0]!.config.compaction, settings: {} };
+    const caseRoot = join(input.target.stateRoot, "c2");
+    await mkdir(join(caseRoot, "task"), { recursive: true });
+    const script = `
+      const fs = require('node:fs');
+      const binding = JSON.parse(fs.readFileSync(process.env.NUNC_LIVE_OBSERVER, 'utf8'));
+      const state = { sessionId: 'fixture', model: { provider: 'other', id: 'other' }, thinkingLevel: ${JSON.stringify(desired)} };
+      require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+        const msg = JSON.parse(line);
+        if (msg.message === '/nunc-observer-quit') { process.exit(0); return; }
+        if (msg.type === 'set_model') { state.model = binding.models[0]; state.thinkingLevel = 'high'; }
+        if (msg.type === 'set_thinking_level') state.thinkingLevel = msg.level;
+        process.stdout.write(JSON.stringify({ type: 'response', id: msg.id, success: true, data: msg.type === 'get_state' ? state : {} }) + '\\n');
+      });`;
+    const host = await openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: [model], deadline: Date.now() + 10000, signal: new AbortController().signal, testCommand: { command: process.execPath, args: ["-e", script] } });
+    try {
+      const state = await host.command("get_state") as { thinkingLevel: string; model: { id: string } };
+      assert.equal(state.model.id, model.id);
+      assert.equal(state.thinkingLevel, desired);
+    } finally { await host.close(); }
+  }
+});
+
 test("native RPC restores authorized CLI model after a later session_start apply and still rejects unauthorized set_model", { timeout: 60000 }, async t => {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 55000, compaction: { enabled: false } });

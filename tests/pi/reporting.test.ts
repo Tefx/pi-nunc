@@ -24,6 +24,10 @@ test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unk
   await f.runtime.session.prompt("/nunc");
   await f.runtime.session.prompt("/nunc details");
   assert.equal(reports.at(-1), reports.at(-2));
+  const bare = reports.at(-1)!;
+  assert.match(bare, /Memory: 0 slots/);
+  assert.match(bare, /Maintenance input plan:/);
+  assert.match(bare, /No maintenance record in this context/);
   const view = captured.context().read(captured.ctx());
   for (const line of budgetLines(view.current)) assert(reports.at(-1)!.includes(line), line);
   for (const line of maintenanceLines(view.lastMaintenance)) assert(reports.at(-1)!.includes(line), line);
@@ -31,6 +35,8 @@ test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unk
   assert.equal(view.current.budget.extractionOutputCapKnown, false);
   assert.equal(view.current.budget.extractionOutputAuto, true);
   await f.runtime.session.prompt("/nunc status");
+  assert.equal(reports.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
+  await f.runtime.session.prompt("/nunc unknown");
   assert.equal(reports.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
   assert.equal(f.faux.state.callCount, 0);
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
@@ -46,6 +52,8 @@ test("non-TUI bare /nunc equals /nunc details from ContextSurface; status is unk
   await f.runtime.session.prompt("/nunc details");
   assert.equal(reports.at(-1), reports.at(-2));
   const live = reports.at(-1)!;
+  const accounting = f.events.at(-1)!.result.observations.accounting!;
+  assert(live.includes(`Input estimate: full ${accounting.fullExtractionTokens.toLocaleString("en-US")} → selected ${accounting.extractionTokens.toLocaleString("en-US")}`));
   for (const line of budgetLines(after.current)) assert(live.includes(line), line);
   for (const line of maintenanceLines(after.lastMaintenance)) assert(live.includes(line), line);
   assert.equal(after.lastMaintenance?.accounting?.extractionTokens, f.events.at(-1)!.result.observations.accounting!.extractionTokens);
@@ -116,6 +124,25 @@ test("diagnostic ring stays bounded and recover clears only the current warning"
   ui.recover();
   assert.equal(ui.currentWarning(), undefined);
   assert.equal(ui.recentDiagnostics().at(-1)?.message, `w${DIAGNOSTIC_LIMIT - 1}`);
+  ui.shutdown({ hasUI: false } as ExtensionContext);
+  assert.deepEqual(ui.recentDiagnostics(), []);
+  assert.equal(ui.currentWarning(), undefined);
+});
+
+for (const boundary of ["new", "switch", "fork"] as const) test(`diagnostics clear at the ${boundary} session boundary`, async t => {
+  const reports: string[] = [];
+  const f = await fixture({ bus: bus => bus.on("nunc:diagnostic", value => reports.push((value as { message: string }).message)) });
+  t.after(() => f.close());
+  f.seed();
+  await f.runtime.session.prompt("/nunc invalid-old-session");
+  await f.runtime.session.prompt("/nunc details");
+  assert.match(reports.at(-1)!, /warning: Usage:/);
+  if (boundary === "new") await f.runtime.newSession();
+  else if (boundary === "switch") await f.runtime.switchSession(f.runtime.session.sessionFile!);
+  else await f.runtime.fork(f.runtime.session.sessionManager.getLeafId()!, { position: "at" });
+  await f.runtime.session.prompt("/nunc details");
+  assert.match(reports.at(-1)!, /Current warning: none/);
+  assert.match(reports.at(-1)!, /No recent diagnostics/);
 });
 
 test("detailsLines distinguishes no-model, unknown, uncapped none, and known zero", () => {

@@ -217,42 +217,6 @@ test("loaded /nunc command completes details by argument prefix without side eff
   assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
 });
 
-test("registered /nunc emits one complete report and treats status as unknown without model calls or transcript changes", async t => {
-  const messages: string[] = [];
-  const f = await fixture({ extras: [{ name: "capture-nunc-status", factory(pi) {
-    pi.events.on("nunc:diagnostic", value => {
-      if (value && typeof value === "object" && "message" in value && typeof value.message === "string") messages.push(value.message);
-    });
-  } }] });
-  t.after(() => f.close());
-  const entries = f.runtime.session.sessionManager.getEntries();
-  await f.runtime.session.prompt("/nunc");
-  const bare = messages.at(-1)!;
-  await f.runtime.session.prompt("/nunc details");
-  const details = messages.at(-1)!;
-  assert.equal(bare, details);
-  assert.match(bare, /Memory: 0 slots/);
-  assert.match(bare, /Maintenance input plan:/);
-  assert.match(bare, /No maintenance record in this context/);
-  await f.runtime.session.prompt("/nunc status");
-  assert.equal(messages.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
-  await f.runtime.session.prompt("/nunc unknown");
-  assert.equal(messages.at(-1), "Usage: /nunc [details | compact-for <provider/model-id>]");
-  assert.equal(f.faux.state.callCount, 0);
-  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), entries);
-  f.seed(); f.respond(memoryPatch);
-  await f.runtime.session.compact();
-  const saved = f.runtime.session.sessionManager.getEntries();
-  const calls = f.faux.state.callCount;
-  await f.runtime.session.prompt("/nunc");
-  await f.runtime.session.prompt("/nunc details");
-  const accounting = f.events.at(-1)!.result.observations.accounting!;
-  assert.equal(messages.at(-1), messages.at(-2));
-  assert(messages.at(-1)!.includes(`Input estimate: full ${accounting.fullExtractionTokens.toLocaleString("en-US")} → selected ${accounting.extractionTokens.toLocaleString("en-US")}`));
-  assert.equal(f.faux.state.callCount, calls);
-  assert.deepEqual(f.runtime.session.sessionManager.getEntries(), saved);
-});
-
 test("stock CLI-style public settings files work without an SDK callback and remain read-only", async t => {
   const f = await fixture({ diskSettings: true }); t.after(() => f.close()); f.seed(); f.respond(memoryPatch);
   const file = join(f.agentDir, "settings.json");

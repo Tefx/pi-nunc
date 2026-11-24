@@ -413,7 +413,8 @@ export async function preflight(input: RunInput, repository: string, existingOwn
     const curRepo = resolve(input.comparison.targets.current.repository);
     const curHead = execFileSync("/usr/bin/git", ["-C", curRepo, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
     digest.update(curHead);
-    digest.update(await readFile(join(curRepo, "dist/src/index.js")));
+    await bind(join(curRepo, "src"));
+    await bind(join(curRepo, "dist/src"));
     const curPolicy = join(curRepo, "policies/default.md");
     if (existsSync(curPolicy)) digest.update(await readFile(curPolicy));
     digest.update(await readFile(join(curRepo, "package-lock.json")));

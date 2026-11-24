@@ -111,21 +111,17 @@ function readDecisions(data: unknown): { valid: StoredDecision[]; invalid: strin
 }
 
 export function decodeManualMemory(data: unknown): Memory {
-  requireManual(record(data) && "nunc" in data, "Invalid Nunc manual memory record");
+  requireThat(record(data) && "nunc" in data, "INPUT", "Invalid Nunc manual memory record");
   validateMemory(data.nunc);
   return structuredClone(data.nunc);
-}
-
-function requireManual(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new EngineError("INPUT", message);
 }
 
 function checkpointFallback(details: unknown): MechanicalFallbackInfo | undefined {
   if (!record(details) || details.mechanicalFallback === undefined) return;
   const f = details.mechanicalFallback;
-  requireManual(record(f) && f.code === "RESPONSE" && typeof f.message === "string" &&
+  requireThat(record(f) && f.code === "RESPONSE" && typeof f.message === "string" &&
     integer(f.retiredEntryCount, 1) &&
-    typeof f.firstKeptEntryId === "string" && f.firstKeptEntryId.length > 0, "Invalid mechanical fallback record");
+    typeof f.firstKeptEntryId === "string" && f.firstKeptEntryId.length > 0, "INPUT", "Invalid mechanical fallback record");
   return { code: f.code, message: f.message, retiredEntryCount: f.retiredEntryCount, firstKeptEntryId: f.firstKeptEntryId };
 }
 function checkpointMemory(latest: Extract<SessionEntry, { type: "compaction" }>): Memory {
@@ -133,7 +129,7 @@ function checkpointMemory(latest: Extract<SessionEntry, { type: "compaction" }>)
   if (record(details) && "nunc" in details) {
     validateMemory(details.nunc);
     const fallback = checkpointFallback(details);
-    requireManual(!fallback || fallback.firstKeptEntryId === latest.firstKeptEntryId, "Mechanical fallback and checkpoint boundary disagree");
+    requireThat(!fallback || fallback.firstKeptEntryId === latest.firstKeptEntryId, "INPUT", "Mechanical fallback and checkpoint boundary disagree");
     const expectedCurrent = renderMemoryWithFallback(details.nunc.slots, fallback);
     const expectedLegacy = legacyRenderMemory(details.nunc.slots);
     if (latest.summary !== expectedCurrent && (details.mechanicalFallback !== undefined || latest.summary !== expectedLegacy)) {
@@ -526,7 +522,6 @@ const LAYOUT_KEY = Symbol.for("nunc.memory.observer-layout");
 const anchors = new Map<string, MemoryAnchor>();
 
 interface MemoryAnchor {
-  sessionId: string;
   content: string;
   prefixLength: number;
   prefixEntryIds: string[];
@@ -545,7 +540,6 @@ type LayoutMessage = {
 export type MemorySession = {
   mechanicalFallback?: MechanicalFallbackInfo;
   sessionId: string;
-  latestId?: string | undefined;
   entries?: readonly SessionEntry[];
   decisions?: readonly ToolResultDecision[];
   enabled?: boolean;
@@ -567,23 +561,25 @@ export function peekMemoryAnchor(sessionId: string): { content: string; prefixLe
   return anchor ? { content: anchor.content, prefixLength: anchor.prefixLength, prefixEntryIds: [...anchor.prefixEntryIds] } : undefined;
 }
 /** Current UI index only when the stored prefix still corresponds to visible selected-path entries. */
-export function currentMemoryIndex(sessionId: string, memory: Memory, active: readonly { entryId: string; messages: readonly unknown[] }[], mechanicalFallback?: MechanicalFallbackInfo): number | undefined {
+export function currentMemoryIndex(sessionId: string, memory: Memory, active: readonly { entryId: string; messages: readonly LayoutMessage[] }[], mechanicalFallback?: MechanicalFallbackInfo): number | undefined {
   const anchor = anchors.get(sessionId);
   if (!anchor || (!memory.slots.length && !mechanicalFallback) || anchor.content !== renderMemoryWithFallback(memory.slots, mechanicalFallback)) return;
   if (!anchor.boundary) return;
   const index = active.findIndex(entry => entry.entryId === anchor.boundary!.entryId);
   if (index < 0) return;
-  return active.slice(0, index + 1).reduce((n, entry) => n + entry.messages.length, 0);
+  const boundary = convertToLlm(anchor.boundary.messages as never);
+  const key = messageKeys();
+  if (!boundary.length || !sameMessage(boundary, active[index]!.messages, key) ||
+      active.filter(entry => sameMessage(boundary, entry.messages, key)).length !== 1) return;
+  const prefix = active.slice(0, index + 1).flatMap(entry => entry.messages);
+  if (hasPendingTools(prefix, prefix.length)) return;
+  return prefix.length;
 }
 export function isNuncCarrier(message: object): boolean {
   return carriers.has(message);
 }
-export function carrierIndexIn(messages: readonly object[]): number | undefined {
-  const index = messages.findIndex(message => carriers.has(message));
-  return index >= 0 ? index : undefined;
-}
 /** Process-local provenance only. Cloned/serialized views need an explicit bound snapshot. */
-export function injectedCarrierIndex(messages: readonly LayoutMessage[]): number | undefined {
+export function carrierIndexIn(messages: readonly object[]): number | undefined {
   const hits = messages.flatMap((message, index) => carriers.has(message) ? [index] : []);
   return hits.length === 1 ? hits[0] : undefined;
 }
@@ -753,7 +749,7 @@ export function withEffectiveMemory<T extends LayoutMessage>(messages: readonly 
     const prior = mapped.filter(item => item.end <= index).sort((a, b) => a.end - b.end);
     const last = prior.find(item => item.end === index);
     anchors.set(session.sessionId, {
-      sessionId: session.sessionId, content, prefixLength: index,
+      content, prefixLength: index,
       prefixEntryIds: prior.map(item => item.unit.entryId),
       ...(last ? { boundary: { entryId: last.unit.entryId, messages: last.unit.messages.map(snapshot) } } : {}),
     });

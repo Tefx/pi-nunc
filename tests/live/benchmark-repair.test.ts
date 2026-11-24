@@ -29,6 +29,23 @@ test("stock cleanup reports closure only after children, server and directory se
     await fixture.close();
   } finally { await fixture.close(); }
 });
+test("stock waits reject on close and on polling filesystem or JSON failure", async () => {
+  const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
+  for (const failure of ["close", "missing", "json"]) {
+    const fixture = await new StockFixture().setup();
+    try {
+      // Disable event delivery through the public watcher handle to exercise the polling fallback.
+      fixture.watcher.close();
+      const waiting = assert.rejects(fixture.wait(() => false, failure, 1000), failure === "close" ? /Stock fixture closed/ : failure === "missing" ? /ENOENT/ : /JSON/);
+      if (failure === "close") await fixture.close();
+      else if (failure === "missing") await rm(fixture.logFile);
+      else await writeFile(fixture.logFile, 'invalid-json\n');
+      await waiting;
+      assert.equal(fixture.changes.listenerCount('change'), 0);
+      await assert.rejects(fixture.wait(() => false, 'after failure', 1000), failure === "close" ? /Stock fixture closed/ : failure === "missing" ? /ENOENT/ : /JSON/);
+    } finally { await fixture.close(); }
+  }
+});
 async function setup() {
   const { evidence } = await import(join(scripts, "evidence.mjs"));
   const source = await input();

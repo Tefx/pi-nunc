@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { open, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { initTheme, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS, type TUI } from "@earendil-works/pi-tui";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
@@ -10,9 +13,10 @@ import { engineConfig } from "../../src/pi/config.js";
 import { MAINTENANCE_CALIBRATION_TYPE } from "../../src/pi/projection.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface } from "../../src/pi/manual.js";
+import { bindHostSettings } from "../../src/pi/index.js";
 import { MANUAL_MEMORY_TYPE, project, sealDecisions } from "../../src/pi/projection.js";
 import type { NuncOverlay } from "../../src/ui/overlay.js";
-import { fixture } from "./fixtures.js";
+import { fixture, memoryPatch } from "./fixtures.js";
 
 initTheme();
 test("actual UI cleanup preserves user-selected M across response and cancellation outcomes", async t => {
@@ -26,8 +30,10 @@ test("actual UI cleanup preserves user-selected M across response and cancellati
       pi.events.on("nunc:admission", value => admissions.push(value as AdmissionObservation));
     } }] });
   t.after(() => f.close());
-  for (const updateMode of ["nonempty", "empty", "legacy", "calibrated", "errorMessage", "endTurn", "deferred", "responseModel", "toolCall", "invalid-json", "hung-cancel", "hung-timeout"] as const) await t.test(updateMode, async t => {
+  for (const updateMode of ["nonempty", "empty", "legacy", "calibrated", "errorMessage", "endTurn", "deferred", "responseModel", "toolCall", "invalid-json", "hung-cancel", "hung-timeout", "policy-cancel", "policy-timeout"] as const) await t.test(updateMode, { timeout: 5000 }, async t => {
   await f.runtime.newSession();
+  assert(api);
+  bindHostSettings(api.events, f.settings, { uiCleanupTimeoutMs: updateMode.endsWith("timeout") ? 200 : 60_000 });
   responseObserved = Promise.withResolvers<void>();
   const callsBefore = f.calls.length;
   assert(ctx && api);
@@ -75,6 +81,12 @@ test("actual UI cleanup preserves user-selected M across response and cancellati
     const view = result.details as { cleanupCandidates: { entryId: string }[] };
     assert.deepEqual(view.cleanupCandidates.map(ref => ref.entryId), [resultEntry.entryId], "read advertises only pure-text semantic candidates, excluding media and newest tool evidence");
   }
+  const policyPending = updateMode === "policy-cancel" || updateMode === "policy-timeout";
+  const policy = join(f.dir, `${updateMode}.fifo`);
+  if (policyPending) {
+    execFileSync("mkfifo", [policy]);
+    await writeFile(f.configFile, JSON.stringify({ ...f.config, policyFile: policy }));
+  }
   const proposalText = `${slot.text} Edited by user.`;
   const cleanupStarted = Promise.withResolvers<void>();
   const releaseCleanup = Promise.withResolvers<void>();
@@ -95,11 +107,17 @@ test("actual UI cleanup preserves user-selected M across response and cancellati
     return response;
   });
   const ready = Promise.withResolvers<NuncOverlay>(), done = Promise.withResolvers<unknown>();
+  const policySaveSettled = Promise.withResolvers<void>();
+  let policyReadStarted = false;
+  let currentOverlay: NuncOverlay | undefined;
   t.after(() => done.resolve(null));
   const tuiCtx: ExtensionContext = { ...ctx, mode: "tui", hasUI: true, ui: { ...ctx.ui,
     custom: async (factory: any) => {
-      const overlay = factory({ requestRender() {}, terminal: { rows: 40, columns: 120 } } as TUI,
+      const overlay = factory({ requestRender() {
+        if (policyReadStarted && currentOverlay?.layerName === "browse") policySaveSettled.resolve();
+      }, terminal: { rows: 40, columns: 120 } } as TUI,
         ctx!.ui.theme, new KeybindingsManager(TUI_KEYBINDINGS), (value: unknown) => done.resolve(value)) as NuncOverlay;
+      currentOverlay = overlay;
       ready.resolve(overlay);
       return await done.promise as any;
     },
@@ -112,12 +130,41 @@ test("actual UI cleanup preserves user-selected M across response and cancellati
   overlay.handleInput("\r");
   overlay.handleInput(" Edited by user.");
   assert.equal(overlay.draftText(), proposalText);
-  const nativeTimeout = AbortSignal.timeout;
-  if (updateMode === "hung-timeout") {
-    AbortSignal.timeout = ms => nativeTimeout(ms === 60_000 ? 50 : ms);
-    t.after(() => { AbortSignal.timeout = nativeTimeout; });
-  }
   overlay.handleInput("\r");
+  if (policyPending) {
+    // The writer opens only after the actual policy reader arrives. Withhold
+    // bytes and EOF until cancellation/timeout has settled the save.
+    const writer = await open(policy, "w");
+    policyReadStarted = true;
+    try {
+      assert.equal(overlay.layerName, "saving");
+      assert.equal(f.calls.length - callsBefore, 1, "policy reading precedes cleanup transport");
+      if (updateMode === "policy-cancel") {
+        overlay.handleInput("\x1b");
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(overlay.layerName, "edit");
+        assert.equal(overlay.draftText(), proposalText);
+        assert.equal(surface.read(ctx).memory.slots[0]?.text, slot.text);
+        await writeFile(f.configFile, JSON.stringify(f.config));
+        f.respond(memoryPatch);
+        await f.runtime.session.prompt("/nunc compact-for nunc-pi-fixture/small");
+        assert.equal(f.calls.length - callsBefore, 2, "cancellation releases uiRunning before the policy reader reaches EOF");
+        assert.equal(f.events.at(-1)?.result.ok, true);
+      } else {
+        await policySaveSettled.promise;
+        assert.equal(overlay.layerName, "browse");
+        assert.equal(surface.read(ctx).memory.slots[0]?.text, proposalText);
+        assert.match(overlay.render(120).join("\n"), /Cleanup did not complete/);
+        assert.equal(f.calls.length - callsBefore, 1, "policy timeout saves M without cleanup transport");
+      }
+      assert.equal(project(manager.buildContextEntries()).cleanup.length, 0);
+    } finally {
+      await writer.close();
+      await writeFile(f.configFile, JSON.stringify(f.config));
+    }
+    overlay.dispose(); done.resolve(null); await opened;
+    return;
+  }
   if (updateMode === "hung-cancel") {
     await cleanupStarted.promise;
     assert.equal(overlay.layerName, "saving");
@@ -139,7 +186,6 @@ test("actual UI cleanup preserves user-selected M across response and cancellati
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(overlay.layerName, "browse");
   if (updateMode === "hung-timeout") {
-    AbortSignal.timeout = nativeTimeout;
     releaseCleanup.resolve();
     await new Promise(resolve => setImmediate(resolve));
   }

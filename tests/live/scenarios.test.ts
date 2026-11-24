@@ -6,8 +6,9 @@ import { fauxAssistantMessage, fauxToolCall, type Context } from "@earendil-work
 import { project, sealDecisions } from "../../src/pi/projection.js";
 import { maintain } from "../../src/engine/engine.js";
 import { input as engineInput, answer } from "../engine/fixtures.js";
-import { DEFAULT_MAX_BYTES, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { checkFullExtraction, expandGeneratedFiles, checkArtifact, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
+import observer from "../../src/live/observer.js";
+import { DEFAULT_MAX_BYTES, type ExtensionAPI, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { checkFullExtraction, expandGeneratedFiles, checkArtifact, validateControl, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
 import { fixture, repository } from "./fixtures.js";
 import { parseInput } from "../../src/live/contract.js";
 
@@ -31,6 +32,55 @@ test("full extraction follows native context edits and the configured persisted 
     assert(context, "real engine extraction request reached completion seam");
     assert.equal(checkFullExtraction(entries, context, cleanupEnabled).status, "PROVEN");
     assert.equal(checkFullExtraction(entries, context, !cleanupEnabled).status, "UNPROVEN", "raw and cleaned source views must remain distinguishable");
+  }
+});
+
+test("observer scopes repeated prompt controls to the ordinal user turn on the branch", async () => {
+  const input = await fixture();
+  const cwd = join(input.target.stateRoot, "task");
+  await mkdir(cwd, { recursive: true });
+  await writeFile(join(cwd, "note.txt"), "evidence");
+  const events = join(input.target.stateRoot, "events.jsonl"), binding = join(input.target.stateRoot, "binding.json"), sessionFile = join(input.target.stateRoot, "session.jsonl");
+  await writeFile(events, ""); await writeFile(sessionFile, "");
+  await writeFile(binding, JSON.stringify({ input, cwd, models: input.resolvedModels, deadline: Date.now() + 20000, events, ledger: join(input.target.stateRoot, "calls.jsonl"),
+    boundaries: [{ turnOrdinal: 3, requestText: "Repeat", fixtureContent: "evidence", control: { duringTurn: "third", action: "rollover_at_tool_boundary", trigger: { toolName: "read", pathArgument: "note.txt", occurrence: 2 } } }],
+    guidanceControls: [{ action: "unconfirmed_save", turnOrdinal: 3, requestText: "Repeat", turn: "third" }] }));
+  const previous = process.env.NUNC_LIVE_OBSERVER;
+  const handlers = new Map<string, (...args: any[]) => any>(), commands = new Map<string, (...args: any[]) => any>();
+  const branch: SessionEntry[] = [];
+  const ctx = { sessionManager: { getBranch: () => branch, buildContextEntries: () => branch, getSessionFile: () => sessionFile }, getContextUsage: () => undefined };
+  process.env.NUNC_LIVE_OBSERVER = binding;
+  try {
+    await observer({ on: (name: string, handler: (...args: any[]) => any) => handlers.set(name, handler), events: { on() {}, emit() {} }, unregisterProvider() {}, registerCommand: (name: string, value: { handler: (...args: any[]) => any }) => commands.set(name, value.handler) } as unknown as ExtensionAPI);
+    const records = async () => (await readFile(events, "utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
+    for (let ordinal = 1; ordinal <= 3; ordinal++) {
+      branch.push({ type: "message", id: `user-${ordinal}`, parentId: branch.at(-1)?.id ?? null, timestamp: "0", message: { role: "user", content: "Repeat", timestamp: 0 } });
+      await handlers.get("tool_call")!({ toolName: "nunc_memory_patch", toolCallId: `patch-${ordinal}`, input: {} }, ctx);
+      for (let occurrence = 1; occurrence <= 2; occurrence++) {
+        const toolCallId = `read-${ordinal}-${occurrence}`;
+        await handlers.get("tool_call")!({ toolName: "read", toolCallId, input: { path: "note.txt" } }, ctx);
+        const ended = handlers.get("turn_end")!({ toolResults: [{ toolCallId }] }, ctx);
+        const rows = await records();
+        assert.equal(rows.filter(r => r.type === "tool-boundary").length, ordinal === 3 && occurrence === 2 ? 1 : 0);
+        assert.equal(rows.filter(r => r.data?.phase === "save-file-readonly").length, ordinal === 3 ? 1 : 0);
+        if (ordinal === 3 && occurrence === 2) await commands.get("nunc-observer-release")!(JSON.stringify({ stop: "Test boundary observed" }));
+        await ended;
+      }
+    }
+    await handlers.get("session_shutdown")!();
+  } finally {
+    if (previous === undefined) delete process.env.NUNC_LIVE_OBSERVER; else process.env.NUNC_LIVE_OBSERVER = previous;
+    await rm(input.target.stateRoot, { recursive: true, force: true });
+  }
+});
+
+test("after-turn controls reject during-turn and trigger fields across all actions", () => {
+  for (const action of ["rollover", "pause_resume_same_session", "switch_to_authorized_smaller_model"]) {
+    const control = { action, afterTurn: "b", ...(action === "rollover" ? { capacity: "available" } : {}) };
+    assert.doesNotThrow(() => validateControl(control, ["a", "b"]));
+    for (const extra of [{ duringTurn: "b" }, { trigger: {} }, { duringTurn: "b", trigger: {} }]) {
+      assert.throws(() => validateControl({ ...control, ...extra }, ["a", "b"]), /mixed timing/);
+    }
   }
 });
 
@@ -112,6 +162,8 @@ test("consumed scenario schema rejects malformed placements, operators, expected
     (_s, o) => o.cases[1].controls[0].placement.retainTurns = ["b", "b"],
     (_s, o) => o.cases[1].controls[0].capacity = {},
     (_s, o) => o.cases[1].controls[0].action = "force_boundary",
+    (_s, o) => o.cases[1].controls[0].duringTurn = "b",
+    (_s, o) => o.cases[1].controls[0].trigger = { toolName: "read", pathArgument: "notes.txt", occurrence: 1, when: "after_result_before_continuation" },
     (_s, o) => o.cases[1].controls[0].steer = "a",
     (_s, o) => o.cases[1].controls[0].steer = "b",
     (_s, o) => o.cases[1].controls.push(o.cases[1].controls[0]),

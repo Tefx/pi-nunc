@@ -10,7 +10,8 @@ export async function toolPath(cwd: string, input: unknown, toolName?: "read" | 
   requireValue(typeof input === "string" && input.length > 0, "TOOL_PATH", "A scenario-local path is required");
   const path = resolveScenarioPath(cwd, input);
   const readRoot = toolName === "read" && path === cwd;
-  requireValue((readRoot || within(path, cwd)) && !path.slice(cwd.length).split("/").some(p => [".pi", ".agents", ".git"].includes(p) || p.startsWith(".env") || p === "auth.json"), "TOOL_PATH", "Tool path is outside scenario task files");
+  const protectedPath = (value: string) => value.slice(cwd.length).split("/").some(p => [".pi", ".agents", ".git"].includes(p) || p.startsWith(".env") || p === "auth.json");
+  requireValue((readRoot || within(path, cwd)) && !protectedPath(path), "TOOL_PATH", "Tool path is outside scenario task files");
   if (readRoot) {
     const stat = await lstat(path);
     requireValue(!stat.isSymbolicLink(), "TOOL_PATH", "Tool path resolves outside scenario");
@@ -18,7 +19,12 @@ export async function toolPath(cwd: string, input: unknown, toolName?: "read" | 
   }
   let parent = path;
   while (parent !== cwd) {
-    try { await lstat(parent); requireValue(within(await realpath(parent), cwd), "TOOL_PATH", "Tool path resolves outside scenario"); break; }
+    try {
+      await lstat(parent);
+      const canonical = resolve(await realpath(parent), path.slice(parent.length).replace(/^\/+/, ""));
+      requireValue(within(canonical, cwd) && !protectedPath(canonical), "TOOL_PATH", "Tool path resolves outside scenario task files");
+      break;
+    }
     catch (error) { if (!(object(error) && error.code === "ENOENT")) throw error; parent = dirname(parent); }
   }
   return path;

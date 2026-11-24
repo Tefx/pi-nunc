@@ -55,6 +55,34 @@ test("complete-task variants load and seed only task files, with independent obs
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("guidance oracle bounds stop build, unittest and solution evaluation across both scoring paths", async () => {
+  const dir = join(repository, ".scratch", `guidance-oracle-bounds-${Date.now()}`);
+  await mkdir(dir, { recursive: true });
+  try {
+    await writeFile(join(dir, "records.json"), "[]");
+    for (const check of ["metrics-artifact", "semantic: solution.py held-out oracle"]) {
+      const observer = { id: "g4", controls: [], setupChecks: [], artifactChecks: [], actionChecks: [check] };
+      for (const slow of ["build", "unittest", "solution"] as const) {
+        const script = (stage: string) => `from pathlib import Path\nimport time\nPath('${stage}.started').write_text('started')\n${stage === slow ? "time.sleep(2)" : ""}\n`;
+        await writeFile(join(dir, "build.py"), script("build"));
+        await writeFile(join(dir, "test_solution.py"), script("unittest"));
+        await writeFile(join(dir, "solution.py"), script("solution") + "print('{}')\n");
+        for (const stage of ["build", "unittest", "solution"]) await rm(join(dir, `${stage}.started`), { force: true });
+        const controller = new AbortController(); controller.abort();
+        await assert.rejects(scoreArtifacts(dir, observer, exposed, { actions: [terminal("d")], signal: controller.signal }), { name: "AbortError" });
+        await assert.rejects(scoreArtifacts(dir, observer, exposed, { actions: [terminal("d")], deadline: Date.now() - 1 }), { name: "TimeoutError" });
+        assert(!(await readdir(dir)).some(name => name.endsWith(".started")), "expired admission must not spawn Python");
+        const started = Date.now();
+        await assert.rejects(scoreArtifacts(dir, observer, exposed, { actions: [terminal("d")], deadline: started + 250 }), { name: "TimeoutError" });
+        assert(Date.now() - started < 1500, "deadline must bound the subprocess instead of its standalone 10/15 second timeout");
+        assert.equal(await readFile(join(dir, `${slow}.started`), "utf8"), "started", "reached the intended subprocess");
+        const later = slow === "build" ? ["unittest", "solution"] : slow === "unittest" ? ["solution"] : [];
+        for (const stage of later) await assert.rejects(readFile(join(dir, `${stage}.started`)), { code: "ENOENT" });
+      }
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("g1 and unknown checks cannot prove missing observations", () => {
   assert.equal(score("g1", "routine-no-memory", []).status, "UNPROVEN");
   assert.equal(score("g1", "routine-no-memory", [terminal("a")], []).status, "UNPROVEN");

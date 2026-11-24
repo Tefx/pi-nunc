@@ -42,7 +42,7 @@ function fixture(options: { rows?: number; text?: string; failure?: string; unco
       layout: {
         system: { text: "SYSTEM_BODY", tokens: 3 },
         tools: { count: 1, names: ["tool"], tokens: 4, unknown: false, definitions: [{ name: "tool", description: "Readable tool", parameters: { type: "object" }, tokens: 4, unknown: false }] },
-        memory: { slots: view.memory.slots, tokens: 20, envelopeTokens: 1, ...(view.slotProvenance ? { slotProvenance: view.slotProvenance } : {}) },
+        memory: { slots: view.memory.slots, tokens: 20, ...(view.slotProvenance ? { slotProvenance: view.slotProvenance } : {}) },
         messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0,
         heuristic: { tokens: 27, unknown: false }, associations: [],
       },
@@ -97,13 +97,38 @@ function fixture(options: { rows?: number; text?: string; failure?: string; unco
 test("search cursor keys repaint without changing the filtered query", () => {
   const f = fixture();
   f.overlay.handleInput("original");
-  for (const key of ["\x1b[D", "\x1b[C", "\x1b[H", "\x1b[F"]) {
+  for (const key of ["\x1b[D", "\x1b[C", "\x1b[H", "\x1b[F", "\x01", "\x05", "\x1bb", "\x1bf", "\x02", "\x06"]) {
     const before = f.renders;
     f.overlay.handleInput(key);
     assert.equal(f.renders, before + 1);
     assert.match(clean(f.overlay.render(90)), /Search original/);
     assert.equal(f.overlay.selectedSlotId(), "s1");
   }
+});
+
+test("remapped search navigation repaints and moves the native Input cursor", () => {
+  const old = getKeybindings();
+  const kb = new KeybindingsManager(TUI_KEYBINDINGS, {
+    "tui.editor.cursorLeft": "f1", "tui.editor.cursorRight": "f2",
+    "tui.editor.cursorLineStart": "f3", "tui.editor.cursorLineEnd": "f4",
+    "tui.editor.cursorWordLeft": "f5", "tui.editor.cursorWordRight": "f6",
+  });
+  setKeybindings(kb);
+  try {
+    const f = fixture({ keybindings: kb });
+    f.overlay.handleInput("original saved");
+    const cursor = () => f.overlay.render(90).find(line => line.includes(CURSOR_MARKER))!;
+    for (const key of ["\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", "\x1b[15~", "\x1b[17~"]) {
+      const previous = cursor();
+      const renders = f.renders;
+      f.overlay.handleInput(key);
+      assert.equal(f.renders, renders + 1);
+      assert.notEqual(cursor(), previous, "the public Input binding actually moves the cursor");
+      assert.match(clean(f.overlay.render(90)), /Search original saved/);
+      assert.equal(f.overlay.selectedSlotId(), "s1");
+    }
+    f.overlay.dispose();
+  } finally { setKeybindings(old); }
 });
 
 test("nested Escape clears the local filter before returning to the parent", () => {
@@ -195,6 +220,24 @@ test("context arrows move the list; page keys scroll preview; recent scopes dril
   assert.match(clean(f.overlay.render(90)), /Observation|initialMetadataTokens|Payload|hello observed|REQ_SYS/);
 });
 
+test("jumping from a scrolled Context slot starts its Slots preview at the top", () => {
+  const f = fixture({ rows: 24, text: Array.from({ length: 100 }, (_, i) => `LINE_${String(i).padStart(3, "0")}`).join("\n") });
+  f.overlay.handleInput("\t");
+  f.overlay.handleInput("\r"); // Current
+  f.overlay.handleInput("\x1b[B");
+  f.overlay.handleInput("\x1b[B"); // M
+  f.overlay.handleInput("\r");
+  assert.match(clean(f.overlay.render(90)), /LINE_000/);
+  for (let i = 0; i < 20; i++) f.overlay.handleInput("\x1b[6~");
+  assert.match(clean(f.overlay.render(90)), /LINE_099/);
+  f.overlay.handleInput("\r"); // Jump to Slots
+  assert.equal(f.overlay.tabName, "slots");
+  assert.equal(f.overlay.selectedSlotId(), "s1");
+  assert.match(clean(f.overlay.render(90)), /LINE_000/);
+  assert.doesNotMatch(clean(f.overlay.render(90)), /LINE_099/);
+  f.overlay.dispose();
+});
+
 test("short and multiline edit keep cursor plus save/exit hints", () => {
   const short = fixture({ rows: 12 });
   const browse = clean(short.overlay.render(36));
@@ -252,6 +295,25 @@ test("page keys reach the last slot preview line", () => {
     f.overlay.handleInput("\x1b[6~");
   }
   assert.match(visible, /LINE_099/);
+});
+
+test("page inputs clamp before rendering so one PageUp leaves the bottom immediately", () => {
+  for (const [down, up] of [["\x1b[6~", "\x1b[5~"], ["\x1b[6;5~", "\x1b[5;5~"]]) {
+    const f = fixture({ rows: 24, text: Array.from({ length: 100 }, (_, i) => `LINE_${String(i).padStart(3, "0")}`).join("\n") });
+    const initial = clean(f.overlay.render(90));
+    const position = / (\d+)–(\d+) \/ (\d+) /.exec(initial);
+    assert(position);
+    const viewport = Number(position[2]) - Number(position[1]) + 1;
+    const total = Number(position[3]);
+    for (let i = 0; i < 120; i++) f.overlay.handleInput(down!);
+    f.overlay.handleInput(up!);
+    const shown = clean(f.overlay.render(90));
+    const after = / (\d+)–(\d+) \/ (\d+) /.exec(shown);
+    assert(after);
+    assert.equal(Number(after[1]), total - 2 * viewport + 1);
+    assert.doesNotMatch(shown, /LINE_099/);
+    f.overlay.dispose();
+  }
 });
 
 test("short 12-line edit keeps cursor on the last line and rejected error", () => {
@@ -528,7 +590,7 @@ test("context Budget, Last maintenance accounting, Diagnostics, and warning summ
         layout: {
           system: { text: "SYSTEM_BODY", tokens: 3 },
           tools: { count: 1, names: ["tool"], tokens: 4, unknown: false, definitions: [{ name: "tool", description: "Readable tool", parameters: { type: "object" }, tokens: 4, unknown: false }] },
-          memory: { slots: f.view.memory.slots, tokens: 20, envelopeTokens: 1 },
+          memory: { slots: f.view.memory.slots, tokens: 20 },
           messages: [], messageCount: 0, blockCount: 0, packagingTokens: 0, extraInputTokens: 0,
           heuristic: { tokens: 27, unknown: false }, associations: [],
         },

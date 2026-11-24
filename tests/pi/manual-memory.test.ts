@@ -5,7 +5,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { bindHostSettings, MANUAL_MEMORY_TYPE, memorySurface, type MemorySurface } from "pi-nunc/pi";
-import { createMemorySurface } from "../../src/pi/manual.js";
+import { createMemorySurface, markUnconfirmed } from "../../src/pi/manual.js";
 import { isManualMemoryEntry, project, type BranchHistoryResult } from "../../src/pi/projection.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, memoryPatch, surfacePort as port, preparedSurface } from "./fixtures.js";
@@ -17,6 +17,28 @@ async function prepared(t: { after: (fn: () => Promise<void>) => void }, options
   await f.runtime.session.compact();
   return { f, ...captured };
 }
+
+for (const media of [true, false]) test(`read advertises cleanup candidates only for pure-text results (media=${media})`, async t => {
+  const h = await preparedSurface(t, { diskSettings: true, globalSettings: { nunc: { memoryTools: true } } });
+  const surface = h.memory(), ctx = h.ctx();
+  assert(surface.patch(ctx, { expectedRevision: surface.read(ctx).revision,
+    add: [{ key: "task", text: "Current task." }] }).ok);
+  h.f.respond(() => fauxAssistantMessage("Anchor established."));
+  await h.f.runtime.session.prompt("Send memory before cleanup");
+  const manager = h.f.runtime.session.sessionManager;
+  const refs: string[] = [];
+  for (const id of ["eligible-media", "newest"]) {
+    const call = fauxToolCall("read", { path: id });
+    manager.appendMessage(fauxAssistantMessage(call, { stopReason: "toolUse" }));
+    refs.push(manager.appendMessage({ role: "toolResult", toolCallId: call.id, toolName: "read", isError: false,
+      content: media ? [{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" }] : [{ type: "text", text: "Eligible original evidence." }], timestamp: 2 }));
+  }
+  const read = h.f.runtime.session.getToolDefinition("nunc_memory_read");
+  assert(read);
+  const details = (await read.execute("read-cleanup", {}, undefined, undefined, { ...ctx, tools: [], executeTool: async () => { throw new Error("Memory read must not execute a nested tool"); } })).details as { cleanupCandidates?: { entryId: string }[] };
+  if (media) assert.equal(Object.hasOwn(details, "cleanupCandidates"), false);
+  else assert.deepEqual(details.cleanupCandidates?.map(ref => ref.entryId), [refs[0]]);
+});
 
 test("committed saves isolate observer failures and rejected freeze ignores survive owner settlement", async t => {
   const captured = port();
@@ -457,7 +479,45 @@ test("resource /reload does not clear unconfirmed or persist a follow-up save", 
   const again = fresh.replace(captured.ctx(), view.revision, view.memory.slots[0]!.id, "Follow-up after resource reload");
   assert.equal(again.ok, false);
   assert.equal(again.ok ? "" : again.code, "unconfirmed");
+  for (const targeted of [false, true]) {
+    const before = f.runtime.session.sessionManager.getEntries();
+    const calls = f.calls.length;
+    if (targeted) await f.runtime.session.prompt("/nunc compact-for nunc-pi-fixture/small");
+    else await assert.rejects(f.runtime.session.compact(), /cancel/i);
+    assert.equal(f.calls.length, calls, "unconfirmed memory must not enter maintenance transport");
+    assert.deepEqual(f.runtime.session.sessionManager.getEntries(), before, "neither calibration nor checkpoint may be appended");
+    assert.equal(fresh.read(captured.ctx()).status.unconfirmed, true);
+  }
   assert.equal(project(SessionManager.open(file, f.sessionDir).buildContextEntries()).memory.slots[0]?.text, beforeText);
+});
+
+for (const targeted of [false, true]) for (const failedResponse of [false, true]) test(`unconfirmed native append during maintenance blocks post-await handoff: targeted=${targeted}, failedResponse=${failedResponse}`, async t => {
+  const notes: string[] = [];
+  const captured = port();
+  const f = await fixture({ extras: captured.extras, bus: bus => bus.on("nunc:diagnostic", value => notes.push((value as { message: string }).message)) });
+  t.after(() => f.close());
+  f.seed();
+  const manager = f.runtime.session.sessionManager;
+  const file = f.runtime.session.sessionFile!;
+  f.respond(async context => {
+    await rename(file, file + ".saved"); await mkdir(file);
+    try {
+      assert.throws(() => captured.pi().appendEntry("other.extension", { note: "unconfirmed append" }), /directory|EISDIR/i);
+      markUnconfirmed(manager, manager.getLeafId()!);
+    } finally {
+      await rm(file, { recursive: true }); await rename(file + ".saved", file);
+    }
+    return failedResponse ? fauxAssistantMessage("", { stopReason: "error", errorMessage: "Controlled failure" }) : memoryPatch(context);
+  });
+  const before = manager.getEntries();
+  if (targeted) await f.runtime.session.prompt("/nunc compact-for nunc-pi-fixture/small");
+  else await assert.rejects(f.runtime.session.compact(), /cancel/i);
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(manager.getEntries().slice(0, before.length), before);
+  assert.equal(manager.getEntries().length, before.length + 1, "only the unconfirmed foreign append remains; no calibration or checkpoint");
+  assert(notes.some(note => note.includes("Resource /reload does not reread the session file")));
+  assert.equal(captured.memory().read(captured.ctx()).status.unconfirmed, true);
+  assert.equal(SessionManager.open(file, f.sessionDir).getEntries().length, before.length);
 });
 
 test("successful save stays confirmed after resource /reload", async t => {

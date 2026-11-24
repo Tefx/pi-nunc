@@ -5,7 +5,8 @@ import type { Model, Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { ModelRegistry, type InlineExtension, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { authorizePayload, canonicalJson, classifyPayloadChange, jsonView, outputCapState, payloadMode, payloadOutputCeiling } from "../../src/pi/payload.js";
+import { authorizePayload, classifyPayloadChange, jsonView, outputCapState, payloadMode, payloadOutputCeiling } from "../../src/pi/payload.js";
+import { canonical } from "../../src/engine/validation.js";
 import { model } from "../engine/fixtures.js";
 import { responsesSSE, fixture } from "./fixtures.js";
 function authPayload(args: Omit<Parameters<typeof authorizePayload>[0], "context">) {
@@ -57,9 +58,9 @@ test("JSON bytes ignore prototypes, undefined keys and identity copies that deep
   assert.notEqual(Object.getPrototypeOf(instance), Object.prototype);
   assert.equal(Object.getPrototypeOf(clone), Object.prototype);
   assert.equal(isDeepStrictEqual(clone, instance), false);
-  assert.equal(canonicalJson(instance), canonicalJson({ model: "engine-test", stream: true, max_tokens: 16 }));
+  assert.equal(canonical(jsonView(instance)), canonical(jsonView({ model: "engine-test", stream: true, max_tokens: 16 })));
   const copy = JSON.parse(JSON.stringify(instance));
-  assert.equal(canonicalJson(instance), canonicalJson(copy));
+  assert.equal(canonical(jsonView(instance)), canonical(jsonView(copy)));
   assert.equal(payloadMode(jsonView(instance), jsonView(copy), copy, instance), "identity");
 });
 

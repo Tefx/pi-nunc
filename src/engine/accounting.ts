@@ -167,8 +167,8 @@ function combinePlanning(estimates: PlanningEstimate[], overhead = 0): PlanningE
 export function historyPlanningEstimate(active: readonly ActiveEntry[], model: Model<Api>, imageTokens?: number): PlanningEstimate {
   return combinePlanning(active.flatMap(entry => entry.messages.map(message => messagePlanningEstimate(message, model, imageTokens, entry.outputUsageUnavailable))));
 }
-export function mainPlanningEstimate(fixed: FixedContext, slots: Slot[], active: readonly ActiveEntry[], model: Model<Api>, imageTokens?: number, extraInputTokens = 0): PlanningEstimate {
-  const result = combinePlanning([historyPlanningEstimate(active, model, imageTokens)], requestTokens(mainContext(fixed, slots, []), imageTokens) + extraInputTokens);
+export function mainPlanningEstimate(fixed: FixedContext, slots: Slot[], active: readonly ActiveEntry[], model: Model<Api>, imageTokens?: number, extraInputTokens = 0, fallback?: MechanicalFallbackInfo): PlanningEstimate {
+  const result = combinePlanning([historyPlanningEstimate(active, model, imageTokens)], requestTokens(mainContext(fixed, slots, [], fallback), imageTokens) + extraInputTokens);
   if (fixed.toolState === "partial") {
     result.partial = true;
     result.uncertainties.push("fixed-context-partial");
@@ -189,37 +189,9 @@ export function usableAssistantUsageTokens(message: unknown): number | undefined
   const tokens = (usage.input as number) + (usage.output as number) + (usage.cacheRead as number) + (usage.cacheWrite as number);
   return integer(tokens, 1) ? tokens : undefined;
 }
-/** Caller must establish unchanged model/prefix before allowing historical usage.
- * Pass usageIndex to pin that assistant; omitting it keeps Pi's latest applicable usage. */
-export function admissionEstimate(context: Context, model: Model<Api>, imageTokens?: number, allowUsage = false, minimumUsageIndex = 0, usageIndex?: number): { tokens: number; estimator: "pi-heuristic" | "pi-usage-backed" } {
-  // Fresh planning estimate for requests without a compatible usage anchor.
-  const fresh = requestTokens(context, imageTokens);
-  if (!allowUsage) return { tokens: fresh, estimator: "pi-heuristic" };
-  if (usageIndex !== undefined) {
-    const anchor = context.messages[usageIndex];
-    const usageTokens = anchor ? usableAssistantUsageTokens(anchor) : undefined;
-    if (anchor?.role === "assistant" && usageTokens !== undefined && usageIndex >= minimumUsageIndex && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
-      const trailing = context.messages.slice(usageIndex + 1);
-      return { tokens: usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
-    }
-    return { tokens: fresh, estimator: "pi-heuristic" };
-  }
-  if (context.messages.every(m => m.role !== "assistant" || record(m.usage) && [m.usage.input, m.usage.output, m.usage.cacheRead, m.usage.cacheWrite, m.usage.totalTokens].every(n => integer(n)))) {
-    const estimate = estimateContextTokens(context.messages);
-    const anchor = estimate.lastUsageIndex === null ? undefined : context.messages[estimate.lastUsageIndex];
-    const usageTokens = usableAssistantUsageTokens(anchor);
-    if (estimate.lastUsageIndex !== null && estimate.lastUsageIndex >= minimumUsageIndex && usageTokens !== undefined && anchor?.role === "assistant" && anchor.model === model.id && anchor.provider === model.provider && anchor.api === model.api) {
-      const trailing = context.messages.slice(estimate.lastUsageIndex + 1);
-      // Pi's usage includes F and earlier messages. Add our explicit framing/media
-      // estimate only for new messages, without charging the prefix twice.
-      return { tokens: usageTokens + trailing.reduce((n, m) => n + messageTokens(m, imageTokens), 0), estimator: "pi-usage-backed" };
-    }
-  }
-  return { tokens: fresh, estimator: "pi-heuristic" };
-}
-export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEntry[]): Context {
+export function mainContext(fixed: FixedContext, slots: Slot[], active: ActiveEntry[], fallback?: MechanicalFallbackInfo): Context {
   const r = active.flatMap(e => e.messages);
-  return { ...fixed, messages: slots.length > 0 ? [...r, memoryMessage(slots)] : [...r] };
+  return { ...fixed, messages: slots.length > 0 || fallback !== undefined ? [...r, memoryMessage(slots, fallback)] : [...r] };
 }
 export function memoryTarget(config: { memory?: { targetTokens?: number } }): number { return config.memory?.targetTokens ?? 8192; }
 export function hardMemoryLimit(config: { memory?: { hardMaxTokens?: number } }): number | null { return config.memory?.hardMaxTokens ?? null; }

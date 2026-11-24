@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fauxProvider, normalizeContext, type Provider, type TranscriptContext } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { createReadToolDefinition, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createEditToolDefinition, createReadToolDefinition, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
 import observer from "../../src/live/observer.js";
 import { openHost, NativeRpcError } from "../../src/live/host.js";
@@ -264,6 +264,27 @@ test("observer allows cwd read for native directory error and keeps distinct den
     assert.equal(kind.block, true); assert.match(kind.reason, /kind/i);
     const size = await toolCall({ toolName: "write", toolCallId: "4", input: { path: "huge.txt", content: "x".repeat(1_000_001) } } as never) as { block: boolean; reason: string };
     assert.equal(size.block, true); assert.match(size.reason, /exceeds bound/i);
+    const edit = createEditToolDefinition(cwd);
+    for (const [before, edits, expectedBytes] of [
+      ["a", [{ oldText: "a", newText: "é".repeat(500_000) }], 1_000_000],
+      ["a", [{ oldText: "a", newText: "é".repeat(500_000) + "x" }], 1_000_001],
+      ["\uFEFFa\r\nb", [{ oldText: "a", newText: "x".repeat(999_993) }, { oldText: "b", newText: "b!" }], 1_000_000],
+      ["\uFEFFa\r\nb", [{ oldText: "a", newText: "x".repeat(999_994) }, { oldText: "b", newText: "b!" }], 1_000_001],
+      ["x".repeat(1_000_001), [{ oldText: "x".repeat(1_000_001), newText: "small" }], 5],
+    ] as const) {
+      await writeFile(join(cwd, "edit.txt"), before);
+      const args = { path: "edit.txt", edits: edits.map(e => ({ ...e })) };
+      const admission = await toolCall({ toolName: "edit", toolCallId: "edit-size", input: args } as never) as { block: boolean; reason: string } | undefined;
+      assert.equal(await readFile(join(cwd, "edit.txt"), "utf8"), before, "admission never mutates the file");
+      if (expectedBytes > 1_000_000) {
+        assert.equal(admission?.block, true);
+        assert.equal(admission?.reason, size.reason, "write and edit share WRITE_SIZE denial");
+      } else {
+        assert.equal(admission, undefined);
+        await edit.execute("edit-size", args, undefined, undefined, { cwd } as never);
+        assert.equal((await readFile(join(cwd, "edit.txt"))).byteLength, expectedBytes);
+      }
+    }
     await symlink("/etc/passwd", join(cwd, "link"));
     const linked = await toolCall({ toolName: "read", toolCallId: "5", input: { path: "link" } } as never) as { block: boolean; reason: string };
     assert.equal(linked.block, true); assert.match(linked.reason, /path/i);
@@ -271,6 +292,22 @@ test("observer allows cwd read for native directory error and keeps distinct den
     assert.equal(traversal.block, true); assert.match(traversal.reason, /path/i);
     const protectedName = await toolCall({ toolName: "read", toolCallId: "7", input: { path: ".pi/settings.json" } } as never) as { block: boolean; reason: string };
     assert.equal(protectedName.block, true); assert.match(protectedName.reason, /path/i);
+    for (const [i, name] of [".pi", ".agents", ".git", ".env.local", "auth.json"].entries()) {
+      const isDirectory = name.startsWith(".") && !name.startsWith(".env");
+      if (isDirectory) { await mkdir(join(cwd, name)); await writeFile(join(cwd, name, "settings.json"), "{}"); }
+      else await writeFile(join(cwd, name), "{}");
+      const alias = `alias-${i}`;
+      await symlink(join(cwd, name), join(cwd, alias));
+      for (const path of isDirectory ? [`${alias}/settings.json`, `${alias}/new/file.json`] : [alias]) {
+        for (const toolName of ["read", "write", "edit"]) {
+          const blocked = await toolCall({ toolName, toolCallId: `${i}-${toolName}-${path}`, input: { path, content: "{}" } } as never) as { block: boolean; reason: string };
+          assert.equal(blocked.block, true, `${toolName} ${path}`);
+          assert.match(blocked.reason, /path/i);
+        }
+      }
+    }
+    await symlink(join(cwd, "note.txt"), join(cwd, "allowed-alias"));
+    assert.equal(await toolCall({ toolName: "read", toolCallId: "allowed-alias", input: { path: "allowed-alias" } } as never), undefined);
     const reasons = [writeRoot.reason, kind.reason, size.reason];
     assert.equal(new Set(reasons).size, 3);
     const tool = createReadToolDefinition(cwd);
@@ -322,7 +359,7 @@ test("host malformed RPC, output limit and observer drain keep distinct failure 
           await new Promise(resolve => setTimeout(resolve, 80));
           await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER");
           await assert.rejects(host.refresh(), (error: { code?: string }) => error.code === "OBSERVER");
-        } finally { await host.close(); }
+        } finally { await assert.rejects(host.close(), (error: { code?: string }) => error.code === "OBSERVER"); }
       } else {
         await assert.rejects(openHost({ repository, input, selection: input.scenarios[0]!, caseRoot, modelTargets: input.resolvedModels!, deadline: Date.now() + (mode === "overflow" ? 20000 : 8000), signal: new AbortController().signal, testCommand: command }), (error: { code?: string }) => error.code === (mode === "malformed" ? "HOST_RPC" : "OUTPUT"));
       }

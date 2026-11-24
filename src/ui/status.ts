@@ -192,7 +192,7 @@ export function lastMainLines(last: LastMainContext | undefined): string[] {
   return lines;
 }
 
-export function diagnosticLines(notes: readonly DiagnosticNote[]): string[] {
+function diagnosticLines(notes: readonly DiagnosticNote[]): string[] {
   const shown = notes.filter(note => note.level !== "info");
   if (shown.length === 0) return ["No recent diagnostics."];
   return shown.map(note => `${note.level}: ${firstLine(note.message)}`);

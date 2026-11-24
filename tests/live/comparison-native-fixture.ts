@@ -1,3 +1,4 @@
+import { AsyncResource } from "node:async_hooks";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -5,8 +6,11 @@ import { memoryTokens } from "../../src/engine/accounting.js";
 import { repository, temporaryBaseline } from "./fixtures.js";
 import type { NuncConfig } from "../../src/pi/config.js";
 
-const baseline = await temporaryBaseline();
-export const comparisonBaseline = async () => baseline;
+// Capture the file-suite context so lazy initialization registers cleanup there,
+// rather than on the first consuming test's shorter lifetime.
+const startBaseline = AsyncResource.bind(() => temporaryBaseline());
+let baseline: Promise<string> | undefined;
+export const comparisonBaseline = () => (baseline ??= startBaseline());
 
 /** Fixed hard-cap scenarios need a truly fitting required body on each SDK. */
 export function capacityRequiredText(tooLarge: boolean): string {

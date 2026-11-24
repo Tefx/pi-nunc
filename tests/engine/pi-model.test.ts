@@ -23,6 +23,24 @@ test("native throttling cannot become persistent maintenance provider overflow",
   }
 });
 
+for (const field of ["samplingParams", "samplingParamsByThinkingLevel"] as const) test(`both maintenance seams reject raw ${field}`, async () => {
+  const value = await input();
+  Object.assign(value.model, { [field]: field === "samplingParams" ? { max_tokens: 1 } : { high: { max_tokens: 1 } } });
+  const result = await maintain(value, async () => assert.fail("unsafe override cannot dispatch"));
+  assert(!result.ok); assert.equal(result.code, "CONFIG");
+  await assert.rejects(async () => piComplete({ complete: async () => assert.fail("unsafe override cannot reach registry") })({
+    model: value.model, context: { messages: [] }, outputTokens: 100, signal: value.signal,
+  }), /sampling overrides/);
+});
+
+for (const message of ["Connection error after 400 ms", "Connection error after 401 tokens", "Connection error (429)"]) test(`retry recognizes status context without treating units as HTTP: ${message}`, async () => {
+  const value = await input(); let attempts = 0;
+  await retryMaintenanceComplete(async () => ++attempts === 1 ? { ...answer(), stopReason: "error", errorMessage: message } : answer(), 0)({
+    model: value.model, context: { messages: [] }, outputTokens: 100, signal: value.signal,
+  });
+  assert.equal(attempts, 2);
+});
+
 const retryInput = input();
 test("rate limits include native Google errors and exclude unrelated 429 quantities", () => {
   for (const message of ['{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}', '{"code" : 429}', "status_code=429", "status:429", "status 429", "RESOURCE_EXHAUSTED", "HTTP/2 429", "(429)"]) assert.equal(rateLimited(message), true, message);

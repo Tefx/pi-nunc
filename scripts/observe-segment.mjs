@@ -17,7 +17,10 @@ const which = process.argv[2] ?? 'c1', nativeDefaults = which === 'codex-default
 const late = which === 'late-d' || which === 'late-d-cancel' || which === 'late-d-race', cancelLate = which === 'late-d-cancel', raceLate = which === 'late-d-race', full = which === 'c4-full', capacity = which === 'c4-capacity';
 const codex = which === 'codex' || nativeDefaults || timeout, id = timeout ? 'c1' : codex ? 'c2' : which === 'outside' ? 'c1' : late ? 'c1' : full || capacity ? 'c4' : which;
 assert(['c1', 'c2', 'c3', 'c4'].includes(id));
-const f = await new StockFixture().setup(codex ? { api: 'openai-codex-responses' } : {}), target = join(f.dir, 'nunc-live-controlled'); await mkdir(target);
+let outcome = { status: 'FAIL', case: which }, target;
+const f = await new StockFixture().setup(codex ? { api: 'openai-codex-responses' } : {});
+try {
+  target = join(f.dir, 'nunc-live-controlled'); await mkdir(target);
 const input = JSON.parse(await readFile(join(root, codex ? 'tests/live/preflight-codex-input.json' : 'tests/live/preflight-input.json'), 'utf8'));
 input.target.repository = root; input.target.stateRoot = target;
 input.scenarios[0].id = id;
@@ -54,8 +57,6 @@ const fullOffset = full || capacity ? truncateHead(expandGeneratedText(loaded.in
 const giantRead = [{ tool: { name: 'read', input: { path: 'inspection.txt' } } }, { tool: { name: 'read', input: { path: 'inspection.txt', offset: fullOffset } } }, 'Read complete.'];
 const steps = full ? [...giantRead, ...write('disposition.json', { batch: 'Q7', disposition: 'quarantine', reason: 'Controlled fixture reason.' })] : capacity ? giantRead : late ? ['Pending.', ...write('scratch.json', { status: 'pending' }), ...write('decision.json', { route: null, reason: 'Controlled fixture reason.' })] : id === 'c1' ? ['Pending.', ...read('probe.json'), ...write('decision.json', { route: 'direct', reason: 'Controlled fixture reason.' })] : id === 'c2' ? ['Pending.', ...write('sum.json', { sum: 46 }), ...write('product.json', { product: 104 }), ...write('difference.json', { difference: 63 }), ...write('retry.json', { supportedNodeMajors: [18], retryLimit: 2, retryBeforeCommit: true, retryAfterSuccessfulCommit: false })] : [read('routes.json')[0], read('records.json')[0], 'Read.', ...write('note.txt', 'Chlorophyll absorbs other wavelengths. Reflected green light reaches the eye.'), 'Cannot establish the requested continuation from controlled empty memory.'];
 f.response = (row, source) => source ? JSON.stringify({ add: [], remove: [], priority: source.M.map(s => s.id), required: [] }) : (() => { assert(steps.length, 'scripted native service inventory exceeded'); return steps.shift(); })();
-let outcome = { status: 'FAIL', case: which };
-try {
   if (timeout) f.hold('main');
   const cancel = new AbortController();
   if (late) overrides.signal = cancel.signal;
@@ -169,6 +170,7 @@ try {
   outcome = { status: 'PROVEN_CONTROLLED', case: which, nativePid: report.pid, requests: f.requests.length, calibrations: report.calibrations.length, memoryQuality: 'UNPROVEN: scripted service responses test plumbing only' };
 } catch (e) { outcome.error = { message: e.message, stack: e.stack }; console.error(e); process.exitCode = 1; }
 finally {
-  await rm(target, { recursive: true, force: true }); await f.close(outcome);
+  if (target) await rm(target, { recursive: true, force: true });
+  await f.close(outcome);
   console.log(JSON.stringify({ ...outcome, cleanup: 'removed' }));
 }

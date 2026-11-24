@@ -465,6 +465,8 @@ test("combined seam for all 4 native mapping families: stock Pi session tool loo
     assert.equal(delegates.length, 4, `one authorized admission per native request on ${adapter.name}`);
     assert.equal(admissions.filter(o => o.kind === "main" && o.outcome === "reject").length, 0);
     assert(delegates.every(o => o.payload !== undefined), "every native send passed serialized-payload authorization");
+    assert(delegates.slice(1).every(o => o.estimateReason === "matching-receipt" && o.estimator === "pi-usage-backed"),
+      `native continuations reuse measured receipts on ${adapter.name}`);
 
     // Verify captured wire body on request 4 (continuation of turn 2)
     const lastBody = bodies[3];

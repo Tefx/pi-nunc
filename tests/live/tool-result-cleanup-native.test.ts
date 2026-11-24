@@ -17,12 +17,12 @@ test("native Luna m5 provider wrapper sends low effort for both main and mainten
   const native = runtime.getModel("openai-codex", "gpt-6-luna");
   assert(native && native.api === "openai-codex-responses" && native.maxTokens === 128000);
   const f = await new StockFixture().setup({ api: "openai-codex-responses", timeoutMs: 25000 });
+  try {
   const model = { ...native, baseUrl: f.endpoint };
   f.modelId = model.id;
   f.response = () => "Controlled host response.";
   const kinds: string[] = [];
   const ledger = new BudgetLedger(join(f.dir, "calls.jsonl"), { maxCalls: 2, maxTotalTokens: null, maxOutputTokens: model.maxTokens, maxCostUsd: null, maxDurationMs: 25000 }, Date.now() + 25000, new AbortController().signal);
-  try {
     const provider = boundedProvider(openaiCodexProvider(), [model], ledger, {
       classify: simple => simple ? "main" : "maintenance", onContext: (_model, _context, kind) => kinds.push(kind),
       maintenanceThinking: "low", requireThinkingLevel: "low",
@@ -51,6 +51,7 @@ test("m5 stock host proves an initial no-eligible save and later lawful cleanup,
   assert.equal(clampThinkingLevel(native, "low"), "low");
   for (const api of ["openai-completions", "openai-codex-responses"] as const) for (const variant of ["cleanup-on", "cleanup-off"] as const) {
     const f = await new StockFixture().setup({ api, timeoutMs: 85000 });
+    try {
     const codex = api === "openai-codex-responses";
     const model: Model<Api> = codex ? { ...native, baseUrl: f.endpoint } : { id: "nunc-m5-controlled", name: "Controlled m5", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
       reasoning: false, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
@@ -87,7 +88,6 @@ test("m5 stock host proves an initial no-eligible save and later lawful cleanup,
       }
       return typeof step === "string" ? step : { tool: step };
     };
-    try {
       const controlledModels = codex ? { providers: { "openai-codex": { baseUrl: f.endpoint } } } : { providers: { openrouter: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [model] } } };
       const report = await runSegment({ input, scenarioIndex: 0, deadline: Date.now() + 85000, resume: false, group: "candidate" }, { models: [model], controlledModels });
       await writeFile(join(f.dir, `m5-${api}-${variant}-report.json`), JSON.stringify(report));

@@ -40,66 +40,38 @@ function completionsSSE(modelId: string, text: string) {
   );
 }
 
-async function nativeCatalogAppend(t: { after: (fn: () => Promise<void> | void) => void }, args: {
-  provider: Provider; catalog: Model<Api>; sse: (id: string, text: string) => Response; prompt: string;
-  inject: (payload: unknown) => unknown; inputLimit?: number;
+async function nativeAppend(t: { after: (fn: () => Promise<void> | void) => void }, args: {
+  provider?: Provider; catalog?: Model<Api>; sse?: (id: string, text: string) => Response; prompt?: string;
+  inject: (payload: unknown) => unknown; second?: (payload: unknown) => unknown; inputLimit?: number;
 }) {
+  const provider = args.provider ?? openaiProvider();
+  const catalog = args.catalog ?? provider.getModels().find(m => m.id === "gpt-4.1");
+  assert(catalog);
   let sends = 0;
   const bodies: Record<string, unknown>[] = [];
   const admissions: Array<{ outcome?: string; code?: string; payload?: { mode?: string; categories?: string[]; transform?: string } }> = [];
   const transport: typeof fetch = async (resource, init) => {
     sends++;
     bodies.push(await new Request(resource, init).json() as Record<string, unknown>);
-    return args.sse(args.catalog.id, "Controlled native response.");
+    return (args.sse ?? responsesSSE)(catalog.id, "Controlled native response.");
   };
   const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const };
   const wrapped: Provider = {
-    ...args.provider,
-    streamSimple: (m, context, options) => args.provider.streamSimple(m as never, context, { ...options, ...bound } as never),
-    stream: (m, context, options) => args.provider.stream(m as never, context, { ...options, ...bound } as never),
+    ...provider,
+    streamSimple: (m, context, options) => provider.streamSimple(m as never, context, { ...options, ...bound } as never),
+    stream: (m, context, options) => provider.stream(m as never, context, { ...options, ...bound } as never),
   };
   const extras: InlineExtension[] = [
     { name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as typeof admissions[number])); } },
     { name: "append", factory(pi) { pi.on("before_provider_request", event => args.inject(event.payload)); } },
   ];
+  if (args.second) extras.push({ name: "append-b", factory(pi) { pi.on("before_provider_request", event => args.second!(event.payload)); } });
   const f = await fixture({ config: args.inputLimit === undefined ? {} : { budget: { inputLimit: args.inputLimit } }, extras });
   t.after(() => f.close());
   new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
-  await f.modelRuntime.setRuntimeApiKey(args.catalog.provider, "offline-fixture-key");
-  await f.runtime.session.setModel(args.catalog);
-  await f.runtime.session.prompt(args.prompt);
-  return { f, catalog: args.catalog, sends: () => sends, bodies, admissions };
-}
-
-async function nativeAppend(t: { after: (fn: () => Promise<void> | void) => void }, inject: (payload: unknown) => unknown, second?: (payload: unknown) => unknown) {
-  let sends = 0;
-  const bodies: Record<string, unknown>[] = [];
-  const admissions: Array<{ outcome?: string; code?: string; payload?: { mode?: string; categories?: string[]; transform?: string } }> = [];
-  const openai = openaiProvider();
-  const catalog = openai.getModels().find(m => m.id === "gpt-4.1");
-  assert(catalog);
-  const transport: typeof fetch = async (resource, init) => {
-    sends++;
-    bodies.push(await new Request(resource, init).json() as Record<string, unknown>);
-    return responsesSSE(catalog.id, "Controlled native response.");
-  };
-  const bound = { apiKey: "offline-fixture-key", fetch: transport, maxRetries: 0 as const };
-  const wrapped: Provider = {
-    ...openai,
-    streamSimple: (m, context, options) => openai.streamSimple(m as Model<"openai-responses">, context, { ...options, ...bound }),
-    stream: (m, context, options) => openai.stream(m as Model<"openai-responses">, context, { ...options, ...bound } as Parameters<typeof openai.stream>[2]),
-  };
-  const extras: InlineExtension[] = [
-    { name: "watch-admission", factory(pi) { pi.events.on("nunc:admission", (value: unknown) => admissions.push(value as typeof admissions[number])); } },
-    { name: "append", factory(pi) { pi.on("before_provider_request", event => inject(event.payload)); } },
-  ];
-  if (second) extras.push({ name: "append-b", factory(pi) { pi.on("before_provider_request", event => second(event.payload)); } });
-  const f = await fixture({ config: { budget: { inputLimit: 8000 } }, extras });
-  t.after(() => f.close());
-  new ModelRegistry(f.modelRuntime).registerProvider(wrapped);
-  await f.modelRuntime.setRuntimeApiKey("openai", "offline-fixture-key");
+  await f.modelRuntime.setRuntimeApiKey(catalog.provider, "offline-fixture-key");
   await f.runtime.session.setModel(catalog);
-  await f.runtime.session.prompt("Native last-user append request");
+  await f.runtime.session.prompt(args.prompt ?? "Native last-user append request");
   return { f, catalog, sends: () => sends, bodies, admissions };
 }
 
@@ -215,10 +187,10 @@ test("append charges Nunc input headroom separately from Pi estimateContextToken
 });
 
 test("stock loader last-user append reaches Responses HTTP; original text and tools stay", { timeout: 90000 }, async t => {
-  const run = await nativeAppend(t, payload => {
+  const run = await nativeAppend(t, { inputLimit: 8000, inject: payload => {
     const result = applyLastUserTextAppend(payload, SYNTHETIC);
     return result.changed ? result.payload : undefined;
-  });
+  } });
   assert.equal(run.sends(), 1);
   const input = run.bodies[0]?.input;
   assert(Array.isArray(input));
@@ -233,11 +205,11 @@ test("stock loader last-user append reaches Responses HTTP; original text and to
 });
 
 test("two last-user append hooks reach Responses HTTP with both suffix parts", { timeout: 90000 }, async t => {
-  const run = await nativeAppend(
-    t,
-    payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC); return result.changed ? result.payload : undefined; },
-    payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC_B); return result.changed ? result.payload : undefined; },
-  );
+  const run = await nativeAppend(t, {
+    inputLimit: 8000,
+    inject: payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC); return result.changed ? result.payload : undefined; },
+    second: payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC_B); return result.changed ? result.payload : undefined; },
+  });
   assert.equal(run.sends(), 1);
   const input = run.bodies[0]?.input;
   assert(Array.isArray(input));
@@ -253,7 +225,7 @@ test("xai grok-4.6 80k last-user append reaches Responses HTTP; overlarge append
   const catalog = xai.getModels().find(m => m.id === "grok-4.6");
   assert(catalog && catalog.contextWindow === 500000 && catalog.maxTokens === 500000 && catalog.api === "openai-responses");
   const prompt = `First task ${"a".repeat(80000)}`;
-  const small = await nativeCatalogAppend(t, {
+  const small = await nativeAppend(t, {
     provider: xai, catalog, sse: responsesSSE, prompt,
     inject: payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC); return result.changed ? result.payload : undefined; },
   });
@@ -268,7 +240,7 @@ test("xai grok-4.6 80k last-user append reaches Responses HTTP; overlarge append
   assert.equal(lastUser?.content.at(-1)?.text, SYNTHETIC);
   assert(small.admissions.some(a => a.outcome === "delegate" && a.payload?.transform === "last-user-text-append"));
 
-  const huge = await nativeCatalogAppend(t, {
+  const huge = await nativeAppend(t, {
     provider: xai, catalog, sse: responsesSSE, prompt,
     inject: payload => { const result = applyLastUserTextAppend(payload, "x".repeat(200000)); return result.changed ? result.payload : undefined; },
   });
@@ -285,7 +257,7 @@ test("openrouter grok-4.6 80k last-user append reaches Completions HTTP; overlar
   const catalog = openrouter.getModels().find(m => m.id === "x-ai/grok-4.6");
   assert(catalog && catalog.contextWindow === 500000 && catalog.maxTokens === 450000 && catalog.api === "openai-completions");
   const prompt = `First task ${"a".repeat(80000)}`;
-  const small = await nativeCatalogAppend(t, {
+  const small = await nativeAppend(t, {
     provider: openrouter, catalog, sse: completionsSSE, prompt,
     inject: payload => { const result = applyLastUserTextAppend(payload, SYNTHETIC); return result.changed ? result.payload : undefined; },
   });
@@ -301,7 +273,7 @@ test("openrouter grok-4.6 80k last-user append reaches Completions HTTP; overlar
   assert(Array.isArray(content));
   assert.equal((content.at(-1) as { text?: string }).text, SYNTHETIC);
 
-  const huge = await nativeCatalogAppend(t, {
+  const huge = await nativeAppend(t, {
     provider: openrouter, catalog, sse: completionsSSE, prompt,
     inject: payload => { const result = applyLastUserTextAppend(payload, "x".repeat(200000)); return result.changed ? result.payload : undefined; },
   });

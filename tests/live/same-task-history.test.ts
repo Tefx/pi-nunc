@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createAgentSessionFromServices, createAgentSessionServices, createEventBus, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
+import { memoryMessage, renderMemory } from "../../src/engine/memory.js";
 import { mainContext, requestTokens } from "../../src/engine/accounting.js";
 import { bindHostSettings } from "../../src/pi/index.js";
 import { repository } from "./fixtures.js";
@@ -196,13 +197,14 @@ test("sameTaskHistoryChecks verifies 3-compaction series, first read in K, and r
     { id: "r-test", parentId: "a-test", type: "message", message: { role: "toolResult", toolCallId: "c12", toolName: "write", content: [{ type: "text", text: "ok" }], isError: false, timestamp: 13 }, timestamp: "13" },
   ];
 
-  const snap1 = { id: "snap1", parentId: "r-task-read", type: "compaction" as const, firstKeptEntryId: "a-task-read", timestamp: "14", fromHook: true, summary: "snap1", tokensBefore: 1000 };
-  const snap2 = { id: "snap2", parentId: "r-sol", type: "compaction" as const, firstKeptEntryId: "a-sol", timestamp: "15", fromHook: true, summary: "snap2", tokensBefore: 2000 };
-  const snap3 = { id: "snap3", parentId: "r-test", type: "compaction" as const, firstKeptEntryId: "a-test", timestamp: "16", fromHook: true, summary: "snap3", tokensBefore: 3000 };
+  const mem1 = [{ id: "s1", text: "Task requirements in memory" }];
+  const details = { nunc: { version: 1, nextId: 2, slots: mem1 } };
+  const snap1 = { details, id: "snap1", parentId: "r-task-read", type: "compaction" as const, firstKeptEntryId: "a-task-read", timestamp: "14", fromHook: true, summary: renderMemory(mem1), tokensBefore: 1000 };
+  const snap2 = { details, id: "snap2", parentId: "r-sol", type: "compaction" as const, firstKeptEntryId: "a-sol", timestamp: "15", fromHook: true, summary: renderMemory(mem1), tokensBefore: 2000 };
+  const snap3 = { details, id: "snap3", parentId: "r-test", type: "compaction" as const, firstKeptEntryId: "a-test", timestamp: "16", fromHook: true, summary: renderMemory(mem1), tokensBefore: 3000 };
 
   const fullBranch: any[] = [...branch, snap1, snap2, snap3];
 
-  const mem1 = [{ id: "m1", text: "Task requirements in memory" }];
   const rollovers: any[] = [
     {
       snapshot: snap1, active: branch.slice(0, 9), branch: branch.slice(0, 9), association: { status: "resolved" },
@@ -218,18 +220,17 @@ test("sameTaskHistoryChecks verifies 3-compaction series, first read in K, and r
     }
   ];
 
-  const requests: any[] = [
-    { callId: "req1", kind: "main", context: { messages: branch.slice(7, 9).map(e => e.message) } },
-    { callId: "req2", kind: "main", context: { messages: [ { role: "system", content: "Nunc working memory: [m1]" }, ...branch.slice(9, 11).map(e => e.message) ] } },
-    { callId: "m-call-3", kind: "maintenance", context: { messages: [ { role: "system", content: JSON.stringify({ F: "frozen", M: mem1, B: [], K: [] }) } ] } },
-    { callId: "req3", kind: "main", context: { messages: [ { role: "system", content: "Nunc working memory: [m1]" }, ...branch.slice(11, 13).map(e => e.message) ] } },
-  ];
+  const requests: any[] = rollovers.flatMap((row, i) => [
+    { callId: row.callIds[0], kind: "maintenance", context: { messages: [{ role: "user", content: JSON.stringify({ source: "F/M", F: {}, M: i === 0 ? [] : mem1 }), timestamp: 0 }] } },
+    { callId: row.continuationCallId, kind: "main", context: { messages: [memoryMessage(mem1), ...row.rebuilt.filter((e: any) => e.type === "message").map((e: any) => e.message)] } },
+  ]);
 
   const turns = { setup: ["u-setup", "a-setup", "r-setup"], preflight: ["u-pre", "a-pre", "r-pre"], task: ["u-task", "a-task-read", "r-task-read", "a-sol", "r-sol", "a-test", "r-test"] };
 
   const checks = sameTaskHistoryChecks(scenario, turns, fullBranch, branch, rollovers, actions, repository, requests);
   assert.equal(checks[0]!.status, "PROVEN", "Requirements entered through designated request & read following setup");
   assert.equal(checks[1]!.status, "PROVEN", "Preliminary effects verified");
+  assert.equal(checks[2]!.status, "PROVEN", JSON.stringify(checks[2]));
   assert.equal(checks[3]!.status, "PROVEN", "Observed build failure and repair");
   assert.equal(checks[4]!.status, "UNPROVEN", "Input/oracle separation is semantic");
 
@@ -248,14 +249,15 @@ test("sameTaskHistoryChecks verifies 3-compaction series, first read in K, and r
 });
 
 // Full native controlled multi-turn flow with real StockFixture
-async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, lowUsage = false, tamper?: string) {
+async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, lowUsage = false, tamper?: string, repeatedPrompt = false) {
   const { StockFixture } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 160000 });
+  try {
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled Luna protocol fixture", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const stateRoot = join(f.state, "worker"); await mkdir(stateRoot);
   let reserveTokens = 36000;
-  if (group === "candidate") try {
+  if (group === "candidate") {
     // Measure the real host prompt and tool declarations at NativeHost's task cwd,
     // without sending a request or consulting ambient credentials/resources.
     const cwd = join(stateRoot, "g4-same-task-history/task");
@@ -286,9 +288,6 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
     } finally {
       session.dispose();
     }
-  } catch (error) {
-    await f.close();
-    throw error;
   }
   const input: RunInput = { version: 1, mode: "controlled", target: { repository, stateRoot, cleanup: "retain" }, models: [model], resolvedModels: [model],
     effective: { source: "invoking-runtime", provider: model.provider, model: model.id, thinking: "low", transport: "sse", compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, settings: { nunc: { memoryTools: true } } },
@@ -296,6 +295,14 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
     limits: { maxCalls: 50, maxTotalTokens: 4000000, maxOutputTokens: 20000, maxCostUsd: null, maxDurationMs: 150000 },
     scenarios: [{ id: "g4", variant: "same-task-history", config: { compaction: { enabled: false, reserveTokens, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } } }] };
 
+  if (repeatedPrompt) {
+    const assets = JSON.parse(await readFile(join(repository, "tests/scenarios/guidance-inputs.json"), "utf8"));
+    const turns = assets.cases.find((c: any) => c.id === "g4").variants.find((v: any) => v.id === "same-task-history").turns;
+    turns[1].text = turns[2].text;
+    const path = join(f.dir, "repeated-inputs.json");
+    await writeFile(path, JSON.stringify(assets));
+    input.scenarios[0]!.assets = { inputs: path };
+  }
   const { input: scenario } = await loadScenario(repository, input.scenarios[0]!);
   const expectedRecords = deriveExpectedRecords(scenario);
   const recordsJson = JSON.stringify(expectedRecords, null, 2);
@@ -351,7 +358,6 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
     return fullSequence[step++];
   };
 
-  try {
     const report = await runSegment({ input, scenarioIndex: 0, deadline: Date.now() + 150000, resume: false, group }, {
       models: [model], controlledModels: { providers: { openrouter: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [model] } } },
     });
@@ -397,6 +403,8 @@ async function sameTaskHistoryHost(group: "native" | "candidate", tools = true, 
 }
 
 test("same-task-history candidate tools=true: entire multi-turn flow with preliminary ingestion, 3 rollovers, restored configs and final oracle", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", true));
+test("same-task-history repeated preflight/task prompt does not trigger task controls during preflight", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", true, false, undefined, true));
+
 test("same-task-history candidate tools=false: entire multi-turn flow without nunc memory tools", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", false));
 test("same-task-history native tools=false: entire multi-turn flow under native Pi", { timeout: 180000 }, () => sameTaskHistoryHost("native", false));
 test("same-task-history frozen regional input tampering reaches the worker scorer", { timeout: 180000 }, () => sameTaskHistoryHost("candidate", true, false, "inputs/north.json"));

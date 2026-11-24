@@ -37,7 +37,17 @@ export function readLedger(path: string): LedgerRecord[] {
   const reserves = new Set<number>();
   for (const record of records) {
     requireValue((record.kind === "reserve" || record.kind === "terminal") && Number.isSafeInteger(record.id) && record.id > 0, "LEDGER_RECONCILIATION", "Invalid ledger record kind or id");
-    if (record.kind !== "reserve") continue;
+    if (record.kind === "terminal") {
+      requireValue(
+        [record.at, record.latencyMs].every(n => typeof n === "number" && Number.isFinite(n) && n >= 0)
+        && typeof record.stopReason === "string" && object(record.usage)
+        && Object.values(record.usage).every(n => n === null || (typeof n === "number" && Number.isFinite(n) && n >= 0))
+        && (record.usage.totalTokens === null || typeof record.usage.totalTokens === "number")
+        && (record.usage.cost === null || typeof record.usage.cost === "number"),
+        "LEDGER_RECONCILIATION", "Invalid ledger terminal values",
+      );
+      continue;
+    }
     requireValue(
       [record.inputEstimate, record.outputCeiling, record.reservedTokens, record.at].every(n => typeof n === "number" && Number.isFinite(n) && n >= 0)
       && (record.reservedCostUsd === null || (typeof record.reservedCostUsd === "number" && Number.isFinite(record.reservedCostUsd) && record.reservedCostUsd >= 0))
@@ -239,8 +249,8 @@ export class BudgetLedger {
     }
   }
 
-  readQualifiedCalls(): { calls: QualifiedCall[]; currentFileRecords: LedgerRecord[] } {
-    return { calls: readQualifiedLedgers([...this.priorLedgerPaths, ...(existsSync(this.path) ? [this.path] : [])]), currentFileRecords: readLedger(this.path) };
+  readQualifiedCalls(): { calls: QualifiedCall[] } {
+    return { calls: readQualifiedLedgers([...this.priorLedgerPaths, ...(existsSync(this.path) ? [this.path] : [])]) };
   }
 
   reserve(model: Model<Api>, context: Context | TranscriptContext, outputCeiling: number, subscription = model.api === "openai-codex-responses"): CallRecord {
@@ -261,7 +271,7 @@ export class BudgetLedger {
     requireValue(!subscription || this.limits.maxCostUsd === null, "COST_LIMIT", "Subscription billing is unknown; maxCostUsd must be null");
     requireValue(reservedCostUsd !== undefined, "COST_LIMIT", "Unknown pricing cannot establish a USD reservation");
 
-    const { calls: qualifiedCalls, currentFileRecords } = this.readQualifiedCalls();
+    const { calls: qualifiedCalls } = this.readQualifiedCalls();
 
     for (const c of qualifiedCalls) {
       requireValue(c.terminals.length > 0, "RECONCILIATION", `Earlier request in ${c.ledgerPath} (id: ${c.record.id}) has no terminal receipt; no further effects allowed`);
@@ -285,7 +295,7 @@ export class BudgetLedger {
       requireValue(chargedCostUsd + reservedCostUsd <= this.limits.maxCostUsd, "COST_LIMIT", "Remaining cost authorization cannot reserve another full request");
     }
 
-    const currentFileCalls = currentFileRecords.filter((r): r is CallRecord => r.kind === "reserve");
+    const currentFileCalls = qualifiedCalls.filter(c => c.ledgerPath === resolve(this.path));
     const record: CallRecord = { kind: "reserve", id: currentFileCalls.length + 1, model: `${model.provider}/${model.id}`, inputEstimate, outputCeiling, reservedTokens, reservedCostUsd, ...(catalogReservationUsd === undefined ? {} : { catalogReservationUsd }), at: Date.now(), ...(this.caseKey ? { caseKey: this.caseKey } : {}) };
     appendFileSync(this.path, `${JSON.stringify(record)}\n`, { mode: 0o600, flush: true }); this.active = true;
     return record;
@@ -353,7 +363,7 @@ export function ledgerSummary(records: LedgerRecord[] | QualifiedCall[], limits?
   const multipleLedgers = new Set(qCalls.map(c => c.ledgerPath)).size > 1;
   const activeCalls = qCalls.filter(c => c.terminals.length === 0);
   const sum = (key: keyof UsageObservation): number | null =>
-    qCalls.some(c => c.terminals.length !== 1) || terminal.length !== calls.length || terminal.some(r => r.usage[key] === null)
+    qCalls.some(c => c.terminals.length !== 1) || terminal.length !== calls.length || terminal.some(r => typeof r.usage[key] !== "number" || !Number.isFinite(r.usage[key]))
       ? null
       : terminal.reduce((n, r) => n + (r.usage[key] ?? 0), 0);
 
@@ -428,7 +438,7 @@ async function withGoogleFetch<T>(transport: typeof fetch, run: () => Promise<T>
 }
 
 /** Public provider decorator; the wrapped Pi adapter builds and sends the real HTTP request. */
-export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { controlled?: boolean; capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; subscriptionBilling?: (model: Model<Api>) => boolean; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
+export function boundedProvider(base: Provider, models: Model<Api>[], ledger: BudgetLedger, options: { capturePayload?: boolean; fetch?: typeof fetch; checkAuth?: (model: Model<Api>) => void; subscriptionBilling?: (model: Model<Api>) => boolean; onContext?: (model: Model<Api>, context: Context, kind: "main" | "maintenance") => void; onResponse?: (model: Model<Api>, message: AssistantMessage, kind: "main" | "maintenance") => void; beforeRequest?: () => void; classify?: (simple: boolean) => "main" | "maintenance"; onRequest?: (data: { callId: number; kind: "main" | "maintenance"; model: Model<Api>; outputPlanning: number | null; reasoning: unknown; context: Context }) => void; onPayload?: (data: { callId: number; cap: ReturnType<typeof outputCapState>; finalPayload?: unknown }) => void; maintenanceThinking?: string | undefined; requireThinkingLevel?: string | undefined } = {}): Provider {
   function stream(model: Model<Api>, context: Context | TranscriptContext, original: SimpleStreamOptions | ApiStreamOptions<Api> | undefined, simple: boolean): AssistantMessageEventStream {
     const output = createAssistantMessageEventStream();
     const kind = options.classify?.(simple) ?? (simple ? "main" : "maintenance");
@@ -463,10 +473,11 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         reservation = ledger.reserve(model, context, maxTokens, subscription);
         // Agent tools also carry executable callbacks. Observe only the public model-facing Tool fields.
         const activeTools = ("tools" in context && Array.isArray(context.tools)) ? context.tools : getCurrentTools(context.messages);
-        options.onContext?.(model, structuredClone({ ...context, tools: activeTools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) }), kind);
+        const observedContext = { ...context, tools: activeTools.map(({ name, description, parameters, constrainedSampling }) => ({ name, description, parameters, ...(constrainedSampling === undefined ? {} : { constrainedSampling }) })) };
+        options.onContext?.(model, structuredClone(observedContext), kind);
         options.onRequest?.({ callId: reservation.id, kind, model,
           outputPlanning: original?.maxTokens ?? null, reasoning: (original as SimpleStreamOptions | undefined)?.reasoning ?? (original as { reasoningEffort?: unknown } | undefined)?.reasoningEffort ?? null,
-          context: { ...context, tools: activeTools.map(({ name, description, parameters }) => ({ name, description, parameters })) } });
+          context: observedContext });
         const combined = AbortSignal.any([ledger.signal, ...(original?.signal ? [original.signal] : [])]);
         const google = ["google-generative-ai", "google-vertex"].includes(model.api);
         const transport = options.fetch ?? original?.fetch ?? (googleFetchUsers > 0 ? hostFetch : globalThis.fetch);
@@ -541,7 +552,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
                 terminal.errorMessage = info.message;
                 complete(terminal, info);
               } else {
-                requireValue(options.controlled || transportStarted, "TRANSPORT", "No bounded HTTP transport was observed");
+                requireValue(transportStarted, "TRANSPORT", "No bounded HTTP transport was observed");
                 complete(terminal);
               }
             }
@@ -557,7 +568,7 @@ export function boundedProvider(base: Provider, models: Model<Api>[], ledger: Bu
         const aborted = ledger.signal.aborted || (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"));
         const code = error instanceof RunnerError ? error.code : aborted ? "CANCELLED" : net ? "NETWORK" : "PROVIDER_ERROR";
         const info = describeFailure(code, snapshot());
-        const message = errorMessage(model, info.message);
+        const message = errorMessage(model, error instanceof RunnerError && error.code === "MODEL" ? `${info.message}; ${error.message}` : info.message);
         finalMessage = message;
         try {
           if (!transportStarted && !(error instanceof RunnerError && error.code === "USAGE_LIMIT")) complete(message, info);

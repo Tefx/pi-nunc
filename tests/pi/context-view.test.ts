@@ -7,7 +7,7 @@ import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionContext }
 import { Type } from "typebox";
 import { estimateTextAndImageContentTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { bindHostSettings, contextSurface } from "pi-nunc/pi";
-import { emptyMemory } from "../../src/engine/index.js";
+import { emptyMemory, renderMemoryWithFallback } from "../../src/engine/index.js";
 import { historyPlanningEstimate, mainContext, memoryTokens, messageTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { Admission, type AdmissionObservation } from "../../src/pi/admission.js";
 import { createContextSurface } from "../../src/pi/context.js";
@@ -22,6 +22,64 @@ const LONG = "Exact body 中文 🦉\n" + "z".repeat(4000);
 const HOOK_A = "HOOK_A_TEMP_INJECTION";
 const HOOK_B = "HOOK_B_TEMP_INJECTION";
 const QUEUED = "queued-D-not-in-layout";
+
+test("empty tools and empty M fallback match actual request planning", async t => {
+  const h = await prepared(t);
+  const manager = h.f.runtime.session.sessionManager;
+  const kept = manager.appendMessage({ role: "user", content: "Current work", timestamp: 1 });
+  const mechanicalFallback = { code: "RESPONSE" as const, message: "Extraction failed", retiredEntryCount: 2, firstKeptEntryId: kept };
+  manager.appendCompaction(renderMemoryWithFallback([], mechanicalFallback), kept, 5000,
+    { nunc: emptyMemory(), mechanicalFallback });
+  const model = h.f.faux.getModel();
+  const fixed = { systemPrompt: "Fixed policy", tools: [] };
+  const surface = createContextSurface({ pi: h.pi(), memory: h.memory(), fixed: () => fixed,
+    config: () => engineConfig({}, model, { reserveTokens: 36000, keepRecentTokens: 1 }) });
+  const projected = project(manager.buildContextEntries());
+  const view = surface.read(h.ctx()).current;
+  assert.equal(view.layout.tools.tokens, 0);
+  assert.equal(view.layout.tools.unknown, false);
+  assert.equal(view.layout.memory?.slots.length, 0);
+  assert(view.layout.memory!.tokens > 0);
+  const expected = requestTokens(mainContext(fixed, [], projected.active, mechanicalFallback));
+  assert.equal(view.layout.planning?.tokens, expected);
+  assert.equal(view.layout.heuristic.tokens, expected);
+  assert(expected > requestTokens(mainContext(fixed, [], projected.active)));
+});
+
+test("current memory position becomes unknown after native edits lose the sent boundary correspondence", async t => {
+  const { f, memory, context, ctx } = await prepared(t);
+  const manager = f.runtime.session.sessionManager;
+  const initial = memory().read(ctx());
+  assert(memory().patch(ctx(), { expectedRevision: initial.revision, add: [{ key: "note", text: "Keep this constraint." }] }).ok);
+  await f.runtime.session.prompt("Establish the memory boundary");
+  const before = context().read(ctx()).current.layout;
+  assert.equal(before.memoryIndex, 1);
+  const boundary = manager.getBranch().find(entry => entry.type === "message" && entry.message.role === "user");
+  assert(boundary?.type === "message" && boundary.message.role === "user");
+  manager.appendContextEdit(boundary.id, { content: "Native replacement of the boundary body" });
+  const changed = context().read(ctx());
+  assert.equal(changed.current.layout.memoryIndex, undefined);
+  assert.match(buildContextNodes(changed).get("current:M")!.preview, /position unknown/);
+  assert(changed.current.layout.messages.some(row => row.preview.includes("Native replacement")));
+  manager.appendContextEdit(boundary.id, { content: boundary.message.content });
+  assert.equal(context().read(ctx()).current.layout.memoryIndex, 1, "restored correspondence recovers the index without a new send");
+  manager.appendMessage(structuredClone(boundary.message));
+  assert.equal(context().read(ctx()).current.layout.memoryIndex, undefined, "duplicate visible units are ambiguous");
+  manager.appendContextEdit(boundary.id, null);
+  assert.equal(context().read(ctx()).current.layout.memoryIndex, undefined, "an omitted boundary has no position");
+});
+
+test("current memory position becomes unknown when a native edit opens a tool call before the boundary", async t => {
+  const { f, memory, context, ctx } = await prepared(t);
+  const manager = f.runtime.session.sessionManager;
+  const earlier = manager.appendMessage(answer(undefined, f.faux.getModel()));
+  const initial = memory().read(ctx());
+  assert(memory().patch(ctx(), { expectedRevision: initial.revision, add: [{ key: "note", text: "Keep this constraint." }] }).ok);
+  await f.runtime.session.prompt("Establish a completed prefix");
+  assert.equal(context().read(ctx()).current.layout.memoryIndex, 2);
+  manager.appendContextEdit(earlier, { content: [{ type: "toolCall", id: "pending", name: "read", arguments: { path: "file.txt" } }] });
+  assert.equal(context().read(ctx()).current.layout.memoryIndex, undefined);
+});
 
 test("maintenance cut ignores system-policy JSON examples and records only user source blocks", async t => {
   const h = await prepared(t);
@@ -41,6 +99,12 @@ test("maintenance cut ignores system-policy JSON examples and records only user 
     { role: "system", content: JSON.stringify({ region: "K", entryId: "policy-example" }), timestamp: 0 },
     { role: "user", content: sources.map(source => JSON.stringify(source)).join("\n"), timestamp: 1 },
   ] });
+  // An overlapping UI cleanup request contains only K. It cannot claim the
+  // native compaction's cut before the actual B/K request is observed.
+  surface.observeAdmission({ ctx: h.ctx(), model, context: normalizeContext({ messages: [
+    { role: "user", content: JSON.stringify({ region: "K", entryId: "ui-cleanup-only" }), timestamp: 1 },
+  ] }), observation: { kind: "maintenance", outcome: "delegate" } });
+  assert.equal(surface.read(h.ctx()).lastMaintenance?.cut, undefined);
   surface.observeAdmission({ ctx: h.ctx(), model, context, observation: { kind: "maintenance", outcome: "delegate" } });
   surface.noteEngine(result); surface.noteNative("saved");
   const view = surface.read(h.ctx()).lastMaintenance!;

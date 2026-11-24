@@ -116,7 +116,7 @@ export async function maintain(input: MaintenanceInput, complete: Complete): Pro
       };
     }
     if (fallbackCandidate?.toolResultCleanup) {
-      fallbackCandidate.toolResultCleanup.applied.unshift(...retainedToolResultCleanup(fallbackCandidate.kept, priorCleanup));
+      fallbackCandidate.toolResultCleanup.applied.unshift(...survivingCleanup);
     }
     const keptTokens = historyPlanningEstimate(effectiveSuffix(cut), frozen.model, config.imageTokens).tokens;
     const beforePlan = mainPlanningEstimate(frozen.fixed, frozen.memory.slots, effectiveSuffix(0), frozen.model, config.imageTokens, config.main.extraInputTokens);

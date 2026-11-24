@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { engineConfig } from "../../src/pi/config.js";
-import { admissionEstimate, chooseCut, historyPlanningEstimate, inputLimit, mainAdmissionLimit, mainPlanningEstimate, memoryPlan, requestTokens, textTokens } from "../../src/engine/accounting.js";
+import { mainContext, memoryTokens, chooseCut, historyPlanningEstimate, inputLimit, mainAdmissionLimit, mainPlanningEstimate, memoryPlan, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { maintain } from "../../src/engine/engine.js";
 import { extractionContext, readSourceRecords } from "../../src/engine/request.js";
 import { answer, input, user } from "./fixtures.js";
@@ -119,36 +119,26 @@ test("raw semantic transcript preserves text, arguments, status and boundaries w
   assert.throws(() => readSourceRecords('{"sourceFormat":"nunc-transcript-v2","textLengths":[10],"messages":[]}\n[Nunc text 0]\nx'), /Truncated/);
 });
 
-test("planning uses Pi text scale and ignores opaque signature size; usage needs an applicable prefix and model", async () => {
+test("planning uses Pi text scale and ignores opaque signature size", async () => {
   assert.equal(textTokens("a".repeat(4000)), estimateTextTokens("a".repeat(4000)));
   const source = await input();
   const message = { ...answer(), content: [{ type: "thinking" as const, thinking: "Visible", thinkingSignature: "x".repeat(700000) }], usage: { ...answer().usage, input: 10000, output: 1000, cacheRead: 2000, cacheWrite: 0, totalTokens: 13000 } };
   const context = { ...source.fixed, messages: [message, user("tail", "Continue").messages[0]!] };
   const fresh = requestTokens(context);
   assert(fresh < 1000);
-  assert.equal(admissionEstimate(context, source.model).estimator, "pi-heuristic");
-  const backed = admissionEstimate(context, source.model, undefined, true);
-  assert.equal(backed.estimator, "pi-usage-backed"); assert(backed.tokens > 13000);
-  assert.equal(admissionEstimate(context, { ...source.model, id: "different" }, undefined, true).estimator, "pi-heuristic");
-  assert.equal(admissionEstimate(context, source.model, undefined, true, 1).estimator, "pi-heuristic");
-  Object.assign(message, { usage: undefined }); // Untyped extension/history boundary.
-  assert.equal(admissionEstimate(context, source.model, undefined, true).estimator, "pi-heuristic");
+
 });
 
-test("explicit usage index is not replaced by a later incompatible low usage", async () => {
+test("empty memory still charges the rendered mechanical fallback carrier", async () => {
   const source = await input();
-  const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-  const early = { ...answer(), timestamp: 1, usage: { input: 20000, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20010, cost } };
-  const later = { ...answer(), timestamp: 3, usage: { input: 40, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 45, cost } };
-  const mid = user("mid", "incompatible-F-turn").messages[0]!;
-  const tail = user("tail", "Continue").messages[0]!;
-  const context = { ...source.fixed, messages: [early, mid, later, tail] };
-  const latest = admissionEstimate(context, source.model, undefined, true);
-  assert.equal(latest.estimator, "pi-usage-backed");
-  assert(latest.tokens < 1000, String(latest.tokens));
-  const pinned = admissionEstimate(context, source.model, undefined, true, 0, 0);
-  assert.equal(pinned.estimator, "pi-usage-backed");
-  assert(pinned.tokens > 20000);
-  assert.equal(admissionEstimate(context, source.model, undefined, true, 0, 1).estimator, "pi-heuristic");
-  assert.equal(admissionEstimate(context, source.model, undefined, false, 0, 0).estimator, "pi-heuristic");
+  const fallback = { code: "RESPONSE" as const, message: "Extraction failed", retiredEntryCount: 2, firstKeptEntryId: "kept" };
+  for (const slots of [[], [{ id: "s1", text: "Keep the current task." }]]) {
+    const plain = mainPlanningEstimate(source.fixed, slots, source.active, source.model);
+    const flagged = mainPlanningEstimate(source.fixed, slots, source.active, source.model, undefined, 0, fallback);
+    const context = mainContext(source.fixed, slots, source.active, fallback);
+    assert.equal(context.messages.length, source.active.flatMap(entry => entry.messages).length + 1);
+    assert.equal(flagged.tokens, requestTokens(context));
+    assert.equal(flagged.tokens - plain.tokens, memoryTokens(slots, undefined, fallback) - memoryTokens(slots));
+    assert(flagged.tokens > plain.tokens);
+  }
 });

@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
-import { getCurrentSystemPrompt, getCurrentTools, Type, type Tool } from "@earendil-works/pi-ai";
+import { getCurrentSystemPrompt, getCurrentTools, Type, type Api, type Model, type Tool } from "@earendil-works/pi-ai";
 import { convertToLlm, getAgentDir, sessionEntryToContextMessages, SettingsManager, VERSION, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import type { FixedContext, MaintenanceInput, MaintenanceResult, MechanicalFallbackInfo, Memory } from "./engine/index.js";
 import { maintain, piComplete, loadPolicy, memoryPlan, parsePatch, renderMemoryWithFallback } from "./engine/index.js";
@@ -18,7 +18,7 @@ import { assertPiContextCompatibility, assertSupportedPiVersion } from "./pi/com
 import { createMemorySurface, entryOnDisk, markUnconfirmed } from "./pi/manual.js";
 import { createContextSurface } from "./pi/context.js";
 import { Admission, type AdmissionLayoutEvent } from "./pi/admission.js";
-import { COMMAND_USAGE, commandCompletions, createNuncUi, detailsLines } from "./ui/index.js";
+import { COMMAND_USAGE, commandCompletions, NuncUi, detailsLines } from "./ui/index.js";
 
 /** Optional public settings source for component fixtures; stock CLI uses its settings. */
 export interface HostSettingsSource {
@@ -27,11 +27,21 @@ export interface HostSettingsSource {
     blockImages: boolean;
     nunc?: unknown;
   };
+  uiCleanupTimeoutMs?: number;
   getGlobalSettings?: () => Record<string, unknown>;
   getProjectSettings?: () => Record<string, unknown>;
   isProjectTrusted?: () => boolean;
 }
 export interface MaintenanceEvent { reason: SessionBeforeCompactEvent["reason"]; willRetry: boolean; result: MaintenanceResult }
+
+function textCleanupCandidates(active: ReturnType<typeof project>["active"], scope: ReturnType<typeof eligibleCleanupScope>) {
+  return scope.flatMap(ref => {
+    const message = active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
+    if (message?.role !== "toolResult") return [];
+    const text = messageTextContent(message);
+    return text === null ? [] : [{ ...ref, toolName: message.toolName, toolCallId: message.toolCallId, textLength: text.length }];
+  });
+}
 
 export default function nunc(pi: ExtensionAPI): void {
   assertSupportedPiVersion(VERSION);
@@ -51,12 +61,11 @@ export default function nunc(pi: ExtensionAPI): void {
   let compactFor: CompactForIntent | undefined;
   let pendingCompaction: { priorBranchIds: Set<string>; firstKeptEntryId: string; memory: Memory; summary: string; toolResultCleanup: ReturnType<typeof sealDecisions>; maintenanceCalibration: ReturnType<typeof maintenanceCalibrationRecord>; warned: boolean; mechanicalFallback?: MechanicalFallbackInfo } | undefined;
   const invalidate = () => { generation++; running?.abort(); uiRunning?.abort(); admission.invalidateUsage(); headroomWarned = false; runwayWarned = false; };
-  const dropAnchors = () => { clearMemoryAnchors(); };
   pi.events.on("nunc:host-settings", (value: unknown) => {
     if (!value || typeof value !== "object" || !("readSettings" in value) || typeof value.readSettings !== "function") return;
     invalidate(); hostSettings = value as HostSettingsSource;
   });
-  const getHostSettings = (ctx: ExtensionContext, model = ctx.model) => {
+  const getHostSettings = (ctx: ExtensionContext, model: Model<Api> | undefined = ctx.model) => {
     if (hostSettings) {
       const read = hostSettings.readSettings(model);
       const projectTrusted = hostSettings.isProjectTrusted ? hostSettings.isProjectTrusted() : ctx.isProjectTrusted();
@@ -87,7 +96,7 @@ export default function nunc(pi: ExtensionAPI): void {
     const host = getHostSettings(ctx);
     const enabled = resolveToolResultCleanup(host);
     if (lastCleanupSetting !== undefined && lastCleanupSetting !== enabled) {
-      invalidate(); dropAnchors(); contextView.resetPath();
+      invalidate(); clearMemoryAnchors(); contextView.resetPath();
     }
     lastCleanupSetting = enabled;
     return enabled;
@@ -97,10 +106,12 @@ export default function nunc(pi: ExtensionAPI): void {
     const prefix = enabled ? admission.cleanupAnchor(ctx.sessionManager.getSessionId(), memoryValue) : undefined;
     return { enabled, scope: prefix ? eligibleCleanupScope(active, prefix, saved) : [] };
   };
-  const settings = (ctx: ExtensionContext) => {
-    const s = getHostSettings(ctx);
+  const settings = (ctx: ExtensionContext, model?: Model<Api>) => {
+    const s = getHostSettings(ctx, model);
     return { compaction: s.compaction, blockImages: s.blockImages };
   };
+  const configFor = (ctx: ExtensionContext, model: Model<Api>) =>
+    engineConfig(selectedConfig(ctx).config, model, settings(ctx, model).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
   const supported = (ctx: ExtensionContext) => {
     assertPiContextCompatibility(ctx);
     if (!ctx.sessionManager.getSessionFile()) throw new EngineError("CONFIG", "Persistent sessions only; start Pi without --no-session");
@@ -113,7 +124,7 @@ export default function nunc(pi: ExtensionAPI): void {
   const admission = new Admission(pi, (ctx, model) => {
     supported(ctx);
     project(ctx.sessionManager.buildContextEntries());
-    return engineConfig(selectedConfig(ctx).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
+    return configFor(ctx, model);
   }, event => observeLayout(event));
   const fixed = (ctx: ExtensionContext): FixedContext => {
     const all = pi.getAllTools();
@@ -147,6 +158,7 @@ export default function nunc(pi: ExtensionAPI): void {
           const view = memory.read(ctx);
           const projected = project(ctx.sessionManager.buildContextEntries());
           const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
+          const cleanupCandidates = textCleanupCandidates(projected.active, opportunity.scope);
           const requested = params?.originals;
           const wantsHistory = params.query !== undefined || params.entryIds !== undefined;
           const branch = requested !== undefined || wantsHistory ? ctx.sessionManager.getBranch() : [];
@@ -164,12 +176,7 @@ export default function nunc(pi: ExtensionAPI): void {
               hardLimitTokens: view.budget.hardLimit,
             },
             writable: !view.status.occupied && !view.status.unconfirmed,
-            ...(opportunity.scope.length ? { cleanupCandidates: opportunity.scope.flatMap(ref => {
-              const message = projected.active.find(e => e.entryId === ref.entryId)?.messages[ref.messageIndex];
-              if (message?.role !== "toolResult") return [];
-              const text = messageTextContent(message);
-              return text === null ? [] : [{ ...ref, toolName: message.toolName, toolCallId: message.toolCallId, textLength: text.length }];
-            }) } : {}),
+            ...(cleanupCandidates.length ? { cleanupCandidates } : {}),
             ...(originals === undefined ? {} : { originals }),
             ...(history === undefined ? {} : { history }),
           };
@@ -254,17 +261,14 @@ export default function nunc(pi: ExtensionAPI): void {
   }
   const contextView = createContextSurface({
     pi, memory, fixed,
-    config: (ctx, model) => engineConfig(selectedConfig(ctx).config, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry)),
+    config: configFor,
   });
   const prepareUiCleanup = async (ctx: ExtensionContext, proposal: Memory, signal: AbortSignal): Promise<{ edits?: unknown; warning?: string; stale?: boolean }> => {
     if (signal.aborted) return { stale: true };
     const entries = ctx.sessionManager.buildContextEntries();
     const projected = project(entries);
     const opportunity = cleanupOpportunity(ctx, projected.memory, projected.active, projected.cleanup);
-    const semanticScope = opportunity.scope.filter(ref => {
-      const message = projected.active.find(entry => entry.entryId === ref.entryId)?.messages[ref.messageIndex];
-      return message?.role === "toolResult" && messageTextContent(message) !== null;
-    });
+    const semanticScope = textCleanupCandidates(projected.active, opportunity.scope).map(({ entryId, messageIndex }) => ({ entryId, messageIndex }));
     if (!opportunity.enabled || !semanticScope.length) return {};
     if (!ctx.model) return { warning: "Cleanup skipped: current model unavailable; memory can still be saved" };
     const frozen = { generation, sessionId: ctx.sessionManager.getSessionId(), leafId: ctx.sessionManager.getLeafId(),
@@ -279,13 +283,15 @@ export default function nunc(pi: ExtensionAPI): void {
       } catch { return true; }
     };
     const controller = new AbortController();
+    const timeout = AbortSignal.timeout(hostSettings?.uiCleanupTimeoutMs ?? 60_000);
+    const combined = AbortSignal.any([signal, controller.signal, timeout]);
     uiRunning = controller;
     let callStartedAt: number | undefined;
     let observedResponse = false;
     try {
       const config = engineConfig(frozen.selected.config, frozen.model, frozen.host.compaction, omitsRouteOutputCap(frozen.model, ctx.modelRegistry));
       config.toolResultCleanup = true;
-      const policy = await loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) });
+      const policy = await withCancellation(() => loadPolicy({ ...frozen.selected.config, ...(frozen.selected.configFile ? { configFile: frozen.selected.configFile } : {}) }), combined);
       if (controller.signal.aborted || stale()) return { stale: true };
       const active = effectiveActive(projected, true);
       const slotProvenance = deriveSlotProvenance(ctx.sessionManager.getBranch(), projected.active, proposal);
@@ -302,8 +308,6 @@ export default function nunc(pi: ExtensionAPI): void {
           `The user has already selected the exact proposed M above. Decide only eligible tool-result cleanup; do not revise M. Return add: [], update: [], remove: [], priority: every current slot ID once, required: [], and optional toolResultEdits. Current slot IDs: ${JSON.stringify(proposal.slots.map(s => s.id))}.` });
         return context;
       }, active);
-      const timeout = AbortSignal.timeout(60_000);
-      const combined = AbortSignal.any([signal, controller.signal, timeout]);
       callStartedAt = Date.now();
       const response = await withCancellation(() =>
         admission.complete(piComplete(ctx.modelRegistry, frozen.thinking))({ model: frozen.model, context: resolved.context, outputTokens: resolved.outputTokens,
@@ -336,7 +340,7 @@ export default function nunc(pi: ExtensionAPI): void {
       if (uiRunning === controller) uiRunning = undefined;
     }
   };
-  const ui = createNuncUi({ memory, context: contextView, supported, prepareSave: prepareUiCleanup });
+  const ui = new NuncUi({ memory, context: contextView, supported, prepareSave: prepareUiCleanup });
   const notify = (ctx: ExtensionContext, message: string, level: "warning" | "info" = "warning") => {
     ui.noteDiagnostic(level, message);
     try { pi.events.emit("nunc:diagnostic", { level, message }); } catch { /* Notification only. */ }
@@ -388,7 +392,7 @@ export default function nunc(pi: ExtensionAPI): void {
     const key = `${model.provider}/${model.id}`;
     if (diagnosedModels.has(key)) return;
     const selected = selectedConfig(ctx).config;
-    const config = engineConfig(selected, model, settings(ctx).compaction, omitsRouteOutputCap(model, ctx.modelRegistry));
+    const config = configFor(ctx, model);
     diagnosedModels.add(key);
     if (selected.memory?.hardMaxTokens !== undefined) {
       notify(ctx, `Explicit memory.hardMaxTokens=${selected.memory.hardMaxTokens} may block required-memory maintenance. For an elastic organizing target, use memory.targetTokens and remove hardMaxTokens. Settings were not changed.`);
@@ -400,15 +404,15 @@ export default function nunc(pi: ExtensionAPI): void {
       notify(ctx, "Oversized catalog output caps may trigger early provider rejections on dense inputs. Nunc applies a best-effort output-only clamp when safe headroom exists; native compaction still handles full-context limits.");
     }
     const projected = project(ctx.sessionManager.buildContextEntries());
-    const estimate = requestTokens(mainContext(fixed(ctx), projected.memory.slots, effectiveActive(projected, cleanupEnabled(ctx))), config.imageTokens) + config.main.extraInputTokens;
+    const estimate = requestTokens(mainContext(fixed(ctx), projected.memory.slots, effectiveActive(projected, cleanupEnabled(ctx)), projected.mechanicalFallback), config.imageTokens) + config.main.extraInputTokens;
     const limit = mainAdmissionLimit(model, config.main);
     if (estimate > limit) notify(ctx, `Selected model context estimate ${estimate} exceeds input limit ${limit}. Native automatic recovery may require compaction; success is not guaranteed. With automatic compaction disabled, compact explicitly or choose a larger model. This is a projection, not the next provider payload.`);
   };
   pi.on("session_start", (_event, ctx) => {
     completionRegistry = ctx.modelRegistry;
     diagnosedModels.clear();
-    headroomWarned = false; runwayWarned = false;
-    invalidate(); dropAnchors(); contextView.resetPath();
+    invalidate(); clearMemoryAnchors(); contextView.resetPath();
+    ui.resetSession();
     try {
       supported(ctx);
       const s = getHostSettings(ctx);
@@ -425,11 +429,11 @@ export default function nunc(pi: ExtensionAPI): void {
       modelDiagnostics(ctx);
     } catch (error) { notify(ctx, error instanceof Error ? error.message : "Invalid startup configuration"); }
   });
-  pi.on("session_before_switch", () => { invalidate(); contextView.resetPath(); });
-  pi.on("session_before_fork", () => { invalidate(); contextView.resetPath(); });
+  pi.on("session_before_switch", () => { invalidate(); contextView.resetPath(); ui.resetSession(); });
+  pi.on("session_before_fork", () => { invalidate(); contextView.resetPath(); ui.resetSession(); });
   pi.on("session_before_tree", () => { invalidate(); contextView.resetPath(); });
   pi.on("session_tree", (_event, ctx) => { invalidate(); ui.refresh(ctx); });
-  pi.on("session_shutdown", (_event, ctx) => { completionRegistry = undefined; memory.endFreeze(); invalidate(); dropAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
+  pi.on("session_shutdown", (_event, ctx) => { completionRegistry = undefined; memory.endFreeze(); invalidate(); clearMemoryAnchors(); contextView.resetPath(); admission.close(ctx); ui.shutdown(ctx); });
   pi.on("model_select", (_event, ctx) => {
     invalidate();
     try {
@@ -457,8 +461,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const projected = project(entries);
       const messages = withEffectiveMemory(event.messages, projected.memory, { sessionId, entries,
         decisions: projected.cleanup, enabled: cleanupEnabled(ctx),
-        ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}),
-        ...(projected.latestId !== undefined ? { latestId: projected.latestId } : {}) });
+        ...(projected.mechanicalFallback ? { mechanicalFallback: projected.mechanicalFallback } : {}) });
       // Inspect Pi's public native mapping without changing real AgentMessages
       // that later context hooks still consume. Native user/assistant/toolResult
       // objects (and our carrier) survive conversion and witness this projection.
@@ -487,6 +490,7 @@ export default function nunc(pi: ExtensionAPI): void {
     }
   });
   pi.on("session_before_compact", async (event, ctx) => {
+    uiRunning?.abort();
     if (!memory.beginFreeze()) { notify(ctx, "Maintenance already active"); return { cancel: true }; }
     pendingCompaction = undefined;
     let warned = false;
@@ -526,7 +530,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const opportunity = { enabled, scope: enabled ? compactionCleanupScope(projected.active, projected.cleanup) : [] };
       const active = structuredClone(projected.active);
       // Freeze delivered R only. Pending/future D is neither observed nor consumed.
-      const loaded = await loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) });
+      const loaded = await withCancellation(() => loadPolicy({ ...selection.config, ...(selection.configFile ? { configFile: selection.configFile } : {}) }), controller.signal);
       const policy = { ...loaded, user: loaded.user + (!intent && event.customInstructions ? `\nAdditional user maintenance preferences:\n${event.customInstructions}` : "") };
       if (controller.signal.aborted) throw new EngineError("CANCELLED", "Maintenance cancelled");
       config.toolResultCleanup = opportunity.enabled;
@@ -536,6 +540,7 @@ export default function nunc(pi: ExtensionAPI): void {
         eligibleUsageEntryIds: eligibleUsageEntryIds(entries, active), eligibleKeptEntryIds: eligible, cleanupCandidateScope: opportunity.scope, policy, config, signal: controller.signal };
       const calibration = projectMaintenanceCalibration(manager.getBranch(), input);
       const maintenanceInput = { ...input, calibration };
+      if (memory.read(ctx).status.unconfirmed) throw new EngineError("CANCELLED", "Resource /reload does not reread the session file; resume or switchSession this file before writing");
       // maintain owns bounded transport retries; each call enters a fresh admission ALS scope.
       const result = await maintain(maintenanceInput, admission.complete(piComplete(ctx.modelRegistry, thinking)));
       contextView.noteEngine(result);
@@ -567,6 +572,7 @@ export default function nunc(pi: ExtensionAPI): void {
       const sourceUnchanged = !editedSource && revisionApplies(sourceRevision, manager.getSessionId(), manager.getLeafId(), currentEntries, branch) &&
         isDeepStrictEqual(current.active.slice(0, projected.active.length), projected.active) &&
         isDeepStrictEqual({ ...current, active: [] }, { ...projected, active: [] });
+      if (memory.read(ctx).status.unconfirmed) throw new EngineError("CANCELLED", "Resource /reload does not reread the session file; resume or switchSession this file before writing");
       if (controller.signal.aborted || event.signal.aborted || String(generation) !== binding.generation ||
           manager.getSessionId() !== binding.sessionId || manager.getSessionFile() !== file || !sourceUnchanged ||
           !isDeepStrictEqual(ctx.model, model) || ctx.thinkingLevel !== thinking || !isDeepStrictEqual(fixed(ctx), f) ||

@@ -14,6 +14,7 @@ import { repository } from "./fixtures.js";
 async function branch(variant: Selection["variant"], controlledOpportunity = false) {
   const { StockFixture, text } = await import(join(repository, "scripts/stock-driver.mjs"));
   const f = await new StockFixture().setup({ timeoutMs: 120000 });
+  try {
   const model: Model<Api> = { id: "openai/gpt-5.6-luna", name: "Controlled branch", provider: "openrouter", api: "openai-completions", baseUrl: f.endpoint,
     reasoning: true, input: ["text"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   const sourceLoss = variant === "source-loss" || variant === "source-unavailable";
@@ -81,7 +82,6 @@ async function branch(variant: Selection["variant"], controlledOpportunity = fal
     }
     throw new Error(`Unexpected controlled turn ${turn}/${n}`);
   };
-  try {
     const report = await runSegment({ input, scenarioIndex: 0, deadline: Date.now() + 110000, resume: false }, { models: [model], controlledModels: { providers: { openrouter: { baseUrl: f.endpoint, apiKey: "isolated-nunc-fixture", models: [model] } } } });
     await writeFile(join(f.dir, "branch-report.json"), JSON.stringify(report));
     assert.equal(report.status, "OBSERVED", JSON.stringify({ variant, reason: report.reason, diagnostic: report.diagnostic, prerequisites: report.prerequisites }));

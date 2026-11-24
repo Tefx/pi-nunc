@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeContext, type Api, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { admissionEstimate, chooseCut, historyPlanningEstimate, mainContext, mainPlanningEstimate, memoryPlan, messagePlanningEstimate, messageTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
+import { chooseCut, historyPlanningEstimate, mainContext, mainPlanningEstimate, memoryPlan, messagePlanningEstimate, messageTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
 import { maintain } from "../../src/engine/engine.js";
 import { legalCuts } from "../../src/engine/validation.js";
 import { answer, input, model as baseModel, sourceRecords, tool, user } from "./fixtures.js";
@@ -27,7 +27,6 @@ test("reply-level output proxy preserves role/block framing, charges once and le
   assert.deepEqual(estimate.uncertainties, ["replay-mode-unknown"]);
   assert.equal(estimate.partial, true, "generation does not establish next-request rendering");
   const context = { systemPrompt: "fixed", messages: [message] };
-  assert.equal(admissionEstimate(context, model).tokens, requestTokens(context));
   assert(requestTokens(context) < 1000);
   assert.deepEqual(message, before);
   message.content.push({ type: "text", text: "a".repeat(40000) });

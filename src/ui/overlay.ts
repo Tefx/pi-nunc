@@ -303,13 +303,11 @@ export class NuncOverlay implements Focusable {
       return;
     }
     if (this.hit(data, "tui.select.pageUp") || this.hit(data, "tui.editor.pageUp")) {
-      this.previewOffset = Math.max(0, this.previewOffset - this.previewViewport);
-      this.host.tui.requestRender();
+      this.scrollPreview(-this.previewViewport);
       return;
     }
     if (this.hit(data, "tui.select.pageDown") || this.hit(data, "tui.editor.pageDown")) {
-      this.previewOffset += this.previewViewport;
-      this.host.tui.requestRender();
+      this.scrollPreview(this.previewViewport);
       return;
     }
     if (this.hit(data, "tui.select.up") || this.hit(data, "tui.select.down")) {
@@ -326,7 +324,7 @@ export class NuncOverlay implements Focusable {
       this.previewOffset = 0;
       this.rebuildList();
       this.host.tui.requestRender();
-    } else if ([Key.left, Key.right, Key.home, Key.end].some(key => matchesKey(data, key))) {
+    } else if ((["tui.editor.cursorLeft", "tui.editor.cursorRight", "tui.editor.cursorLineStart", "tui.editor.cursorLineEnd", "tui.editor.cursorWordLeft", "tui.editor.cursorWordRight"] as const).some(id => this.hit(data, id))) {
       this.host.tui.requestRender();
     }
   }
@@ -379,6 +377,7 @@ export class NuncOverlay implements Focusable {
     if (node.jumpSlot) {
       this.tab = "slots";
       this.preferredSlot = node.jumpSlot;
+      this.previewOffset = 0;
       this.search.setValue("");
       this.contextPath = [];
       this.rebuildList();
@@ -514,7 +513,6 @@ export class NuncOverlay implements Focusable {
     }
     this.preferredSlot = nextSlotId;
     this.error = warning;
-    this.transition({ kind: "browse" });
     this.memoryView = { ...this.memoryView, revision: result.revision, memory: result.memory };
     try {
       this.memoryView = this.host.memory.read(this.host.ctx);
@@ -527,11 +525,11 @@ export class NuncOverlay implements Focusable {
     } catch (error) {
       warning = [warning, error instanceof Error && error.message ? error.message : "Inspector read failed"].filter(Boolean).join("; ");
     }
+    this.transition({ kind: "browse" });
     if (warning) this.host.onWarning?.(warning);
     else this.host.onSuccess?.();
     // onWarning may synchronously refresh/sync; retain every commit diagnostic locally too.
     this.error = warning;
-    this.rebuildList();
     try {
       this.host.tui.requestRender();
     } catch { /* Paint only. */ }
@@ -751,7 +749,6 @@ export class NuncOverlay implements Focusable {
       view.cleanup?.unavailable.length ? `${view.cleanup.unavailable.length} cleanup sources unavailable` : undefined,
       view.status.unconfirmed ? "save unconfirmed" : undefined,
       view.mechanicalFallback ? "mechanical fallback" : undefined,
-      this.editBasis && !this.revisionApplies(this.editBasis.revision) ? "revision changed" : undefined,
       warning ? `warning ${firstLine(warning, 80)}` : undefined,
     ].filter(Boolean).join(" · ");
     const base = `Ready · ${view.memory.slots.length} slots · ${m}`;

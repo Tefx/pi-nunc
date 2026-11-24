@@ -1,6 +1,6 @@
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { estimateContextTokens, estimateTextTokens, omitsSerializedOutputCap, outputFloor, textTokens } from "../engine/accounting.js";
+import { estimateContextTokens, omitsSerializedOutputCap, outputFloor, textTokens } from "../engine/accounting.js";
 import { PATCH_RESPONSE_JSON_SCHEMA } from "../engine/memory.js";
 import { canonical, EngineError, record } from "../engine/validation.js";
 
@@ -40,8 +40,6 @@ export function jsonView(value: unknown): unknown {
   try { return JSON.parse(JSON.stringify(value)); }
   catch (cause) { throw new EngineError("CONFIG", "Nunc: native payload is not JSON-serializable; request was not sent", { cause }); }
 }
-
-export function canonicalJson(value: unknown): string { return canonical(jsonView(value)); }
 
 function subtreeSize(view: unknown, keys: Set<string>): number {
   if (!record(view)) return 0;
@@ -385,7 +383,7 @@ export function authorizePayload(args: {
     const serializedOutput = args.delta.outputAfter ?? args.delta.outputBefore;
     if (serializedOutput !== undefined) {
       const nativeOccupied = estimateContextTokens(args.context.messages).tokens;
-      const nativeAdded = Math.max(append.ok ? estimateTextTokens(append.addedText) : 0, added);
+      const nativeAdded = Math.max(append.ok ? textTokens(append.addedText) : 0, added);
       if (nativeOccupied + nativeAdded + serializedOutput > args.model.contextWindow) {
         throw new EngineError("CAPACITY", `Payload input growth ${added} exceeds remaining context after native output clamp; request was not sent`);
       }

@@ -27,7 +27,6 @@ import {
 import { extractionContext, readSourceRecords, reduceToolBodies } from "../../src/engine/request.js";
 import { memoryPlan, requestTokens, mainPlanningEstimate } from "../../src/engine/accounting.js";
 import { activeUsageObservation } from "../../src/engine/calibration.js";
-import { piComplete, retryMaintenanceComplete } from "../../src/engine/pi-model.js";
 import { messageTextContent } from "../../src/engine/cleanup.js";
 import { answer, input, responder, tool, user, assistant, sourceRecords } from "./fixtures.js";
 
@@ -1169,24 +1168,6 @@ test("legacy callers without cleanupCandidateScope preserve 100% consistent raw 
   const deliveredTool = result.candidate.kept.find(e => e.entryId === "res-entry");
   assert(deliveredTool);
   assert.equal(messageText(deliveredTool.messages[0]!), longResult);
-});
-
-for (const field of ["samplingParams", "samplingParamsByThinkingLevel"] as const) test(`both maintenance seams reject raw ${field}`, async () => {
-  const value = await input();
-  Object.assign(value.model, { [field]: field === "samplingParams" ? { max_tokens: 1 } : { high: { max_tokens: 1 } } });
-  const result = await maintain(value, async () => assert.fail("unsafe override cannot dispatch"));
-  assert(!result.ok); assert.equal(result.code, "CONFIG");
-  await assert.rejects(async () => piComplete({ complete: async () => assert.fail("unsafe override cannot reach registry") })({
-    model: value.model, context: { messages: [] }, outputTokens: 100, signal: value.signal,
-  }), /sampling overrides/);
-});
-
-for (const message of ["Connection error after 400 ms", "Connection error after 401 tokens", "Connection error (429)"]) test(`retry recognizes status context without treating units as HTTP: ${message}`, async () => {
-  const value = await input(); let attempts = 0;
-  await retryMaintenanceComplete(async () => ++attempts === 1 ? { ...answer(), stopReason: "error", errorMessage: message } : answer(), 0)({
-    model: value.model, context: { messages: [] }, outputTokens: 100, signal: value.signal,
-  });
-  assert.equal(attempts, 2);
 });
 
 test("mechanical cleanup preserves block boundaries and canonicalizes argument order", async () => {

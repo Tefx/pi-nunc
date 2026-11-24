@@ -73,10 +73,10 @@ export interface HostOptions {
   onMaintenanceResponse?: ((event: unknown) => void) | undefined;
   onContext?: ((model: Model<Api>, context: Context, kind: string) => void) | undefined;
   onAction?: ((event: unknown) => void) | undefined;
-  boundaries?: Array<{ control: Control; requestText: string; fixtureContent: string }> | undefined;
+  boundaries?: Array<{ control: Control; turnOrdinal: number; requestText: string; fixtureContent: string }> | undefined;
   verification?: { script: string; artifact: string } | undefined;
   taskFiles?: Record<string, string> | undefined;
-  guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; requestText: string; turn?: string | undefined; trigger?: ToolTrigger | undefined }> | undefined;
+  guidanceControls?: Array<{ action: "revision_conflict" | "unconfirmed_save"; turnOrdinal: number; requestText: string; turn?: string | undefined; trigger?: ToolTrigger | undefined }> | undefined;
   boundaryCompleted?: boolean | undefined;
   priorLedgers?: string[] | undefined;
   onBoundary?: ((data: any) => Promise<void>) | undefined;
@@ -184,11 +184,14 @@ export class NativeHost {
   private output = "";
   private bytes = 0;
   private exited = false;
+  private closing = false;
+  private exitCode: number | null = null;
+  private exitSignal: NodeJS.Signals | null = null;
   private closed: Promise<void> = Promise.resolve();
   private serial = 0;
   private killTimer: NodeJS.Timeout | undefined;
   private watch: NodeJS.Timeout | undefined;
-  private failure: { code: string; message: string } | undefined;
+  private failure: RunnerError | undefined;
   readonly commands: Array<{ type: string; message?: string }> = [];
   // IPC workers already own a detached group. Keep the native host inside it so
   // supervisor cleanup still reaches it if the worker dies without finally.
@@ -203,7 +206,7 @@ export class NativeHost {
     this.killTimer = setTimeout(() => this.kill("SIGKILL"), 1000);
     this.kill("SIGTERM");
   };
-  private fail(code: string, message: string): void { this.failure ??= { code, message }; this.abort(); }
+  private fail(code: string, message: string): void { this.failure ??= new RunnerError(code, message); this.abort(); }
   private hostError(code = "HOST_EXIT", message = "Native host exited"): RunnerError { return new RunnerError(this.failure?.code ?? code, this.failure?.message ?? message); }
   constructor(readonly options: HostOptions) {}
   private saved(): SessionManager | undefined { return this.sessionFile && existsSync(this.sessionFile) ? SessionManager.open(this.sessionFile) : undefined; }
@@ -293,6 +296,13 @@ export class NativeHost {
     });
     // Never retain auth/provider error bodies. The bounded provider reports codes/usage separately.
     this.child.stderr.on("data", (buffer: Buffer) => { this.bytes += buffer.length; if (this.bytes > 32_000_000) this.fail("OUTPUT", "Native host output exceeded the bound"); });
+    this.child.once("exit", (exitCode, exitSignal) => {
+      this.exitCode = exitCode; this.exitSignal = exitSignal;
+      if (!this.killTimer && (!this.closing || (this.exitCode !== null && this.exitCode !== 0) || this.exitSignal !== null)) {
+        this.fail("HOST_EXIT", `Native host exited (code=${this.exitCode}, signal=${this.exitSignal})`);
+      }
+      this.exited = true;
+    });
     this.closed = new Promise<void>(resolve => {
       const end = () => {
         this.exited = true; for (const p of this.pending.values()) p.reject(this.hostError());
@@ -313,14 +323,16 @@ export class NativeHost {
   private async restoreAuthorizedStartupModel(): Promise<void> {
     const authorized = this.options.modelTargets[0];
     requireValue(authorized, "MODEL", "No authorized model");
-    const state = await this.command("get_state");
+    let state = await this.command("get_state");
     requireValue(object(state) && typeof state.sessionId === "string", "RPC", "Invalid native session state");
     const selected = object(state.model) ? state.model : undefined;
     if (!selected || !this.options.modelTargets.some(m => m.provider === selected.provider && m.id === selected.id)) {
       await this.command("set_model", { provider: authorized.provider, modelId: authorized.id });
+      state = await this.command("get_state");
+      requireValue(object(state) && typeof state.sessionId === "string", "RPC", "Invalid native session state");
     }
     const desiredThinking = this.options.input.effective?.thinking;
-    if (desiredThinking && desiredThinking !== "off" && (state as any).thinkingLevel !== desiredThinking) {
+    if (desiredThinking && state.thinkingLevel !== desiredThinking) {
       try {
         await this.command("set_thinking_level", { level: desiredThinking });
       } catch {}
@@ -428,6 +440,7 @@ export class NativeHost {
   }
   async setModel(model: Model<Api>): Promise<void> { await this.command("set_model", { provider: model.provider, modelId: model.id }); await this.refresh(); }
   async close(): Promise<void> {
+    this.closing = true;
     if (this.sessionFile && existsSync(this.sessionFile)) {
       try { chmodSync(this.sessionFile, 0o600); } catch { /* ignore */ }
     }
@@ -440,7 +453,9 @@ export class NativeHost {
     if (this.killTimer) clearTimeout(this.killTimer);
     if (this.detached) await settleProcessGroup(this.pid);
     else this.kill("SIGKILL");
-    if (this.eventsFile) this.drain();
+    try { if (this.eventsFile) this.drain(); }
+    catch (error) { if (!this.failure) throw error; }
+    if (this.failure) throw this.failure;
   }
 }
-export async function openHost(options: HostOptions): Promise<NativeHost> { const host = new NativeHost(options); try { return await host.start(); } catch (error) { await host.close(); throw error; } }
+export async function openHost(options: HostOptions): Promise<NativeHost> { const host = new NativeHost(options); try { return await host.start(); } catch (error) { await host.close().catch(() => {}); throw error; } }

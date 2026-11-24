@@ -53,6 +53,12 @@ test("E3 restores the temporary threshold before a multi-tool suffix and preserv
   }
 });
 
+test("comparison baseline stays live after the first consuming test completes", async () => {
+  const baseline = comparisonBaseline();
+  assert.equal(comparisonBaseline(), baseline, "consumers share one initialization");
+  assert(existsSync(join(await baseline, "tsconfig.json")), "checkout survives the preceding test's cleanup");
+});
+
 test("E3 low usage cannot pay the loaded target's F/K/growth costs; refusal keeps the concrete inequality and sends no maintenance", { timeout: 60000 }, async () => {
   for (const group of ["current", "candidate"] as const) {
     const f = await comparisonStock({ e3: "low-native" });

@@ -62,7 +62,7 @@ export interface ContextLayout {
   planning?: PlanningEstimate;
   system: { text: string; tokens: number };
   tools: ToolsLayer;
-  memory?: { slots: Slot[]; tokens: number; envelopeTokens: number; slotProvenance?: Record<string, SlotProvenance> };
+  memory?: { slots: Slot[]; tokens: number; slotProvenance?: Record<string, SlotProvenance> };
   entries?: ContextEntry[];
   messages: ContextMessage[];
   messageCount: number;
@@ -469,7 +469,7 @@ function captureSentCut(current: LastMaintenanceContext | undefined, context: Co
     const retiredEntryIds = records.filter(record => record.region === "B").map(record => String(record.entryId));
     const keptEntryIds = records.filter(record => record.region === "K").map(record => String(record.entryId));
     const firstKeptEntryId = keptEntryIds[0];
-    if (!firstKeptEntryId) return;
+    if (!firstKeptEntryId || retiredEntryIds.length === 0) return;
     current.cut = { firstKeptEntryId, retiredEntryIds, keptEntryIds };
   } catch { /* Leave cut unknown rather than invent a partition. */ }
 }
@@ -478,7 +478,7 @@ function layoutFromProjection(fixed: FixedContext, memory: Memory, active: Activ
   const inspected = inspectEntries(active, imageTokens, model);
   const tools = toolLayer(fixed.tools, fixed.toolState === "partial");
   const mTokens = memoryTokens(memory.slots, imageTokens, mechanicalFallback);
-  const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens, envelopeTokens: 0,
+  const memoryLayer = { slots: structuredClone(memory.slots), tokens: mTokens,
     ...(slotProvenance ? { slotProvenance: structuredClone(slotProvenance) } : {}) };
   const packagingTokens = 64 + extraInputTokens;
   const known = knownSum([
@@ -493,7 +493,7 @@ function layoutFromProjection(fixed: FixedContext, memory: Memory, active: Activ
     tools,
     memory: memoryLayer,
     entries: inspected.entries,
-    ...(model ? { planning: mainPlanningEstimate(fixed, memory.slots, active, model, imageTokens, extraInputTokens) } : {}),
+    ...(model ? { planning: mainPlanningEstimate(fixed, memory.slots, active, model, imageTokens, extraInputTokens, mechanicalFallback) } : {}),
     messages: inspected.messages,
     messageCount: inspected.messages.length,
     blockCount: inspected.messages.reduce((n, message) => n + message.blocks.length, 0),
@@ -513,7 +513,7 @@ function layoutFromContext(context: Context, imageTokens: number | undefined, ex
     return true;
   });
   const messages = inspectMessages(rMessages, imageTokens);
-  const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: normalized.messages.filter(isNuncCarrier).reduce((sum, carrier) => sum + messageTokens(carrier, imageTokens), 0), envelopeTokens: 0 } : undefined;
+  const memory = projection ? { slots: structuredClone(projection.memory.slots), tokens: normalized.messages.filter(isNuncCarrier).reduce((sum, carrier) => sum + messageTokens(carrier, imageTokens), 0) } : undefined;
   const currentTools = getCurrentTools(normalized.messages);
   const tools = toolLayer(currentTools);
   const packagingTokens = 64 + extraInputTokens;
@@ -565,7 +565,7 @@ function toolLayer(tools: readonly { name: string; description?: string; paramet
     }
   });
   try {
-    return { count: tools.length, names, tokens: textTokens(JSON.stringify(tools)), unknown: partial || definitions.some(item => item.unknown),
+    return { count: tools.length, names, tokens: tools.length === 0 ? 0 : textTokens(JSON.stringify(tools)), unknown: partial || definitions.some(item => item.unknown),
       definitions: partial ? definitions.map(def => ({ ...def, unknown: true })) : definitions };
   } catch {
     return { count: tools.length, names, tokens: null, unknown: true, definitions };

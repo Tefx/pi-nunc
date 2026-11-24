@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { sourceRecords } from "../engine/fixtures.js";
 import { fixture, memoryPatch } from "./fixtures.js";
 import { isSystemMessage } from "../../src/engine/accounting.js";
-import { project, eligibleUsageEntryIds, compactionCleanupScope, eligibleStarts, originalResults, searchBranchHistory, withEffectiveMemory, peekMemoryAnchor, sealDecisions, MANUAL_MEMORY_TYPE, injectedCarrierIndex } from "../../src/pi/projection.js";
+import { project, eligibleUsageEntryIds, compactionCleanupScope, eligibleStarts, originalResults, searchBranchHistory, withEffectiveMemory, peekMemoryAnchor, sealDecisions, MANUAL_MEMORY_TYPE, carrierIndexIn } from "../../src/pi/projection.js";
 
 test("native edits share active, history, originals and anchor projection semantics", async t => {
   const f = await fixture(); t.after(() => f.close());
@@ -87,7 +87,7 @@ test("a mismatched tool name cannot establish a completed memory boundary", () =
     { role: "user", content: "Continue", timestamp: 3 },
   ];
   const result = withEffectiveMemory(messages, { version: 1, nextId: 2, slots: [{ id: "s1", text: "Saved M" }] });
-  assert.equal(injectedCarrierIndex(result), 1);
+  assert.equal(carrierIndexIn(result), 1);
 });
 
 test("saved cleanup digests distinguish block partitions and malformed cleanup containers", async t => {

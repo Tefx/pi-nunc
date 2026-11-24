@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { FixedContext, MechanicalFallbackInfo, Memory, Slot, SlotProvenance, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
+import type { MechanicalFallbackInfo, Memory, Slot, SlotProvenance, ToolResultCleanupResult, ToolResultDecision, ToolResultRef } from "../engine/index.js";
 import { decideToolResultCleanup, hardMemoryLimit, memoryTarget, memoryTokens } from "../engine/index.js";
 import { integer, keys, nonempty, record, requireThat, validateMemory } from "../engine/validation.js";
-import { readConfig, type NuncConfig, type HostCompactionSettings } from "./config.js";
+import { readConfig, type NuncConfig } from "./config.js";
 import { MANUAL_MEMORY_TYPE, deriveSlotProvenance, effectiveActive, memoryRevision, project, revisionApplies, sealDecisions, setCleanupUnconfirmed } from "./projection.js";
 
 export type ManualSaveCode = "invalid" | "conflict" | "occupied" | "overbudget" | "unknown-budget" | "unconfirmed" | "cancelled";
@@ -61,12 +61,10 @@ export interface MemoryFreeze extends MemorySurface {
 export function createMemorySurface(options: {
   pi: ExtensionAPI;
   config?: (ctx: ExtensionContext) => NuncConfig;
-  fixed?: (ctx: ExtensionContext) => FixedContext;
-  settings?: (ctx: ExtensionContext) => { compaction: HostCompactionSettings; blockImages: boolean };
   cleanup?: (ctx: ExtensionContext, memory: Memory, active: ReturnType<typeof project>["active"], saved: ToolResultDecision[]) => { enabled: boolean; scope: ToolResultRef[] };
   onCommitted: () => void;
 }): MemoryFreeze {
-  const state = { occupied: false, rejectedFreezes: [] as symbol[] };
+  const state = { occupied: false, rejectedFreezes: 0 };
   const viewOf = (ctx: ExtensionContext, snapshot?: ReturnType<typeof project>): MemoryView => {
     // Pi may settle overlapping aborted/manual compactions without delivering
     // their terminal hooks in start order. Native idle proves no checkpoint
@@ -95,12 +93,14 @@ export function createMemorySurface(options: {
   };
   const surface: MemoryFreeze = {
     beginFreeze() {
-      if (state.occupied) { state.rejectedFreezes.push(Symbol("rejected compaction")); return false; }
+      if (state.occupied) { state.rejectedFreezes++; return false; }
       state.occupied = true; return true;
     },
     endFreeze() { state.occupied = false; },
     noteForeignFailure() {
-      return state.rejectedFreezes.shift() !== undefined;
+      if (!state.rejectedFreezes) return false;
+      state.rejectedFreezes--;
+      return true;
     },
     read: viewOf,
     patch(ctx, params, signal) {
@@ -254,8 +254,9 @@ export function createMemorySurface(options: {
       // Cancellation check before commit
       if (signal?.aborted) return fail("cancelled", "Memory patch cancelled before commit", current);
 
+      const active = effectiveActive(before, true);
       const cleanup = params.suppressCleanup !== true ? decideToolResultCleanup({
-        active: effectiveActive(before, true), retainedEntries: effectiveActive(before, true),
+        active, retainedEntries: active,
         candidateScope: opportunity.scope, initialMemory: current.memory, finalMemory: nextMemory,
         keyToSlotMap: new Map(Object.entries(addedMap)),
         retainedKeys: new Set([...nextMemory.slots.map(s => s.id), ...addList.map(item => item.key)]),

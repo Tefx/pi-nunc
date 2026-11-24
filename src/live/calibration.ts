@@ -99,6 +99,9 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       (suffix[c]! - 1) / denominator, suffix[c]! / denominator,
     ])])].filter(q => q >= range.minFraction && q <= range.maxFraction).sort((a, b) => a - b);
     const candidates = [...boundaries, ...boundaries.slice(1).map((q, i) => (q + boundaries[i]!) / 2)];
+    const mainBeforeVisible = typeof currentAccounting.mainPlanningEstimate === "function"
+      ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, effectiveSuffix(0), model, config.imageTokens, config.main.extraInputTokens).visibleTokens
+      : requestTokens(mainContext(source.fixed, source.memory.slots, effectiveSuffix(0)), config.imageTokens) + config.main.extraInputTokens;
     for (const [position, cut] of feasible.entries()) {
       if (target && active[cut]!.entryId !== target.firstKeptEntryId) continue;
       if (active.slice(cut).some(e => retired.has(e.entryId)) || active.slice(0, cut).some(e => retained.has(e.entryId))) continue;
@@ -117,12 +120,7 @@ export function calibrateRetention(source: MaintenanceInput, control: Control, t
       const plan = request.planExtractionRequest(source, cut, organizingTarget, baseSource, extractionInput,
         { extractionContext, reduceToolBodies }, requestTokens);
       const fullExtraction = plan.fullExtractionTokens;
-      const mainBefore = typeof currentAccounting.mainPlanningEstimate === "function"
-        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, effectiveSuffix(0), model, config.imageTokens, config.main.extraInputTokens).tokens
-        : requestTokens(mainContext(source.fixed, source.memory.slots, effectiveSuffix(0)), config.imageTokens) + config.main.extraInputTokens;
       const fullFeedback = plan.fullFeedback;
-      const mainBeforeVisible = typeof currentAccounting.mainPlanningEstimate === "function"
-        ? currentAccounting.mainPlanningEstimate(source.fixed, source.memory.slots, effectiveSuffix(0), model, config.imageTokens, config.main.extraInputTokens).visibleTokens : mainBefore;
       const triggerExtraUndercount = Math.max(0, fullFeedback.maintenanceUndercountTokens - fullFeedback.activeUndercountTokens);
       const normalAtTrigger = fullExtraction + triggerExtraUndercount - mainBeforeVisible + trigger;
       // Trigger headroom is advisory. Calibrate against the actual extraction below.
