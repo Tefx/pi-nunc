@@ -517,9 +517,15 @@ export function originalResults(projected: ReturnType<typeof project>, refs: Too
 }
 
 // Provenance stays process-local and cannot be copied with message text/fields.
-const carriers = new WeakSet<object>();
+const CARRIERS_KEY = Symbol.for("nunc.memory.carriers");
+const ANCHORS_KEY = Symbol.for("nunc.memory.anchors");
 const LAYOUT_KEY = Symbol.for("nunc.memory.observer-layout");
-const anchors = new Map<string, MemoryAnchor>();
+const processState = globalThis as typeof globalThis & {
+  [CARRIERS_KEY]?: WeakSet<object>;
+  [ANCHORS_KEY]?: Map<string, MemoryAnchor>;
+};
+const carriers = processState[CARRIERS_KEY] ??= new WeakSet<object>();
+const anchors = processState[ANCHORS_KEY] ??= new Map<string, MemoryAnchor>();
 
 interface MemoryAnchor {
   content: string;

@@ -7,6 +7,7 @@ import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { memorySurface, type MemorySurface } from "../../src/pi/manual.js";
 import { requestTokens, memoryTokens, textTokens } from "../../src/engine/accounting.js";
 import { isNuncCarrier } from "../../src/pi/projection.js";
+import { carrierIndexIn, clearMemoryAnchors, currentMemoryIndex, peekMemoryAnchor, project, withEffectiveMemory } from "pi-nunc/pi";
 import { contextSurface, type ContextSurface } from "../../src/pi/context.js";
 import { fixture } from "./fixtures.js";
 
@@ -128,6 +129,46 @@ for (const hasM of [false, true]) test(`native independent nested Context and re
   await n.f.runtime.session.prompt("genuine next projection");
   assert.equal(n.last().estimator, "pi-usage-backed");
   assert.equal(n.last().receiptBreakdown?.currentMTokens, memoryTokens(n.surface().read(n.ctx()).memory.slots));
+});
+
+test("bundled extension and standalone Pi entrypoint share carrier and anchor authority", { timeout: 15000 }, async t => {
+  const projections: Parameters<typeof withEffectiveMemory>[0][] = [];
+  const n = await nativeFixture(t, pi => {
+    pi.on("context", event => { projections.push(event.messages); });
+  });
+  n.note("shared process-local M");
+  const sessionId = n.ctx().sessionManager.getSessionId();
+  t.after(() => clearMemoryAnchors(sessionId));
+  await n.f.runtime.session.prompt("first shared boundary");
+  const first = projections[0]!;
+  const firstIndex = carrierIndexIn(first);
+  assert.notEqual(firstIndex, undefined, "standalone API recognizes the bundled carrier");
+  assert(isNuncCarrier(first[firstIndex!]!));
+  assert.equal(carrierIndexIn(structuredClone(first)), undefined, "copied fields cannot copy provenance");
+  const memory = n.surface().read(n.ctx()).memory;
+  const firstAnchor = peekMemoryAnchor(sessionId);
+  assert(firstAnchor);
+  assert.equal(firstAnchor.prefixLength, firstIndex);
+  const entries = n.ctx().sessionManager.buildContextEntries();
+  assert.equal(currentMemoryIndex(sessionId, memory, project(entries).active), firstIndex);
+  const extended = [...first, { role: "user", content: "standalone tail", timestamp: 10 }];
+  const replaced = withEffectiveMemory(extended, memory, { sessionId, entries });
+  assert.equal(carrierIndexIn(replaced), firstIndex, "standalone projection reuses the bundled anchor");
+  assert.equal(replaced.filter(isNuncCarrier).length, 1, "standalone projection removes the bundled carrier");
+  assert(!replaced.includes(first[firstIndex!]!));
+
+  clearMemoryAnchors(sessionId);
+  assert.equal(peekMemoryAnchor(sessionId), undefined);
+  await n.f.runtime.session.prompt("second shared boundary");
+  assert(peekMemoryAnchor(sessionId)!.prefixLength > firstIndex!, "bundled projection observes standalone clearing");
+
+  // Write the earlier native boundary through the standalone API. The next
+  // bundled projection must retain it despite the newer conversation tail.
+  clearMemoryAnchors(sessionId);
+  withEffectiveMemory(first, memory, { sessionId, entries });
+  assert.equal(peekMemoryAnchor(sessionId)!.prefixLength, firstIndex);
+  await n.f.runtime.session.prompt("third shared boundary");
+  assert.equal(carrierIndexIn(projections[2]!), firstIndex, "bundled projection reuses the standalone anchor");
 });
 
 test("native later context hook edits the identical carrier before serialization: full fresh accounting, no receipt, overlarge zero-send", { timeout: 15000 }, async t => {

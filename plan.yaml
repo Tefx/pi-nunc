@@ -14638,3 +14638,124 @@ phases:
       All 4 requirements PROVEN (RSB-1, RSB-2, RSB-3, BUILD-ENGINE-PI-PACK-VERIFICATION).
       Build exit 0; check.mjs engine 297/297 pass; dist/tests/pi/*.test.js + dist/tests/live/build.test.js
       584/584 pass (2 skipped); npm pack --dry-run 132 files exit 0.'
+- id: nunc-carrier-identity-authority-fix
+  name: Carrier 与 Anchor 跨入口单权威统一闭环（Carrier Identity Authority Fix）
+  status: done
+  gate: rm -rf dist && npm run build && node scripts/check.mjs engine && node --test
+    dist/tests/pi/*.test.js dist/tests/live/build.test.js && npm pack --dry-run pass
+    with zero failures; bundled dist/src/index.js and standalone dist/src/pi/index.js
+    share a single process-wide carrier/anchor authority.
+  depends_on:
+  - nunc-reload-split-brain-fix
+  steps:
+  - id: unify-carrier-identity-authority
+    name: Unify carrier and anchor process-local authority across bundled extension
+      and pi-nunc/pi sub-export
+    status: done
+    description: "```yaml\nstep_type: implementation\nrepo_change_policy: modifies_repo\n\
+      scope:\n  allowed_paths:\n    - src/pi/projection.ts\n    - tests/pi/projection-binding.test.ts\n\
+      \    - tests/pi/compat.test.ts\n    - tests/live/build.test.ts\n  blocked_paths:\n\
+      \    - plan.yaml\n    - package.json\n    - tsconfig.json\n```\n\n[REQUIRES_SKILL:\
+      \ contract-and-simplicity]\n\nDeliver:\n- [CARRIER-AUTH-1] `src/pi/projection.ts:carriers`\
+      \ / `isNuncCarrier` / `carrierIndexIn` / `withEffectiveMemory` — replace the\
+      \ module-local `const carriers = new WeakSet<object>()` with a `Symbol.for(\"\
+      nunc.memory.carriers\")`-backed `WeakSet<object>` on `globalThis` (matching\
+      \ `UNCONFIRMED_CLEANUP` in `src/pi/projection.ts:48–51` and `UNCONFIRMED` in\
+      \ `src/pi/manual.ts:320–324`) so carriers minted by bundled `dist/src/index.js`\
+      \ (`withEffectiveMemory`) are identically recognized by standalone `pi-nunc/pi`\
+      \ (`dist/src/pi/index.js` / `dist/src/pi/projection.js` `isNuncCarrier`, `carrierIndexIn`,\
+      \ `withEffectiveMemory`) within the same process ($\\delta s|_{\\partial} =\
+      \ 0$).\n- [ANCHOR-AUTH-1] `src/pi/projection.ts:anchors` / `clearMemoryAnchors`\
+      \ / `peekMemoryAnchor` / `currentMemoryIndex` / `withEffectiveMemory` — unify\
+      \ the sibling module-local `const anchors = new Map<string, MemoryAnchor>()`\
+      \ onto a `Symbol.for(\"nunc.memory.anchors\")`-backed `Map<string, MemoryAnchor>`\
+      \ on `globalThis` so anchor reads, updates, and clears (`clearMemoryAnchors`,\
+      \ `peekMemoryAnchor`, `currentMemoryIndex`, `withEffectiveMemory`) share a single\
+      \ process-wide authority across bundled `dist/src/index.js` and standalone `dist/src/pi/index.js`.\n\
+      - [TEST-1] `tests/pi/projection-binding.test.ts` / `tests/live/build.test.ts`\
+      \ — verify `tests/pi/projection-binding.test.ts` (\"native later context hook\
+      \ edits the identical carrier before serialization...\") passes against the\
+      \ bundled `dist/src/index.js` extension, and add/extend regression coverage\
+      \ asserting cross-entrypoint carrier & anchor identity (`dist/src/index.js`\
+      \ vs. `dist/src/pi/index.js`).\n\nImplementation Notes (Non-Binding):\n- In\
+      \ `src/pi/projection.ts:520–522`, `LAYOUT_KEY` (`Symbol.for(\"nunc.memory.observer-layout\"\
+      )`) and `UNCONFIRMED_CLEANUP` (`Symbol.for(\"nunc.memory.unconfirmed-cleanup\"\
+      )`) already use `globalThis` symbol registries, whereas `carriers` and `anchors`\
+      \ remained module-local after `dist/src/index.js` became a self-contained bundle.\
+      \ Using small helper accessors (`carriers()`, `anchors()`) backed by `Symbol.for(...)`\
+      \ on `globalThis` eliminates the split-brain state with zero duplicate copies\
+      \ ($\\Pi_{\\downarrow}$).\n\nBoundary:\n- Owner: `node-typescript-engineer`.\
+      \ Authority: modify `src/pi/projection.ts` and the listed test files only. Protected\
+      \ state: `plan.yaml`, `package.json`, `tsconfig.json`. Rollback: `git checkout\
+      \ -- src/pi/projection.ts tests/`.\n\nAdmit:\n- Witnessed inputs: `src/pi/projection.ts:48–56`,\
+      \ `src/pi/projection.ts:519–566`, `src/pi/projection.ts:680–762`, `tests/pi/projection-binding.test.ts:127–161`.\n\
+      - Checks: `rm -rf dist && npm run build && node scripts/check.mjs engine &&\
+      \ node --test dist/tests/pi/projection-binding.test.js dist/tests/pi/compat.test.js\
+      \ dist/tests/live/build.test.js`.\n\nRecovery:\n- Reconcile any TypeScript or\
+      \ test failure in place before completion; stop and report if blocked by an\
+      \ external constraint."
+    verification: rm -rf dist && npm run build && node scripts/check.mjs engine &&
+      node --test dist/tests/pi/projection-binding.test.js dist/tests/pi/compat.test.js
+      dist/tests/live/build.test.js
+    refs:
+    - src/pi/projection.ts
+    - src/pi/index.ts
+    - tests/pi/projection-binding.test.ts
+    - tests/pi/compat.test.ts
+    - tests/live/build.test.ts
+    agent: node-typescript-engineer
+    claimed_by: node-typescript-engineer
+    claimed_at: '2026-11-23T11:19:25.160862Z'
+    done_at: '2026-11-23T11:22:42.209691+00:00'
+    evidence: 'Integrated commit b73a6a7 (retained at refs/vectl/retained/nunc-carrier-identity-authority-fix.unify-carrier-identity-authority)
+      from isolated worktree .vectl/worktrees/nunc-carrier-identity-authority-fix.unify-carrier-identity-authority,
+      exact owner node-typescript-engineer; worktree removed (+13,264 KiB free). Unified
+      carriers WeakSet and anchors Map in src/pi/projection.ts onto globalThis Symbol.for("nunc.memory.carriers")
+      and Symbol.for("nunc.memory.anchors") so bundled dist/src/index.js and standalone
+      dist/src/pi/index.js share a single process-wide identity/anchor authority,
+      and added bidirectional cross-entrypoint regression coverage in tests/pi/projection-binding.test.ts.
+      Worktree verification: rm -rf dist && npm run build -> 0; check.mjs engine ->
+      297/297 pass; projection-binding + compat + build -> 18/18 pass; integrated
+      rm -rf dist && npm run build -> 0.'
+  - id: carrier-authority-gate
+    name: Gate verification for unified carrier and anchor authority across bundled
+      and sub-export entrypoints
+    status: done
+    description: "```yaml\nstep_type: gate\nrepo_change_policy: no_repo_change\nscope:\n\
+      \  allowed_paths: []\n  blocked_paths:\n    - plan.yaml\n```\n\nDeliver:\n-\
+      \ [GATE-1] `src/pi/projection.ts` / `dist/src/index.js` / `dist/src/pi/index.js`\
+      \ — verify `[CARRIER-AUTH-1]`, `[ANCHOR-AUTH-1]`, and `[TEST-1]` are closed\
+      \ with a single process-wide `Symbol.for(...)` authority for `carriers` and\
+      \ `anchors` across bundled `dist/src/index.js` and standalone `dist/src/pi/index.js`.\n\
+      - [GATE-2] Execute clean build, engine check, full `tests/pi/*.test.js` + `tests/live/build.test.js`\
+      \ suite, and package dry-run verification with zero failures.\n\nBoundary:\n\
+      - Owner: `gate-reviewer`. Read-only verification gate (`no_repo_change`); do\
+      \ not modify tracked repository files.\n\nAdmit:\n- Witnessed inputs: completed\
+      \ `nunc-carrier-identity-authority-fix.unify-carrier-identity-authority` evidence\
+      \ and current `HEAD`.\n- Checks: `rm -rf dist && npm run build`, `node scripts/check.mjs\
+      \ engine`, `node --test dist/tests/pi/*.test.js dist/tests/live/build.test.js`,\
+      \ and `npm pack --dry-run`.\n\nRecovery:\n- If any check or postcondition fails,\
+      \ return a structured gate `FAIL` report naming the failing command or assertion\
+      \ without mutating the repository."
+    verification: rm -rf dist && npm run build && node scripts/check.mjs engine &&
+      node --test dist/tests/pi/*.test.js dist/tests/live/build.test.js && npm pack
+      --dry-run
+    refs:
+    - src/pi/projection.ts
+    - src/pi/index.ts
+    - tests/pi/projection-binding.test.ts
+    - tests/pi/compat.test.ts
+    - tests/live/build.test.ts
+    depends_on:
+    - unify-carrier-identity-authority
+    agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-11-23T11:22:45.839558Z'
+    done_at: '2026-11-23T11:27:04.090758+00:00'
+    evidence: 'Gate PASS (PHASE_GATE / FULL) on pinned commit git:9863d90463997eede21abda864bc0efe2e8ed885
+      via fresh gate-reviewer session (2026-11-23T11-23-05-106Z_01a20825-3210-753d-b14f-61e98093fc2a.jsonl).
+      Validator exit 0: {"valid":true,"binding_checked":true,"kind":"gate","schema_version":"gate.report.v2","evidence_disposition":"POSITIVE_GATE_EVIDENCE","errors":[]}.
+      All 4 requirements PROVEN (CARRIER-AUTH-1, ANCHOR-AUTH-1, TEST-1, BUILD-ENGINE-PI-LIVE-PACK).
+      Clean build exit 0; check.mjs engine 297/297 pass; Pi + live build (48 files)
+      583 passed / 585 total (2 skipped, 0 failures); independent shared-authority
+      lifecycle probe 12/12 pass; npm pack --dry-run 132 files exit 0.'
