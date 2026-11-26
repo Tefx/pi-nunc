@@ -6,9 +6,9 @@ import { InMemoryCredentialStore, normalizeContext, type Api, type Model } from 
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { clampThinkingLevel } from "@earendil-works/pi-ai/compat";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { RunInput } from "../../src/live/contract.js";
-import { runSegment } from "../../src/live/worker.js";
-import { boundedProvider, BudgetLedger, readLedger, ledgerSummary } from "../../src/live/budget.js";
+import type { RunInput } from "../../bench/live/contract.js";
+import { runSegment } from "../../bench/live/worker.js";
+import { boundedProvider, BudgetLedger, readLedger, ledgerSummary } from "../../bench/live/budget.js";
 import { repository } from "./fixtures.js";
 
 test("native Luna m5 provider wrapper sends low effort for both main and maintenance", { timeout: 30000 }, async () => {

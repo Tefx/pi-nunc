@@ -1,11 +1,11 @@
 import { readdir, readFile, stat, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import { project } from "../pi/projection.js";
+import { project } from "../../src/pi/projection.js";
 import { isDeepStrictEqual } from "node:util";
 import { getSystemMessageText, renderSystemMessageUpdate } from "@earendil-works/pi-ai";
 import type { CheckResult } from "./scenarios.js";
-import type { NuncConfig } from "../pi/config.js";
+import type { NuncConfig } from "../../src/pi/config.js";
 import type { RequestObservation } from "./comparison-observation.js";
 import type { CallEnd, LedgerRecord } from "./budget.js";
 

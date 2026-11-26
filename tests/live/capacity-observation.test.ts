@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Context } from "@earendil-works/pi-ai";
-import { checkCapacityRecovery, qualifyCapacity, evaluateCapacityPredicates } from "../../src/live/scenarios.js";
+import { checkCapacityRecovery, qualifyCapacity, evaluateCapacityPredicates } from "../../bench/live/scenarios.js";
 import type { MaintenanceResult, Memory } from "../../src/engine/types.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
 import { maintain } from "../../src/engine/engine.js";

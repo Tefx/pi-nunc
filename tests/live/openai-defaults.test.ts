@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, writeFile, readFile, rm, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { fixture, repository } from "./fixtures.js";
-import { childEnvironment } from "../../src/live/host.js";
+import { childEnvironment } from "../../bench/live/host.js";
 
 test("metadata-only OpenAI/Sol medium preflight defaults unknown billing; explicit API-key USD limit remains selectable", async () => {
   const input = await fixture(true), profile = input.target.stateRoot + "-openai-profile";

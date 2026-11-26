@@ -5,9 +5,9 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InMemoryCredentialStore, fauxProvider, normalizeContext, type Context, type TranscriptContext } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { boundedProvider, BudgetLedger } from "../../src/live/budget.js";
-import { parseInput, selectedModels } from "../../src/live/contract.js";
-import { childEnvironment } from "../../src/live/host.js";
+import { boundedProvider, BudgetLedger } from "../../bench/live/budget.js";
+import { parseInput, selectedModels } from "../../bench/live/contract.js";
+import { childEnvironment } from "../../bench/live/host.js";
 import { fixture, nativeModels, repository } from "./fixtures.js";
 
 const context: TranscriptContext = normalizeContext({ systemPrompt: "Use available evidence.", messages: [{ role: "user", content: "Inspect the pending work.", timestamp: 1 }] });

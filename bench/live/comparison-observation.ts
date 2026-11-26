@@ -2,14 +2,14 @@ import { textOf, userText } from "./guidance.js";
 import { isDeepStrictEqual } from "node:util";
 import { buildContextEntries, convertToLlm, sessionEntryToContextMessages, serializeConversation, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
-import { memoryTokens, messageTokens, requestTokens, textTokens } from "../engine/accounting.js";
-import type { AdmissionObservation } from "../pi/admission.js";
+import { memoryTokens, messageTokens, requestTokens, textTokens } from "../../src/engine/accounting.js";
+import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { checkFullExtraction, semanticEvidence } from "./scenarios.js";
 import { resolve, relative } from "node:path";
 import { resolveScenarioPath } from "./tool-path.js";
 import { projectedNativeCut } from "./preparation.js";
 import type { Control, Turn } from "./scenarios.js";
-import type { MaintenanceResult } from "../engine/types.js";
+import type { MaintenanceResult } from "../../src/engine/types.js";
 import type { RunConfig } from "./contract.js";
 import type { PreparedBoundary } from "./preparation.js";
 

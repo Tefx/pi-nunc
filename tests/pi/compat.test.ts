@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bundleExtension } from "../../src/build/bundle.js";
+import { bundleExtension } from "../../build/bundle.js";
 import { loadPolicy } from "../../src/engine/policy.js";
 import ts from "typescript";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -123,25 +123,47 @@ const loaderModules = new Set([
   "@earendil-works/pi-ai/providers/all",
 ]);
 
-test("built runtime Pi imports belong to the extension loader's exact virtual module allowlist", async () => {
-  const files = (await readdir(builtSource, { recursive: true })).filter(file => file.endsWith(".js"));
-  assert(files.length > 0, "scan the emitted runtime, not an empty directory");
-  const imports: string[] = [];
+test("built runtime contains only product modules and imports only runtime dependencies", async () => {
+  const files = new Set<string>();
+  for (const entry of await readdir(builtSource, { recursive: true, withFileTypes: true })) {
+    const file = relative(builtSource, join(entry.parentPath, entry.name));
+    const [top = "", ...rest] = file.split(sep);
+    const product = ["engine", "pi", "ui"].includes(top);
+    if (entry.isDirectory()) assert(product, `unexpected runtime directory ${file}`);
+    else {
+      assert(entry.isFile() && (rest.length ? product : /^index\.(?:js|js\.map|d\.ts)$/.test(top)), `unexpected runtime artifact ${file}`);
+      files.add(file);
+    }
+  }
+  assert(files.has("index.js"), "scan the emitted runtime, not an empty directory");
+  let hostImports = 0;
   for (const file of files) {
-    const source = ts.createSourceFile(file, await readFile(join(builtSource, file), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    if (!file.endsWith(".js")) continue;
+    const path = join(builtSource, file);
+    const source = ts.createSourceFile(file, await readFile(path, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
     const visit = (node: ts.Node): void => {
+      const requireCall = ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require";
       const specifier = ts.isImportDeclaration(node) || ts.isExportDeclaration(node) ? node.moduleSpecifier
-        : ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === "require") ? node.arguments[0]
+        : ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || requireCall) ? node.arguments[0]
         : undefined;
-      if (specifier && ts.isStringLiteralLike(specifier) && specifier.text.startsWith("@earendil-works/")) {
-        imports.push(specifier.text);
-        assert(loaderModules.has(specifier.text), `${file}: unsupported Pi runtime module ${specifier.text}`);
+      if (specifier) {
+        assert(ts.isStringLiteralLike(specifier), `${file}: runtime import must name a module explicitly`);
+        const name = specifier.text;
+        if (name.startsWith("./") || name.startsWith("../")) {
+          // Bundled factories resolve relative to their original module, not index.js.
+          const factory = file === "index.js" && requireCall
+            ? ts.findAncestor(node, (parent): parent is ts.ArrowFunction => ts.isArrowFunction(parent) && parent.parameters.some(p => ts.isIdentifier(p.name) && p.name.text === "require"))?.parent
+            : undefined;
+          const origin = factory && ts.isPropertyAssignment(factory) && ts.isStringLiteral(factory.name) ? join(builtSource, factory.name.text) : path;
+          assert(files.has(relative(builtSource, resolve(dirname(origin), name))), `${file}: import outside the emitted runtime: ${name}`);
+        } else if (loaderModules.has(name)) hostImports++;
+        else assert(name.startsWith("node:"), `${file}: unsupported runtime module ${name}`);
       }
       ts.forEachChild(node, visit);
     };
     visit(source);
   }
-  assert(imports.length > 0, "the built extension must exercise host module imports");
+  assert(hostImports > 0, "the built extension must exercise host module imports");
 });
 
 test("jiti reload at the same unpacked path uses upgraded UI, Pi and engine implementations", async t => {

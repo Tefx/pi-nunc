@@ -3,15 +3,15 @@ import { existsSync, readFileSync, chmodSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { EventEmitter } from "node:events";
-import { isSupportedPiVersion } from "../pi/compat.js";
+import { isSupportedPiVersion } from "../../src/pi/compat.js";
 import { isDeepStrictEqual } from "node:util";
 import { projectedNativeCut } from "./preparation.js";
-import { isSystemMessage } from "../engine/accounting.js";
+import { isSystemMessage } from "../../src/engine/accounting.js";
 import { getCurrentSystemPrompt, getCurrentTools, type Api, type Context, type Model } from "@earendil-works/pi-ai";
 import { SessionManager, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { object, requireValue, within, RunnerError, type RunConfig, type RunInput, type Selection } from "./contract.js";
 export function liveExtensionFlags(repository: string, input: RunInput): string[] {
-  const flags = ["-e", join(repository, "dist/src/live/observer.js")];
+  const flags = ["-e", join(repository, "dist/bench/live/observer.js")];
   const larva = input.overrides?.find(o => o.requirement === "stable-memory-larva");
   if (larva) {
     requireValue(typeof larva.extension === "string" && existsSync(larva.extension), "EXTENSION", "Explicit Larva extension is unavailable");

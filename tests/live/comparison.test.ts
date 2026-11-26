@@ -5,12 +5,12 @@ import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { parseInput, preflight, type RunInput } from "../../src/live/contract.js";
-import { liveExtensionFlags, openHost } from "../../src/live/host.js";
-import { loadScenario } from "../../src/live/scenarios.js";
-import { executeComparison, scopedUsage } from "../../src/live/comparison.js";
+import { parseInput, preflight, type RunInput } from "../../bench/live/contract.js";
+import { liveExtensionFlags, openHost } from "../../bench/live/host.js";
+import { loadScenario } from "../../bench/live/scenarios.js";
+import { executeComparison, scopedUsage } from "../../bench/live/comparison.js";
 import { fixture, repository, temporaryBaseline, temporaryState } from "./fixtures.js";
-import type { LedgerRecord } from "../../src/live/budget.js";
+import type { LedgerRecord } from "../../bench/live/budget.js";
 
 const compareScript = join(repository, "scripts/compare-extraction.mjs");
 const mockWorker = join(repository, "tests/live/comparison-mock-worker.mjs");
@@ -70,7 +70,7 @@ test("three groups load actual distinct native/current/candidate hooks", async (
   const input = await comparisonFixture();
   for (const group of ["native", "current", "candidate"] as const) {
     const flags = liveExtensionFlags(repository, input);
-    assert.deepEqual(flags, ["-e", join(repository, "dist/src/live/observer.js")]);
+    assert.deepEqual(flags, ["-e", join(repository, "dist/bench/live/observer.js")]);
     assert(!flags.some(f => f.endsWith("index.js")));
     const caseRoot = join(input.target.stateRoot, group);
     await mkdir(join(caseRoot, "task"), { recursive: true });

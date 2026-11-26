@@ -6,8 +6,8 @@ import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { Api, Model, Provider, Context, AssistantMessage } from "@earendil-works/pi-ai";
 import { responsesSSE, fixture } from "./fixtures.js";
 import { piComplete, subscriptionBilling } from "../../src/engine/pi-model.js";
-import { BudgetLedger, boundedProvider, readLedger, ledgerSummary } from "../../src/live/budget.js";
-import { serializedEvidence } from "../../src/live/stable-memory-observation.js";
+import { BudgetLedger, boundedProvider, readLedger, ledgerSummary } from "../../bench/live/budget.js";
+import { serializedEvidence } from "../../bench/live/stable-memory-observation.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 
 const provider = openaiProvider();

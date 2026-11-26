@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { readFile, writeFile, rm, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { StockFixture, root } from "./stock-driver.mjs";
-import { readLedger, ledgerSummary } from "../dist/src/live/budget.js";
+import { readLedger, ledgerSummary } from "../dist/bench/live/budget.js";
 
 const quota = process.argv[2] === "--quota";
 const unlimited = process.argv[2] === "--unlimited";

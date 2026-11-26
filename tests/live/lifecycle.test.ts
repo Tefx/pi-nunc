@@ -4,10 +4,10 @@ import { VERSION } from "@earendil-works/pi-coding-agent";
 import { lstat, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { openHost } from "../../src/live/host.js";
-import { finalizeRun, settleRun, launchWorker, type RunReport } from "../../src/live/runner.js";
-import { ledgerSummary } from "../../src/live/budget.js";
-import { preflight, type Receipt } from "../../src/live/contract.js";
+import { openHost } from "../../bench/live/host.js";
+import { finalizeRun, settleRun, launchWorker, type RunReport } from "../../bench/live/runner.js";
+import { ledgerSummary } from "../../bench/live/budget.js";
+import { preflight, type Receipt } from "../../bench/live/contract.js";
 import { fixture, repository } from "./fixtures.js";
 
 const rpcChild = `
@@ -43,7 +43,7 @@ test("abnormal IPC worker exit settles its NativeHost instead of orphaning a det
   await mkdir(join(caseRoot, "task"), { recursive: true });
   const script = join(input.target.stateRoot, "worker.mjs");
   await writeFile(script, `
-    import { openHost } from ${JSON.stringify(new URL("../../src/live/host.js", import.meta.url).href)};
+    import { openHost } from ${JSON.stringify(new URL("../../bench/live/host.js", import.meta.url).href)};
     import { writeFile } from "node:fs/promises";
     let source = ""; for await (const chunk of process.stdin) source += chunk;
     const { input } = JSON.parse(source);

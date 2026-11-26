@@ -4,8 +4,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { RunnerError } from "../../src/live/contract.js";
-import { openHost, type NativeHost } from "../../src/live/host.js";
+import { RunnerError } from "../../bench/live/contract.js";
+import { openHost, type NativeHost } from "../../bench/live/host.js";
 import { fixture, repository } from "./fixtures.js";
 
 function groqPair(endpoint: string): { authorized: Model<Api>; other: Model<Api>; controlledModels: unknown } {

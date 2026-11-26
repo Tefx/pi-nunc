@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SYNTHETIC_LAST_USER_APPEND, SYNTHETIC_LAST_USER_APPEND_B } from "../../src/pi/payload.js";
-import { payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled } from "../../src/live/contract.js";
-import { liveExtensionFlags } from "../../src/live/host.js";
-import observer from "../../src/live/observer.js";
+import { payloadAppendBEnabled, payloadAppendEnabled, providerWrapEnabled } from "../../bench/live/contract.js";
+import { liveExtensionFlags } from "../../bench/live/host.js";
+import observer from "../../bench/live/observer.js";
 import { fixture } from "./fixtures.js";
 
 test("payload-append override selects the tracked synthetic append extension", async () => {
@@ -15,17 +15,17 @@ test("payload-append override selects the tracked synthetic append extension", a
   assert.equal(payloadAppendEnabled(input), false);
   assert.equal(payloadAppendBEnabled(input), false);
   assert.equal(providerWrapEnabled(input), false);
-  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js"]);
+  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/bench/live/observer.js"]);
   input.overrides = [{ requirement: "payload-append", reason: "Exercise last-user text append on the selected native route" }];
   assert.equal(payloadAppendEnabled(input), true);
-  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js"]);
+  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/bench/live/observer.js"]);
   input.overrides.push(
     { requirement: "payload-append-b", reason: "Second synthetic last-user suffix" },
     { requirement: "provider-wrap", reason: "Transparent Provider wrap after first settled turn" },
   );
   assert.equal(payloadAppendBEnabled(input), true);
   assert.equal(providerWrapEnabled(input), true);
-  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/src/live/observer.js"]);
+  assert.deepEqual(liveExtensionFlags("/repo", input), ["-e", "/repo/dist/bench/live/observer.js"]);
 });
 
 test("live observer plus append callback injects synthetic last-user text without logging it", async t => {

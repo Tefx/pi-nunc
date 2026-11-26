@@ -15,8 +15,8 @@ import { renderMemory } from "../../src/engine/memory.js";
 import { memoryTokens } from "../../src/engine/accounting.js";
 import { responsesSSE, fixture, memoryPatch } from "./fixtures.js";
 import { oauthFixture } from "./oauth-fixture.js";
-import { RunnerError } from "../../src/live/contract.js";
-import { openHost, type NativeHost } from "../../src/live/host.js";
+import { RunnerError } from "../../bench/live/contract.js";
+import { openHost, type NativeHost } from "../../bench/live/host.js";
 import { fixture as liveFixture, repository } from "../live/fixtures.js";
 
 test("actual Larva extension integration", { timeout: 300_000, skip: !process.env.NUNC_LARVA_EXTENSION && "Set NUNC_LARVA_EXTENSION to run actual Larva integration" }, async t => {

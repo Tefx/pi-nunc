@@ -4,12 +4,12 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ComparisonGroup, RunInput, Selection } from "../../src/live/contract.js";
-import { runSegment } from "../../src/live/worker.js";
-import { readLedger, ledgerSummary } from "../../src/live/budget.js";
+import type { ComparisonGroup, RunInput, Selection } from "../../bench/live/contract.js";
+import { runSegment } from "../../bench/live/worker.js";
+import { readLedger, ledgerSummary } from "../../bench/live/budget.js";
 import { repository } from "./fixtures.js";
 import { comparisonStock, compareCli, comparisonBaseline } from "./comparison-native-fixture.js";
-import { matchedParity } from "../../src/live/comparison-observation.js";
+import { matchedParity } from "../../bench/live/comparison-observation.js";
 
 async function actualWorker(f: any, selection: Pick<Selection, "id" | "variant">, group: ComparisonGroup = "candidate", automatic = false, config?: Selection["config"]) {
   const model: Model<Api> = { id: f.modelId, name: f.modelId, provider: f.provider, api: f.api, baseUrl: f.endpoint, reasoning: false, input: ["text", "image"], contextWindow: 60000, maxTokens: 20000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };

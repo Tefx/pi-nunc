@@ -1,17 +1,17 @@
 import { scoreGuidance, guidanceExchanges, textOf, verifyReceiptEffects } from "./guidance.js";
 import { resolveScenarioPath, VERIFY_COMMANDS } from "./tool-path.js";
-import { project, effectiveActive } from "../pi/projection.js";
+import { project, effectiveActive } from "../../src/pi/projection.js";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { convertToLlm, sessionEntryToContextMessages, DEFAULT_MAX_BYTES, truncateHead, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
-import { readSourceRecords } from "../engine/request.js";
-import { isSystemMessage, memoryTokens } from "../engine/accounting.js";
-import { parsePatch } from "../engine/memory.js";
-import { validateMemory } from "../engine/validation.js";
+import { readSourceRecords } from "../../src/engine/request.js";
+import { isSystemMessage, memoryTokens } from "../../src/engine/accounting.js";
+import { parsePatch } from "../../src/engine/memory.js";
+import { validateMemory } from "../../src/engine/validation.js";
 import { getCurrentSystemPrompt, type Context, type Message, type TranscriptContext } from "@earendil-works/pi-ai";
-import type { MaintenanceResult, Memory } from "../engine/types.js";
+import type { MaintenanceResult, Memory } from "../../src/engine/types.js";
 import type { RolloverObservation } from "./comparison-observation.js";
 import { object, requireValue, within, type Selection } from "./contract.js";
 

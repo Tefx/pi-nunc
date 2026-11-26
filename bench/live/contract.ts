@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
-import { canonical } from "../engine/validation.js";
+import { canonical } from "../../src/engine/validation.js";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { lstat, readFile, realpath, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { satisfiesStableRange, isSupportedPiVersion, SUPPORTED_PI_RANGE } from "../pi/compat.js";
-import { engineConfig, parseConfig, type NuncConfig } from "../pi/config.js";
+import { satisfiesStableRange, isSupportedPiVersion, SUPPORTED_PI_RANGE } from "../../src/pi/compat.js";
+import { engineConfig, parseConfig, type NuncConfig } from "../../src/pi/config.js";
 
 /** Unix-millisecond wall-clock intervals; provider durations remain separate ledger facts. */
 export interface WallClockInterval { startedAt: number; endedAt: number; elapsedMs: number }
@@ -402,7 +402,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
   const gitEnv = { ...process.env, DEVELOPER_DIR: process.env.DEVELOPER_DIR ?? "/Library/Developer/CommandLineTools" };
   const candidate = execFileSync("/usr/bin/git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv }).trim();
   if (input.mode === "native") {
-    const dirty = execFileSync("/usr/bin/git", ["-C", repository, "status", "--porcelain", "--untracked-files=normal", "--", "src", "scripts", "tests", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8", env: gitEnv });
+    const dirty = execFileSync("/usr/bin/git", ["-C", repository, "status", "--porcelain", "--untracked-files=normal", "--", "src", "build", "bench", "scripts", "dist/src", "dist/build", "dist/bench", "tests", "policies", "package.json", "package-lock.json", "tsconfig.json"], { encoding: "utf8", env: gitEnv });
     requireValue(dirty === "", "CANDIDATE", "Live execution requires committed clean product/check inputs");
   }
   // Receipt has a named identity consumer: later execution of this exact target and compiled candidate.
@@ -440,7 +440,7 @@ export async function preflight(input: RunInput, repository: string, existingOwn
       digest.update(await readFile(p));
     }
   }
-  for (const name of ["src", "scripts", "dist/src", "tests/scenarios", "policies", "package.json", "package-lock.json", "tsconfig.json"]) await bind(join(repository, name));
+  for (const name of ["src", "build", "bench", "scripts", "dist/src", "dist/build", "dist/bench", "tests/scenarios", "policies", "package.json", "package-lock.json", "tsconfig.json"]) await bind(join(repository, name));
   await lstat(join(repository, "dist/src/index.js"));
   for (const s of input.scenarios) if (s.config.nunc.policyFile) {
     requireValue(within(s.config.nunc.policyFile, join(repository, "policies")), "CONFIG", "Runner user policies must be tracked under this checkout's policies/");

@@ -1,6 +1,6 @@
 {
   "name": "pi-nunc",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "In-session rolling context and working memory extension for Pi.",
   "keywords": [
     "pi-package",
@@ -43,7 +43,7 @@
   "scripts": {
     "check:engine": "node scripts/check.mjs engine",
     "check": "node scripts/check.mjs all",
-    "build": "node node_modules/typescript/bin/tsc --project tsconfig.json && node scripts/bundle.mjs",
+    "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\" && node node_modules/typescript/bin/tsc --project tsconfig.json && node scripts/bundle.mjs",
     "prepack": "npm run build"
   },
   "peerDependencies": {

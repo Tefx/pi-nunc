@@ -9,10 +9,10 @@ import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { googleVertexProvider } from "@earendil-works/pi-ai/providers/google-vertex";
-import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, readQualifiedLedgers, type CallRecord, type CallEnd } from "../../src/live/budget.js";
-import { selectedModels } from "../../src/live/contract.js";
+import { boundedProvider, BudgetLedger, ledgerSummary, readLedger, callChargedTokens, callChargedCost, resolveBatchContext, readQualifiedLedgers, type CallRecord, type CallEnd } from "../../bench/live/budget.js";
+import { selectedModels } from "../../bench/live/contract.js";
 import { requestTokens } from "../../src/engine/accounting.js";
-import { rolloverFacts, type RequestObservation, type RolloverObservation } from "../../src/live/comparison-observation.js";
+import { rolloverFacts, type RequestObservation, type RolloverObservation } from "../../bench/live/comparison-observation.js";
 import { fixture, repository } from "./fixtures.js";
 function anthropicResponse(model: string, outputTokens = 4): Response {
   const events = [

@@ -1,10 +1,10 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { maintenanceThinkingOptions, payloadThinking } from "../engine/pi-model.js";
+import { maintenanceThinkingOptions, payloadThinking } from "../../src/engine/pi-model.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
 import { createAssistantMessageEventStream, getCurrentTools, type Api, type ApiStreamOptions, type AssistantMessage, type AssistantMessageEventStream, type AssistantMessageEvent, type Context, type Model, type Provider, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
-import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../engine/accounting.js";
+import { omitsSerializedOutputCap, observeUsage, requestTokens } from "../../src/engine/accounting.js";
 
 declare module "@earendil-works/pi-ai/providers/compat-schema" {
   interface OpenAICompletionsCompat { supportsMaxOutputTokens?: boolean; }
@@ -12,9 +12,9 @@ declare module "@earendil-works/pi-ai/providers/compat-schema" {
   interface AnthropicMessagesCompat { supportsMaxOutputTokens?: boolean; }
   interface BedrockCompat { supportsMaxOutputTokens?: boolean; }
 }
-import type { UsageObservation } from "../engine/types.js";
-import { outputCapState } from "../pi/payload.js";
-import { canonical } from "../engine/validation.js";
+import type { UsageObservation } from "../../src/engine/types.js";
+import { outputCapState } from "../../src/pi/payload.js";
+import { canonical } from "../../src/engine/validation.js";
 import { batchTimestamp, assertBatchConsistency, object, requireValue, RunnerError, type Limits, type RunInput } from "./contract.js";
 
 export interface CallRecord { kind: "reserve"; id: number; model: string; inputEstimate: number; outputCeiling: number; reservedTokens: number; reservedCostUsd: number | null; catalogReservationUsd?: number; at: number; caseKey?: string; ledgerPath?: string }

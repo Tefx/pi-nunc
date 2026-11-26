@@ -7,10 +7,10 @@ const script = fileURLToPath(import.meta.url), repository = resolve(dirname(scri
 const flags = process.argv.slice(2);
 try {
   if (flags.length > 1 || (flags.length === 1 && !["--preflight", "--worker", "--observe-stock"].includes(flags[0]))) throw new Error("ARGUMENTS");
-  const { parseInput, preflight } = await import("../dist/src/live/contract.js");
+  const { parseInput, preflight } = await import("../dist/bench/live/contract.js");
   let value = await readInput(flags[0] === "--worker");
   if (flags[0] !== "--worker") {
-    const { resolveInput } = await import("../dist/src/live/defaults.js");
+    const { resolveInput } = await import("../dist/bench/live/defaults.js");
     value = await resolveInput(value);
   }
   if (flags[0] === "--preflight") {
@@ -22,7 +22,7 @@ try {
     await runWorker(value, repository);
   } else {
     await runCancellable(async signal => {
-      const { execute, observeStock } = await import("../dist/src/live/runner.js");
+      const { execute, observeStock } = await import("../dist/bench/live/runner.js");
       const report = flags[0] === "--observe-stock" ? await observeStock(value, repository, signal) : await execute(value, repository, script, signal);
       process.stdout.write(`${JSON.stringify(report)}\n`);
       process.exitCode = report.status === "OBSERVED" ? 0 : 2;

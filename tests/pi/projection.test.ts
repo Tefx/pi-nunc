@@ -1,4 +1,4 @@
-import { semanticEvidence } from "../../src/live/scenarios.js";
+import { semanticEvidence } from "../../bench/live/scenarios.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";

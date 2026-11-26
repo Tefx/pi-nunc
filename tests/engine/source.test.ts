@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { semanticEvidence } from "../../src/live/scenarios.js";
+import { semanticEvidence } from "../../bench/live/scenarios.js";
 import assert from "node:assert/strict";
 import { legalCuts, mainContext, maintain } from "../../src/engine/index.js";
 import { reduceToolBodies } from "../../src/engine/request.js";

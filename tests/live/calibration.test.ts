@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { emptyMemory, loadPolicy, type MaintenanceInput } from "../../src/engine/index.js";
 import { engineConfig } from "../../src/pi/index.js";
-import { calibrateRetention } from "../../src/live/calibration.js";
+import { calibrateRetention } from "../../bench/live/calibration.js";
 import { maintain } from "../../src/engine/engine.js";
 import { decideToolResultCleanup, applyToolResultCleanup, retainedToolResultCleanup } from "../../src/engine/cleanup.js";
 import * as accounting from "../../src/engine/accounting.js";

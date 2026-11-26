@@ -7,7 +7,7 @@ import { setImmediate as flush } from "node:timers/promises";
 import { fauxAssistantMessage, fauxProvider, getCurrentTools, InMemoryCredentialStore, type OpenAICompletionsOptions } from "@earendil-works/pi-ai";
 import { ModelRegistry, ModelRuntime, convertToLlm } from "@earendil-works/pi-coding-agent";
 import { maintain, memoryMessage, piComplete, renderMemory } from "pi-nunc/engine";
-import { semanticEvidence } from "../../src/live/scenarios.js";
+import { semanticEvidence } from "../../bench/live/scenarios.js";
 import { answer, input, noChange, sourceRecords } from "./fixtures.js";
 import { maintenanceThinkingOptions, payloadThinking, rateLimited, retryMaintenanceComplete } from "../../src/engine/pi-model.js";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";

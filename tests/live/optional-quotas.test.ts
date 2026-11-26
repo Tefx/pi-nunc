@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { parseInput, type RunInput } from "../../src/live/contract.js";
-import { executeComparison } from "../../src/live/comparison.js";
-import { dispatchWorker } from "../../src/live/runner.js";
-import { ledgerSummary, type CallRecord, type CallEnd } from "../../src/live/budget.js";
-import { childEnvironment } from "../../src/live/host.js";
+import { parseInput, type RunInput } from "../../bench/live/contract.js";
+import { executeComparison } from "../../bench/live/comparison.js";
+import { dispatchWorker } from "../../bench/live/runner.js";
+import { ledgerSummary, type CallRecord, type CallEnd } from "../../bench/live/budget.js";
+import { childEnvironment } from "../../bench/live/host.js";
 import { fixture, publicSelection, repository, temporaryBaseline, temporaryState } from "./fixtures.js";
 
 const compareScript = join(repository, "scripts/compare-extraction.mjs");

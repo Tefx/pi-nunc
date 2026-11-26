@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { canResumeScenario, assertBatchConsistency, parseInput, preflight, readBoundedJson, selectedModels, validateTarget } from "../../src/live/contract.js";
-import { execute } from "../../src/live/runner.js";
-import { childEnvironment } from "../../src/live/host.js";
+import { canResumeScenario, assertBatchConsistency, parseInput, preflight, readBoundedJson, selectedModels, validateTarget } from "../../bench/live/contract.js";
+import { execute } from "../../bench/live/runner.js";
+import { childEnvironment } from "../../bench/live/host.js";
 import { fixture, publicSelection, repository, temporaryBaseline } from "./fixtures.js";
 
 test("bounded stdin rejects empty/malformed/oversized JSON and accepts one complete object", async () => {

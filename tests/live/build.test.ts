@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import ts from "typescript";
-import { assertBuildParity, buildReceipt } from "../../src/live/build.js";
-import { bundleExtension } from "../../src/build/bundle.js";
+import { assertBuildParity, buildReceipt } from "../../bench/live/build.js";
+import { bundleExtension } from "../../build/bundle.js";
 import { fixture } from "./fixtures.js";
 
 test("preflight build parity rejects stale or extra executable JS without rewriting source/build", async () => {
@@ -32,6 +32,12 @@ test("preflight build parity rejects stale or extra executable JS without rewrit
     assert.throws(() => buildReceipt(output), /differs/);
     await writeFile(output, original);
     assert.deepEqual(buildReceipt(output), receipt);
+    await mkdir(join(root, "build"));
+    const bundler = join(root, "build/bundle.ts");
+    await writeFile(bundler, "// first build input\n");
+    const withBuild = buildReceipt(output);
+    await writeFile(bundler, "// changed build input\n");
+    assert.notEqual(buildReceipt(output).digest, withBuild.digest);
     await writeFile(join(root, "dist/src/stale.js"), "throw new Error('stale');\n"); await assert.rejects(assertBuildParity(root), /Stale extra JS/);
     assert.throws(() => buildReceipt(output), /Stale extra JS/);
   } finally { await rm(root, { recursive: true }); }

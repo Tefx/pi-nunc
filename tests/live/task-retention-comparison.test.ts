@@ -4,7 +4,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { repository, temporaryBaseline } from "./fixtures.js";
-import { loadScenario } from "../../src/live/scenarios.js";
+import { loadScenario } from "../../bench/live/scenarios.js";
 
 test("public comparison binds explicit pre-change ref and executes scoped-task hosts in both modes", { timeout: 160000 }, async () => {
   const baseline = await temporaryBaseline("1d4fc4a210b64f71871ab3f5c10093215a25990c");

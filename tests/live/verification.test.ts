@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { loadScenario, scoreArtifacts } from "../../src/live/scenarios.js";
+import { loadScenario, scoreArtifacts } from "../../bench/live/scenarios.js";
 import { fixture, repository } from "./fixtures.js";
 
 for (const id of ["e1", "e3"] as const) test(`${id} verification selects an ordered successful receipt after repair or reverification`, async () => {

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { readFile, writeFile, stat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { repository } from "./fixtures.js";
-import { checkFullExtraction } from "../../src/live/scenarios.js";
+import { checkFullExtraction } from "../../bench/live/scenarios.js";
 import { capacityRequiredText } from "./comparison-native-fixture.js";
 import { readSourceRecords } from "../../src/engine/request.js";
 

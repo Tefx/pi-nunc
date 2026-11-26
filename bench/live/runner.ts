@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { canonical } from "../engine/validation.js";
+import { canonical } from "../../src/engine/validation.js";
 import { object, canResumeScenario, parseInput, preflight, requireValue, RunnerError, within, elapsedInterval, type WallClockInterval, type Receipt, type RunInput } from "./contract.js";
 import { ledgerSummary, readQualifiedLedgers, resolveBatchContext, type QualifiedCall } from "./budget.js";
 import type { SegmentReport, WorkerJob } from "./worker.js";

@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Context } from "@earendil-works/pi-ai";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { RolloverObservation } from "../../src/live/comparison-observation.js";
+import type { RolloverObservation } from "../../bench/live/comparison-observation.js";
 import type { MaintenanceResult } from "../../src/engine/types.js";
-import { evaluateE2SetupChecks } from "../../src/live/scenarios.js";
+import { evaluateE2SetupChecks } from "../../bench/live/scenarios.js";
 
 function fixture() {
   const input = { path: "probe.json" };

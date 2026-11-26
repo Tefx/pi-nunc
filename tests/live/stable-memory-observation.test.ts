@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { loadScenario, seedScenario } from "../../src/live/scenarios.js";
-import { parseInput } from "../../src/live/contract.js";
+import { loadScenario, seedScenario } from "../../bench/live/scenarios.js";
+import { parseInput } from "../../bench/live/contract.js";
 import {
   layoutsFromRequests,
   serializedEvidence,
@@ -14,8 +14,8 @@ import {
   uniqueCarriers,
   explicitKeepFraction,
   unchangedContentEpochs,
-} from "../../src/live/stable-memory-observation.js";
-import type { RequestObservation } from "../../src/live/comparison-observation.js";
+} from "../../bench/live/stable-memory-observation.js";
+import type { RequestObservation } from "../../bench/live/comparison-observation.js";
 import type { AdmissionObservation } from "../../src/pi/admission.js";
 import { fixture, repository } from "./fixtures.js";
 import { normalizeContext, type Context, type Model } from "@earendil-works/pi-ai";

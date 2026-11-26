@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { repository } from "./fixtures.js";
 import { extractionContext } from "../../src/engine/request.js";
 import { input } from "../engine/fixtures.js";
-import { buildReceipt } from "../../src/live/build.js";
+import { buildReceipt } from "../../bench/live/build.js";
 
 const scripts = join(repository, "scripts/benchmarks");
 test("tracked selection freezes Fact40 and exactly one protocol-relevant ordinary case; matrix/legacy overrides refused", async () => {

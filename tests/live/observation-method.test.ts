@@ -4,10 +4,10 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildContextEntries, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { fixture, repository } from "./fixtures.js";
-import { loadScenario, parseScenario, archiveCloseoutEffects } from "../../src/live/scenarios.js";
-import { nativeRpcError, ordinaryNoWork } from "../../src/live/host.js";
-import { prepareBoundary } from "../../src/live/preparation.js";
-import { matchedParity } from "../../src/live/comparison-observation.js";
+import { loadScenario, parseScenario, archiveCloseoutEffects } from "../../bench/live/scenarios.js";
+import { nativeRpcError, ordinaryNoWork } from "../../bench/live/host.js";
+import { prepareBoundary } from "../../bench/live/preparation.js";
+import { matchedParity } from "../../bench/live/comparison-observation.js";
 import { comparisonStock, compareCli } from "./comparison-native-fixture.js";
 
 test("archive variant selection cannot mutate the short source or replace its original oracle", async () => {

@@ -7,14 +7,14 @@ const script = fileURLToPath(import.meta.url), repository = resolve(dirname(scri
 const flags = process.argv.slice(2);
 try {
   if (flags.length > 1 || (flags.length === 1 && !["--preflight", "--worker"].includes(flags[0]))) throw new Error("ARGUMENTS");
-  const { parseComparisonInput, preflight } = await import("../dist/src/live/contract.js");
+  const { parseComparisonInput, preflight } = await import("../dist/bench/live/contract.js");
   let value = await readInput(flags[0] === "--worker");
   if (flags[0] !== "--worker") {
     if (!value || typeof value !== "object" || !("comparison" in value)) {
-      const { RunnerError } = await import("../dist/src/live/contract.js");
+      const { RunnerError } = await import("../dist/bench/live/contract.js");
       throw new RunnerError("COMPARISON", "comparison configuration is required for compare-extraction");
     }
-    const { resolveInput } = await import("../dist/src/live/defaults.js");
+    const { resolveInput } = await import("../dist/bench/live/defaults.js");
     value = await resolveInput(value);
     value = parseComparisonInput(value);
   }
@@ -43,7 +43,7 @@ try {
     await runWorker(value, repository);
   } else {
     await runCancellable(async signal => {
-      const { executeComparison } = await import("../dist/src/live/comparison.js");
+      const { executeComparison } = await import("../dist/bench/live/comparison.js");
       const report = await executeComparison(value, repository, script, signal);
       process.stdout.write(`${JSON.stringify(report)}\n`);
       process.exitCode = report.status === "OBSERVED" ? 0 : 2;

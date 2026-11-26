@@ -1,11 +1,11 @@
 export async function readInput(worker = false) {
-  const { readBoundedJson } = await import("../dist/src/live/contract.js");
+  const { readBoundedJson } = await import("../dist/bench/live/contract.js");
   const timer = setTimeout(() => process.stdin.destroy(new Error("STDIN_TIMEOUT")), 10000);
   try { return await readBoundedJson(process.stdin, worker ? 524288 : 65536); } finally { clearTimeout(timer); }
 }
 
 export async function runWorker(value, repository) {
-  const { workerMain } = await import("../dist/src/live/worker.js");
+  const { workerMain } = await import("../dist/bench/live/worker.js");
   const result = await workerMain(value, repository);
   process.stdout.write(`${JSON.stringify({ status: result.status })}\n`);
   process.exitCode = result.status === "STOPPED" ? 2 : 0;

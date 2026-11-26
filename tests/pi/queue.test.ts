@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fixture, publicSelection, repository } from "../live/fixtures.js";
-import { childEnvironment } from "../../src/live/host.js";
+import { childEnvironment } from "../../bench/live/host.js";
 import { rm } from "node:fs/promises";
 
 for (const mode of ["rpc", "tui"] as const) test(`bounded downstream stdin -> actual stock ${mode}: freeze, threshold, queues/editor and cancellation`, { timeout: 115000 }, async () => {

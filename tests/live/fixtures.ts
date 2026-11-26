@@ -8,7 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { parseInput, type RunInput } from "../../src/live/contract.js";
+import { parseInput, type RunInput } from "../../bench/live/contract.js";
 export const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 export async function temporaryBaseline(ref = "70dacad"): Promise<string> {
   const parent = await mkdtemp(join(await realpath(tmpdir()), "nunc-baseline-"));
@@ -38,6 +38,8 @@ export async function temporaryBaseline(ref = "70dacad"): Promise<string> {
     const npmArgs = ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"];
     execFileSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, ...npmArgs] : npmArgs, { cwd: path, env, stdio: "pipe" });
     execFileSync(process.execPath, [join(repository, "node_modules/typescript/bin/tsc"), "--project", join(path, "tsconfig.json")], { cwd: path, env, stdio: "pipe" });
+    const bundle = join(path, "scripts/bundle.mjs");
+    if (existsSync(bundle)) execFileSync(process.execPath, [bundle], { cwd: path, env, stdio: "pipe" });
     return path;
   } catch (error) { await cleanup(); throw error; }
 }

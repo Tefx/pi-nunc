@@ -1,5 +1,5 @@
 import { userText, textOf } from "./guidance.js";
-import { canonical } from "../engine/validation.js";
+import { canonical } from "../../src/engine/validation.js";
 import { archiveCloseoutEffects, qualifyCapacity, checkCapacityRecovery, checkRequiredRetention, compactionAssociationError, expandGeneratedFiles } from "./scenarios.js";
 import { NativeRpcError, ordinaryNoWork, type NativeRpcDiagnostic } from "./host.js";
 import { elapsedInterval, type WallClockInterval } from "./contract.js";
@@ -11,11 +11,11 @@ import { convertToLlm, sessionEntryToContextMessages, SessionManager, type Sessi
 import { openHost, type NativeHost } from "./host.js";
 import { object, parseInput, preflight, requireValue, RunnerError, selectedModels, type ComparisonGroup, type ComparisonMode, type RunInput, type Selection, taskRetentionSelection } from "./contract.js";
 import { checkFullExtraction, checkRollover, evaluateE2SetupChecks, loadScenario, maintenanceResult, qualifyFullGiantSource, scoreArtifacts, seedScenario, semanticEvidence, type CheckResult } from "./scenarios.js";
-import { isSystemMessage, memoryPlan } from "../engine/accounting.js";
-import { engineConfig } from "../pi/config.js";
+import { isSystemMessage, memoryPlan } from "../../src/engine/accounting.js";
+import { engineConfig } from "../../src/pi/config.js";
 import { ledgerSummary, readLedger, type CallRecord, type CallEnd } from "./budget.js";
-import type { MaintenanceResult } from "../engine/types.js";
-import { project, type NuncConfig } from "../pi/index.js";
+import type { MaintenanceResult } from "../../src/engine/types.js";
+import { project, type NuncConfig } from "../../src/pi/index.js";
 import type { RetentionCalibration } from "./calibration.js";
 import { prepareBoundary, type PreparedBoundary, type MatchReference } from "./preparation.js";
 import { rolloverFacts, type RolloverFacts, type RolloverObservation, type RequestObservation } from "./comparison-observation.js";

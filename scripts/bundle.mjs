@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { bundleExtension } from "../dist/src/build/bundle.js";
+import { bundleExtension } from "../dist/build/bundle.js";
 
 const source = new URL("../dist/src/", import.meta.url);
 const outputs = new Map(readdirSync(source, { recursive: true })

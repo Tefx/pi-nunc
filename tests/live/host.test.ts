@@ -6,8 +6,8 @@ import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, isAbsolute } from "node:path";
-import { childEnvironment, openHost } from "../../src/live/host.js";
-import { toolPath } from "../../src/live/tool-path.js";
+import { childEnvironment, openHost } from "../../bench/live/host.js";
+import { toolPath } from "../../bench/live/tool-path.js";
 import { fixture, repository } from "./fixtures.js";
 function assertRemovedReceipts(result: SpawnSyncReturns<string>): void {
   assert.equal(result.status, 0, result.stdout + result.stderr + String(result.error ?? ""));

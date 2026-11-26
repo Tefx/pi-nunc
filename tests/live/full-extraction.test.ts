@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Context } from "@earendil-works/pi-ai";
 import { renderMemory } from "../../src/engine/memory.js";
-import { checkFullExtraction } from "../../src/live/scenarios.js";
+import { checkFullExtraction } from "../../bench/live/scenarios.js";
 
 const memory = (text: string) => ({ version: 1 as const, slots: [{ id: "s1", text }], nextId: 2 });
 // Independent known user records: no project()/extractionContext() call supplies

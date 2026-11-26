@@ -8,13 +8,13 @@ import { memoryMessage, renderMemory } from "../../src/engine/memory.js";
 import { mainContext, requestTokens } from "../../src/engine/accounting.js";
 import { bindHostSettings } from "../../src/pi/index.js";
 import { repository } from "./fixtures.js";
-import { loadScenario, type ScenarioInput } from "../../src/live/scenarios.js";
-import { scoreGuidance } from "../../src/live/guidance.js";
-import { sameTaskHistoryChecks, sameTaskHistoryEffects, deriveExpectedRecords, taskRead } from "../../src/live/task-retention.js";
-import { parseInput, type RunInput } from "../../src/live/contract.js";
-import { runSegment } from "../../src/live/worker.js";
+import { loadScenario, type ScenarioInput } from "../../bench/live/scenarios.js";
+import { scoreGuidance } from "../../bench/live/guidance.js";
+import { sameTaskHistoryChecks, sameTaskHistoryEffects, deriveExpectedRecords, taskRead } from "../../bench/live/task-retention.js";
+import { parseInput, type RunInput } from "../../bench/live/contract.js";
+import { runSegment } from "../../bench/live/worker.js";
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
-import { readLedger, ledgerSummary } from "../../src/live/budget.js";
+import { readLedger, ledgerSummary } from "../../bench/live/budget.js";
 
 const config = { compaction: { enabled: false, reserveTokens: 36000, keepRecentTokens: 1 }, nunc: { memory: { maxTokens: 1200 }, extraction: { outputTokens: 2048 } } };
 

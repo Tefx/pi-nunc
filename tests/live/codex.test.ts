@@ -4,8 +4,8 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { fixture, repository } from "./fixtures.js";
-import { parseInput, preflight, selectedModels } from "../../src/live/contract.js";
-import { BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
+import { parseInput, preflight, selectedModels } from "../../bench/live/contract.js";
+import { BudgetLedger, ledgerSummary, readLedger } from "../../bench/live/budget.js";
 
 test("selected native Codex catalog/uncapped output and explicit unknown billing bind the preflight", async () => {
   const input = await fixture(true), [model] = selectedModels(input); assert(model);

@@ -7,7 +7,7 @@ import { requireValue, RunnerError, type RunConfig } from "./contract.js";
 import type { Control } from "./scenarios.js";
 import { userText, textOf } from "./guidance.js";
 import { calibrateRetention } from "./calibration.js";
-import { projectMaintenanceCalibration, compactionCleanupScope, deriveSlotProvenance } from "../pi/projection.js";
+import { projectMaintenanceCalibration, compactionCleanupScope, deriveSlotProvenance } from "../../src/pi/projection.js";
 
 export interface PreparedBoundary {
   firstKeptEntryId: string;

@@ -5,12 +5,12 @@ import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { compactionAssociationError, resolveCompactionIdentity } from "../../src/live/scenarios.js";
-import { joinedObservations } from "../../src/live/comparison.js";
-import { rolloverFacts, type RolloverObservation } from "../../src/live/comparison-observation.js";
-import type { ComparisonGroup, ComparisonMode, RunInput } from "../../src/live/contract.js";
-import type { MatchReference } from "../../src/live/preparation.js";
-import { runSegment, type SegmentReport } from "../../src/live/worker.js";
+import { compactionAssociationError, resolveCompactionIdentity } from "../../bench/live/scenarios.js";
+import { joinedObservations } from "../../bench/live/comparison.js";
+import { rolloverFacts, type RolloverObservation } from "../../bench/live/comparison-observation.js";
+import type { ComparisonGroup, ComparisonMode, RunInput } from "../../bench/live/contract.js";
+import type { MatchReference } from "../../bench/live/preparation.js";
+import { runSegment, type SegmentReport } from "../../bench/live/worker.js";
 import { repository } from "./fixtures.js";
 import { comparisonStock } from "./comparison-native-fixture.js";
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -67,6 +67,7 @@ function run(args) {
   const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit", env: { PATH: [...new Set([...nodeDirectories, "/usr/bin", "/bin"])].join(":"), HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: npmCache, npm_config_update_notifier: "false", PI_CODING_AGENT_DIR: resolve(root, ".scratch/offline-agent"), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0", ...(process.env.NUNC_LARVA_EXTENSION ? { NUNC_LARVA_EXTENSION: resolve(process.env.NUNC_LARVA_EXTENSION) } : {}), ...(process.env.DEVELOPER_DIR ? { DEVELOPER_DIR: process.env.DEVELOPER_DIR } : {}) } });
   if (result.error || result.status !== 0) fail(`Command failed: ${result.error?.message ?? result.signal ?? result.status}`);
 }
+rmSync(resolve(root, "dist"), { recursive: true, force: true });
 run([resolve(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"]);
 run([resolve(root, "scripts/bundle.mjs")]);
 const compiled = tests.map(name => `dist/tests/${name.replace(/\.ts$/, ".js")}`);

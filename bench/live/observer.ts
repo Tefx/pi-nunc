@@ -5,11 +5,11 @@ import type { Api, Model, Provider } from "@earendil-works/pi-ai";
 import { createEditTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { access, readFile } from "node:fs/promises";
 import type { Control, ToolTrigger } from "./scenarios.js";
-import { memorySurface } from "../pi/manual.js";
-import { setObserverMemoryLayout } from "../pi/projection.js";
+import { memorySurface } from "../../src/pi/manual.js";
+import { setObserverMemoryLayout } from "../../src/pi/projection.js";
 import { userText, textOf } from "./guidance.js";
-import { payloadThinking, subscriptionBilling } from "../engine/pi-model.js";
-import { SYNTHETIC_LAST_USER_APPEND, SYNTHETIC_LAST_USER_APPEND_B, createAppendExtension } from "../pi/payload.js";
+import { payloadThinking, subscriptionBilling } from "../../src/engine/pi-model.js";
+import { SYNTHETIC_LAST_USER_APPEND, SYNTHETIC_LAST_USER_APPEND_B, createAppendExtension } from "../../src/pi/payload.js";
 
 
 // Plain coordination state survives public resource reload; no old ctx is used after it.

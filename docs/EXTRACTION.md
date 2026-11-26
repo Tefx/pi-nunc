@@ -23,7 +23,7 @@
 | `policies/default.md` | 以完整任务及完成标准为维护目标；按 §3 统一持续范围、轻量关系记忆（主体—关系—结果直接记入 slot.text）、粒度与有效来源权限，按 §4 明确局部修订、混合条目有效义务保留、结束互引组退役与安全收缩/退回普通文本规则；合并替代旧表述，避免继续堆叠同义提示。 |
 | `src/engine/request.ts::extractionContext` | 修改系统开头与两个末尾分支，要求保留 B 退出后会失去的必要工作状态及主体关系，覆盖旧 M、B、K 的有效条件；保留来源隔离、冻结边界、无工具和单次请求合同，不复制整份策略到多个入口。 |
 | `src/index.ts::registerMemoryTools` | 在 read/patch 描述和 add/update/remove 参数说明中明确主体关系、自包含条目、混合条目编辑与结束事项退役责任；保留 revision、非例行调用和失败恢复指导。 |
-| `tests/scenarios/`、现有 `src/live/` 观察设施及相关测试 | 增加 §0.3 的真实续做场景，复用现有隔离、比较、memory-state 与机械观察能力；旧场景和接受条件保持。 |
+| `tests/scenarios/`、现有 `bench/live/` 观察设施及相关测试 | 增加 §0.3 的真实续做场景，复用现有隔离、比较、memory-state 与机械观察能力；旧场景和接受条件保持。 |
 | 相关用户文档及生产构建 | 仅更新受影响的外部合同（MEMORY-IMPROVEMENT、EXTRACTION、DESIGN、CAPACITY）；纠正默认 target8192 与显式硬限制 null 文档说明；核验实际扩展入口 `dist/src/index.js` 与加载的策略/工具说明，源码修改不等于部署生效。 |
 
 保留 `Memory.version: 1`、`Slot {id,text}`、两个 memory 工具的 schema、`add/remove/priority/required` 协议及引擎预算算法。`MemorySurface`、revision、原子提交、互斥、Pi 调度/持久化、K 原文及稳定 M 位置不变。没有证据支持本次修改预算比例、工具正文缩减算法或 carrier 包装。
@@ -52,7 +52,7 @@ B 在当前维护请求中仍可读，只有候选通过验证并提交后才从
 ### 0.4 真实模型边界与当前授权
 用户当前指定：**若做真实行为测试，使用 `gpt-5.6-luna`，`low thinking level`。** 此选择覆盖本修订的真实续做、压缩提取和任何模型驱动的语义观察；此前 Gemini-only 或 Gemini 优先条款仅属于其历史任务，不用于此次新运行。不自行替换模型或升降 thinking。
 
-当前 `src/live/defaults.ts` 的有效 thinking 枚举已接受 `low`，不存在该名称的解析缺口。运行前仍须核对宿主/provider 实际生效的模型和 thinking，覆盖主请求、维护及模型驱动观察，不将未经核实的提取默认设置视为已应用 `low`。若特定路径不能应用指定配置，在受影响调用前报告具体缺口，不擅自替换。保留生产环境正常模型/提取默认值，不为测试暗改日常配置；测试 override 限于隔离运行。
+当前 `bench/live/defaults.ts` 的有效 thinking 枚举已接受 `low`，不存在该名称的解析缺口。运行前仍须核对宿主/provider 实际生效的模型和 thinking，覆盖主请求、维护及模型驱动观察，不将未经核实的提取默认设置视为已应用 `low`。若特定路径不能应用指定配置，在受影响调用前报告具体缺口，不擅自替换。保留生产环境正常模型/提取默认值，不为测试暗改日常配置；测试 override 限于隔离运行。
 
 最初授权仅更新文档并创建/修正实施计划，随后用户授权继续实施；当前 semantics 交付不包含真实模型测试或部署。后续运行仍须绑定隔离 target、非秘密有效配置、调用/token/时间及可知费用上限、证据消费者和清理边界；未知订阅费用不按零处理。当前文档更新和计划完成均不等于行为问题已修复。
 

@@ -1,9 +1,9 @@
-import * as accounting from "../engine/accounting.js";
-import { applyToolResultCleanup, retainedToolResultCleanup } from "../engine/cleanup.js";
-import { sameRejectedRequest } from "../engine/calibration.js";
-import * as request from "../engine/request.js";
-import * as validation from "../engine/validation.js";
-import type { MaintenanceInput } from "../engine/types.js";
+import * as accounting from "../../src/engine/accounting.js";
+import { applyToolResultCleanup, retainedToolResultCleanup } from "../../src/engine/cleanup.js";
+import { sameRejectedRequest } from "../../src/engine/calibration.js";
+import * as request from "../../src/engine/request.js";
+import * as validation from "../../src/engine/validation.js";
+import type { MaintenanceInput } from "../../src/engine/types.js";
 import { requireValue, RunnerError, type RetentionCalibrationRange } from "./contract.js";
 import { validateControl, type Control } from "./scenarios.js";
 
@@ -18,7 +18,7 @@ export interface RetentionCalibration {
 }
 
 /** Arithmetic only. No model call, host mutation, boundary injection, padding or observer prose enters a request. */
-export function calibrateRetention(source: MaintenanceInput, control: Control, turnEntries: Record<string, string[]>, turnOrder: string[], range: RetentionCalibrationRange, target?: { firstKeptEntryId: string; accounting: typeof import("../engine/accounting.js"); request: typeof import("../engine/request.js"); validation: typeof import("../engine/validation.js") }): RetentionCalibration {
+export function calibrateRetention(source: MaintenanceInput, control: Control, turnEntries: Record<string, string[]>, turnOrder: string[], range: RetentionCalibrationRange, target?: { firstKeptEntryId: string; accounting: typeof import("../../src/engine/accounting.js"); request: typeof import("../../src/engine/request.js"); validation: typeof import("../../src/engine/validation.js") }): RetentionCalibration {
   const currentAccounting = target?.accounting ?? accounting;
   const { chooseCut, inputLimit, mainContext, messageTokens, requestTokens } = currentAccounting;
   const { extractionContext, reduceToolBodies, resolveExtractionRequest } = target?.request ?? request;

@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { loadScenario, scoreArtifacts, seedScenario, type CheckResult } from "../../src/live/scenarios.js";
-import { scoreGuidance, TOOLS_CHECK, SPLIT_CHECK, type GuidanceAction } from "../../src/live/guidance.js";
+import { loadScenario, scoreArtifacts, seedScenario, type CheckResult } from "../../bench/live/scenarios.js";
+import { scoreGuidance, TOOLS_CHECK, SPLIT_CHECK, type GuidanceAction } from "../../bench/live/guidance.js";
 import { repository } from "./fixtures.js";
-import { checkRequiredRetention } from "../../src/live/scenarios.js";
-import type { Selection } from "../../src/live/contract.js";
+import { checkRequiredRetention } from "../../bench/live/scenarios.js";
+import type { Selection } from "../../bench/live/contract.js";
 
 const config = { nunc: {}, compaction: { enabled: true, reserveTokens: 8192, keepRecentTokens: 4000 } };
 const exposed: CheckResult[] = [{ check: TOOLS_CHECK, status: "PROVEN" }];

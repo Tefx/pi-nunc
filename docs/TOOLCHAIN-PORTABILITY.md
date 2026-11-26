@@ -18,13 +18,13 @@ This specification replaces brittle patch-level equality pinning (`Node === 26.7
   - Validate `process.versions.node` and `npm --version` against `package.json` `engines.node` and `engines.npm` using the SemVer range predicate above (never exact equality against `.node-version` or a hardcoded patch string).
   - Resolve `npm-cli.js` by checking the active Node binary's installation directory (`dirname(process.execPath)` and `dirname(realpathSync(process.execPath))`) before falling back to `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js` or `PATH`-resolved `npm`.
   - Log the actual observed `node` and `npm` versions alongside the check summary.
-- **`src/live/contract.ts` (`preflight`)**:
+- **`bench/live/contract.ts` (`preflight`)**:
   - Enforce the separate stable caret range (`^26.7.0`) on `process.versions.node` (with `NODE_OPTIONS` unset).
   - Bind and record the actual runtime `process.versions.node` in both the preflight SHA-256 digest and returned `Receipt.node`, preserving deterministic receipt invalidation when switching Node versions without failing compatible patch upgrades.
 
 ### 3. Clone-Portable Comparison Baseline References (`MUST`)
 
-- Replace references to the MBA-local ref `refs/nunc/task-retention-pre-change` in `tests/live/task-retention-native.test.ts`, `tests/live/task-retention-comparison.test.ts`, `tests/live/same-task-history.test.ts`, and `docs/DEVELOPMENT.md` with the immutable `main`-history commit OID `1d4fc4a210b64f71871ab3f5c10093215a25990c` (keeping `70dacad1f065a70b29f565b5bfcf02d31cec2bdc` for the historical default baseline and `0.86.1` dependency verification in `src/live/contract.ts`).
+- Replace references to the MBA-local ref `refs/nunc/task-retention-pre-change` in `tests/live/task-retention-native.test.ts`, `tests/live/task-retention-comparison.test.ts`, `tests/live/same-task-history.test.ts`, and `docs/DEVELOPMENT.md` with the immutable `main`-history commit OID `1d4fc4a210b64f71871ab3f5c10093215a25990c` (keeping `70dacad1f065a70b29f565b5bfcf02d31cec2bdc` for the historical default baseline and `0.86.1` dependency verification in `bench/live/contract.ts`).
 
 ### 4. Synchronized Documentation and Regression Tests (`MUST`)
 
@@ -34,5 +34,5 @@ This specification replaces brittle patch-level equality pinning (`Node === 26.7
 ## Implementation Notes & Hazard Map (`ADVISORY`)
 
 - **`package.json` (`packageManager`)**: `packageManager: "npm@11.19.0"` can trigger Corepack strict errors on machines running `npm 11.20.0`; omit `packageManager` or avoid checking it in `scripts/check.mjs` so Homebrew rolling `npm` upgrades stay unblocked.
-- **Detached baselines (`70dacad` and `1d4fc4a`)**: `src/live/comparison.ts` only invokes `preflight()` on the candidate repository (`repository`), while temporary detached historical targets are checked only for HEAD, clean tree, build parity (`dist/src/index.js`), and Pi version. Therefore historical baselines do not re-run old exact-version `.node-version` checks when prepared on Node `26.13.0`.
+- **Detached baselines (`70dacad` and `1d4fc4a`)**: `bench/live/comparison.ts` only invokes `preflight()` on the candidate repository (`repository`), while temporary detached historical targets are checked only for HEAD, clean tree, build parity (`dist/src/index.js`), and Pi version. Therefore historical baselines do not re-run old exact-version `.node-version` checks when prepared on Node `26.13.0`.
 - **Cross-machine verification**: Run the checks in DEVELOPMENT.md using an installed compatible Node/npm toolchain. Comparison fixtures create detached historical targets, install each tracked lock offline with lifecycle scripts disabled, compile with the installed TypeScript, and remove those targets on teardown or setup failure. No pre-existing `.scratch` baseline is required. Host integration and phase acceptance remain separately reported evidence.

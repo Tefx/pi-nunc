@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { RunInput, Selection } from "../../src/live/contract.js";
-import { runSegment } from "../../src/live/worker.js";
-import { loadScenario } from "../../src/live/scenarios.js";
-import { confirmedEdits } from "../../src/live/task-retention.js";
-import { ledgerSummary, readLedger } from "../../src/live/budget.js";
+import type { RunInput, Selection } from "../../bench/live/contract.js";
+import { runSegment } from "../../bench/live/worker.js";
+import { loadScenario } from "../../bench/live/scenarios.js";
+import { confirmedEdits } from "../../bench/live/task-retention.js";
+import { ledgerSummary, readLedger } from "../../bench/live/budget.js";
 import { metricsSolution, metricsTests } from "./metrics-fixture.js";
 import { repository } from "./fixtures.js";
 

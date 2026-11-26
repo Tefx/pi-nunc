@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { writeFile, readFile } from 'node:fs/promises';
 import { StockFixture, records, text } from './stock-driver.mjs';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { checkRollover } from '../dist/src/live/scenarios.js';
+import { checkRollover } from '../dist/bench/live/scenarios.js';
 const f = await new StockFixture().setup({ compaction: { enabled: false } });
 let outcome = { status: 'FAIL' };
 const count = type => f.log.filter(e => e.type === type).length;

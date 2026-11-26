@@ -8,10 +8,10 @@ import { fauxProvider, normalizeContext, type Provider, type TranscriptContext }
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createEditToolDefinition, createReadToolDefinition, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../src/live/budget.js";
-import observer from "../../src/live/observer.js";
-import { openHost, NativeRpcError } from "../../src/live/host.js";
-import { execute, launchWorker } from "../../src/live/runner.js";
+import { boundedProvider, BudgetLedger, ledgerSummary, readLedger } from "../../bench/live/budget.js";
+import observer from "../../bench/live/observer.js";
+import { openHost, NativeRpcError } from "../../bench/live/host.js";
+import { execute, launchWorker } from "../../bench/live/runner.js";
 import { fixture, repository } from "./fixtures.js";
 
 const SECRET = "fake-secret-s3ntinel";

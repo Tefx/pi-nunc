@@ -6,11 +6,11 @@ import { fauxAssistantMessage, fauxToolCall, type Context } from "@earendil-work
 import { project, sealDecisions } from "../../src/pi/projection.js";
 import { maintain } from "../../src/engine/engine.js";
 import { input as engineInput, answer } from "../engine/fixtures.js";
-import observer from "../../src/live/observer.js";
+import observer from "../../bench/live/observer.js";
 import { DEFAULT_MAX_BYTES, type ExtensionAPI, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { checkFullExtraction, expandGeneratedFiles, checkArtifact, validateControl, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../src/live/scenarios.js";
+import { checkFullExtraction, expandGeneratedFiles, checkArtifact, validateControl, jsonPointer, loadScenario, parseScenario, qualifyFullGiantSource, scoreArtifacts, seedScenario, type ArtifactCheck } from "../../bench/live/scenarios.js";
 import { fixture, repository } from "./fixtures.js";
-import { parseInput } from "../../src/live/contract.js";
+import { parseInput } from "../../bench/live/contract.js";
 
 test("full extraction follows native context edits and the configured persisted cleanup view", async () => {
   const entries: SessionEntry[] = [
