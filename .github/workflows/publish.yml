@@ -1,0 +1,52 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish (e.g. v0.3.4)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+      - run: npm install -g npm@latest
+      - name: Validate release tag
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [[ "$RELEASE_TAG" != "$expected" ]]; then
+            echo "Release tag must match package version ($expected)." >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")" != "$(git rev-parse HEAD)" ]]; then
+            echo "Release tag must point to the checked-out commit." >&2
+            exit 1
+          fi
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run check:engine
+      - name: Ensure GitHub Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --verify-tag --generate-notes
+      - run: npm publish --provenance --access public

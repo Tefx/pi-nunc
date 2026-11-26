@@ -37,8 +37,8 @@ By default, Nunc manages `M` only during compaction without changing the model's
 
 | Dependency | Version |
 | --- | --- |
-| Node | Stable `^26.7.0` (`.node-version`: `26`) |
-| npm | Stable `^11.19.0` |
+| Node | Stable `>=22.19.0` (`.node-version`: `26` for live checks) |
+| npm | Stable `>=11.5.1` |
 | Pi / `@earendil-works/pi-ai` / `@earendil-works/pi-tui` | Runtime: stable `^1.0.3`; devDependencies pinned to `1.4.0` |
 
 Runtime constraints:
@@ -120,7 +120,7 @@ Example `nunc.json` (overriding `rolling.keepRecentFraction` from `0.5` to `0.67
 
 ## Development
 
-`npm ci` and `npm run build` compile the extension. Running the full check suite (`scripts/check.mjs all`) additionally requires Node/npm satisfying `^26.7.0` / `^11.19.0`, historical Git objects and offline dependency-cache entries for comparison fixtures, POSIX PTYs, and `/usr/bin/python3`. Older, cross-major, malformed and prerelease versions are rejected. Checks report the actual observed Node/npm versions; live preflight records the observed Node version in its receipt and SHA-256 binding, invalidating earlier receipts after a runtime change. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/LIVE.md](docs/LIVE.md).
+`npm ci` and `npm run build` compile the extension. `npm run check:engine` uses the Node/npm floors above. The full check suite (`scripts/check.mjs all`) additionally requires Node `^26.7.0` for live preflight, historical Git objects and offline dependency-cache entries for comparison fixtures, POSIX PTYs, and `/usr/bin/python3`. The check runner rejects versions below the declared floors, malformed versions, and prereleases. Checks report the actual observed Node/npm versions; live preflight records the observed Node version in its receipt and SHA-256 binding, invalidating earlier receipts after a runtime change. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/LIVE.md](docs/LIVE.md).
 
 The build first emits TypeScript JS and declarations, then bundles `dist/src/index.js` into one ESM unit using the locked TypeScript compiler API (no additional bundler dependency). Local engine, Pi, and UI modules stay within that unit so Pi's `/reload` cannot combine an upgraded entrypoint with stale native ESM submodules. Host `@earendil-works/pi-*` modules and `node:*` builtins remain external. The standalone `./pi` and `./engine` exports and declarations remain available. Live build parity applies the same compiler and bundle transformation in memory without rewriting artifacts.
 

@@ -34,10 +34,10 @@ const hooks = registerHooks({
     return nextLoad(url, context);
   },
 });
-let satisfiesStableCaret;
-try { ({ satisfiesStableCaret } = await import("../src/pi/compat.ts")); }
+let satisfiesStableRange;
+try { ({ satisfiesStableRange } = await import("../src/pi/compat.ts")); }
 finally { hooks.deregister(); }
-if (!satisfiesStableCaret(process.versions.node, pkg.engines.node)) fail(`Requires Node ${pkg.engines.node}; found ${process.versions.node}`);
+if (!satisfiesStableRange(process.versions.node, pkg.engines.node)) fail(`Requires Node ${pkg.engines.node}; found ${process.versions.node}`);
 if (process.env.NODE_OPTIONS) fail("Unset NODE_OPTIONS for reproducible checks");
 const lock = json("package-lock.json");
 for (const name of Object.keys(pkg.devDependencies)) {
@@ -55,7 +55,7 @@ const npmCli = [...nodeDirectories.flatMap(dir => [
 ]), "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"].find(p => existsSync(p));
 const npm = spawnSync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, "--version"] : ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: resolve(root, ".scratch/offline-home"), npm_config_cache: npmCache, npm_config_update_notifier: "false" } });
 const npmVersion = npm.stdout?.trim() ?? "";
-if (npm.status !== 0 || !satisfiesStableCaret(npmVersion, pkg.engines.npm)) fail(`Requires npm ${pkg.engines.npm}; found ${npmVersion || npm.error || npm.status}`);
+if (npm.status !== 0 || !satisfiesStableRange(npmVersion, pkg.engines.npm)) fail(`Requires npm ${pkg.engines.npm}; found ${npmVersion || npm.error || npm.status}`);
 console.log(`check: observed Node ${process.versions.node}, npm ${npmVersion}`);
 const tests = readdirSync(resolve(root, "tests"), { recursive: true }).filter(name => (name.endsWith(".test.ts") || name === "pi/larva.integration.ts") && (selected[0] === "all" || name.startsWith("engine/"))).sort();
 if (tests.length === 0) fail("Empty test selection");

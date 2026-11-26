@@ -6,7 +6,7 @@ import { lstat, readFile, realpath, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { satisfiesStableCaret, isSupportedPiVersion, SUPPORTED_PI_RANGE } from "../pi/compat.js";
+import { satisfiesStableRange, isSupportedPiVersion, SUPPORTED_PI_RANGE } from "../pi/compat.js";
 import { engineConfig, parseConfig, type NuncConfig } from "../pi/config.js";
 
 /** Unix-millisecond wall-clock intervals; provider durations remain separate ledger facts. */
@@ -333,7 +333,7 @@ export function selectedModels(input: RunInput): Model<Api>[] {
 export async function preflight(input: RunInput, repository: string, existingOwnedWorker = false): Promise<Receipt> {
   await validateTarget(input, repository, existingOwnedWorker); selectedModels(input);
   const node = process.versions.node;
-  requireValue(satisfiesStableCaret(node, "^26.7.0") && !process.env.NODE_OPTIONS, "ENVIRONMENT", "Use Node ^26.7.0 with NODE_OPTIONS unset");
+  requireValue(satisfiesStableRange(node, "^26.7.0") && !process.env.NODE_OPTIONS, "ENVIRONMENT", "Use Node ^26.7.0 with NODE_OPTIONS unset");
   const lock = JSON.parse(await readFile(join(repository, "package-lock.json"), "utf8"));
   const piVersion = lock.packages?.["node_modules/@earendil-works/pi-coding-agent"]?.version;
   requireValue(isSupportedPiVersion(piVersion), "DEPENDENCY", `Locked Pi must satisfy ${SUPPORTED_PI_RANGE}; found ${String(piVersion)}`);

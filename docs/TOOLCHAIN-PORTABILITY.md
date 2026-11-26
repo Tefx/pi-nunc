@@ -8,9 +8,9 @@ This specification replaces brittle patch-level equality pinning (`Node === 26.7
 
 ### 1. SemVer Range Policy for Node and npm (`MUST`)
 
-- **`package.json` (`engines`)**: Declare compatible caret/major-bounded ranges (`"node": "^26.7.0"`, `"npm": "^11.19.0"`) instead of exact patch strings. Keep `devDependencies` and `package-lock.json` dependency versions strictly unchanged and exact. Align `package-lock.json` root `packages[""].engines` with `package.json` without altering locked package resolutions.
-- **`.node-version`**: Declare the target major line (`26`) rather than locking a single patch binary across developer machines.
-- **Compatibility predicate**: Validate Node and npm versions as strict stable SemVer triples within the declared caret floor (`major === 26`, `>= 26.7.0`, zero prerelease/non-numeric segments for Node; `major === 11`, `>= 11.19.0`, zero prerelease segments for npm). Reject older patches (`26.6.x`, `11.18.x`), different majors (`25.x`, `27.x`), malformed strings, and prerelease tags.
+- **`package.json` (`engines`)**: Declare minimum versions (`"node": ">=22.19.0"`, `"npm": ">=11.5.1"`). Keep `devDependencies` and `package-lock.json` dependency versions unchanged and exact. Align `package-lock.json` root `packages[""].engines` with `package.json` without altering locked package resolutions.
+- **`.node-version`**: Select Node major `26` for live preflight without pinning a patch version.
+- **Compatibility predicate**: Accept strict stable SemVer triples at or above the declared `>=` floor, including later majors. Reject versions below the floor, malformed strings, and prereleases. A positive-major caret range additionally requires the same major.
 
 ### 2. Check Runner and Preflight Receipt Behavior (`MUST`)
 
@@ -19,7 +19,7 @@ This specification replaces brittle patch-level equality pinning (`Node === 26.7
   - Resolve `npm-cli.js` by checking the active Node binary's installation directory (`dirname(process.execPath)` and `dirname(realpathSync(process.execPath))`) before falling back to `/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js` or `PATH`-resolved `npm`.
   - Log the actual observed `node` and `npm` versions alongside the check summary.
 - **`src/live/contract.ts` (`preflight`)**:
-  - Enforce the same stable SemVer floor (`^26.7.0`) on `process.versions.node` (with `NODE_OPTIONS` unset).
+  - Enforce the separate stable caret range (`^26.7.0`) on `process.versions.node` (with `NODE_OPTIONS` unset).
   - Bind and record the actual runtime `process.versions.node` in both the preflight SHA-256 digest and returned `Receipt.node`, preserving deterministic receipt invalidation when switching Node versions without failing compatible patch upgrades.
 
 ### 3. Clone-Portable Comparison Baseline References (`MUST`)
@@ -28,8 +28,8 @@ This specification replaces brittle patch-level equality pinning (`Node === 26.7
 
 ### 4. Synchronized Documentation and Regression Tests (`MUST`)
 
-- Update `docs/DEVELOPMENT.md` and `README.md` to state the `^26.7.0` / `^11.19.0` range policy, recorded observed versions, and automatic temporary detached baseline setup at `1d4fc4a210b64f71871ab3f5c10093215a25990c`.
-- Add focused unit tests in `tests/engine/runner.test.ts` and `tests/live/contract.test.ts` (or a shared range-check test) verifying acceptance of `26.7.0` / `26.13.0` and `11.19.0` / `11.20.0`, and explicit rejection of older patches, cross-major versions, and prerelease tags.
+- Keep `docs/DEVELOPMENT.md` and `README.md` aligned with the package floors, separate live caret range, observed-version reporting, and temporary detached baseline at `1d4fc4a210b64f71871ab3f5c10093215a25990c`.
+- Cover acceptance at and above the package floors, rejection below them and on malformed or prerelease input, and the live caret's same-major restriction in `tests/engine/runner.test.ts` and `tests/live/contract.test.ts`.
 
 ## Implementation Notes & Hazard Map (`ADVISORY`)
 

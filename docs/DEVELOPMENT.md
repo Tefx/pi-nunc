@@ -1,6 +1,6 @@
 # Local development
 
-Toolchain ranges: Node **^26.7.0**, npm **^11.19.0**; `.node-version` selects major **26**. Only stable numeric SemVer triples at or above each floor within the same major are accepted; older, cross-major, malformed and prerelease versions are rejected. Pi/pi-ai **1.4.0**, TypeScript **5.9.3** and Node types **26.4.1** remain exact development pins. The package is private ESM with strict TypeScript and Node's native test runner. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
+Toolchain floors: Node **>=22.19.0**, npm **>=11.5.1**. The check runner accepts stable numeric SemVer triples at or above each floor, including later majors. `.node-version` selects Node **26** because live preflight still requires **^26.7.0**. Pi/pi-ai **1.4.0**, TypeScript **5.9.3** and Node types **26.4.1** remain exact development pins. The package is private ESM with strict TypeScript and Node's native test runner. `skipLibCheck` skips upstream declaration internals, while project source/tests and public API calls remain type-checked.
 
 Tests bind receipts/CLI imports to actual locked/installed versions, never a release-specific constant. Estimated-size fixtures use the public SDK text/image heuristic, including per-image rounding, so a minor change in Pi’s estimates does not silently invalidate a retained-unit or boundary precondition. Known framing/receipt algebra remains checked independently. Compatibility policy tests cover future stable1.x inputs, rejected major/prerelease/malformed inputs, required API absence and packaging/lock contracts; real-host suites establish behavior on the actual installed SDK.
 
@@ -10,7 +10,7 @@ Tests bind receipts/CLI imports to actual locked/installed versions, never a rel
 
 ## Explicit installation
 
-Ordinary clone, install, build and load use Node **^26.7.0** and npm **^11.19.0** on `PATH`. See the README quick start: `git clone https://github.com/tefx/pi-nunc.git`, `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, then `node node_modules/@earendil-works/pi-coding-agent/dist/cli.js`. Those commands do not require a Homebrew-only Node or npm path.
+Ordinary clone, install, build and load use Node **>=22.19.0** and npm **>=11.5.1** on `PATH`. See the README quick start: `git clone https://github.com/tefx/pi-nunc.git`, `npm ci --ignore-scripts --no-audit --no-fund`, `npm run build`, then `node node_modules/@earendil-works/pi-coding-agent/dist/cli.js`. Those commands do not require a Homebrew-only Node or npm path.
 
 `scripts/check.mjs` validates `process.versions.node` and `npm --version` against `package.json` engines. It records actual observed versions in the check summary. Live preflight records the observed Node version in `Receipt.node` and its SHA-256 binding, so compatible upgrades invalidate earlier receipts. Installation remains an explicit separate command:
 

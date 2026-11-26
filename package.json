@@ -18,8 +18,8 @@
   },
   "type": "module",
   "engines": {
-    "node": "^26.7.0",
-    "npm": "^11.19.0"
+    "node": ">=22.19.0",
+    "npm": ">=11.5.1"
   },
   "pi": {
     "extensions": [
